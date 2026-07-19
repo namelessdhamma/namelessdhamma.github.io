@@ -1,708 +1,532 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#030303">
-  <meta name="description" content="Nameless Dhamma — развитие ума, ранний буддизм и путь к освобождению.">
+  <meta name="theme-color" content="#020202">
+  <meta name="description" content="Nameless Dhamma">
   <title>Nameless Dhamma</title>
-
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #030303;
-      --text: #f5f5f1;
-      --muted: #aaa8a2;
-      --line: rgba(255,255,255,.14);
-      --panel: rgba(255,255,255,.04);
-      --panel-hover: rgba(255,255,255,.08);
-    }
+:root {
+  color-scheme: dark;
+  --bg: #020202;
+  --text: #f4f1eb;
+  --muted: #aaa59c;
+  --line: rgba(255,255,255,.15);
+  --glow: rgba(255,255,255,.35);
+}
 
-    * { box-sizing: border-box; }
+* { box-sizing: border-box; }
 
-    html { scroll-behavior: smooth; }
+html { background: var(--bg); scroll-behavior: smooth; }
 
-    body {
-      margin: 0;
-      min-height: 100vh;
-      overflow-x: hidden;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 50% 16%, rgba(255,255,255,.065), transparent 34rem),
-        linear-gradient(180deg, #070707 0%, #030303 55%, #050505 100%);
-      font-family: Georgia, "Times New Roman", "Noto Serif Thai", serif;
-    }
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 50% 22%, rgba(255,255,255,.045), transparent 38rem),
+    linear-gradient(#050505, #010101 60%, #040404);
+  font-family: Georgia, "Times New Roman", "Noto Serif Thai", serif;
+}
 
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -3;
-      pointer-events: none;
-      background:
-        radial-gradient(ellipse at center, transparent 0 44%, rgba(0,0,0,.66) 100%),
-        repeating-linear-gradient(
-          0deg,
-          transparent 0 3px,
-          rgba(255,255,255,.012) 4px
-        );
-    }
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -4;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.009) 4px),
+    radial-gradient(ellipse at center, transparent 0 45%, rgba(0,0,0,.68) 100%);
+}
 
-    body::after {
-      content: "";
-      position: fixed;
-      inset: -25%;
-      z-index: -2;
-      pointer-events: none;
-      opacity: .22;
-      background:
-        conic-gradient(
-          from 0deg at 50% 22%,
-          transparent 0deg 13deg,
-          rgba(255,255,255,.025) 13deg 18deg,
-          transparent 18deg 45deg,
-          rgba(255,255,255,.018) 45deg 50deg,
-          transparent 50deg 88deg,
-          rgba(255,255,255,.02) 88deg 94deg,
-          transparent 94deg 136deg,
-          rgba(255,255,255,.016) 136deg 142deg,
-          transparent 142deg 182deg,
-          rgba(255,255,255,.02) 182deg 188deg,
-          transparent 188deg 228deg,
-          rgba(255,255,255,.016) 228deg 234deg,
-          transparent 234deg 276deg,
-          rgba(255,255,255,.02) 276deg 282deg,
-          transparent 282deg 322deg,
-          rgba(255,255,255,.016) 322deg 328deg,
-          transparent 328deg 360deg
-        );
-      filter: blur(16px);
-      transform: scale(1.15);
-    }
+.site {
+  width: min(100% - 24px, 1020px);
+  margin: auto;
+  padding: 22px 0 52px;
+}
 
-    a { color: inherit; }
+.languages {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 11px;
+  color: #a9a49c;
+  font-size: 1.05rem;
+}
 
-    .page {
-      width: min(100% - 20px, 880px);
-      margin: 0 auto;
-      padding: 18px 0 50px;
-    }
+.language {
+  border: 0;
+  padding: 5px 2px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-shadow: 0 0 14px transparent;
+  transition: color .2s ease, text-shadow .2s ease;
+}
 
-    .languages {
-      display: flex;
-      justify-content: flex-end;
-      gap: 7px;
-      margin-bottom: 14px;
-    }
+.language.active,
+.language:hover {
+  color: #fff;
+  text-shadow: 0 0 11px rgba(255,255,255,.65);
+}
 
-    .languages button {
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 7px 11px;
-      background: transparent;
-      color: #818181;
-      font: inherit;
-      cursor: pointer;
-    }
+.hero {
+  text-align: center;
+  padding-top: 4px;
+}
 
-    .languages button.active {
-      background: #f3f3ef;
-      color: #050505;
-    }
+.wheel-stage {
+  position: relative;
+  isolation: isolate;
+  width: min(92vw, 650px);
+  aspect-ratio: 1;
+  margin: -6px auto -12px;
+  display: grid;
+  place-items: center;
+}
 
-    .hero {
-      position: relative;
-      isolation: isolate;
-      text-align: center;
-      padding: 8px 0 22px;
-    }
+.wheel {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  opacity: .94;
+  animation: wheelBreath 9s ease-in-out infinite;
+  filter:
+    contrast(1.08)
+    drop-shadow(0 0 13px rgba(255,255,255,.38))
+    drop-shadow(0 0 42px rgba(255,255,255,.14));
+}
 
-    .hero::before {
-      content: "";
-      position: absolute;
-      z-index: -1;
-      left: 50%;
-      top: 40%;
-      width: min(125vw, 1100px);
-      aspect-ratio: 1.4;
-      transform: translate(-50%, -50%);
-      background:
-        radial-gradient(
-          ellipse at center,
-          rgba(255,255,255,.085) 0%,
-          rgba(255,255,255,.025) 31%,
-          transparent 69%
-        );
-      filter: blur(14px);
-    }
+.wheel-stage::before {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  z-index: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.19), rgba(255,255,255,.04) 38%, transparent 72%);
+  filter: blur(24px);
+  animation: haloBreath 9s ease-in-out infinite;
+}
 
-    .wheel-wrap {
-      width: min(88vw, 570px);
-      aspect-ratio: 1;
-      margin: 0 auto 12px;
-      display: grid;
-      place-items: center;
-      position: relative;
-    }
+.rays {
+  position: absolute;
+  inset: -14%;
+  z-index: 1;
+  border-radius: 50%;
+  opacity: .26;
+  background:
+    conic-gradient(
+      from 0deg,
+      transparent 0 11deg, rgba(255,255,255,.065) 12deg 15deg,
+      transparent 16deg 43deg, rgba(255,255,255,.034) 44deg 47deg,
+      transparent 48deg 87deg, rgba(255,255,255,.055) 88deg 92deg,
+      transparent 93deg 132deg, rgba(255,255,255,.032) 133deg 137deg,
+      transparent 138deg 177deg, rgba(255,255,255,.055) 178deg 182deg,
+      transparent 183deg 222deg, rgba(255,255,255,.032) 223deg 227deg,
+      transparent 228deg 267deg, rgba(255,255,255,.055) 268deg 272deg,
+      transparent 273deg 312deg, rgba(255,255,255,.032) 313deg 317deg,
+      transparent 318deg 360deg
+    );
+  filter: blur(17px);
+  animation: raysBreath 11s ease-in-out infinite;
+}
 
-    .wheel-wrap::before {
-      content: "";
-      position: absolute;
-      inset: 11%;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle,
-          rgba(255,255,255,.16) 0%,
-          rgba(255,255,255,.05) 31%,
-          transparent 70%);
-      filter: blur(20px);
-      animation: breathe 7s ease-in-out infinite;
-    }
+.particles {
+  position: absolute;
+  inset: -8%;
+  z-index: 2;
+  opacity: .52;
+  background-image:
+    radial-gradient(circle at 12% 32%, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 23% 69%, #fff 0 1px, transparent 1.7px),
+    radial-gradient(circle at 36% 18%, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 51% 7%, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 65% 24%, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 79% 62%, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 91% 38%, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 62% 86%, #fff 0 1px, transparent 1.8px),
+    radial-gradient(circle at 18% 51%, #fff 0 .8px, transparent 1.6px);
+  filter: drop-shadow(0 0 5px #fff);
+  animation: particlesFloat 14s ease-in-out infinite alternate;
+}
 
-    .wheel {
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-      filter:
-        drop-shadow(0 0 7px rgba(255,255,255,.72))
-        drop-shadow(0 0 22px rgba(255,255,255,.28))
-        drop-shadow(0 0 52px rgba(255,255,255,.12));
-      animation: wheel-breathe 7s ease-in-out infinite;
-    }
+.wheel-flare {
+  position: absolute;
+  z-index: 4;
+  width: 18%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.48), rgba(255,255,255,.08) 32%, transparent 72%);
+  filter: blur(9px);
+  animation: corePulse 7s ease-in-out infinite;
+}
 
-    .wheel .outer,
-    .wheel .inner,
-    .wheel .spoke,
-    .wheel .tip {
-      fill: none;
-      stroke: rgba(255,255,255,.82);
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
+h1 {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: clamp(4rem, 12vw, 7.4rem);
+  font-weight: 400;
+  line-height: .84;
+  letter-spacing: -.025em;
+  color: #fff;
+  text-shadow:
+    0 0 4px rgba(255,255,255,.96),
+    0 0 15px rgba(255,255,255,.52),
+    0 0 46px rgba(255,255,255,.15);
+  animation: titleRise 1.5s ease-out both;
+}
 
-    .wheel .outer { stroke-width: 13; }
-    .wheel .inner { stroke-width: 11; }
-    .wheel .spoke { stroke-width: 12; }
-    .wheel .tip { stroke-width: 10; }
+.tagline {
+  margin: 30px 0 24px;
+  color: #bdb8af;
+  font-size: clamp(.73rem, 2.5vw, 1rem);
+  line-height: 1.55;
+  letter-spacing: .27em;
+  text-shadow: 0 0 15px rgba(255,255,255,.12);
+}
 
-    .wheel .core {
-      fill: rgba(255,255,255,.92);
-      filter: drop-shadow(0 0 12px rgba(255,255,255,.95));
-    }
+.divider,
+.footer-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  color: #9c978e;
+}
 
-    h1 {
-      margin: 8px 0 0;
-      font-size: clamp(2.45rem, 8.5vw, 5.3rem);
-      font-weight: 400;
-      line-height: 1.02;
-      letter-spacing: .016em;
-      color: #fff;
-      text-shadow:
-        0 0 4px rgba(255,255,255,.95),
-        0 0 14px rgba(255,255,255,.46),
-        0 0 44px rgba(255,255,255,.14);
-    }
+.divider span {
+  width: min(34vw, 255px);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line));
+}
 
-    .kicker {
-      margin: 16px auto 0;
-      max-width: 780px;
-      color: #c8c5bf;
-      text-transform: uppercase;
-      letter-spacing: .18em;
-      font-size: clamp(.69rem, 2.4vw, .93rem);
-      text-shadow:
-        0 0 8px rgba(255,255,255,.16),
-        0 0 24px rgba(255,255,255,.06);
-    }
+.divider span:last-child {
+  background: linear-gradient(90deg, var(--line), transparent);
+}
 
-    .ornament {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
-      margin: 21px 0;
-      color: #747474;
-    }
+.divider b,
+.footer-line b {
+  font-weight: 400;
+  text-shadow: 0 0 12px rgba(255,255,255,.36);
+}
 
-    .ornament::before,
-    .ornament::after {
-      content: "";
-      width: min(29vw, 190px);
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--line));
-    }
+.links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+  margin-top: 38px;
+}
 
-    .ornament::after {
-      background: linear-gradient(90deg, var(--line), transparent);
-    }
+.card {
+  position: relative;
+  overflow: hidden;
+  min-height: 102px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  padding: 17px 20px;
+  border: 1px solid rgba(255,255,255,.17);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.034), rgba(255,255,255,.006));
+  color: var(--text);
+  font: inherit;
+  font-size: clamp(1rem, 3.1vw, 1.35rem);
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
 
-    .description {
-      max-width: 720px;
-      margin: 0 auto;
-      color: var(--muted);
-      line-height: 1.74;
-      font-size: 1rem;
-      text-shadow: 0 0 18px rgba(255,255,255,.04);
-    }
+.card::before {
+  content: "";
+  position: absolute;
+  inset: -85%;
+  opacity: 0;
+  background: radial-gradient(circle, rgba(255,255,255,.16), transparent 42%);
+  transition: opacity .2s ease;
+}
 
-    .section-title {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin: 34px 0 16px;
-      color: #c8c5bf;
-      text-transform: uppercase;
-      letter-spacing: .17em;
-      font-size: .82rem;
-      white-space: nowrap;
-    }
+.card:hover,
+.card:focus-visible,
+.card:active {
+  transform: translateY(-3px);
+  border-color: rgba(255,255,255,.34);
+  background: rgba(255,255,255,.052);
+  box-shadow:
+    0 0 28px rgba(255,255,255,.05),
+    inset 0 0 24px rgba(255,255,255,.024);
+  outline: none;
+}
 
-    .section-title::before,
-    .section-title::after {
-      content: "";
-      height: 1px;
-      flex: 1;
-      background: var(--line);
-    }
+.card:hover::before,
+.card:focus-visible::before,
+.card:active::before { opacity: 1; }
 
-    .links {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
+.icon {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: 57px;
+  height: 57px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 16px;
+  background: rgba(255,255,255,.028);
+  font-family: system-ui, sans-serif;
+  font-size: 1.55rem;
+  font-weight: 700;
+  text-shadow:
+    0 0 5px rgba(255,255,255,.95),
+    0 0 17px rgba(255,255,255,.28);
+  box-shadow: 0 0 16px rgba(255,255,255,.025);
+}
 
-    .card {
-      min-height: 76px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 11px;
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      background:
-        linear-gradient(145deg, var(--panel), rgba(255,255,255,.012));
-      text-decoration: none;
-      transition:
-        transform .15s ease,
-        background .15s ease,
-        border-color .15s ease;
-      position: relative;
-      overflow: hidden;
-    }
+.icon.compact { font-size: .95rem; }
 
-    .card::before {
-      content: "";
-      position: absolute;
-      inset: -80%;
-      opacity: 0;
-      background: radial-gradient(circle, rgba(255,255,255,.13), transparent 42%);
-      transition: opacity .18s ease;
-    }
+.card > span:not(.icon),
+.stack {
+  position: relative;
+  z-index: 1;
+}
 
-    .card:hover,
-    .card:focus-visible {
-      transform: translateY(-2px);
-      background: var(--panel-hover);
-      border-color: rgba(255,255,255,.27);
-      outline: none;
-    }
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
 
-    .card:hover::before,
-    .card:focus-visible::before {
-      opacity: 1;
-    }
+.stack small {
+  margin-top: 4px;
+  color: #aaa59d;
+  font-size: .67em;
+}
 
-    .icon,
-    .label {
-      position: relative;
-      z-index: 1;
-    }
+footer { margin-top: 54px; }
 
-    .icon {
-      width: 38px;
-      height: 38px;
-      display: grid;
-      place-items: center;
-      border: 1px solid rgba(255,255,255,.15);
-      border-radius: 11px;
-      font-family: system-ui, sans-serif;
-      font-weight: 700;
-      text-shadow:
-        0 0 5px rgba(255,255,255,.68),
-        0 0 15px rgba(255,255,255,.16);
-    }
+.footer-line {
+  gap: 15px;
+  color: #aaa59c;
+}
 
-    footer {
-      margin-top: 38px;
-      padding-top: 24px;
-      border-top: 1px solid var(--line);
-      text-align: center;
-      color: #898681;
-    }
+.footer-line span {
+  flex: 1;
+  max-width: 210px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line));
+}
 
-    footer a { text-decoration: none; }
+.footer-line span:last-child {
+  background: linear-gradient(90deg, var(--line), transparent);
+}
 
-    @keyframes breathe {
-      0%, 100% { opacity: .72; transform: scale(.98); }
-      50% { opacity: 1; transform: scale(1.035); }
-    }
+.footer-line strong {
+  font-weight: 400;
+  letter-spacing: .12em;
+}
 
-    @keyframes wheel-breathe {
-      0%, 100% { opacity: .93; transform: scale(.985); }
-      50% { opacity: 1; transform: scale(1.015); }
-    }
+.ambient {
+  position: fixed;
+  z-index: -2;
+  width: 45vw;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: .025;
+  background: #fff;
+  pointer-events: none;
+}
 
-    @media (min-width: 700px) {
-      .links {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-      }
-    }
+.ambient-one { left: -24vw; top: 20vh; }
+.ambient-two { right: -24vw; top: 60vh; }
 
-    @media (prefers-reduced-motion: reduce) {
-      .wheel,
-      .wheel-wrap::before {
-        animation: none;
-      }
-    }
-  
-    /* Плавное появление страницы */
-    body {
-      animation: page-in 1.1s ease-out both;
-    }
+@keyframes wheelBreath {
+  0%,100% { transform: scale(.985); opacity: .88; }
+  50% { transform: scale(1.025); opacity: 1; }
+}
 
-    /* Верхний переключатель всегда виден */
-    .languages {
-      position: sticky;
-      top: 10px;
-      z-index: 20;
-      padding-top: 2px;
-    }
+@keyframes haloBreath {
+  0%,100% { transform: scale(.94); opacity: .56; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
 
-    /* Колесо не вращается, а "дышит" светом */
-    .wheel-wrap {
-      animation: wheel-enter 1.25s ease-out both;
-    }
+@keyframes raysBreath {
+  0%,100% { transform: scale(.97); opacity: .15; }
+  50% { transform: scale(1.04); opacity: .31; }
+}
 
-    .wheel {
-      animation: wheel-breathe 9s ease-in-out infinite;
-      transform-origin: center;
-    }
+@keyframes particlesFloat {
+  from { transform: translate3d(-7px, 4px, 0) scale(.98); }
+  to { transform: translate3d(8px, -8px, 0) scale(1.03); }
+}
 
-    /* Лёгкие лучи знания */
-    .hero::after {
-      content: "";
-      position: absolute;
-      z-index: -2;
-      left: 50%;
-      top: 38%;
-      width: min(150vw, 1250px);
-      aspect-ratio: 1;
-      transform: translate(-50%, -50%);
-      opacity: .20;
-      background:
-        conic-gradient(
-          from 0deg,
-          transparent 0deg 13deg,
-          rgba(255,255,255,.05) 13deg 17deg,
-          transparent 17deg 43deg,
-          rgba(255,255,255,.025) 43deg 47deg,
-          transparent 47deg 88deg,
-          rgba(255,255,255,.04) 88deg 92deg,
-          transparent 92deg 133deg,
-          rgba(255,255,255,.025) 133deg 137deg,
-          transparent 137deg 178deg,
-          rgba(255,255,255,.04) 178deg 182deg,
-          transparent 182deg 223deg,
-          rgba(255,255,255,.025) 223deg 227deg,
-          transparent 227deg 268deg,
-          rgba(255,255,255,.04) 268deg 272deg,
-          transparent 272deg 313deg,
-          rgba(255,255,255,.025) 313deg 317deg,
-          transparent 317deg 360deg
-        );
-      filter: blur(20px);
-      animation: rays-breathe 11s ease-in-out infinite;
-    }
+@keyframes corePulse {
+  0%,100% { transform: scale(.82); opacity: .35; }
+  50% { transform: scale(1.14); opacity: .78; }
+}
 
-    /* Заголовок рождается из света */
-    h1 {
-      opacity: 0;
-      animation: title-emerge 1.35s ease-out .55s forwards;
-    }
+@keyframes titleRise {
+  from { opacity: 0; transform: translateY(18px); filter: blur(10px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
 
-    .kicker {
-      opacity: 0;
-      animation: text-emerge 1s ease-out .95s forwards;
-    }
+@media (min-width: 780px) {
+  .links { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .card { min-height: 112px; }
+  .links .card:nth-last-child(-n+2) { grid-column: span 1; }
+}
 
-    .description {
-      opacity: 0;
-      animation: text-emerge 1s ease-out 1.15s forwards;
-    }
+@media (max-width: 480px) {
+  .site { width: min(100% - 16px, 1020px); }
+  .languages { font-size: .95rem; }
+  .wheel-stage { width: min(105vw, 650px); margin-left: 50%; transform: translateX(-50%); }
+  h1 { font-size: clamp(4.1rem, 18vw, 5.5rem); }
+  .tagline { letter-spacing: .20em; }
+  .card { min-height: 92px; padding: 13px; gap: 11px; }
+  .icon { width: 50px; height: 50px; border-radius: 14px; }
+}
 
-    .section-title,
-    .links,
-    footer {
-      opacity: 0;
-      animation: text-emerge 1s ease-out 1.35s forwards;
-    }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
 
-    /* Карточки подсвечиваются как локальные источники знания */
-    .card {
-      box-shadow: inset 0 0 0 rgba(255,255,255,0);
-    }
-
-    .card:hover,
-    .card:focus-visible,
-    .card:active {
-      box-shadow:
-        0 0 22px rgba(255,255,255,.05),
-        inset 0 0 22px rgba(255,255,255,.035);
-    }
-
-    .icon {
-      transition: text-shadow .18s ease, border-color .18s ease;
-    }
-
-    .card:hover .icon,
-    .card:focus-visible .icon,
-    .card:active .icon {
-      border-color: rgba(255,255,255,.32);
-      text-shadow:
-        0 0 6px rgba(255,255,255,.95),
-        0 0 18px rgba(255,255,255,.28);
-    }
-
-    @keyframes page-in {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-
-    @keyframes wheel-enter {
-      from {
-        opacity: 0;
-        transform: scale(.90);
-        filter: blur(10px);
-      }
-      to {
-        opacity: 1;
-        transform: scale(1);
-        filter: blur(0);
-      }
-    }
-
-    @keyframes wheel-breathe {
-      0%, 100% {
-        opacity: .90;
-        transform: scale(.992);
-        filter:
-          drop-shadow(0 0 6px rgba(255,255,255,.58))
-          drop-shadow(0 0 20px rgba(255,255,255,.22))
-          drop-shadow(0 0 44px rgba(255,255,255,.10));
-      }
-      50% {
-        opacity: 1;
-        transform: scale(1.018);
-        filter:
-          drop-shadow(0 0 9px rgba(255,255,255,.78))
-          drop-shadow(0 0 28px rgba(255,255,255,.32))
-          drop-shadow(0 0 60px rgba(255,255,255,.14));
-      }
-    }
-
-    @keyframes rays-breathe {
-      0%, 100% { opacity: .12; transform: translate(-50%, -50%) scale(.98); }
-      50% { opacity: .24; transform: translate(-50%, -50%) scale(1.03); }
-    }
-
-    @keyframes title-emerge {
-      from {
-        opacity: 0;
-        transform: translateY(12px);
-        filter: blur(10px);
-        letter-spacing: .12em;
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-        filter: blur(0);
-        letter-spacing: .016em;
-      }
-    }
-
-    @keyframes text-emerge {
-      from {
-        opacity: 0;
-        transform: translateY(10px);
-        filter: blur(5px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-        filter: blur(0);
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      body,
-      .wheel-wrap,
-      .wheel,
-      .hero::after,
-      h1,
-      .kicker,
-      .description,
-      .section-title,
-      .links,
-      footer {
-        animation: none !important;
-        opacity: 1 !important;
-        transform: none !important;
-        filter: none !important;
-      }
-    }
-
-  </style>
+</style>
 </head>
 
 <body>
-  <main class="page">
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <main class="site">
     <nav class="languages" aria-label="Language">
-      <button type="button" class="active" data-lang="ru">RU</button>
-      <button type="button" data-lang="th">ไทย</button>
-      <button type="button" data-lang="en">EN</button>
+      <button class="language active" type="button" data-language="ru">RU</button>
+      <span>│</span>
+      <button class="language" type="button" data-language="en">EN</button>
+      <span>│</span>
+      <button class="language" type="button" data-language="th">ไทย</button>
     </nav>
 
-    <section class="hero">
-      <div class="wheel-wrap" aria-hidden="true">
-        <svg class="wheel" viewBox="0 0 400 400">
-          <circle class="outer" cx="200" cy="200" r="122"/>
-          <circle class="inner" cx="200" cy="200" r="45"/>
-
-          <line class="spoke" x1="200" y1="78" x2="200" y2="155"/>
-          <line class="spoke" x1="200" y1="245" x2="200" y2="322"/>
-          <line class="spoke" x1="78" y1="200" x2="155" y2="200"/>
-          <line class="spoke" x1="245" y1="200" x2="322" y2="200"/>
-
-          <line class="spoke" x1="114" y1="114" x2="168" y2="168"/>
-          <line class="spoke" x1="232" y1="232" x2="286" y2="286"/>
-          <line class="spoke" x1="286" y1="114" x2="232" y2="168"/>
-          <line class="spoke" x1="168" y1="232" x2="114" y2="286"/>
-
-          <line class="tip" x1="200" y1="50" x2="200" y2="76"/>
-          <line class="tip" x1="200" y1="324" x2="200" y2="350"/>
-          <line class="tip" x1="50" y1="200" x2="76" y2="200"/>
-          <line class="tip" x1="324" y1="200" x2="350" y2="200"/>
-
-          <line class="tip" x1="94" y1="94" x2="112" y2="112"/>
-          <line class="tip" x1="288" y1="288" x2="306" y2="306"/>
-          <line class="tip" x1="306" y1="94" x2="288" y2="112"/>
-          <line class="tip" x1="112" y1="288" x2="94" y2="306"/>
-
-          <circle class="core" cx="200" cy="200" r="13"/>
-        </svg>
+    <header class="hero">
+      <div class="wheel-stage" aria-hidden="true">
+        <div class="rays"></div>
+        <div class="particles"></div>
+        <img class="wheel" src="wheel.webp" alt="">
+        <div class="wheel-flare"></div>
       </div>
 
-      <h1>Nameless Dhamma</h1>
+      <h1><span>Nameless</span><span>Dhamma</span></h1>
 
-      <div class="kicker" data-t="kicker">
-        Безграничная мудрость, пронизывающая неведение
-      </div>
-
-      <div class="ornament">◇</div>
-
-      <p class="description" data-t="description">
-        Проект о развитии ума через осознавание, сосредоточение и прямое видение природы опыта.
-        Буквы и символы становятся лучами знания, проходящими сквозь тёмный фон неведения,
-        подобно Колесу Дхаммы.
+      <p class="tagline" data-text="tagline">
+        БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ
       </p>
-    </section>
 
-    <div class="section-title" data-t="linksTitle">Ссылки проекта</div>
+      <div class="divider" aria-hidden="true"><span></span><b>◇</b><span></span></div>
+    </header>
 
-    <section class="links" aria-label="Ссылки проекта">
+    <section class="links" aria-label="Project links">
       <a class="card" href="https://www.youtube.com/@NamelessDhamma" target="_blank" rel="noopener">
-        <span class="icon">▶</span><span class="label">YouTube</span>
+        <span class="icon">▶</span><span>YouTube</span>
       </a>
 
       <a class="card" href="https://t.me/namelessdhamma" target="_blank" rel="noopener">
-        <span class="icon">T</span><span class="label">Telegram</span>
+        <span class="icon">➤</span><span>Telegram</span>
       </a>
 
       <a class="card" href="https://www.instagram.com/namelessdhamma/" target="_blank" rel="noopener">
-        <span class="icon">◎</span><span class="label">Instagram</span>
+        <span class="icon">◎</span><span>Instagram</span>
       </a>
 
       <a class="card" href="https://www.tiktok.com/@namelessdhamma" target="_blank" rel="noopener">
-        <span class="icon">♪</span><span class="label">TikTok</span>
+        <span class="icon">♪</span><span>TikTok</span>
       </a>
 
       <a class="card" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener">
-        <span class="icon">f</span><span class="label">Facebook</span>
+        <span class="icon">f</span><span>Facebook</span>
       </a>
 
       <a class="card" href="https://vk.com/namelessdhamma" target="_blank" rel="noopener">
-        <span class="icon">VK</span><span class="label">VK</span>
+        <span class="icon compact">VK</span><span>VK</span>
       </a>
 
+      <a class="card" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener">
+        <span class="icon compact">LINE</span><span>Line</span>
+      </a>
+
+      <button class="card card-button" type="button" data-whatsapp>
+        <span class="icon">◔</span>
+        <span class="stack"><span>WhatsApp</span><small>@namelessdhamma</small></span>
+      </button>
+
       <a class="card" href="mailto:namelessdhamma@gmail.com">
-        <span class="icon">@</span><span class="label" data-t="email">Эл. почта</span>
+        <span class="icon">✉</span><span data-text="email">Эл. почта</span>
+      </a>
+
+      <a class="card" href="https://dzen.ru/namelessdhamma" target="_blank" rel="noopener">
+        <span class="icon">✦</span><span>Дзен</span>
       </a>
     </section>
 
     <footer>
-      <div data-t="motto">Увидеть. Разочароваться. Отпустить. Не возникать.</div>
-      <div style="margin-top:10px">
-        <a href="mailto:namelessdhamma@gmail.com">namelessdhamma@gmail.com</a>
-      </div>
+      <div class="footer-line"><span></span><b>◇</b><strong>@namelessdhamma</strong><b>◇</b><span></span></div>
     </footer>
   </main>
 
   <script>
-    const translations = {
-      ru: {
-        kicker: "Безграничная мудрость, пронизывающая неведение",
-        description: "Проект о развитии ума через осознавание, сосредоточение и прямое видение природы опыта. Буквы и символы становятся лучами знания, проходящими сквозь тёмный фон неведения, подобно Колесу Дхаммы.",
-        linksTitle: "Ссылки проекта",
-        email: "Эл. почта",
-        motto: "Увидеть. Разочароваться. Отпустить. Не возникать."
-      },
-      th: {
-        kicker: "ปัญญาอันไร้ขอบเขตที่ส่องทะลุอวิชชา",
-        description: "โครงการเกี่ยวกับการพัฒนาจิตผ่านสติ สมาธิ และการเห็นธรรมชาติของประสบการณ์โดยตรง ตัวอักษรและสัญลักษณ์กลายเป็นลำแสงแห่งความรู้ที่ส่องผ่านความมืดของอวิชชา ดุจธรรมจักร",
-        linksTitle: "ลิงก์ของโครงการ",
-        email: "อีเมล",
-        motto: "เห็น คลายความหลงใหล ปล่อยวาง ไม่เกิดขึ้นอีก"
-      },
-      en: {
-        kicker: "Boundless wisdom piercing through ignorance",
-        description: "A project on cultivating the mind through awareness, concentration, and direct seeing of the nature of experience. Letters and symbols become rays of knowledge passing through the darkness of ignorance like the Dhamma Wheel.",
-        linksTitle: "Project links",
-        email: "Email",
-        motto: "See. Become disenchanted. Let go. Do not arise."
-      }
-    };
+const translations = {
+  ru: {
+    tagline: "БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ",
+    email: "Эл. почта",
+    whatsappNotice: "Для прямой ссылки WhatsApp нужен номер телефона или ссылка на канал. Сейчас указано имя @namelessdhamma."
+  },
+  en: {
+    tagline: "BOUNDLESS WISDOM<br>PIERCING THROUGH IGNORANCE",
+    email: "Email",
+    whatsappNotice: "A direct WhatsApp link requires a phone number or channel URL. The current handle is @namelessdhamma."
+  },
+  th: {
+    tagline: "ปัญญาอันไร้ขอบเขต<br>ที่ส่องทะลุอวิชชา",
+    email: "อีเมล",
+    whatsappNotice: "ลิงก์ WhatsApp โดยตรงต้องใช้หมายเลขโทรศัพท์หรือลิงก์ช่อง ขณะนี้แสดงชื่อ @namelessdhamma"
+  }
+};
 
-    const buttons = document.querySelectorAll("[data-lang]");
-    const nodes = document.querySelectorAll("[data-t]");
+let currentLanguage = "ru";
 
-    function setLanguage(lang) {
-      const dictionary = translations[lang] || translations.ru;
-      document.documentElement.lang = lang;
+document.querySelectorAll("[data-language]").forEach((button) => {
+  button.addEventListener("click", () => {
+    currentLanguage = button.dataset.language;
+    document.documentElement.lang = currentLanguage;
 
-      nodes.forEach((node) => {
-        const key = node.dataset.t;
-        if (dictionary[key]) node.textContent = dictionary[key];
-      });
-
-      buttons.forEach((button) => {
-        button.classList.toggle("active", button.dataset.lang === lang);
-      });
-    }
-
-    buttons.forEach((button) => {
-      button.addEventListener("click", () => setLanguage(button.dataset.lang));
+    document.querySelectorAll("[data-language]").forEach((item) => {
+      item.classList.toggle("active", item === button);
     });
-  </script>
+
+    document.querySelectorAll("[data-text]").forEach((node) => {
+      const key = node.dataset.text;
+      node.innerHTML = translations[currentLanguage][key];
+    });
+  });
+});
+
+document.querySelector("[data-whatsapp]").addEventListener("click", () => {
+  alert(translations[currentLanguage].whatsappNotice);
+});
+
+</script>
 </body>
 </html>
