@@ -2,604 +2,381 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#020202">
-  <meta name="description" content="Nameless Dhamma">
+  <meta name="description" content="Nameless Dhamma — безграничная мудрость, пронизывающая неведение.">
   <title>Nameless Dhamma</title>
 
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #020202;
-      --text: #f4f1eb;
-      --muted: #b1ada5;
-      --line: rgba(255,255,255,.16);
-      --line-active: rgba(255,255,255,.36);
+    :root{
+      color-scheme:dark;
+      --bg:#020202;
+      --paper:#f6f3ed;
+      --muted:#a9a49b;
+      --line:rgba(255,255,255,.15);
+      --line-hover:rgba(255,255,255,.36);
     }
-
-    * { box-sizing: border-box; }
-
-    html {
-      min-height: 100%;
-      background: var(--bg);
-      scroll-behavior: smooth;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      overflow-x: hidden;
-      color: var(--text);
+    *{box-sizing:border-box}
+    html{background:var(--bg);scroll-behavior:smooth}
+    body{
+      margin:0;
+      min-height:100vh;
+      overflow-x:hidden;
+      color:var(--paper);
       background:
-        radial-gradient(circle at 50% 15%, rgba(255,255,255,.052), transparent 33rem),
-        linear-gradient(180deg, #070707 0%, #010101 56%, #050505 100%);
-      font-family: Georgia, "Times New Roman", "Noto Serif Thai", serif;
+        radial-gradient(circle at 50% 16%,rgba(255,255,255,.055),transparent 35rem),
+        linear-gradient(180deg,#060606,#010101 62%,#050505);
+      font-family:Georgia,"Times New Roman","Noto Serif Thai",serif;
     }
-
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -4;
-      pointer-events: none;
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      z-index:-3;
+      pointer-events:none;
       background:
-        repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,.008) 4px),
-        radial-gradient(ellipse at center, transparent 0 42%, rgba(0,0,0,.72) 100%);
+        repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.007) 4px),
+        radial-gradient(ellipse at center,transparent 0 42%,rgba(0,0,0,.76) 100%);
     }
-
-    .site {
-      width: min(100% - 22px, 1040px);
-      margin: 0 auto;
-      padding: max(18px, env(safe-area-inset-top)) 0 54px;
+    .page{
+      width:min(100% - 16px,1040px);
+      margin:auto;
+      padding:max(14px,env(safe-area-inset-top)) 0 42px;
     }
-
-    .languages {
-      position: relative;
-      z-index: 30;
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
-      gap: 10px;
-      min-height: 38px;
-      color: #928f89;
-      font-size: 1rem;
+    .languages{
+      position:relative;
+      z-index:20;
+      display:flex;
+      justify-content:flex-end;
+      align-items:center;
+      gap:9px;
+      min-height:34px;
+      color:#8f8b84;
+      font-size:.96rem;
     }
-
-    .language {
-      border: 0;
-      padding: 6px 2px;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      cursor: pointer;
-      transition: color .2s ease, text-shadow .2s ease;
+    .languages button{
+      border:0;
+      padding:5px 2px;
+      background:none;
+      color:inherit;
+      font:inherit;
+      cursor:pointer;
     }
-
-    .language.active,
-    .language:hover,
-    .language:focus-visible {
-      color: #fff;
-      text-shadow: 0 0 12px rgba(255,255,255,.72);
-      outline: none;
+    .languages button.active{
+      color:#fff;
+      text-shadow:0 0 12px rgba(255,255,255,.75);
     }
-
-    .hero {
-      position: relative;
-      isolation: isolate;
-      text-align: center;
-      padding: 2px 0 4px;
+    .hero{
+      position:relative;
+      text-align:center;
     }
-
-    .wheel-stage {
-      position: relative;
-      width: min(88vw, 610px);
-      aspect-ratio: 1;
-      margin: -6px auto -20px;
-      display: grid;
-      place-items: center;
+    .wheel-stage{
+      position:relative;
+      isolation:isolate;
+      width:min(72vw,500px);
+      aspect-ratio:1;
+      display:grid;
+      place-items:center;
+      margin:-6px auto -30px;
     }
-
-    .wheel-stage::before {
-      content: "";
-      position: absolute;
-      inset: 15%;
-      z-index: 0;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle,
-          rgba(255,255,255,.20) 0%,
-          rgba(255,255,255,.055) 34%,
-          transparent 72%);
-      filter: blur(27px);
-      animation: halo 9s ease-in-out infinite;
+    .wheel-stage::before{
+      content:"";
+      position:absolute;
+      inset:12%;
+      border-radius:50%;
+      background:radial-gradient(circle,rgba(255,255,255,.23),rgba(255,255,255,.055) 34%,transparent 72%);
+      filter:blur(25px);
+      animation:halo 9s ease-in-out infinite;
     }
-
-    .rays {
-      position: absolute;
-      inset: -8%;
-      z-index: 1;
-      border-radius: 50%;
-      opacity: .22;
-      background:
-        conic-gradient(
-          from 0deg,
-          transparent 0 12deg, rgba(255,255,255,.060) 13deg 16deg,
-          transparent 17deg 43deg, rgba(255,255,255,.030) 44deg 47deg,
-          transparent 48deg 88deg, rgba(255,255,255,.050) 89deg 92deg,
-          transparent 93deg 133deg, rgba(255,255,255,.028) 134deg 137deg,
-          transparent 138deg 178deg, rgba(255,255,255,.050) 179deg 182deg,
-          transparent 183deg 223deg, rgba(255,255,255,.028) 224deg 227deg,
-          transparent 228deg 268deg, rgba(255,255,255,.050) 269deg 272deg,
-          transparent 273deg 313deg, rgba(255,255,255,.028) 314deg 317deg,
-          transparent 318deg 360deg
-        );
-      filter: blur(19px);
-      animation: rays 11s ease-in-out infinite;
+    .rays{
+      position:absolute;
+      inset:-14%;
+      border-radius:50%;
+      opacity:.24;
+      background:conic-gradient(from 0deg,
+        transparent 0 10deg,rgba(255,255,255,.075) 11deg 15deg,
+        transparent 16deg 43deg,rgba(255,255,255,.034) 44deg 48deg,
+        transparent 49deg 88deg,rgba(255,255,255,.062) 89deg 93deg,
+        transparent 94deg 133deg,rgba(255,255,255,.034) 134deg 138deg,
+        transparent 139deg 178deg,rgba(255,255,255,.062) 179deg 183deg,
+        transparent 184deg 223deg,rgba(255,255,255,.034) 224deg 228deg,
+        transparent 229deg 268deg,rgba(255,255,255,.062) 269deg 273deg,
+        transparent 274deg 313deg,rgba(255,255,255,.034) 314deg 318deg,
+        transparent 319deg 360deg);
+      filter:blur(19px);
+      animation:rays 11s ease-in-out infinite;
     }
-
-    .particles {
-      position: absolute;
-      inset: -3%;
-      z-index: 2;
-      opacity: .48;
+    .particles{
+      position:absolute;
+      inset:-8%;
+      opacity:.46;
       background-image:
-        radial-gradient(circle at 11% 33%, #fff 0 1px, transparent 1.8px),
-        radial-gradient(circle at 22% 70%, #fff 0 1px, transparent 1.8px),
-        radial-gradient(circle at 35% 15%, #fff 0 1px, transparent 1.8px),
-        radial-gradient(circle at 53% 6%, #fff 0 1px, transparent 1.8px),
-        radial-gradient(circle at 67% 23%, #fff 0 1px, transparent 1.8px),
-        radial-gradient(circle at 82% 63%, #fff 0 1px, transparent 1.8px),
-        radial-gradient(circle at 92% 37%, #fff 0 1px, transparent 1.8px),
-        radial-gradient(circle at 61% 87%, #fff 0 1px, transparent 1.8px);
-      filter: drop-shadow(0 0 5px #fff);
-      animation: particles 15s ease-in-out infinite alternate;
+        radial-gradient(circle at 7% 36%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 18% 71%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 34% 14%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 53% 5%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 70% 20%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 84% 62%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 94% 37%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 61% 89%,#fff 0 1px,transparent 1.8px);
+      filter:drop-shadow(0 0 5px #fff);
+      animation:particles 15s ease-in-out infinite alternate;
     }
-
-    .wheel {
-      position: relative;
-      z-index: 3;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      opacity: .95;
+    .wheel{
+      position:relative;
+      z-index:2;
+      width:100%;
+      height:100%;
+      object-fit:contain;
       filter:
         contrast(1.08)
-        drop-shadow(0 0 10px rgba(255,255,255,.44))
-        drop-shadow(0 0 36px rgba(255,255,255,.17));
-      animation: breathe 9s ease-in-out infinite;
+        drop-shadow(0 0 10px rgba(255,255,255,.48))
+        drop-shadow(0 0 38px rgba(255,255,255,.18));
+      animation:breathe 9s ease-in-out infinite;
     }
-
-    .core {
-      position: absolute;
-      z-index: 4;
-      width: 16%;
-      aspect-ratio: 1;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle,
-          rgba(255,255,255,.44),
-          rgba(255,255,255,.09) 34%,
-          transparent 72%);
-      filter: blur(9px);
-      animation: core 7s ease-in-out infinite;
+    .core{
+      position:absolute;
+      z-index:3;
+      width:13%;
+      aspect-ratio:1;
+      border-radius:50%;
+      background:radial-gradient(circle,rgba(255,255,255,.55),rgba(255,255,255,.08) 36%,transparent 72%);
+      filter:blur(8px);
+      animation:core 7s ease-in-out infinite;
     }
-
-    h1 {
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      font-size: clamp(3.65rem, 15vw, 6.5rem);
-      font-weight: 400;
-      line-height: .86;
-      letter-spacing: -.025em;
-      color: #fff;
+    h1{
+      margin:0;
+      display:flex;
+      flex-direction:column;
+      color:white;
+      font-size:clamp(3.25rem,13.2vw,6.1rem);
+      font-weight:400;
+      line-height:.86;
+      letter-spacing:-.025em;
       text-shadow:
-        0 0 4px rgba(255,255,255,.96),
-        0 0 14px rgba(255,255,255,.50),
-        0 0 42px rgba(255,255,255,.15);
-      animation: title-in 1.4s ease-out both;
+        0 0 3px rgba(255,255,255,.94),
+        0 0 11px rgba(255,255,255,.42),
+        0 0 34px rgba(255,255,255,.13);
     }
-
-    .tagline {
-      margin: 28px auto 22px;
-      max-width: 760px;
-      color: #bbb7af;
-      font-size: clamp(.70rem, 2.55vw, .98rem);
-      line-height: 1.58;
-      letter-spacing: .23em;
-      text-shadow: 0 0 15px rgba(255,255,255,.12);
+    .tagline{
+      margin:23px auto 18px;
+      color:#bbb7af;
+      font-size:clamp(.66rem,2.35vw,.93rem);
+      line-height:1.55;
+      letter-spacing:.21em;
+      text-shadow:0 0 14px rgba(255,255,255,.11);
     }
-
-    .divider,
-    .footer-line {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 13px;
-      color: #9c978e;
+    .divider,.footer{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:12px;
+      color:#9b978f;
     }
-
-    .divider span {
-      width: min(33vw, 245px);
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--line));
+    .divider span,.footer span{
+      flex:1;
+      max-width:240px;
+      height:1px;
+      background:linear-gradient(90deg,transparent,var(--line));
     }
-
-    .divider span:last-child {
-      background: linear-gradient(90deg, var(--line), transparent);
+    .divider span:last-child,.footer span:last-child{
+      background:linear-gradient(90deg,var(--line),transparent);
     }
-
-    .divider b,
-    .footer-line b {
-      font-weight: 400;
-      text-shadow: 0 0 12px rgba(255,255,255,.36);
+    .divider b,.footer b{
+      font-weight:400;
+      text-shadow:0 0 12px rgba(255,255,255,.38);
     }
-
-    .links {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 13px;
-      margin-top: 36px;
+    .links{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+      margin-top:23px;
     }
-
-    .card {
-      position: relative;
-      min-width: 0;
-      overflow: hidden;
-      min-height: 96px;
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 14px;
-      padding: 15px 16px;
-      border: 1px solid var(--line);
-      border-radius: 18px;
+    .card{
+      position:relative;
+      min-width:0;
+      min-height:76px;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      gap:11px;
+      padding:11px 12px;
+      border:1px solid var(--line);
+      border-radius:15px;
       background:
-        linear-gradient(145deg, rgba(255,255,255,.036), rgba(255,255,255,.006));
-      color: var(--text);
-      font: inherit;
-      font-size: clamp(.98rem, 3.15vw, 1.3rem);
-      text-decoration: none;
-      cursor: pointer;
-      transition:
-        transform .18s ease,
-        border-color .18s ease,
-        box-shadow .18s ease,
-        background .18s ease;
+        linear-gradient(145deg,rgba(255,255,255,.042),rgba(255,255,255,.007));
+      color:var(--paper);
+      text-decoration:none;
+      font:inherit;
+      font-size:clamp(.91rem,2.9vw,1.16rem);
+      transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease;
+      backdrop-filter:blur(7px);
+      -webkit-backdrop-filter:blur(7px);
+    }
+    .card::after{
+      content:"";
+      position:absolute;
+      inset:-100%;
+      opacity:0;
+      background:radial-gradient(circle,rgba(255,255,255,.16),transparent 41%);
+      transition:opacity .2s ease;
+    }
+    .card:hover,.card:focus-visible,.card:active{
+      transform:translateY(-2px);
+      border-color:var(--line-hover);
+      background:rgba(255,255,255,.055);
+      box-shadow:0 0 28px rgba(255,255,255,.05),inset 0 0 22px rgba(255,255,255,.025);
+      outline:none;
+    }
+    .card:hover::after,.card:focus-visible::after,.card:active::after{opacity:1}
+    .icon{
+      position:relative;
+      z-index:1;
+      flex:0 0 auto;
+      width:46px;
+      height:46px;
+      display:grid;
+      place-items:center;
+      border:1px solid rgba(255,255,255,.19);
+      border-radius:13px;
+      background:rgba(255,255,255,.028);
+      box-shadow:inset 0 0 17px rgba(255,255,255,.024);
+    }
+    .icon svg{
+      width:25px;
+      height:25px;
+      fill:none;
+      stroke:#fff;
+      stroke-width:1.8;
+      stroke-linecap:round;
+      stroke-linejoin:round;
+      filter:drop-shadow(0 0 5px rgba(255,255,255,.72));
+    }
+    .icon .fill{fill:#fff;stroke:none}
+    .label,.stack{position:relative;z-index:1;min-width:0}
+    .stack{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-start;
+      overflow:hidden;
+    }
+    .stack small{
+      width:100%;
+      margin-top:3px;
+      overflow:hidden;
+      color:var(--muted);
+      font-size:.62em;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .footer{
+      margin-top:30px;
+      color:var(--muted);
+    }
+    .footer strong{
+      min-width:0;
+      overflow:hidden;
+      font-weight:400;
+      letter-spacing:.1em;
+      text-overflow:ellipsis;
+      white-space:nowrap;
     }
 
-    .card::before {
-      content: "";
-      position: absolute;
-      inset: -90%;
-      opacity: 0;
-      background: radial-gradient(circle, rgba(255,255,255,.16), transparent 42%);
-      transition: opacity .2s ease;
+    @keyframes breathe{0%,100%{transform:scale(.985);opacity:.9}50%{transform:scale(1.02);opacity:1}}
+    @keyframes halo{0%,100%{transform:scale(.95);opacity:.58}50%{transform:scale(1.05);opacity:1}}
+    @keyframes rays{0%,100%{transform:scale(.98);opacity:.14}50%{transform:scale(1.04);opacity:.3}}
+    @keyframes particles{from{transform:translate3d(-6px,4px,0) scale(.99)}to{transform:translate3d(7px,-7px,0) scale(1.03)}}
+    @keyframes core{0%,100%{transform:scale(.84);opacity:.36}50%{transform:scale(1.12);opacity:.78}}
+
+    @media(min-width:760px){
+      .links{grid-template-columns:repeat(4,minmax(0,1fr))}
+      .wheel-stage{width:min(53vw,520px)}
     }
-
-    .card:hover,
-    .card:focus-visible,
-    .card:active {
-      transform: translateY(-2px);
-      border-color: var(--line-active);
-      background: rgba(255,255,255,.052);
-      box-shadow:
-        0 0 27px rgba(255,255,255,.05),
-        inset 0 0 24px rgba(255,255,255,.024);
-      outline: none;
+    @media(max-width:420px){
+      .page{width:min(100% - 12px,1040px)}
+      .wheel-stage{width:min(76vw,500px)}
+      h1{font-size:clamp(3.1rem,14.4vw,4.45rem)}
+      .tagline{letter-spacing:.16em}
+      .card{min-height:72px;padding:10px}
+      .icon{width:43px;height:43px}
     }
-
-    .card:hover::before,
-    .card:focus-visible::before,
-    .card:active::before { opacity: 1; }
-
-    .icon {
-      position: relative;
-      z-index: 1;
-      flex: 0 0 auto;
-      width: 54px;
-      height: 54px;
-      display: grid;
-      place-items: center;
-      border: 1px solid rgba(255,255,255,.18);
-      border-radius: 15px;
-      background: rgba(255,255,255,.026);
-      font-family: system-ui, sans-serif;
-      font-size: 1.45rem;
-      font-weight: 700;
-      text-shadow:
-        0 0 5px rgba(255,255,255,.96),
-        0 0 17px rgba(255,255,255,.28);
-    }
-
-    .icon.compact { font-size: .88rem; }
-
-    .card > span:not(.icon),
-    .stack {
-      position: relative;
-      z-index: 1;
-      min-width: 0;
-    }
-
-    .stack {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      overflow: hidden;
-    }
-
-    .stack small {
-      width: 100%;
-      margin-top: 4px;
-      overflow: hidden;
-      color: #aaa59d;
-      font-size: .64em;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    footer { margin-top: 48px; }
-
-    .footer-line {
-      gap: 13px;
-      color: #aaa59c;
-    }
-
-    .footer-line span {
-      flex: 1;
-      max-width: 200px;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--line));
-    }
-
-    .footer-line span:last-child {
-      background: linear-gradient(90deg, var(--line), transparent);
-    }
-
-    .footer-line strong {
-      min-width: 0;
-      overflow: hidden;
-      font-weight: 400;
-      letter-spacing: .11em;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    @keyframes breathe {
-      0%,100% { transform: scale(.982); opacity: .88; }
-      50% { transform: scale(1.022); opacity: 1; }
-    }
-
-    @keyframes halo {
-      0%,100% { transform: scale(.94); opacity: .56; }
-      50% { transform: scale(1.06); opacity: 1; }
-    }
-
-    @keyframes rays {
-      0%,100% { transform: scale(.97); opacity: .14; }
-      50% { transform: scale(1.04); opacity: .29; }
-    }
-
-    @keyframes particles {
-      from { transform: translate3d(-7px, 4px, 0) scale(.98); }
-      to { transform: translate3d(8px, -8px, 0) scale(1.03); }
-    }
-
-    @keyframes core {
-      0%,100% { transform: scale(.82); opacity: .34; }
-      50% { transform: scale(1.14); opacity: .75; }
-    }
-
-    @keyframes title-in {
-      from { opacity: 0; transform: translateY(16px); filter: blur(9px); }
-      to { opacity: 1; transform: translateY(0); filter: blur(0); }
-    }
-
-    @media (min-width: 780px) {
-      .links {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-      }
-    }
-
-    @media (max-width: 480px) {
-      .site {
-        width: min(100% - 14px, 1040px);
-      }
-
-      .languages {
-        padding-right: 6px;
-        font-size: .95rem;
-      }
-
-      .wheel-stage {
-        width: min(94vw, 610px);
-        margin-top: -2px;
-        margin-bottom: -18px;
-      }
-
-      h1 {
-        font-size: clamp(3.7rem, 16.5vw, 5rem);
-      }
-
-      .tagline {
-        padding: 0 8px;
-        letter-spacing: .18em;
-      }
-
-      .links {
-        gap: 11px;
-      }
-
-      .card {
-        min-height: 88px;
-        gap: 10px;
-        padding: 12px;
-        border-radius: 16px;
-      }
-
-      .icon {
-        width: 48px;
-        height: 48px;
-        border-radius: 13px;
-        font-size: 1.28rem;
-      }
-
-      .icon.compact {
-        font-size: .76rem;
-      }
-
-      .footer-line strong {
-        font-size: .92rem;
-        letter-spacing: .08em;
-      }
-    }
-
-    @media (max-width: 365px) {
-      .card {
-        font-size: .92rem;
-      }
-
-      .icon {
-        width: 44px;
-        height: 44px;
-      }
-
-      .stack small {
-        display: none;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after {
-        animation-duration: .01ms !important;
-        animation-iteration-count: 1 !important;
-      }
+    @media(prefers-reduced-motion:reduce){
+      *,*::before,*::after{animation:none!important}
     }
   </style>
 </head>
 
 <body>
-  <main class="site">
-    <nav class="languages" aria-label="Language">
-      <button class="language active" type="button" data-language="ru">RU</button>
-      <span>│</span>
-      <button class="language" type="button" data-language="en">EN</button>
-      <span>│</span>
-      <button class="language" type="button" data-language="th">ไทย</button>
-    </nav>
+<main class="page">
+  <nav class="languages" aria-label="Language">
+    <button class="active" type="button" data-language="ru">RU</button><span>│</span>
+    <button type="button" data-language="en">EN</button><span>│</span>
+    <button type="button" data-language="th">ไทย</button>
+  </nav>
 
-    <header class="hero">
-      <div class="wheel-stage" aria-hidden="true">
-        <div class="rays"></div>
-        <div class="particles"></div>
-        <img class="wheel" src="wheel.webp" alt="">
-        <div class="core"></div>
-      </div>
+  <header class="hero">
+    <div class="wheel-stage" aria-hidden="true">
+      <div class="rays"></div><div class="particles"></div>
+      <img class="wheel" src="wheel.webp" alt="">
+      <div class="core"></div>
+    </div>
 
-      <h1><span>Nameless</span><span>Dhamma</span></h1>
+    <h1><span>Nameless</span><span>Dhamma</span></h1>
+    <p class="tagline" data-text="tagline">БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ</p>
+    <div class="divider"><span></span><b>◇</b><span></span></div>
+  </header>
 
-      <p class="tagline" data-text="tagline">
-        БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ
-      </p>
+  <section class="links" aria-label="Project links">
+    <a class="card" href="https://www.youtube.com/@NamelessDhamma" target="_blank" rel="noopener">
+      <span class="icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path class="fill" d="M10 9l5 3-5 3z"/></svg></span><span class="label">YouTube</span>
+    </a>
+    <a class="card" href="https://t.me/namelessdhamma" target="_blank" rel="noopener">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 3L3.8 9.7c-1.2.5-1.2 1.2-.2 1.5l4.4 1.4 1.7 5.1c.2.7.1 1 .8 1 .5 0 .8-.2 1-.4l2.4-2.3 5 3.7c.9.5 1.6.2 1.8-.9L23 4.3c.3-1.3-.5-1.9-2-1.3z"/></svg></span><span class="label">Telegram</span>
+    </a>
+    <a class="card" href="https://www.instagram.com/namelessdhamma/" target="_blank" rel="noopener">
+      <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle class="fill" cx="17.5" cy="6.7" r="1"/></svg></span><span class="label">Instagram</span>
+    </a>
+    <a class="card" href="https://www.tiktok.com/@namelessdhamma" target="_blank" rel="noopener">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4v10.2a4.2 4.2 0 1 1-3.4-4.1"/><path d="M14 4c.8 2.7 2.6 4.2 5 4.5"/></svg></span><span class="label">TikTok</span>
+    </a>
+    <a class="card" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener">
+      <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.5 1.6-1.5H17V4a18 18 0 0 0-2.4-.2c-2.4 0-4.1 1.5-4.1 4.2v2H8v3h2.5v8z"/></svg></span><span class="label">Facebook</span>
+    </a>
+    <a class="card" href="https://vk.com/namelessdhamma" target="_blank" rel="noopener">
+      <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M3.5 7h3.2c.3 2.6 1.5 5 3.3 6.7V7h3v3.8c1.7-.2 3.4-2 4-3.8h3c-.5 2.3-2.4 4.3-3.8 5.1 1.4.7 3.6 2.5 4.4 4.9h-3.3c-.7-1.8-2.3-3.2-4.3-3.4V17h-.5C7.1 17 4 13.3 3.5 7z"/></svg></span><span class="label">VK</span>
+    </a>
+    <a class="card" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.2c0-4-3.8-7.2-8.5-7.2s-8.5 3.2-8.5 7.2c0 3.6 3.2 6.6 7.5 7.1.3.1.7.2.8.5.1.3 0 .8-.1 1.1l-.2 1c-.1.3-.2 1.2 1 .7 1.2-.5 6.5-3.8 8.9-6.6 1.4-1.5 2-3.1 2-4.7z"/></svg></span><span class="label">Line</span>
+    </a>
+    <a class="card" href="https://wa.me/79537557944" target="_blank" rel="noopener" aria-label="WhatsApp @namelessdhamma">
+      <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.5l1.3-4.7A8.5 8.5 0 1 1 20.5 11.7z"/><path d="M8.2 7.6c.2-.4.4-.4.7-.4h.6c.2 0 .4 0 .5.4l.8 2c.1.3.1.5-.1.7l-.7.8c-.2.2-.2.4-.1.6.6 1.3 1.5 2.2 2.8 2.8.2.1.4.1.6-.1l.9-1c.2-.2.4-.3.7-.2l2 .9c.3.1.4.3.4.5 0 .4-.2 1.6-1.2 2.2-.7.5-1.7.7-2.8.4-1.5-.4-3.3-1.4-4.8-2.9-1.5-1.5-2.5-3.3-2.9-4.8-.3-1.1-.1-2.1.4-2.9z"/></svg></span>
+      <span class="stack"><span>WhatsApp</span><small>@namelessdhamma</small></span>
+    </a>
+    <a class="card" href="mailto:namelessdhamma@gmail.com">
+      <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/></svg></span><span class="label" data-text="email">Эл. почта</span>
+    </a>
+    <a class="card" href="https://dzen.ru/namelessdhamma" target="_blank" rel="noopener">
+      <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path class="fill" d="M12 5c.7 4.5 1.5 5.3 6 6-4.5.7-5.3 1.5-6 6-.7-4.5-1.5-5.3-6-6 4.5-.7 5.3-1.5 6-6z"/></svg></span><span class="label">Дзен</span>
+    </a>
+  </section>
 
-      <div class="divider" aria-hidden="true">
-        <span></span><b>◇</b><span></span>
-      </div>
-    </header>
+  <footer class="footer"><span></span><b>◇</b><strong>@namelessdhamma</strong><b>◇</b><span></span></footer>
+</main>
 
-    <section class="links" aria-label="Project links">
-      <a class="card" href="https://www.youtube.com/@NamelessDhamma" target="_blank" rel="noopener">
-        <span class="icon">▶</span><span>YouTube</span>
-      </a>
-
-      <a class="card" href="https://t.me/namelessdhamma" target="_blank" rel="noopener">
-        <span class="icon">➤</span><span>Telegram</span>
-      </a>
-
-      <a class="card" href="https://www.instagram.com/namelessdhamma/" target="_blank" rel="noopener">
-        <span class="icon">◎</span><span>Instagram</span>
-      </a>
-
-      <a class="card" href="https://www.tiktok.com/@namelessdhamma" target="_blank" rel="noopener">
-        <span class="icon">♪</span><span>TikTok</span>
-      </a>
-
-      <a class="card" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener">
-        <span class="icon">f</span><span>Facebook</span>
-      </a>
-
-      <a class="card" href="https://vk.com/namelessdhamma" target="_blank" rel="noopener">
-        <span class="icon compact">VK</span><span>VK</span>
-      </a>
-
-      <a class="card" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener">
-        <span class="icon compact">LINE</span><span>Line</span>
-      </a>
-
-      <button class="card" type="button" data-whatsapp>
-        <span class="icon">◔</span>
-        <span class="stack">
-          <span>WhatsApp</span>
-          <small>@namelessdhamma</small>
-        </span>
-      </button>
-
-      <a class="card" href="mailto:namelessdhamma@gmail.com">
-        <span class="icon">✉</span><span data-text="email">Эл. почта</span>
-      </a>
-
-      <a class="card" href="https://dzen.ru/namelessdhamma" target="_blank" rel="noopener">
-        <span class="icon">✦</span><span>Дзен</span>
-      </a>
-    </section>
-
-    <footer>
-      <div class="footer-line">
-        <span></span><b>◇</b><strong>@namelessdhamma</strong><b>◇</b><span></span>
-      </div>
-    </footer>
-  </main>
-
-  <script>
-    const translations = {
-      ru: {
-        tagline: "БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ",
-        email: "Эл. почта",
-        whatsappNotice: "Для прямой ссылки WhatsApp нужен номер телефона или ссылка на канал."
-      },
-      en: {
-        tagline: "BOUNDLESS WISDOM<br>PIERCING THROUGH IGNORANCE",
-        email: "Email",
-        whatsappNotice: "A direct WhatsApp link requires a phone number or channel URL."
-      },
-      th: {
-        tagline: "ปัญญาอันไร้ขอบเขต<br>ที่ส่องทะลุอวิชชา",
-        email: "อีเมล",
-        whatsappNotice: "ลิงก์ WhatsApp โดยตรงต้องใช้หมายเลขโทรศัพท์หรือลิงก์ช่อง"
-      }
-    };
-
-    let currentLanguage = "ru";
-
-    document.querySelectorAll("[data-language]").forEach((button) => {
-      button.addEventListener("click", () => {
-        currentLanguage = button.dataset.language;
-        document.documentElement.lang = currentLanguage;
-
-        document.querySelectorAll("[data-language]").forEach((item) => {
-          item.classList.toggle("active", item === button);
-        });
-
-        document.querySelectorAll("[data-text]").forEach((node) => {
-          const key = node.dataset.text;
-          node.innerHTML = translations[currentLanguage][key];
-        });
-      });
+<script>
+  const translations={
+    ru:{tagline:"БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ",email:"Эл. почта"},
+    en:{tagline:"BOUNDLESS WISDOM<br>PIERCING THROUGH IGNORANCE",email:"Email"},
+    th:{tagline:"ปัญญาอันไร้ขอบเขต<br>ที่ส่องทะลุอวิชชา",email:"อีเมล"}
+  };
+  document.querySelectorAll("[data-language]").forEach(button=>{
+    button.addEventListener("click",()=>{
+      const lang=button.dataset.language;
+      document.documentElement.lang=lang;
+      document.querySelectorAll("[data-language]").forEach(x=>x.classList.toggle("active",x===button));
+      document.querySelectorAll("[data-text]").forEach(x=>x.innerHTML=translations[lang][x.dataset.text]);
     });
-
-    document.querySelector("[data-whatsapp]").addEventListener("click", () => {
-      alert(translations[currentLanguage].whatsappNotice);
-    });
-  </script>
+  });
+</script>
 </body>
 </html>
