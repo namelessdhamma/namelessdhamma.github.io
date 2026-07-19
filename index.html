@@ -192,7 +192,6 @@
       transform:translateX(-50%);
       display:grid;
       justify-items:center;
-      gap:5px;
       color:rgba(255,255,255,.40);
       text-decoration:none;
       font-size:.66rem;
@@ -534,8 +533,7 @@
       <p class="motto" data-text="motto">БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ</p>
     </div>
 
-    <a class="continue" href="#links">
-      <span data-text="continue">ПРОДОЛЖИТЬ</span>
+    <a class="continue" href="#links" aria-label="Прокрутить вниз">
       <b>⌄</b>
     </a>
   </section>
@@ -595,9 +593,9 @@
 
   <script>
     const i18n={
-      ru:{motto:"БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ",continue:"ПРОДОЛЖИТЬ",support:"Поддержать проект",copied:"Скопировано"},
-      en:{motto:"BOUNDLESS WISDOM<br>CUTS THROUGH IGNORANCE",continue:"CONTINUE",support:"Support the project",copied:"Copied"},
-      th:{motto:"ปัญญาอันไร้ขอบเขต<br>ตัดผ่านอวิชชา",continue:"ดำเนินต่อ",support:"สนับสนุนโครงการ",copied:"คัดลอกแล้ว"}
+      ru:{motto:"БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ",support:"Поддержать проект",copied:"Скопировано"},
+      en:{motto:"BOUNDLESS WISDOM<br>CUTS THROUGH IGNORANCE",support:"Support the project",copied:"Copied"},
+      th:{motto:"ปัญญาอันไร้ขอบเขต<br>ตัดผ่านอวิชชา",support:"สนับสนุนโครงการ",copied:"คัดลอกแล้ว"}
     };
 
     let lang="ru";
