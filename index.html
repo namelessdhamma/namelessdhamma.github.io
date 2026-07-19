@@ -11,20 +11,20 @@
     :root{
       color-scheme:dark;
       --bg:#020202;
-      --text:#f5f2ec;
-      --muted:#aaa59d;
-      --line:rgba(255,255,255,.14);
-      --line-strong:rgba(255,255,255,.34);
+      --text:#f7f4ee;
+      --muted:#a8a39a;
+      --line:rgba(255,255,255,.13);
+      --line-bright:rgba(255,255,255,.34);
+      --glass:rgba(255,255,255,.032);
     }
 
     *{box-sizing:border-box}
-    html,body{margin:0;width:100%;height:100%;background:var(--bg)}
+    html{scroll-behavior:smooth;background:var(--bg)}
     body{
-      overflow:hidden;
+      margin:0;
+      overflow-x:hidden;
       color:var(--text);
-      background:
-        radial-gradient(circle at 50% 17%,rgba(255,255,255,.065),transparent 35rem),
-        linear-gradient(180deg,#070707 0%,#010101 64%,#040404 100%);
+      background:#020202;
       font-family:Georgia,"Times New Roman","Noto Serif Thai",serif;
     }
 
@@ -32,41 +32,58 @@
       content:"";
       position:fixed;
       inset:0;
-      z-index:-3;
+      z-index:-5;
       pointer-events:none;
       background:
-        repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.007) 4px),
-        radial-gradient(ellipse at center,transparent 0 44%,rgba(0,0,0,.75) 100%);
+        radial-gradient(circle at 50% 18%,rgba(255,255,255,.065),transparent 34rem),
+        linear-gradient(180deg,#070707 0%,#010101 54%,#050505 100%);
     }
 
-    .page{
-      width:min(100% - 14px,1040px);
-      height:100dvh;
-      min-height:100svh;
-      margin:auto;
-      padding:max(8px,env(safe-area-inset-top)) 0 max(8px,env(safe-area-inset-bottom));
-      display:grid;
-      grid-template-rows:auto minmax(0,37%) minmax(0,1fr) auto;
-      gap:7px;
-      overflow:hidden;
+    body::after{
+      content:"";
+      position:fixed;
+      inset:0;
+      z-index:-4;
+      pointer-events:none;
+      opacity:.4;
+      background:
+        repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.007) 4px),
+        radial-gradient(ellipse at center,transparent 0 42%,rgba(0,0,0,.82) 100%);
     }
+
+    .mist,.mist::before,.mist::after{
+      position:fixed;
+      inset:-25%;
+      z-index:-3;
+      pointer-events:none;
+      content:"";
+      background:
+        radial-gradient(ellipse at 30% 30%,rgba(255,255,255,.025),transparent 36%),
+        radial-gradient(ellipse at 72% 62%,rgba(255,255,255,.018),transparent 34%);
+      filter:blur(34px);
+      animation:mist 26s ease-in-out infinite alternate;
+    }
+
+    .mist::before{transform:rotate(17deg);animation-duration:34s}
+    .mist::after{transform:rotate(-14deg);animation-duration:42s}
 
     .languages{
+      position:fixed;
+      top:max(12px,env(safe-area-inset-top));
+      right:max(16px,env(safe-area-inset-right));
+      z-index:30;
       display:flex;
-      justify-content:flex-end;
       align-items:center;
-      gap:8px;
-      min-height:26px;
-      padding-right:3px;
-      color:#8f8b84;
-      font-size:clamp(.76rem,2.8vw,.96rem);
-      line-height:1;
+      gap:9px;
+      color:#918d86;
+      font-size:clamp(.82rem,2.8vw,1rem);
+      text-shadow:0 0 12px rgba(0,0,0,.9);
     }
 
     .languages button{
       border:0;
-      padding:3px 1px;
-      background:none;
+      padding:5px 1px;
+      background:transparent;
       color:inherit;
       font:inherit;
       cursor:pointer;
@@ -74,73 +91,105 @@
 
     .languages button.active{
       color:#fff;
-      text-shadow:0 0 12px rgba(255,255,255,.72);
+      text-shadow:0 0 12px rgba(255,255,255,.7);
     }
 
-    .hero{
-      min-height:0;
+    section{
+      position:relative;
+      width:min(100% - 20px,1080px);
+      margin:auto;
+    }
+
+    .temple{
+      min-height:100svh;
       display:grid;
-      grid-template-rows:minmax(0,1fr) auto auto auto;
-      align-items:center;
-      justify-items:center;
+      place-items:center;
       text-align:center;
+      padding:58px 0 30px;
+      overflow:hidden;
+    }
+
+    .temple-inner{
+      width:100%;
+      display:grid;
+      justify-items:center;
+      align-content:center;
     }
 
     .wheel-stage{
       position:relative;
       isolation:isolate;
-      height:100%;
-      max-height:27dvh;
+      width:min(82vw,590px);
       aspect-ratio:1;
       display:grid;
       place-items:center;
-      margin:auto;
+      margin-bottom:-42px;
+      animation:reveal-wheel 1.8s ease-out both;
     }
 
     .wheel-stage::before{
       content:"";
       position:absolute;
-      inset:12%;
+      inset:13%;
       border-radius:50%;
-      background:radial-gradient(circle,rgba(255,255,255,.23),rgba(255,255,255,.055) 35%,transparent 72%);
-      filter:blur(21px);
-      animation:halo 9s ease-in-out infinite;
+      background:
+        radial-gradient(circle,
+          rgba(255,255,255,.26),
+          rgba(255,255,255,.07) 34%,
+          transparent 72%);
+      filter:blur(28px);
+      animation:halo 8s ease-in-out infinite;
     }
 
     .rays{
       position:absolute;
-      inset:-16%;
+      inset:-22%;
       border-radius:50%;
-      opacity:.24;
-      background:conic-gradient(from 0deg,
-        transparent 0 10deg,rgba(255,255,255,.075) 11deg 15deg,
-        transparent 16deg 43deg,rgba(255,255,255,.032) 44deg 48deg,
-        transparent 49deg 88deg,rgba(255,255,255,.06) 89deg 93deg,
-        transparent 94deg 133deg,rgba(255,255,255,.032) 134deg 138deg,
-        transparent 139deg 178deg,rgba(255,255,255,.06) 179deg 183deg,
-        transparent 184deg 223deg,rgba(255,255,255,.032) 224deg 228deg,
-        transparent 229deg 268deg,rgba(255,255,255,.06) 269deg 273deg,
-        transparent 274deg 313deg,rgba(255,255,255,.032) 314deg 318deg,
-        transparent 319deg 360deg);
-      filter:blur(17px);
-      animation:rays 11s ease-in-out infinite;
+      background:
+        conic-gradient(from 0deg,
+          transparent 0 10deg,rgba(255,255,255,.075) 11deg 16deg,
+          transparent 17deg 43deg,rgba(255,255,255,.032) 44deg 49deg,
+          transparent 50deg 88deg,rgba(255,255,255,.062) 89deg 94deg,
+          transparent 95deg 133deg,rgba(255,255,255,.032) 134deg 139deg,
+          transparent 140deg 178deg,rgba(255,255,255,.062) 179deg 184deg,
+          transparent 185deg 223deg,rgba(255,255,255,.032) 224deg 229deg,
+          transparent 230deg 268deg,rgba(255,255,255,.062) 269deg 274deg,
+          transparent 275deg 313deg,rgba(255,255,255,.032) 314deg 319deg,
+          transparent 320deg 360deg);
+      filter:blur(21px);
+      opacity:.22;
+      animation:rays 12s ease-in-out infinite;
+    }
+
+    .spoke-rays{
+      position:absolute;
+      inset:-10%;
+      border-radius:50%;
+      opacity:.22;
+      background:
+        linear-gradient(0deg,transparent 47%,rgba(255,255,255,.16) 49%,rgba(255,255,255,.16) 51%,transparent 53%),
+        linear-gradient(45deg,transparent 47%,rgba(255,255,255,.11) 49%,rgba(255,255,255,.11) 51%,transparent 53%),
+        linear-gradient(90deg,transparent 47%,rgba(255,255,255,.16) 49%,rgba(255,255,255,.16) 51%,transparent 53%),
+        linear-gradient(135deg,transparent 47%,rgba(255,255,255,.11) 49%,rgba(255,255,255,.11) 51%,transparent 53%);
+      filter:blur(13px);
+      animation:spokes 10s ease-in-out infinite;
     }
 
     .particles{
       position:absolute;
-      inset:-9%;
-      opacity:.43;
+      inset:-10%;
+      opacity:.42;
       background-image:
-        radial-gradient(circle at 7% 36%,#fff 0 1px,transparent 1.8px),
-        radial-gradient(circle at 18% 71%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 7% 37%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 18% 72%,#fff 0 1px,transparent 1.8px),
         radial-gradient(circle at 34% 14%,#fff 0 1px,transparent 1.8px),
         radial-gradient(circle at 53% 5%,#fff 0 1px,transparent 1.8px),
-        radial-gradient(circle at 70% 20%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 70% 21%,#fff 0 1px,transparent 1.8px),
         radial-gradient(circle at 84% 62%,#fff 0 1px,transparent 1.8px),
-        radial-gradient(circle at 94% 37%,#fff 0 1px,transparent 1.8px),
-        radial-gradient(circle at 61% 89%,#fff 0 1px,transparent 1.8px);
-      filter:drop-shadow(0 0 4px #fff);
-      animation:particles 15s ease-in-out infinite alternate;
+        radial-gradient(circle at 94% 38%,#fff 0 1px,transparent 1.8px),
+        radial-gradient(circle at 61% 90%,#fff 0 1px,transparent 1.8px);
+      filter:drop-shadow(0 0 5px #fff);
+      animation:particles 16s ease-in-out infinite alternate;
     }
 
     .wheel{
@@ -151,296 +200,456 @@
       object-fit:contain;
       filter:
         contrast(1.08)
-        drop-shadow(0 0 9px rgba(255,255,255,.48))
-        drop-shadow(0 0 30px rgba(255,255,255,.17));
-      animation:breathe 9s ease-in-out infinite;
+        drop-shadow(0 0 10px rgba(255,255,255,.48))
+        drop-shadow(0 0 44px rgba(255,255,255,.19));
+      animation:breathe 8s ease-in-out infinite;
     }
 
     .core{
       position:absolute;
       z-index:3;
-      width:13%;
+      width:14%;
       aspect-ratio:1;
       border-radius:50%;
-      background:radial-gradient(circle,rgba(255,255,255,.56),rgba(255,255,255,.08) 36%,transparent 72%);
-      filter:blur(7px);
-      animation:core 7s ease-in-out infinite;
+      background:
+        radial-gradient(circle,
+          rgba(255,255,255,.58),
+          rgba(255,255,255,.11) 35%,
+          transparent 72%);
+      filter:blur(8px);
+      animation:core 6.5s ease-in-out infinite;
     }
 
     h1{
-      margin:-4px 0 0;
+      margin:0;
+      display:flex;
+      flex-direction:column;
       color:#fff;
-      font-size:clamp(2rem,8.8vw,4.8rem);
+      font-size:clamp(3.8rem,15vw,7rem);
       font-weight:400;
-      line-height:.88;
-      letter-spacing:-.025em;
+      line-height:.86;
+      letter-spacing:-.028em;
       text-shadow:
-        0 0 3px rgba(255,255,255,.93),
-        0 0 10px rgba(255,255,255,.4),
-        0 0 28px rgba(255,255,255,.13);
+        0 0 3px rgba(255,255,255,.94),
+        0 0 12px rgba(255,255,255,.46),
+        0 0 40px rgba(255,255,255,.14);
+      animation:reveal-text 1.3s .7s ease-out both;
     }
-
-    h1 span{display:block}
 
     .tagline{
-      margin:8px auto 7px;
-      color:#b9b5ad;
-      font-size:clamp(.48rem,1.85vw,.79rem);
-      line-height:1.45;
-      letter-spacing:.18em;
-      text-shadow:0 0 11px rgba(255,255,255,.1);
+      margin:28px auto 0;
+      color:#bbb7ae;
+      font-size:clamp(.7rem,2.45vw,.98rem);
+      line-height:1.55;
+      letter-spacing:.22em;
+      text-shadow:0 0 16px rgba(255,255,255,.12);
+      animation:reveal-text 1.3s 1.1s ease-out both;
     }
 
-    .divider,.footer{
-      width:100%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:9px;
-      color:#918d86;
+    .scroll-cue{
+      position:absolute;
+      left:50%;
+      bottom:18px;
+      transform:translateX(-50%);
+      display:grid;
+      justify-items:center;
+      gap:5px;
+      color:#8f8b84;
+      text-decoration:none;
+      font-size:.68rem;
+      letter-spacing:.14em;
+      animation:reveal-text 1.2s 1.6s ease-out both;
     }
 
-    .divider span,.footer span{
-      flex:1;
-      max-width:210px;
-      height:1px;
-      background:linear-gradient(90deg,transparent,var(--line));
-    }
-
-    .divider span:last-child,.footer span:last-child{
-      background:linear-gradient(90deg,var(--line),transparent);
-    }
-
-    .divider b,.footer b{
-      font-size:.75rem;
+    .scroll-cue b{
+      font-size:1.25rem;
       font-weight:400;
-      text-shadow:0 0 10px rgba(255,255,255,.34);
+      animation:cue 2.6s ease-in-out infinite;
+    }
+
+    .links-section{
+      min-height:100svh;
+      display:grid;
+      align-content:center;
+      padding:80px 0 70px;
+    }
+
+    .section-heading{
+      margin:0 0 10px;
+      text-align:center;
+      font-size:clamp(2rem,7vw,3.5rem);
+      font-weight:400;
+      text-shadow:0 0 20px rgba(255,255,255,.12);
+    }
+
+    .section-subtitle{
+      margin:0 auto 34px;
+      max-width:650px;
+      text-align:center;
+      color:var(--muted);
+      font-size:.94rem;
+      line-height:1.6;
     }
 
     .links{
-      min-height:0;
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));
-      grid-template-rows:repeat(5,minmax(0,1fr));
-      gap:6px;
+      gap:10px;
+    }
+
+    .card,.donation-card{
+      position:relative;
+      overflow:hidden;
+      border:1px solid var(--line);
+      border-radius:16px;
+      background:
+        linear-gradient(145deg,rgba(255,255,255,.038),rgba(255,255,255,.006));
+      backdrop-filter:blur(8px);
+      -webkit-backdrop-filter:blur(8px);
     }
 
     .card{
-      position:relative;
-      min-width:0;
-      min-height:0;
-      overflow:hidden;
+      min-height:84px;
       display:flex;
       align-items:center;
-      gap:8px;
-      padding:5px 8px;
-      border:1px solid var(--line);
-      border-radius:12px;
-      background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.005));
+      gap:12px;
+      padding:12px 14px;
       color:var(--text);
       text-decoration:none;
-      font:inherit;
-      font-size:clamp(.72rem,2.7vw,1rem);
-      transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease;
-      backdrop-filter:blur(6px);
-      -webkit-backdrop-filter:blur(6px);
+      font-size:clamp(.96rem,3vw,1.18rem);
+      transition:.2s ease;
     }
 
-    .card::after{
+    .card::before,.donation-card::before{
       content:"";
       position:absolute;
       inset:-100%;
       opacity:0;
-      background:radial-gradient(circle,rgba(255,255,255,.14),transparent 40%);
-      transition:opacity .2s ease;
+      background:radial-gradient(circle,rgba(255,255,255,.15),transparent 42%);
+      transition:opacity .25s ease;
     }
 
     .card:hover,.card:focus-visible,.card:active{
-      transform:translateY(-1px);
-      border-color:var(--line-strong);
+      transform:translateY(-2px);
+      border-color:var(--line-bright);
       background:rgba(255,255,255,.05);
-      box-shadow:0 0 22px rgba(255,255,255,.045),inset 0 0 18px rgba(255,255,255,.02);
+      box-shadow:0 0 28px rgba(255,255,255,.045),inset 0 0 22px rgba(255,255,255,.022);
       outline:none;
     }
 
-    .card:hover::after,.card:focus-visible::after,.card:active::after{opacity:1}
+    .card:hover::before,.card:focus-visible::before,.card:active::before{opacity:1}
 
     .icon{
       position:relative;
       z-index:1;
       flex:0 0 auto;
-      width:clamp(30px,8.5vw,42px);
-      height:clamp(30px,8.5vw,42px);
+      width:48px;
+      height:48px;
       display:grid;
       place-items:center;
-      border:1px solid rgba(255,255,255,.17);
-      border-radius:10px;
-      background:rgba(255,255,255,.022);
+      border:1px solid rgba(255,255,255,.18);
+      border-radius:13px;
+      background:rgba(255,255,255,.025);
     }
 
     .icon svg{
-      width:58%;
-      height:58%;
+      width:26px;
+      height:26px;
       fill:none;
       stroke:#fff;
       stroke-width:1.8;
       stroke-linecap:round;
       stroke-linejoin:round;
-      filter:drop-shadow(0 0 4px rgba(255,255,255,.65));
+      filter:drop-shadow(0 0 5px rgba(255,255,255,.68));
     }
 
     .icon .fill{fill:#fff;stroke:none}
     .label,.stack{position:relative;z-index:1;min-width:0}
-    .stack{
-      display:flex;
-      flex-direction:column;
-      align-items:flex-start;
-      overflow:hidden;
-    }
-    .stack small{
-      width:100%;
-      margin-top:1px;
-      overflow:hidden;
-      color:var(--muted);
-      font-size:.58em;
-      text-overflow:ellipsis;
-      white-space:nowrap;
+    .stack{display:flex;flex-direction:column;align-items:flex-start}
+    .stack small{margin-top:3px;color:var(--muted);font-size:.65em}
+
+    .donation-section{
+      min-height:75svh;
+      display:grid;
+      align-content:center;
+      padding:80px 0 90px;
     }
 
-    .footer{
-      min-height:20px;
-      color:var(--muted);
+    .donation-grid{
+      width:min(100%,760px);
+      margin:0 auto;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:12px;
     }
 
-    .footer strong{
-      min-width:0;
-      overflow:hidden;
-      font-size:clamp(.66rem,2.4vw,.88rem);
+    .donation-card{
+      padding:24px 20px;
+      text-align:center;
+    }
+
+    .donation-card h3{
+      position:relative;
+      z-index:1;
+      margin:0 0 8px;
+      font-size:1.25rem;
       font-weight:400;
-      letter-spacing:.09em;
-      text-overflow:ellipsis;
-      white-space:nowrap;
     }
 
-    @keyframes breathe{0%,100%{transform:scale(.985);opacity:.9}50%{transform:scale(1.02);opacity:1}}
-    @keyframes halo{0%,100%{transform:scale(.95);opacity:.56}50%{transform:scale(1.05);opacity:1}}
-    @keyframes rays{0%,100%{transform:scale(.98);opacity:.13}50%{transform:scale(1.04);opacity:.29}}
-    @keyframes particles{from{transform:translate3d(-5px,3px,0) scale(.99)}to{transform:translate3d(6px,-6px,0) scale(1.03)}}
-    @keyframes core{0%,100%{transform:scale(.84);opacity:.35}50%{transform:scale(1.12);opacity:.76}}
+    .donation-card p{
+      position:relative;
+      z-index:1;
+      margin:0 0 18px;
+      color:var(--muted);
+      font-family:system-ui,sans-serif;
+      font-size:.88rem;
+    }
+
+    .number{
+      position:relative;
+      z-index:1;
+      display:block;
+      margin-bottom:18px;
+      color:#fff;
+      font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+      font-size:clamp(.9rem,3.7vw,1.18rem);
+      letter-spacing:.06em;
+      text-shadow:0 0 12px rgba(255,255,255,.18);
+      word-break:break-all;
+    }
+
+    .copy{
+      position:relative;
+      z-index:1;
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:9px 15px;
+      background:rgba(255,255,255,.03);
+      color:var(--text);
+      font:inherit;
+      cursor:pointer;
+    }
+
+    .copy:active{transform:scale(.98)}
+
+    footer{
+      padding:22px 16px max(30px,env(safe-area-inset-bottom));
+      text-align:center;
+      color:#77736d;
+      font-size:.78rem;
+      letter-spacing:.13em;
+    }
+
+    @keyframes reveal-wheel{
+      from{opacity:0;transform:scale(.84);filter:blur(12px)}
+      to{opacity:1;transform:scale(1);filter:blur(0)}
+    }
+    @keyframes reveal-text{
+      from{opacity:0;transform:translateY(15px);filter:blur(7px)}
+      to{opacity:1;transform:translateY(0);filter:blur(0)}
+    }
+    @keyframes breathe{0%,100%{transform:scale(.982);opacity:.9}50%{transform:scale(1.022);opacity:1}}
+    @keyframes halo{0%,100%{transform:scale(.94);opacity:.55}50%{transform:scale(1.07);opacity:1}}
+    @keyframes rays{0%,100%{transform:scale(.98);opacity:.14}50%{transform:scale(1.05);opacity:.31}}
+    @keyframes spokes{0%,100%{transform:scale(.96);opacity:.11}50%{transform:scale(1.06);opacity:.28}}
+    @keyframes particles{from{transform:translate3d(-8px,5px,0) scale(.98)}to{transform:translate3d(9px,-9px,0) scale(1.04)}}
+    @keyframes core{0%,100%{transform:scale(.82);opacity:.34}50%{transform:scale(1.16);opacity:.8}}
+    @keyframes mist{from{transform:translate3d(-3%,-2%,0) scale(1)}to{transform:translate3d(4%,3%,0) scale(1.08)}}
+    @keyframes cue{0%,100%{transform:translateY(0);opacity:.45}50%{transform:translateY(7px);opacity:1}}
 
     @media(min-width:760px){
-      .page{grid-template-rows:auto minmax(0,58%) minmax(0,1fr) auto}
-      .links{
-        grid-template-columns:repeat(5,minmax(0,1fr));
-        grid-template-rows:repeat(2,minmax(0,1fr));
-      }
-      .wheel-stage{max-height:37dvh}
-      h1{font-size:clamp(3rem,6vw,5.1rem)}
+      .links{grid-template-columns:repeat(4,minmax(0,1fr))}
+      .wheel-stage{width:min(60vw,630px)}
     }
 
-    @media(max-height:700px){
-      .page{grid-template-rows:auto minmax(0,34%) minmax(0,1fr) auto;gap:5px}
-      .wheel-stage{max-height:23dvh}
-      .tagline{margin:5px auto}
-      .links{gap:4px}
-      .card{padding:3px 7px;border-radius:10px}
-      .footer{min-height:16px}
-    }
-
-    @media(max-height:600px){
-      .tagline{display:none}
-      .page{grid-template-rows:auto minmax(0,31%) minmax(0,1fr) auto}
-      .wheel-stage{max-height:21dvh}
+    @media(max-width:560px){
+      .wheel-stage{width:min(88vw,590px);margin-bottom:-32px}
+      h1{font-size:clamp(3.6rem,16vw,5rem)}
+      .tagline{letter-spacing:.17em}
+      .donation-grid{grid-template-columns:1fr}
     }
 
     @media(prefers-reduced-motion:reduce){
-      *,*::before,*::after{animation:none!important}
+      *,*::before,*::after{animation:none!important;scroll-behavior:auto!important}
     }
   </style>
 </head>
 
 <body>
-<main class="page">
+  <div class="mist" aria-hidden="true"></div>
+
   <nav class="languages" aria-label="Language">
     <button class="active" type="button" data-language="ru">RU</button><span>│</span>
     <button type="button" data-language="en">EN</button><span>│</span>
     <button type="button" data-language="th">ไทย</button>
   </nav>
 
-  <header class="hero">
-    <div class="wheel-stage" aria-hidden="true">
-      <div class="rays"></div>
-      <div class="particles"></div>
-      <img class="wheel" src="wheel.webp" alt="">
-      <div class="core"></div>
+  <section class="temple" id="temple">
+    <div class="temple-inner">
+      <div class="wheel-stage" aria-hidden="true">
+        <div class="rays"></div>
+        <div class="spoke-rays"></div>
+        <div class="particles"></div>
+        <img class="wheel" src="wheel.webp" alt="">
+        <div class="core"></div>
+      </div>
+
+      <h1><span>Nameless</span><span>Dhamma</span></h1>
+
+      <p class="tagline" data-text="tagline">
+        БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ
+      </p>
     </div>
 
-    <h1><span>Nameless</span><span>Dhamma</span></h1>
-    <p class="tagline" data-text="tagline">БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ</p>
-    <div class="divider"><span></span><b>◇</b><span></span></div>
-  </header>
-
-  <section class="links" aria-label="Project links">
-    <a class="card" href="https://www.youtube.com/@NamelessDhamma" target="_blank" rel="noopener">
-      <span class="icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path class="fill" d="M10 9l5 3-5 3z"/></svg></span><span class="label">YouTube</span>
-    </a>
-
-    <a class="card" href="https://t.me/namelessdhamma" target="_blank" rel="noopener">
-      <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 3L3.8 9.7c-1.2.5-1.2 1.2-.2 1.5l4.4 1.4 1.7 5.1c.2.7.1 1 .8 1 .5 0 .8-.2 1-.4l2.4-2.3 5 3.7c.9.5 1.6.2 1.8-.9L23 4.3c.3-1.3-.5-1.9-2-1.3z"/></svg></span><span class="label">Telegram</span>
-    </a>
-
-    <a class="card" href="https://www.instagram.com/namelessdhamma/" target="_blank" rel="noopener">
-      <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle class="fill" cx="17.5" cy="6.7" r="1"/></svg></span><span class="label">Instagram</span>
-    </a>
-
-    <a class="card" href="https://www.tiktok.com/@namelessdhamma" target="_blank" rel="noopener">
-      <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4v10.2a4.2 4.2 0 1 1-3.4-4.1"/><path d="M14 4c.8 2.7 2.6 4.2 5 4.5"/></svg></span><span class="label">TikTok</span>
-    </a>
-
-    <a class="card" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener">
-      <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.5 1.6-1.5H17V4a18 18 0 0 0-2.4-.2c-2.4 0-4.1 1.5-4.1 4.2v2H8v3h2.5v8z"/></svg></span><span class="label">Facebook</span>
-    </a>
-
-    <a class="card" href="https://vk.com/namelessdhamma" target="_blank" rel="noopener">
-      <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M3.5 7h3.2c.3 2.6 1.5 5 3.3 6.7V7h3v3.8c1.7-.2 3.4-2 4-3.8h3c-.5 2.3-2.4 4.3-3.8 5.1 1.4.7 3.6 2.5 4.4 4.9h-3.3c-.7-1.8-2.3-3.2-4.3-3.4V17h-.5C7.1 17 4 13.3 3.5 7z"/></svg></span><span class="label">VK</span>
-    </a>
-
-    <a class="card" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener">
-      <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.2c0-4-3.8-7.2-8.5-7.2s-8.5 3.2-8.5 7.2c0 3.6 3.2 6.6 7.5 7.1.3.1.7.2.8.5.1.3 0 .8-.1 1.1l-.2 1c-.1.3-.2 1.2 1 .7 1.2-.5 6.5-3.8 8.9-6.6 1.4-1.5 2-3.1 2-4.7z"/></svg></span><span class="label">Line</span>
-    </a>
-
-    <a class="card" href="https://wa.me/namelessdhamma" target="_blank" rel="noopener" aria-label="WhatsApp @namelessdhamma">
-      <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.5l1.3-4.7A8.5 8.5 0 1 1 20.5 11.7z"/><path d="M8.2 7.6c.2-.4.4-.4.7-.4h.6c.2 0 .4 0 .5.4l.8 2c.1.3.1.5-.1.7l-.7.8c-.2.2-.2.4-.1.6.6 1.3 1.5 2.2 2.8 2.8.2.1.4.1.6-.1l.9-1c.2-.2.4-.3.7-.2l2 .9c.3.1.4.3.4.5 0 .4-.2 1.6-1.2 2.2-.7.5-1.7.7-2.8.4-1.5-.4-3.3-1.4-4.8-2.9-1.5-1.5-2.5-3.3-2.9-4.8-.3-1.1-.1-2.1.4-2.9z"/></svg></span>
-      <span class="stack"><span>WhatsApp</span><small>@namelessdhamma</small></span>
-    </a>
-
-    <a class="card" href="mailto:namelessdhamma@gmail.com">
-      <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/></svg></span><span class="label" data-text="email">Эл. почта</span>
-    </a>
-
-    <a class="card" href="https://dzen.ru/namelessdhamma" target="_blank" rel="noopener">
-      <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path class="fill" d="M12 5c.7 4.5 1.5 5.3 6 6-4.5.7-5.3 1.5-6 6-.7-4.5-1.5-5.3-6-6 4.5-.7 5.3-1.5 6-6z"/></svg></span><span class="label">Дзен</span>
+    <a class="scroll-cue" href="#links">
+      <span data-text="discover">ПРОДОЛЖИТЬ</span>
+      <b>⌄</b>
     </a>
   </section>
 
-  <footer class="footer"><span></span><b>◇</b><strong>@namelessdhamma</strong><b>◇</b><span></span></footer>
-</main>
+  <section class="links-section" id="links">
+    <h2 class="section-heading" data-text="linksTitle">Связь с проектом</h2>
+    <p class="section-subtitle" data-text="linksIntro">
+      Площадки Nameless Dhamma для практики, исследования и распространения Дхаммы.
+    </p>
 
-<script>
-  const translations={
-    ru:{tagline:"БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ",email:"Эл. почта"},
-    en:{tagline:"BOUNDLESS WISDOM<br>PIERCING THROUGH IGNORANCE",email:"Email"},
-    th:{tagline:"ปัญญาอันไร้ขอบเขต<br>ที่ส่องทะลุอวิชชา",email:"อีเมล"}
-  };
+    <div class="links">
+      <a class="card" href="https://www.youtube.com/@NamelessDhamma" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path class="fill" d="M10 9l5 3-5 3z"/></svg></span><span class="label">YouTube</span>
+      </a>
+      <a class="card" href="https://t.me/namelessdhamma" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 3L3.8 9.7c-1.2.5-1.2 1.2-.2 1.5l4.4 1.4 1.7 5.1c.2.7.1 1 .8 1 .5 0 .8-.2 1-.4l2.4-2.3 5 3.7c.9.5 1.6.2 1.8-.9L23 4.3c.3-1.3-.5-1.9-2-1.3z"/></svg></span><span class="label">Telegram</span>
+      </a>
+      <a class="card" href="https://www.instagram.com/namelessdhamma/" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle class="fill" cx="17.5" cy="6.7" r="1"/></svg></span><span class="label">Instagram</span>
+      </a>
+      <a class="card" href="https://www.tiktok.com/@namelessdhamma" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4v10.2a4.2 4.2 0 1 1-3.4-4.1"/><path d="M14 4c.8 2.7 2.6 4.2 5 4.5"/></svg></span><span class="label">TikTok</span>
+      </a>
+      <a class="card" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.5 1.6-1.5H17V4a18 18 0 0 0-2.4-.2c-2.4 0-4.1 1.5-4.1 4.2v2H8v3h2.5v8z"/></svg></span><span class="label">Facebook</span>
+      </a>
+      <a class="card" href="https://vk.com/namelessdhamma" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M3.5 7h3.2c.3 2.6 1.5 5 3.3 6.7V7h3v3.8c1.7-.2 3.4-2 4-3.8h3c-.5 2.3-2.4 4.3-3.8 5.1 1.4.7 3.6 2.5 4.4 4.9h-3.3c-.7-1.8-2.3-3.2-4.3-3.4V17h-.5C7.1 17 4 13.3 3.5 7z"/></svg></span><span class="label">VK</span>
+      </a>
+      <a class="card" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.2c0-4-3.8-7.2-8.5-7.2s-8.5 3.2-8.5 7.2c0 3.6 3.2 6.6 7.5 7.1.3.1.7.2.8.5.1.3 0 .8-.1 1.1l-.2 1c-.1.3-.2 1.2 1 .7 1.2-.5 6.5-3.8 8.9-6.6 1.4-1.5 2-3.1 2-4.7z"/></svg></span><span class="label">Line</span>
+      </a>
+      <a class="card" href="https://wa.me/namelessdhamma" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.5l1.3-4.7A8.5 8.5 0 1 1 20.5 11.7z"/><path d="M8.2 7.6c.2-.4.4-.4.7-.4h.6c.2 0 .4 0 .5.4l.8 2c.1.3.1.5-.1.7l-.7.8c-.2.2-.2.4-.1.6.6 1.3 1.5 2.2 2.8 2.8.2.1.4.1.6-.1l.9-1c.2-.2.4-.3.7-.2l2 .9c.3.1.4.3.4.5 0 .4-.2 1.6-1.2 2.2-.7.5-1.7.7-2.8.4-1.5-.4-3.3-1.4-4.8-2.9-1.5-1.5-2.5-3.3-2.9-4.8-.3-1.1-.1-2.1.4-2.9z"/></svg></span>
+        <span class="stack"><span>WhatsApp</span><small>@namelessdhamma</small></span>
+      </a>
+      <a class="card" href="mailto:namelessdhamma@gmail.com">
+        <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/></svg></span><span class="label" data-text="email">Эл. почта</span>
+      </a>
+      <a class="card" href="https://dzen.ru/namelessdhamma" target="_blank" rel="noopener">
+        <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path class="fill" d="M12 5c.7 4.5 1.5 5.3 6 6-4.5.7-5.3 1.5-6 6-.7-4.5-1.5-5.3-6-6 4.5-.7 5.3-1.5 6-6z"/></svg></span><span class="label">Дзен</span>
+      </a>
+    </div>
+  </section>
 
-  document.querySelectorAll("[data-language]").forEach(button=>{
-    button.addEventListener("click",()=>{
-      const lang=button.dataset.language;
-      document.documentElement.lang=lang;
-      document.querySelectorAll("[data-language]").forEach(x=>x.classList.toggle("active",x===button));
-      document.querySelectorAll("[data-text]").forEach(x=>x.innerHTML=translations[lang][x.dataset.text]);
+  <section class="donation-section" id="dana">
+    <h2 class="section-heading" data-text="danaTitle">Дана</h2>
+    <p class="section-subtitle" data-text="danaIntro">
+      Добровольная поддержка помогает сохранять проект свободным от коммерческой модели.
+    </p>
+
+    <div class="donation-grid">
+      <article class="donation-card">
+        <h3>Сбер</h3>
+        <p data-text="cardRu">Карта РФ</p>
+        <span class="number">4279 3806 3032 5605</span>
+        <button class="copy" type="button" data-copy="4279380630325605" data-text="copy">Копировать</button>
+      </article>
+
+      <article class="donation-card">
+        <h3>Kasikorn Bank</h3>
+        <p data-text="cardTh">Карта Таиланда</p>
+        <span class="number">4340 7640 0008 5094</span>
+        <button class="copy" type="button" data-copy="4340764000085094" data-text="copy">Копировать</button>
+      </article>
+    </div>
+  </section>
+
+  <footer>EVERYTHING ARISES FROM CONDITIONS</footer>
+
+  <script>
+    const translations={
+      ru:{
+        tagline:"БЕЗГРАНИЧНАЯ МУДРОСТЬ,<br>ПРОНИЗЫВАЮЩАЯ НЕВЕДЕНИЕ",
+        discover:"ПРОДОЛЖИТЬ",
+        linksTitle:"Связь с проектом",
+        linksIntro:"Площадки Nameless Dhamma для практики, исследования и распространения Дхаммы.",
+        email:"Эл. почта",
+        danaTitle:"Дана",
+        danaIntro:"Добровольная поддержка помогает сохранять проект свободным от коммерческой модели.",
+        cardRu:"Карта РФ",
+        cardTh:"Карта Таиланда",
+        copy:"Копировать",
+        copied:"Скопировано"
+      },
+      en:{
+        tagline:"BOUNDLESS WISDOM<br>PIERCING THROUGH IGNORANCE",
+        discover:"CONTINUE",
+        linksTitle:"Connect",
+        linksIntro:"Nameless Dhamma platforms for practice, inquiry and sharing the Dhamma.",
+        email:"Email",
+        danaTitle:"Dāna",
+        danaIntro:"Voluntary support helps keep the project free from a commercial model.",
+        cardRu:"Russian card",
+        cardTh:"Thai card",
+        copy:"Copy",
+        copied:"Copied"
+      },
+      th:{
+        tagline:"ปัญญาอันไร้ขอบเขต<br>ที่ส่องทะลุอวิชชา",
+        discover:"ดำเนินต่อ",
+        linksTitle:"ช่องทางของโครงการ",
+        linksIntro:"ช่องทางของ Nameless Dhamma สำหรับการปฏิบัติ การศึกษา และการเผยแผ่ธรรมะ",
+        email:"อีเมล",
+        danaTitle:"ทาน",
+        danaIntro:"การสนับสนุนโดยสมัครใจช่วยให้โครงการดำรงอยู่โดยไม่ต้องพึ่งรูปแบบเชิงพาณิชย์",
+        cardRu:"บัตรรัสเซีย",
+        cardTh:"บัตรไทย",
+        copy:"คัดลอก",
+        copied:"คัดลอกแล้ว"
+      }
+    };
+
+    let currentLanguage="ru";
+
+    document.querySelectorAll("[data-language]").forEach(button=>{
+      button.addEventListener("click",()=>{
+        currentLanguage=button.dataset.language;
+        document.documentElement.lang=currentLanguage;
+        document.querySelectorAll("[data-language]").forEach(x=>x.classList.toggle("active",x===button));
+        document.querySelectorAll("[data-text]").forEach(x=>{
+          const key=x.dataset.text;
+          x.innerHTML=translations[currentLanguage][key];
+        });
+      });
     });
-  });
-</script>
+
+    document.querySelectorAll("[data-copy]").forEach(button=>{
+      button.addEventListener("click",async()=>{
+        try{
+          await navigator.clipboard.writeText(button.dataset.copy);
+          const original=translations[currentLanguage].copy;
+          button.textContent=translations[currentLanguage].copied;
+          setTimeout(()=>button.textContent=original,1500);
+        }catch{
+          button.textContent=button.dataset.copy;
+        }
+      });
+    });
+
+    const temple=document.querySelector(".temple-inner");
+    window.addEventListener("scroll",()=>{
+      const y=Math.min(window.scrollY,innerHeight);
+      const progress=y/innerHeight;
+      temple.style.transform=`translateY(${progress*34}px) scale(${1-progress*.05})`;
+      temple.style.opacity=String(1-progress*.72);
+    },{passive:true});
+  </script>
 </body>
 </html>
