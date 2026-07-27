@@ -6,11 +6,7 @@
   <meta name="theme-color" content="#000000">
   <meta name="description" content="Nameless Dhamma — безграничная мудрость рассекает неведение.">
   <title>Nameless Dhamma</title>
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="favicon.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="favicon.png">
 
   <style>
     :root{
@@ -442,6 +438,95 @@
       font-style:normal;
     }
 
+
+    .community-section{
+      min-height:100svh;
+      display:grid;
+      align-content:center;
+      padding:88px 0 96px;
+      isolation:isolate;
+    }
+    .community-section::before{
+      content:"";
+      position:absolute;
+      z-index:-2;
+      left:50%;
+      top:50%;
+      width:100vw;
+      height:min(56vw,560px);
+      transform:translate(-50%,-50%);
+      background:url("light-horizon.webp") center/cover no-repeat;
+      opacity:.56;
+      filter:contrast(1.06) brightness(.78);
+      pointer-events:none;
+      -webkit-mask-image:linear-gradient(to right,transparent 0,#000 10%,#000 90%,transparent 100%);
+      mask-image:linear-gradient(to right,transparent 0,#000 10%,#000 90%,transparent 100%);
+    }
+    .community-section::after{
+      content:"";
+      position:absolute;
+      z-index:-1;
+      left:50%;
+      top:50%;
+      width:min(86vw,940px);
+      height:520px;
+      transform:translate(-50%,-50%);
+      background:radial-gradient(ellipse at center,rgba(255,255,255,.085),rgba(255,255,255,.02) 38%,transparent 72%);
+      filter:blur(24px);
+      pointer-events:none;
+      animation:section-glow 12s ease-in-out infinite;
+    }
+    .community-layout{
+      width:min(100%,900px);
+      margin:auto;
+      display:grid;
+      grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);
+      gap:54px;
+      align-items:start;
+    }
+    .panel-title{
+      margin:0 0 28px;
+      text-align:center;
+      font-size:clamp(1.35rem,3.4vw,2rem);
+      font-weight:400;
+      color:rgba(255,255,255,.82);
+      text-shadow:0 0 18px rgba(255,255,255,.12);
+    }
+    .panel-title::after{
+      content:"";
+      display:block;
+      width:min(34vw,220px);
+      height:1px;
+      margin:16px auto 0;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.50),transparent);
+      box-shadow:0 0 12px rgba(255,255,255,.24);
+    }
+    .community-section .social-grid{
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:20px 14px;
+    }
+    .community-section .social-grid::before{display:none}
+    .support-column{display:grid;gap:38px}
+    .contact-grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:14px;
+    }
+    .contact-grid .social small{display:block}
+    .community-section .accounts{width:100%;gap:14px}
+    .community-section .account{padding:20px 14px 12px}
+    .community-section .account strong{font-size:1rem}
+    .community-section .account span{font-size:clamp(.86rem,2.7vw,1.08rem)}
+
+    @media(max-width:760px){
+      .community-section{padding:82px 0 88px}
+      .community-layout{grid-template-columns:1fr;gap:58px}
+      .community-section .social-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+      .support-column{gap:44px}
+      .contact-grid{width:min(100%,360px);margin:auto}
+      .community-section::before{height:95vw;background-size:auto 100%;opacity:.44}
+    }
+
     footer{
       padding:22px 16px max(32px,env(safe-area-inset-bottom));
       text-align:center;
@@ -500,6 +585,7 @@
       .social .icon{width:52px;height:52px}
       .icon svg{width:24px;height:24px}
       .social small{display:none}
+      .community-section .contact-grid .social small{display:block}
       .wheel-wrap{width:min(94vw,620px);margin-bottom:-20px}
       h1{font-size:clamp(3.2rem,15.4vw,4.8rem)}
       .motto{letter-spacing:.12em}
@@ -542,54 +628,66 @@
     </a>
   </section>
 
-  <section class="links-section" id="links">
-    <div class="social-grid">
-      <a class="social" href="https://www.youtube.com/@NamelessDhamma" target="_blank" rel="noopener" aria-label="YouTube">
-        <span class="icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path class="fill" d="M10 9l5 3-5 3z"/></svg></span><small>YouTube</small>
-      </a>
-      <a class="social" href="https://t.me/namelessdhamma" target="_blank" rel="noopener" aria-label="Telegram">
-        <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 3L3.8 9.7c-1.2.5-1.2 1.2-.2 1.5l4.4 1.4 1.7 5.1c.2.7.1 1 .8 1 .5 0 .8-.2 1-.4l2.4-2.3 5 3.7c.9.5 1.6.2 1.8-.9L23 4.3c.3-1.3-.5-1.9-2-1.3z"/></svg></span><small>Telegram</small>
-      </a>
-      <a class="social" href="https://www.instagram.com/namelessdhamma/" target="_blank" rel="noopener" aria-label="Instagram">
-        <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle class="fill" cx="17.5" cy="6.7" r="1"/></svg></span><small>Instagram</small>
-      </a>
-      <a class="social" href="https://www.tiktok.com/@namelessdhamma" target="_blank" rel="noopener" aria-label="TikTok">
-        <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4v10.2a4.2 4.2 0 1 1-3.4-4.1"/><path d="M14 4c.8 2.7 2.6 4.2 5 4.5"/></svg></span><small>TikTok</small>
-      </a>
-      <a class="social" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener" aria-label="Facebook">
-        <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.5 1.6-1.5H17V4a18 18 0 0 0-2.4-.2c-2.4 0-4.1 1.5-4.1 4.2v2H8v3h2.5v8z"/></svg></span><small>Facebook</small>
-      </a>
-      <a class="social" href="https://vk.com/namelessdhamma" target="_blank" rel="noopener" aria-label="VK">
-        <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M3.5 7h3.2c.3 2.6 1.5 5 3.3 6.7V7h3v3.8c1.7-.2 3.4-2 4-3.8h3c-.5 2.3-2.4 4.3-3.8 5.1 1.4.7 3.6 2.5 4.4 4.9h-3.3c-.7-1.8-2.3-3.2-4.3-3.4V17h-.5C7.1 17 4 13.3 3.5 7z"/></svg></span><small>VK</small>
-      </a>
-      <a class="social" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener" aria-label="LINE">
-        <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.2c0-4-3.8-7.2-8.5-7.2s-8.5 3.2-8.5 7.2c0 3.6 3.2 6.6 7.5 7.1.3.1.7.2.8.5.1.3 0 .8-.1 1.1l-.2 1c-.1.3-.2 1.2 1 .7 1.2-.5 6.5-3.8 8.9-6.6 1.4-1.5 2-3.1 2-4.7z"/></svg></span><small>LINE</small>
-      </a>
-      <a class="social" href="https://wa.me/namelessdhamma" target="_blank" rel="noopener" aria-label="WhatsApp">
-        <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.5l1.3-4.7A8.5 8.5 0 1 1 20.5 11.7z"/><path d="M8.2 7.6c.2-.4.4-.4.7-.4h.6c.2 0 .4 0 .5.4l.8 2c.1.3.1.5-.1.7l-.7.8c-.2.2-.2.4-.1.6.6 1.3 1.5 2.2 2.8 2.8.2.1.4.1.6-.1l.9-1c.2-.2.4-.3.7-.2l2 .9c.3.1.4.3.4.5 0 .4-.2 1.6-1.2 2.2-.7.5-1.7.7-2.8.4-1.5-.4-3.3-1.4-4.8-2.9-1.5-1.5-2.5-3.3-2.9-4.8-.3-1.1-.1-2.1.4-2.9z"/></svg></span><small>WhatsApp</small>
-      </a>
-      <a class="social" href="mailto:namelessdhamma@gmail.com" aria-label="Email">
-        <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/></svg></span><small>Email</small>
-      </a>
-      <a class="social" href="https://dzen.ru/namelessdhamma" target="_blank" rel="noopener" aria-label="Дзен">
-        <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path class="fill" d="M12 5c.7 4.5 1.5 5.3 6 6-4.5.7-5.3 1.5-6 6-.7-4.5-1.5-5.3-6-6 4.5-.7 5.3-1.5 6-6z"/></svg></span><small>Дзен</small>
-      </a>
-    </div>
-  </section>
+  <section class="community-section" id="links">
+    <div class="community-layout">
+      <div class="project-links">
+        <h2 class="panel-title" data-text="platforms">Площадки проекта</h2>
+        <div class="social-grid">
+          <a class="social" href="https://www.youtube.com/@NamelessDhamma" target="_blank" rel="noopener" aria-label="YouTube">
+            <span class="icon"><svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path class="fill" d="M10 9l5 3-5 3z"/></svg></span><small>YouTube</small>
+          </a>
+          <a class="social" href="https://t.me/Kickfromvoid" target="_blank" rel="noopener" aria-label="Telegram channel">
+            <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 3L3.8 9.7c-1.2.5-1.2 1.2-.2 1.5l4.4 1.4 1.7 5.1c.2.7.1 1 .8 1 .5 0 .8-.2 1-.4l2.4-2.3 5 3.7c.9.5 1.6.2 1.8-.9L23 4.3c.3-1.3-.5-1.9-2-1.3z"/></svg></span><small>Telegram</small>
+          </a>
+          <a class="social" href="https://www.instagram.com/namelessdhamma/" target="_blank" rel="noopener" aria-label="Instagram">
+            <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle class="fill" cx="17.5" cy="6.7" r="1"/></svg></span><small>Instagram</small>
+          </a>
+          <a class="social" href="https://www.tiktok.com/@namelessdhamma" target="_blank" rel="noopener" aria-label="TikTok">
+            <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4v10.2a4.2 4.2 0 1 1-3.4-4.1"/><path d="M14 4c.8 2.7 2.6 4.2 5 4.5"/></svg></span><small>TikTok</small>
+          </a>
+          <a class="social" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener" aria-label="Facebook">
+            <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.5 1.6-1.5H17V4a18 18 0 0 0-2.4-.2c-2.4 0-4.1 1.5-4.1 4.2v2H8v3h2.5v8z"/></svg></span><small>Facebook</small>
+          </a>
+          <a class="social" href="https://vk.com/namelessdhamma" target="_blank" rel="noopener" aria-label="VK">
+            <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M3.5 7h3.2c.3 2.6 1.5 5 3.3 6.7V7h3v3.8c1.7-.2 3.4-2 4-3.8h3c-.5 2.3-2.4 4.3-3.8 5.1 1.4.7 3.6 2.5 4.4 4.9h-3.3c-.7-1.8-2.3-3.2-4.3-3.4V17h-.5C7.1 17 4 13.3 3.5 7z"/></svg></span><small>VK</small>
+          </a>
+          <a class="social" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener" aria-label="LINE">
+            <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.2c0-4-3.8-7.2-8.5-7.2s-8.5 3.2-8.5 7.2c0 3.6 3.2 6.6 7.5 7.1.3.1.7.2.8.5.1.3 0 .8-.1 1.1l-.2 1c-.1.3-.2 1.2 1 .7 1.2-.5 6.5-3.8 8.9-6.6 1.4-1.5 2-3.1 2-4.7z"/></svg></span><small>LINE</small>
+          </a>
+          <a class="social" href="mailto:namelessdhamma@gmail.com" aria-label="Email">
+            <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/></svg></span><small>Email</small>
+          </a>
+          <a class="social" href="https://dzen.ru/namelessdhamma" target="_blank" rel="noopener" aria-label="Дзен">
+            <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path class="fill" d="M12 5c.7 4.5 1.5 5.3 6 6-4.5.7-5.3 1.5-6 6-.7-4.5-1.5-5.3-6-6 4.5-.7 5.3-1.5 6-6z"/></svg></span><small>Дзен</small>
+          </a>
+        </div>
+      </div>
 
-  <section class="dana" id="dana">
-    <h2 data-text="support">Поддержать проект</h2>
-    <div class="accounts">
-      <button class="account" type="button" data-copy="4279380630325605">
-        <strong>Сбер</strong>
-        <span>4279 3806 3032 5605</span>
-        <em aria-live="polite"></em>
-      </button>
-      <button class="account" type="button" data-copy="4340764000085094">
-        <strong>Kasikorn Bank</strong>
-        <span>4340 7640 0008 5094</span>
-        <em aria-live="polite"></em>
-      </button>
+      <div class="support-column">
+        <div class="contacts">
+          <h2 class="panel-title" data-text="contacts">Связь с авторами</h2>
+          <div class="contact-grid">
+            <a class="social" href="https://t.me/NamelessDhamma" target="_blank" rel="noopener" aria-label="Telegram contact">
+              <span class="icon"><svg viewBox="0 0 24 24"><path d="M21 3L3.8 9.7c-1.2.5-1.2 1.2-.2 1.5l4.4 1.4 1.7 5.1c.2.7.1 1 .8 1 .5 0 .8-.2 1-.4l2.4-2.3 5 3.7c.9.5 1.6.2 1.8-.9L23 4.3c.3-1.3-.5-1.9-2-1.3z"/></svg></span><small>@NamelessDhamma</small>
+            </a>
+            <a class="social" href="https://wa.me/namelessdhamma" target="_blank" rel="noopener" aria-label="WhatsApp">
+              <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.5l1.3-4.7A8.5 8.5 0 1 1 20.5 11.7z"/><path d="M8.2 7.6c.2-.4.4-.4.7-.4h.6c.2 0 .4 0 .5.4l.8 2c.1.3.1.5-.1.7l-.7.8c-.2.2-.2.4-.1.6.6 1.3 1.5 2.2 2.8 2.8.2.1.4.1.6-.1l.9-1c.2-.2.4-.3.7-.2l2 .9c.3.1.4.3.4.5 0 .4-.2 1.6-1.2 2.2-.7.5-1.7.7-2.8.4-1.5-.4-3.3-1.4-4.8-2.9-1.5-1.5-2.5-3.3-2.9-4.8-.3-1.1-.1-2.1.4-2.9z"/></svg></span><small>WhatsApp</small>
+            </a>
+          </div>
+        </div>
+
+        <div class="support">
+          <h2 class="panel-title" data-text="support">Поддержать проект</h2>
+          <div class="accounts">
+            <button class="account" type="button" data-copy="4279380630325605">
+              <strong>Сбер</strong><span>4279 3806 3032 5605</span><em aria-live="polite"></em>
+            </button>
+            <button class="account" type="button" data-copy="4340764000085094">
+              <strong>Kasikorn Bank</strong><span>4340 7640 0008 5094</span><em aria-live="polite"></em>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -597,9 +695,9 @@
 
   <script>
     const i18n={
-      ru:{motto:"БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ",support:"Поддержать проект",copied:"Скопировано"},
-      en:{motto:"BOUNDLESS WISDOM<br>CUTS THROUGH IGNORANCE",support:"Support the project",copied:"Copied"},
-      th:{motto:"ปัญญาอันไร้ขอบเขต<br>ตัดผ่านอวิชชา",support:"สนับสนุนโครงการ",copied:"คัดลอกแล้ว"}
+      ru:{motto:"БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ",platforms:"Площадки проекта",contacts:"Связь с авторами",support:"Поддержать проект",copied:"Скопировано"},
+      en:{motto:"BOUNDLESS WISDOM<br>CUTS THROUGH IGNORANCE",platforms:"Project platforms",contacts:"Contact the authors",support:"Support the project",copied:"Copied"},
+      th:{motto:"ปัญญาอันไร้ขอบเขต<br>ตัดผ่านอวิชชา",platforms:"ช่องทางของโครงการ",contacts:"ติดต่อผู้จัดทำ",support:"สนับสนุนโครงการ",copied:"คัดลอกแล้ว"}
     };
 
     let lang="ru";
