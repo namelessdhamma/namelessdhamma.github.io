@@ -6,7 +6,24 @@
   <meta name="theme-color" content="#000000">
   <meta name="description" content="Nameless Dhamma — безграничная мудрость рассекает неведение.">
   <title>Nameless Dhamma</title>
-  <link rel="icon" type="image/png" href="favicon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Nameless Dhamma">
+  <meta property="og:title" content="Nameless Dhamma">
+  <meta property="og:description" content="Boundless wisdom cuts through ignorance.">
+  <meta property="og:url" content="https://namelessdhamma.org/">
+  <meta property="og:image" content="https://namelessdhamma.org/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Nameless Dhamma">
+  <meta name="twitter:description" content="Boundless wisdom cuts through ignorance.">
+  <meta name="twitter:image" content="https://namelessdhamma.org/og-image.png">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="favicon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
 
   <style>
     :root{
@@ -75,6 +92,11 @@
       color:inherit;
       font:inherit;
       cursor:pointer;
+    }
+    .language button:focus-visible{
+      outline:none;
+      color:#fff;
+      text-shadow:0 0 12px rgba(255,255,255,.5);
     }
     .language button.active{
       color:#fff;
@@ -272,10 +294,10 @@
     }
 
     .social-grid{
-      width:min(100%,760px);
+      width:min(100%,640px);
       margin:auto;
       display:grid;
-      grid-template-columns:repeat(5,minmax(0,1fr));
+      grid-template-columns:repeat(3,minmax(0,1fr));
       gap:22px 18px;
       position:relative;
       z-index:2;
@@ -399,7 +421,7 @@
       text-decoration:none;
       transition:.22s ease;
     }
-    .yoomoney-button:hover{border-color:rgba(255,255,255,.55);box-shadow:0 0 20px rgba(255,255,255,.19),0 0 42px rgba(255,255,255,.07),inset 0 0 21px rgba(255,255,255,.065);transform:translateY(-2px)}
+    .yoomoney-button:hover,.yoomoney-button:focus-visible{border-color:rgba(255,255,255,.55);box-shadow:0 0 20px rgba(255,255,255,.19),0 0 42px rgba(255,255,255,.07),inset 0 0 21px rgba(255,255,255,.065);transform:translateY(-2px);outline:none}
     .yoomoney-mark{
       display:inline-grid;
       place-items:center;
@@ -414,9 +436,9 @@
       filter:drop-shadow(0 0 5px rgba(255,255,255,.35));
     }
     .yoomoney-button b{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.98rem;font-weight:500;letter-spacing:.045em;text-shadow:0 0 10px rgba(255,255,255,.32)}
-    .yoomoney-button iframe{position:absolute;inset:0;width:100%;height:100%;opacity:.001;border:0;z-index:4;cursor:pointer}
-
     .support-note{margin:0;color:rgba(255,255,255,.42);font-family:ui-sans-serif,system-ui,sans-serif;font-size:.78rem;line-height:1.55}
+    .support-fallback{color:rgba(255,255,255,.58);font-family:ui-sans-serif,system-ui,sans-serif;font-size:.78rem;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.22)}
+    .support-fallback:hover,.support-fallback:focus-visible{color:#fff;border-bottom-color:rgba(255,255,255,.55);outline:none}
 
     .qr-link{color:inherit;text-decoration:none;display:grid;justify-items:center;gap:15px}
     .qr-frame{
@@ -482,7 +504,7 @@
       .links-section{padding:88px 0 105px;gap:52px}
       .links-section::before{height:58vw;opacity:.58;background-size:auto 100%;top:26%}
       .social-grid{
-        grid-template-columns:repeat(5,minmax(0,1fr));
+        grid-template-columns:repeat(3,minmax(0,1fr));
         gap:18px 7px;
       }
       .support-options{grid-template-columns:1fr;width:min(100%,430px)}
@@ -499,7 +521,7 @@
 
     @media(max-width:390px){
       .social .icon{width:47px;height:47px}
-      .social-grid{gap:12px 4px}
+      .social-grid{gap:12px 6px}
     }
 
     @media(prefers-reduced-motion:reduce){
@@ -550,14 +572,8 @@
         <a class="social" href="https://www.tiktok.com/@namelessdhamma" target="_blank" rel="noopener" aria-label="TikTok">
           <span class="icon"><svg viewBox="0 0 24 24"><path d="M14 4v10.2a4.2 4.2 0 1 1-3.4-4.1"/><path d="M14 4c.8 2.7 2.6 4.2 5 4.5"/></svg></span><small>TikTok</small>
         </a>
-        <a class="social" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener" aria-label="Facebook">
-          <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.5 1.6-1.5H17V4a18 18 0 0 0-2.4-.2c-2.4 0-4.1 1.5-4.1 4.2v2H8v3h2.5v8z"/></svg></span><small>Facebook</small>
-        </a>
         <a class="social" href="https://vk.com/namelessdhamma" target="_blank" rel="noopener" aria-label="VK">
           <span class="icon"><svg viewBox="0 0 24 24"><path class="fill" d="M3.5 7h3.2c.3 2.6 1.5 5 3.3 6.7V7h3v3.8c1.7-.2 3.4-2 4-3.8h3c-.5 2.3-2.4 4.3-3.8 5.1 1.4.7 3.6 2.5 4.4 4.9h-3.3c-.7-1.8-2.3-3.2-4.3-3.4V17h-.5C7.1 17 4 13.3 3.5 7z"/></svg></span><small>VK</small>
-        </a>
-        <a class="social" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener" aria-label="LINE">
-          <span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M12 4.2c-4.7 0-8.5 3-8.5 6.8 0 3.3 2.8 6 6.6 6.6l-.5 2.2c-.1.5.4.9.8.6l3.1-2.2H12c4.7 0 8.5-3 8.5-6.8S16.7 4.2 12 4.2z"/><text class="text-dark" x="12" y="12.8" text-anchor="middle">LINE</text></svg></span><small>LINE</small>
         </a>
         <a class="social" href="https://dzen.ru/namelessdhamma" target="_blank" rel="noopener" aria-label="Дзен">
           <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path class="fill" d="M12 5c.7 4.5 1.5 5.3 6 6-4.5.7-5.3 1.5-6 6-.7-4.5-1.5-5.3-6-6 4.5-.7 5.3-1.5 6-6z"/></svg></span><small>Дзен</small>
@@ -572,6 +588,14 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3L3.8 9.7c-1.2.5-1.2 1.2-.2 1.5l4.4 1.4 1.7 5.1c.2.7.1 1 .8 1 .5 0 .8-.2 1-.4l2.4-2.3 5 3.7c.9.5 1.6.2 1.8-.9L23 4.3c.3-1.3-.5-1.9-2-1.3z"/></svg>
           <span data-text="authorTelegram">Telegram · @NamelessDhamma</span>
         </a>
+        <a class="author-link" href="https://line.me/R/ti/p/@namelessdhamma" target="_blank" rel="noopener" aria-label="LINE Nameless Dhamma">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4.2c-4.7 0-8.5 3-8.5 6.8 0 3.3 2.8 6 6.6 6.6l-.5 2.2c-.1.5.4.9.8.6l3.1-2.2H12c4.7 0 8.5-3 8.5-6.8S16.7 4.2 12 4.2z"/><text x="12" y="12.8" text-anchor="middle" fill="rgba(0,0,0,.92)" style="font-family:Arial,Helvetica,sans-serif;font-size:5.2px;font-weight:700;letter-spacing:.22px">LINE</text></svg>
+          <span data-text="authorLine">LINE · @namelessdhamma</span>
+        </a>
+        <a class="author-link" href="https://www.facebook.com/@NamelessDhamma" target="_blank" rel="noopener" aria-label="Facebook Nameless Dhamma">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.5 1.6-1.5H17V4a18 18 0 0 0-2.4-.2c-2.4 0-4.1 1.5-4.1 4.2v2H8v3h2.5v8z"/></svg>
+          <span data-text="authorFacebook">Facebook · @NamelessDhamma</span>
+        </a>
         <a class="author-link" href="mailto:namelessdhamma@gmail.com" aria-label="Email Nameless Dhamma">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span data-text="authorEmail">Email · namelessdhamma@gmail.com</span>
@@ -583,12 +607,12 @@
       <h2 class="section-title" data-text="support">Поддержать проект</h2>
       <div class="support-options">
         <div class="support-card">
-          <div class="yoomoney-button" aria-label="Поддержать в рублях через ЮMoney">
+          <a class="yoomoney-button" href="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1J988N4Q8TH.260727&amp;" target="_blank" rel="noopener" aria-label="Поддержать в рублях через ЮMoney">
             <span class="yoomoney-mark" aria-hidden="true">Ю</span>
             <b data-text="rubles">Поддержать в рублях</b>
-            <iframe title="ЮMoney" src="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1J988N4Q8TH.260727&amp;" width="330" height="50" frameborder="0" allowtransparency="true" scrolling="no"></iframe>
-          </div>
+          </a>
           <p class="support-note" data-text="yoomoneyNote">Безопасный перевод через ЮMoney</p>
+          <a class="support-fallback" href="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1J988N4Q8TH.260727&amp;" target="_blank" rel="noopener" data-text="yoomoneyFallback">Открыть YooMoney напрямую</a>
         </div>
 
         <div class="support-card">
@@ -597,6 +621,7 @@
             <b data-text="baht">Поддержать в батах</b>
           </a>
           <p class="support-note" data-text="qrNote">Отсканируйте QR-код в банковском приложении</p>
+          <p class="support-note" data-text="qrSafety">Перед подтверждением проверьте имя получателя в банковском приложении</p>
         </div>
       </div>
     </div>
@@ -609,80 +634,128 @@
       ru:{
         siteTitle:"<span>Nameless</span><span>Dhamma</span>",
         documentTitle:"Nameless Dhamma",
+        metaDescription:"Nameless Dhamma — безграничная мудрость рассекает неведение.",
+        ogTitle:"Nameless Dhamma",
+        ogDescription:"Безграничная мудрость рассекает неведение.",
         motto:"БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ",
         projectLinks:"Площадки проекта",
         authors:"Связь с авторами",
         authorTelegram:"Telegram · @NamelessDhamma",
+        authorLine:"LINE · @namelessdhamma",
+        authorFacebook:"Facebook · @NamelessDhamma",
         authorEmail:"Email · namelessdhamma@gmail.com",
         support:"Поддержать проект",
         rubles:"Поддержать в рублях",
         baht:"Поддержать в батах",
         yoomoneyNote:"Безопасный перевод через ЮMoney",
+        yoomoneyFallback:"Открыть YooMoney напрямую",
         qrNote:"Отсканируйте QR-код в банковском приложении",
+        qrSafety:"Перед подтверждением проверьте имя получателя в банковском приложении",
         footer:"LIGHT IS NOT AN EFFECT — IT IS THE DHAMMA"
       },
       en:{
         siteTitle:"<span>Nameless</span><span>Dhamma</span>",
         documentTitle:"Nameless Dhamma",
+        metaDescription:"Nameless Dhamma — boundless wisdom cuts through ignorance.",
+        ogTitle:"Nameless Dhamma",
+        ogDescription:"Boundless wisdom cuts through ignorance.",
         motto:"BOUNDLESS WISDOM<br>CUTS THROUGH IGNORANCE",
         projectLinks:"Project Platforms",
         authors:"Contact the Authors",
         authorTelegram:"Telegram · @NamelessDhamma",
+        authorLine:"LINE · @namelessdhamma",
+        authorFacebook:"Facebook · @NamelessDhamma",
         authorEmail:"Email · namelessdhamma@gmail.com",
         support:"Support the Project",
         rubles:"Support in Rubles",
         baht:"Support in Thai Baht",
         yoomoneyNote:"Secure transfer via YooMoney",
+        yoomoneyFallback:"Open YooMoney directly",
         qrNote:"Scan the QR code with your banking app",
+        qrSafety:"Before confirming, verify the recipient name in your banking app",
         footer:"LIGHT IS NOT AN EFFECT — IT IS THE DHAMMA"
       },
       th:{
         siteTitle:"<span>ธรรมไร้นาม</span>",
         documentTitle:"ธรรมไร้นาม",
+        metaDescription:"ธรรมไร้นาม — ปัญญาไร้ขอบเขตตัดผ่านอวิชชา",
+        ogTitle:"ธรรมไร้นาม",
+        ogDescription:"ปัญญาไร้ขอบเขตตัดผ่านอวิชชา",
         motto:"ปัญญาไร้ขอบเขต<br>ตัดผ่านอวิชชา",
         projectLinks:"ช่องทางของโครงการ",
         authors:"ติดต่อผู้จัดทำ",
         authorTelegram:"Telegram · @NamelessDhamma",
+        authorLine:"LINE · @namelessdhamma",
+        authorFacebook:"Facebook · @NamelessDhamma",
         authorEmail:"อีเมล · namelessdhamma@gmail.com",
         support:"สนับสนุนโครงการ",
         rubles:"สนับสนุนเป็นรูเบิล",
         baht:"สนับสนุนเป็นบาท",
         yoomoneyNote:"โอนเงินอย่างปลอดภัยผ่าน YooMoney",
+        yoomoneyFallback:"เปิด YooMoney โดยตรง",
         qrNote:"สแกนคิวอาร์โค้ดด้วยแอปธนาคาร",
+        qrSafety:"ก่อนยืนยัน โปรดตรวจสอบชื่อผู้รับในแอปธนาคาร",
         footer:"แสงไม่ใช่เอฟเฟกต์ — แต่คือธรรม"
       }
     };
 
-    let lang="ru";
+    const STORAGE_KEY="namelessdhamma_lang";
 
-    function applyLanguage(nextLang){
-      lang=nextLang;
+    function detectLanguage(){
+      try {
+        const stored=localStorage.getItem(STORAGE_KEY);
+        if(stored && i18n[stored]) return stored;
+      } catch (e) {}
+      const candidates=[...(navigator.languages||[]), navigator.language, navigator.userLanguage].filter(Boolean).map(x=>String(x).toLowerCase());
+      for(const code of candidates){
+        if(code.startsWith('th')) return 'th';
+        if(code.startsWith('en')) return 'en';
+        if(code.startsWith('ru')) return 'ru';
+      }
+      return 'ru';
+    }
+
+    let lang=detectLanguage();
+
+    function applyLanguage(nextLang, persist=true){
+      lang=i18n[nextLang] ? nextLang : 'ru';
       document.documentElement.lang=lang;
-      document.querySelectorAll("[data-lang]").forEach(button=>{
-        button.classList.toggle("active",button.dataset.lang===lang);
+      document.querySelectorAll('[data-lang]').forEach(button=>{
+        button.classList.toggle('active',button.dataset.lang===lang);
       });
-      document.querySelectorAll("[data-text]").forEach(node=>{
+      document.querySelectorAll('[data-text]').forEach(node=>{
         const key=node.dataset.text;
         if(i18n[lang][key]!==undefined){
           node.innerHTML=i18n[lang][key];
         }
       });
-      if(i18n[lang].documentTitle){
-        document.title=i18n[lang].documentTitle;
+      document.title=i18n[lang].documentTitle || 'Nameless Dhamma';
+      const desc=document.querySelector('meta[name="description"]');
+      if(desc) desc.setAttribute('content', i18n[lang].metaDescription || desc.getAttribute('content'));
+      const ogTitle=document.querySelector('meta[property="og:title"]');
+      if(ogTitle) ogTitle.setAttribute('content', i18n[lang].ogTitle || document.title);
+      const ogDesc=document.querySelector('meta[property="og:description"]');
+      if(ogDesc) ogDesc.setAttribute('content', i18n[lang].ogDescription || '');
+      const twTitle=document.querySelector('meta[name="twitter:title"]');
+      if(twTitle) twTitle.setAttribute('content', i18n[lang].ogTitle || document.title);
+      const twDesc=document.querySelector('meta[name="twitter:description"]');
+      if(twDesc) twDesc.setAttribute('content', i18n[lang].ogDescription || '');
+      if(persist){
+        try { localStorage.setItem(STORAGE_KEY, lang); } catch (e) {}
       }
     }
 
-    document.querySelectorAll("[data-lang]").forEach(button=>{
-      button.addEventListener("click",()=>applyLanguage(button.dataset.lang));
+    document.querySelectorAll('[data-lang]').forEach(button=>{
+      button.addEventListener('click',()=>applyLanguage(button.dataset.lang));
     });
 
-    applyLanguage(lang);
+    applyLanguage(lang, false);
 
-    const temple=document.querySelector(".temple-inner");
-    window.addEventListener("scroll",()=>{
-      const p=Math.min(window.scrollY/innerHeight,1);
-      temple.style.opacity=String(1-p*.72);
-      temple.style.transform=`translateY(${p*30}px) scale(${1-p*.035})`;
+    const temple=document.querySelector('.temple-inner');
+    window.addEventListener('scroll',()=>{
+      const p=Math.min(window.scrollY / innerHeight, 1);
+      temple.style.opacity=String(1 - p * .72);
+      temple.style.transform=`translateY(${p * 30}px) scale(${1 - p * .035})`;
     },{passive:true});
   </script>
 </body>

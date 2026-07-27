@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="description" content="Nameless Dhamma — page not found.">
+  <title>Nameless Dhamma</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="favicon-192x192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="favicon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <style>
+    :root{color-scheme:dark;--fg:#f7f7f7}
+    *{box-sizing:border-box} html,body{margin:0;min-height:100%;background:#000;color:var(--fg);font-family:Georgia,"Times New Roman","Noto Serif Thai",serif}
+    body{display:grid;place-items:center;overflow:hidden}
+    body::before{content:"";position:fixed;inset:0;background:radial-gradient(circle at 50% 30%,rgba(255,255,255,.06),transparent 26rem),radial-gradient(ellipse at center,transparent 0 38%,rgba(0,0,0,.9) 100%),#000;z-index:-2}
+    .mist,.mist::before,.mist::after{content:"";position:fixed;inset:-30%;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 31% 30%,rgba(255,255,255,.018),transparent 35%),radial-gradient(ellipse at 72% 60%,rgba(255,255,255,.014),transparent 34%);filter:blur(42px);animation:mist 36s ease-in-out infinite alternate}
+    .mist::before{transform:rotate(17deg);animation-duration:44s}.mist::after{transform:rotate(-13deg);animation-duration:52s}
+    .language{position:fixed;top:max(14px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));z-index:50;display:flex;gap:9px;align-items:center;color:rgba(255,255,255,.42);font-size:.92rem}
+    .language button{border:0;padding:5px 1px;background:none;color:inherit;font:inherit;cursor:pointer}.language button.active,.language button:focus-visible{color:#fff;text-shadow:0 0 12px rgba(255,255,255,.5);outline:none}
+    .wrap{text-align:center;padding:32px 20px;max-width:700px}
+    .wheel{width:min(72vw,260px);display:block;margin:0 auto 18px;filter:drop-shadow(0 0 9px rgba(255,255,255,.28)) drop-shadow(0 0 26px rgba(255,255,255,.10));animation:breathe 15s ease-in-out infinite}
+    h1{margin:0 0 10px;font-size:clamp(2.4rem,9vw,4.6rem);font-weight:400;line-height:.95;text-shadow:0 0 12px rgba(255,255,255,.12)}
+    p{margin:0 auto;color:rgba(255,255,255,.62);max-width:32rem;line-height:1.65}
+    .home{display:inline-flex;align-items:center;justify-content:center;margin-top:28px;padding:14px 26px;border-radius:999px;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.85);text-decoration:none;background:radial-gradient(circle at 50% 0,rgba(255,255,255,.085),rgba(255,255,255,.018) 50%,rgba(0,0,0,.45));box-shadow:0 0 22px rgba(255,255,255,.045),inset 0 0 18px rgba(255,255,255,.025);transition:.22s ease}
+    .home:hover,.home:focus-visible{color:#fff;border-color:rgba(255,255,255,.42);box-shadow:0 0 18px rgba(255,255,255,.15),inset 0 0 20px rgba(255,255,255,.045);transform:translateY(-2px);outline:none}
+    @keyframes breathe{0%,100%{transform:scale(.992);opacity:.94}50%{transform:scale(1.012);opacity:1}}
+    @keyframes mist{from{transform:translate3d(-3%,-2%,0) scale(1)}to{transform:translate3d(4%,3%,0) scale(1.08)}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}}
+  </style>
+</head>
+<body>
+  <div class="mist" aria-hidden="true"></div>
+  <nav class="language" aria-label="Language">
+    <button class="active" type="button" data-lang="ru">RU</button><span>│</span>
+    <button type="button" data-lang="en">EN</button><span>│</span>
+    <button type="button" data-lang="th">ไทย</button>
+  </nav>
+  <main class="wrap">
+    <img class="wheel" src="wheel.webp" alt="">
+    <h1 data-text="title">Страница не найдена</h1>
+    <p data-text="text">Возможно, ссылка устарела или страница была перемещена. Вернитесь на главную страницу.</p>
+    <a class="home" href="/" data-text="home">Вернуться на главную</a>
+  </main>
+  <script>
+    const i18n={
+      ru:{title:'Страница не найдена',text:'Возможно, ссылка устарела или страница была перемещена. Вернитесь на главную страницу.',home:'Вернуться на главную',documentTitle:'Страница не найдена — Nameless Dhamma'},
+      en:{title:'Page not found',text:'The link may be outdated or the page may have been moved. Return to the homepage.',home:'Back to home',documentTitle:'Page not found — Nameless Dhamma'},
+      th:{title:'ไม่พบหน้านี้',text:'ลิงก์อาจล้าสมัยหรือหน้านี้อาจถูกย้าย โปรดกลับไปยังหน้าหลัก',home:'กลับสู่หน้าหลัก',documentTitle:'ไม่พบหน้านี้ — ธรรมไร้นาม'}
+    };
+    const STORAGE_KEY='namelessdhamma_lang';
+    function detectLanguage(){try{const stored=localStorage.getItem(STORAGE_KEY);if(stored&&i18n[stored]) return stored;}catch(e){}const candidates=[...(navigator.languages||[]),navigator.language,navigator.userLanguage].filter(Boolean).map(x=>String(x).toLowerCase());for(const code of candidates){if(code.startsWith('th')) return 'th';if(code.startsWith('en')) return 'en';if(code.startsWith('ru')) return 'ru';}return 'ru';}
+    function applyLanguage(lang,persist=true){document.documentElement.lang=lang;document.querySelectorAll('[data-lang]').forEach(button=>button.classList.toggle('active',button.dataset.lang===lang));document.querySelectorAll('[data-text]').forEach(node=>{const key=node.dataset.text;if(i18n[lang][key]!==undefined) node.textContent=i18n[lang][key];});document.title=i18n[lang].documentTitle;if(persist){try{localStorage.setItem(STORAGE_KEY,lang);}catch(e){}}}
+    document.querySelectorAll('[data-lang]').forEach(button=>button.addEventListener('click',()=>applyLanguage(button.dataset.lang)));
+    applyLanguage(detectLanguage(), false);
+  </script>
+</body>
+</html>
