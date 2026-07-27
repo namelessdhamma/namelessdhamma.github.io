@@ -525,7 +525,7 @@
         <div class="core"></div>
       </div>
 
-      <h1><span>Nameless</span><span>Dhamma</span></h1>
+      <h1 data-text="siteTitle"><span>Nameless</span><span>Dhamma</span></h1>
       <p class="motto" data-text="motto">БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ</p>
     </div>
 
@@ -570,11 +570,11 @@
       <div class="author-links">
         <a class="author-link" href="https://t.me/NamelessDhamma" target="_blank" rel="noopener" aria-label="Telegram NamelessDhamma">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 3L3.8 9.7c-1.2.5-1.2 1.2-.2 1.5l4.4 1.4 1.7 5.1c.2.7.1 1 .8 1 .5 0 .8-.2 1-.4l2.4-2.3 5 3.7c.9.5 1.6.2 1.8-.9L23 4.3c.3-1.3-.5-1.9-2-1.3z"/></svg>
-          <span>Telegram · @NamelessDhamma</span>
+          <span data-text="authorTelegram">Telegram · @NamelessDhamma</span>
         </a>
         <a class="author-link" href="mailto:namelessdhamma@gmail.com" aria-label="Email Nameless Dhamma">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span>Email · namelessdhamma@gmail.com</span>
+          <span data-text="authorEmail">Email · namelessdhamma@gmail.com</span>
         </a>
       </div>
     </div>
@@ -602,26 +602,81 @@
     </div>
   </section>
 
-  <footer>LIGHT IS NOT AN EFFECT — IT IS THE DHAMMA</footer>
+  <footer data-text="footer">LIGHT IS NOT AN EFFECT — IT IS THE DHAMMA</footer>
 
   <script>
     const i18n={
-      ru:{motto:"БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ",projectLinks:"Площадки проекта",authors:"Связь с авторами",support:"Поддержать проект",rubles:"Поддержать в рублях",baht:"Поддержать в батах",yoomoneyNote:"Безопасный перевод через ЮMoney",qrNote:"Отсканируйте QR-код в банковском приложении"},
-      en:{motto:"BOUNDLESS WISDOM<br>CUTS THROUGH IGNORANCE",projectLinks:"Project platforms",authors:"Contact the authors",support:"Support the project",rubles:"Support in rubles",baht:"Support in baht",yoomoneyNote:"Secure transfer via YooMoney",qrNote:"Scan the QR code in your banking app"},
-      th:{motto:"ปัญญาอันไร้ขอบเขต<br>ตัดผ่านอวิชชา",projectLinks:"ช่องทางของโครงการ",authors:"ติดต่อผู้เขียน",support:"สนับสนุนโครงการ",rubles:"สนับสนุนเป็นรูเบิล",baht:"สนับสนุนเป็นบาท",yoomoneyNote:"โอนอย่างปลอดภัยผ่าน YooMoney",qrNote:"สแกนคิวอาร์โค้ดด้วยแอปธนาคาร"}
+      ru:{
+        siteTitle:"<span>Nameless</span><span>Dhamma</span>",
+        documentTitle:"Nameless Dhamma",
+        motto:"БЕЗГРАНИЧНАЯ МУДРОСТЬ<br>РАССЕКАЕТ НЕВЕДЕНИЕ",
+        projectLinks:"Площадки проекта",
+        authors:"Связь с авторами",
+        authorTelegram:"Telegram · @NamelessDhamma",
+        authorEmail:"Email · namelessdhamma@gmail.com",
+        support:"Поддержать проект",
+        rubles:"Поддержать в рублях",
+        baht:"Поддержать в батах",
+        yoomoneyNote:"Безопасный перевод через ЮMoney",
+        qrNote:"Отсканируйте QR-код в банковском приложении",
+        footer:"LIGHT IS NOT AN EFFECT — IT IS THE DHAMMA"
+      },
+      en:{
+        siteTitle:"<span>Nameless</span><span>Dhamma</span>",
+        documentTitle:"Nameless Dhamma",
+        motto:"BOUNDLESS WISDOM<br>CUTS THROUGH IGNORANCE",
+        projectLinks:"Project Platforms",
+        authors:"Contact the Authors",
+        authorTelegram:"Telegram · @NamelessDhamma",
+        authorEmail:"Email · namelessdhamma@gmail.com",
+        support:"Support the Project",
+        rubles:"Support in Rubles",
+        baht:"Support in Thai Baht",
+        yoomoneyNote:"Secure transfer via YooMoney",
+        qrNote:"Scan the QR code with your banking app",
+        footer:"LIGHT IS NOT AN EFFECT — IT IS THE DHAMMA"
+      },
+      th:{
+        siteTitle:"<span>ธรรมไร้นาม</span>",
+        documentTitle:"ธรรมไร้นาม",
+        motto:"ปัญญาไร้ขอบเขต<br>ตัดผ่านอวิชชา",
+        projectLinks:"ช่องทางของโครงการ",
+        authors:"ติดต่อผู้จัดทำ",
+        authorTelegram:"Telegram · @NamelessDhamma",
+        authorEmail:"อีเมล · namelessdhamma@gmail.com",
+        support:"สนับสนุนโครงการ",
+        rubles:"สนับสนุนเป็นรูเบิล",
+        baht:"สนับสนุนเป็นบาท",
+        yoomoneyNote:"โอนเงินอย่างปลอดภัยผ่าน YooMoney",
+        qrNote:"สแกนคิวอาร์โค้ดด้วยแอปธนาคาร",
+        footer:"แสงไม่ใช่เอฟเฟกต์ — แต่คือธรรม"
+      }
     };
 
     let lang="ru";
 
-    document.querySelectorAll("[data-lang]").forEach(button=>{
-      button.addEventListener("click",()=>{
-        lang=button.dataset.lang;
-        document.documentElement.lang=lang;
-        document.querySelectorAll("[data-lang]").forEach(x=>x.classList.toggle("active",x===button));
-        document.querySelectorAll("[data-text]").forEach(x=>x.innerHTML=i18n[lang][x.dataset.text]);
+    function applyLanguage(nextLang){
+      lang=nextLang;
+      document.documentElement.lang=lang;
+      document.querySelectorAll("[data-lang]").forEach(button=>{
+        button.classList.toggle("active",button.dataset.lang===lang);
       });
+      document.querySelectorAll("[data-text]").forEach(node=>{
+        const key=node.dataset.text;
+        if(i18n[lang][key]!==undefined){
+          node.innerHTML=i18n[lang][key];
+        }
+      });
+      if(i18n[lang].documentTitle){
+        document.title=i18n[lang].documentTitle;
+      }
+    }
+
+    document.querySelectorAll("[data-lang]").forEach(button=>{
+      button.addEventListener("click",()=>applyLanguage(button.dataset.lang));
     });
-    });
+
+    applyLanguage(lang);
 
     const temple=document.querySelector(".temple-inner");
     window.addEventListener("scroll",()=>{
