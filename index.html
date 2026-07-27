@@ -400,11 +400,18 @@
     }
     .yoomoney-button:hover{border-color:rgba(255,255,255,.55);box-shadow:0 0 20px rgba(255,255,255,.19),0 0 42px rgba(255,255,255,.07),inset 0 0 21px rgba(255,255,255,.065);transform:translateY(-2px)}
     .yoomoney-mark{
-      width:31px;height:31px;border:2px solid rgba(255,255,255,.86);border-radius:50%;
-      position:relative;box-shadow:0 0 10px rgba(255,255,255,.52),inset 0 0 8px rgba(255,255,255,.18);
+      display:inline-grid;
+      place-items:center;
+      min-width:34px;
+      height:34px;
+      color:#f5f5f5;
+      font-family:Georgia,"Times New Roman",serif;
+      font-size:2rem;
+      font-weight:700;
+      line-height:1;
+      text-shadow:0 0 7px rgba(255,255,255,.95),0 0 16px rgba(255,255,255,.52);
+      filter:drop-shadow(0 0 5px rgba(255,255,255,.35));
     }
-    .yoomoney-mark::before{content:"";position:absolute;width:8px;height:8px;border-radius:50%;background:#fff;left:5px;top:5px;box-shadow:0 0 9px #fff}
-    .yoomoney-mark::after{content:"";position:absolute;width:13px;height:2px;background:#fff;right:-5px;bottom:5px;transform:rotate(-42deg);box-shadow:0 0 7px #fff}
     .yoomoney-button b{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.98rem;font-weight:500;letter-spacing:.045em;text-shadow:0 0 10px rgba(255,255,255,.32)}
     .yoomoney-button iframe{position:absolute;inset:0;width:100%;height:100%;opacity:.001;border:0;z-index:4;cursor:pointer}
 
@@ -422,7 +429,7 @@
       transition:.22s ease;
     }
     .qr-link:hover .qr-frame{transform:translateY(-2px);box-shadow:0 0 24px rgba(255,255,255,.22),0 0 52px rgba(255,255,255,.08)}
-    .qr-frame img{display:block;width:100%;height:auto;border-radius:11px}
+    .qr-frame img{display:block;width:100%;height:auto;border-radius:0;image-rendering:auto}
     .qr-link b{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.98rem;font-weight:500;letter-spacing:.045em;text-shadow:0 0 10px rgba(255,255,255,.25)}
 
     footer{
@@ -575,7 +582,7 @@
       <div class="support-options">
         <div class="support-card">
           <div class="yoomoney-button" aria-label="Поддержать в рублях через ЮMoney">
-            <span class="yoomoney-mark" aria-hidden="true"></span>
+            <span class="yoomoney-mark" aria-hidden="true">Ю</span>
             <b data-text="rubles">Поддержать в рублях</b>
             <iframe title="ЮMoney" src="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1J988N4Q8TH.260727&amp;" width="330" height="50" frameborder="0" allowtransparency="true" scrolling="no"></iframe>
           </div>
@@ -583,8 +590,8 @@
         </div>
 
         <div class="support-card">
-          <a class="qr-link" href="kbank-promptpay-qr.jpg" target="_blank" rel="noopener" aria-label="Открыть QR-код KBank PromptPay">
-            <span class="qr-frame"><img src="kbank-promptpay-qr.jpg" alt="QR-код KBank PromptPay для перевода в батах"></span>
+          <a class="qr-link" href="kbank-qr.png" target="_blank" rel="noopener" aria-label="Открыть QR-код KBank PromptPay">
+            <span class="qr-frame"><img src="kbank-qr.png" alt="QR-код KBank PromptPay для перевода в батах"></span>
             <b data-text="baht">Поддержать в батах</b>
           </a>
           <p class="support-note" data-text="qrNote">Отсканируйте QR-код в банковском приложении</p>
