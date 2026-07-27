@@ -437,6 +437,7 @@
     }
     .yoomoney-button b{font-family:ui-sans-serif,system-ui,sans-serif;font-size:.98rem;font-weight:500;letter-spacing:.045em;text-shadow:0 0 10px rgba(255,255,255,.32)}
     .support-note{margin:0;color:rgba(255,255,255,.42);font-family:ui-sans-serif,system-ui,sans-serif;font-size:.78rem;line-height:1.55}
+    .yoomoney-button iframe{position:absolute;inset:0;width:100%;height:100%;opacity:.001;border:0;z-index:4;cursor:pointer}
     .support-fallback{color:rgba(255,255,255,.58);font-family:ui-sans-serif,system-ui,sans-serif;font-size:.78rem;text-decoration:none;border-bottom:1px solid rgba(255,255,255,.22)}
     .support-fallback:hover,.support-fallback:focus-visible{color:#fff;border-bottom-color:rgba(255,255,255,.55);outline:none}
 
@@ -607,10 +608,11 @@
       <h2 class="section-title" data-text="support">Поддержать проект</h2>
       <div class="support-options">
         <div class="support-card">
-          <a class="yoomoney-button" href="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1J988N4Q8TH.260727&amp;" target="_blank" rel="noopener" aria-label="Поддержать в рублях через ЮMoney">
+          <div class="yoomoney-button" aria-label="Поддержать в рублях через ЮMoney">
             <span class="yoomoney-mark" aria-hidden="true">Ю</span>
             <b data-text="rubles">Поддержать в рублях</b>
-          </a>
+            <iframe title="ЮMoney" src="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1J988N4Q8TH.260727&amp;" width="330" height="50" frameborder="0" allowtransparency="true" scrolling="no"></iframe>
+          </div>
           <p class="support-note" data-text="yoomoneyNote">Безопасный перевод через ЮMoney</p>
           <a class="support-fallback" href="https://yoomoney.ru/quickpay/fundraise/button?billNumber=1J988N4Q8TH.260727&amp;" target="_blank" rel="noopener" data-text="yoomoneyFallback">Открыть YooMoney напрямую</a>
         </div>
@@ -622,6 +624,7 @@
           </a>
           <p class="support-note" data-text="qrNote">Отсканируйте QR-код в банковском приложении</p>
           <p class="support-note" data-text="qrSafety">Перед подтверждением проверьте имя получателя в банковском приложении</p>
+          <p class="support-note" data-text="qrRecipient">Savva Savchenko</p>
         </div>
       </div>
     </div>
@@ -651,6 +654,7 @@
         yoomoneyFallback:"Открыть YooMoney напрямую",
         qrNote:"Отсканируйте QR-код в банковском приложении",
         qrSafety:"Перед подтверждением проверьте имя получателя в банковском приложении",
+        qrRecipient:"Savva Savchenko",
         footer:"LIGHT IS NOT AN EFFECT — IT IS THE DHAMMA"
       },
       en:{
@@ -673,6 +677,7 @@
         yoomoneyFallback:"Open YooMoney directly",
         qrNote:"Scan the QR code with your banking app",
         qrSafety:"Before confirming, verify the recipient name in your banking app",
+        qrRecipient:"Savva Savchenko",
         footer:"LIGHT IS NOT AN EFFECT — IT IS THE DHAMMA"
       },
       th:{
@@ -695,6 +700,7 @@
         yoomoneyFallback:"เปิด YooMoney โดยตรง",
         qrNote:"สแกนคิวอาร์โค้ดด้วยแอปธนาคาร",
         qrSafety:"ก่อนยืนยัน โปรดตรวจสอบชื่อผู้รับในแอปธนาคาร",
+        qrRecipient:"Savva Savchenko",
         footer:"แสงไม่ใช่เอฟเฟกต์ — แต่คือธรรม"
       }
     };
