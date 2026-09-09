@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "channel": "qualified",
+  "notebooklm_py": "0.8.2",
+  "tunnel_client": "v0.0.14",
+  "updated_at": "2026-09-09T10:36:00Z",
+  "policy": "phone installs only versions present in this qualified manifest; candidate upstream releases are tested separately before promotion"
+}
