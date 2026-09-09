@@ -10,8 +10,8 @@ TUNNEL_ID="tunnel_6aa11901abe48191adbc946db4ede98b"
 mkdir -p "$BASE"
 chmod 700 "$BASE"
 
-say() { printf '\n==> %s\n' "$*"; }
-fail() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+say() { echo; echo "==> $*"; }
+fail() { echo; echo "ERROR: $*" >&2; exit 1; }
 
 [[ -x "$VENV/bin/notebooklm-mcp" ]] || fail "NotebookLM is not prepared. Run 01-notebooklm-login.sh first."
 "$VENV/bin/notebooklm" auth check --test --json >/dev/null || fail "NotebookLM authentication is not valid."
@@ -32,12 +32,13 @@ if [[ ! -x "$TC" ]]; then
 fi
 
 if [[ ! -s "$KEY_FILE" ]]; then
-  printf '\nPaste the OpenAI Runtime API key for this tunnel (input is hidden): '
+  echo
+  echo "Paste the OpenAI Runtime API key for this tunnel (input is hidden), then press Enter:"
   read -r -s RUNTIME_KEY
-  printf '\n'
+  echo
   [[ -n "$RUNTIME_KEY" ]] || fail "Runtime API key is required."
   umask 077
-  printf '%s' "$RUNTIME_KEY" > "$KEY_FILE"
+  cat > "$KEY_FILE" <<< "$RUNTIME_KEY"
   unset RUNTIME_KEY
   chmod 600 "$KEY_FILE"
 fi
@@ -55,7 +56,8 @@ say "Checking NotebookLM MCP and Secure Tunnel readiness"
 "$TC" doctor --profile "$PROFILE" --explain
 
 say "Secure MCP Tunnel is starting"
-printf 'Tunnel: %s\n' "$TUNNEL_ID"
-printf 'Keep this Cloud Shell session open for the initial connectivity test.\n'
-printf 'When the tunnel reports ready, return to ChatGPT and refresh the Tunnel list.\n\n'
+echo "Tunnel: $TUNNEL_ID"
+echo "Keep this Cloud Shell session open for the initial connectivity test."
+echo "When the tunnel reports ready, return to ChatGPT and refresh the Tunnel list."
+echo
 exec "$TC" run --profile "$PROFILE"
