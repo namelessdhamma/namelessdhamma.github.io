@@ -1,0 +1,77 @@
+name: NotebookLM MCP upstream watch
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 2 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: notebooklm-mcp-bootstrap
+
+      - name: Read qualified manifest
+        id: current
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          m=json.load(open('tools/notebooklm-mcp/update-manifest.json'))
+          print('nlm='+m['notebooklm_py'])
+          print('tunnel='+m['tunnel_client'])
+          PY
+
+      - name: Discover current upstream versions
+        id: latest
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, urllib.request
+          with urllib.request.urlopen('https://pypi.org/pypi/notebooklm-py/json') as r:
+              print('nlm='+json.load(r)['info']['version'])
+          req=urllib.request.Request('https://api.github.com/repos/openai/tunnel-client/releases/latest', headers={'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(req) as r:
+              print('tunnel='+json.load(r)['tag_name'])
+          PY
+
+      - name: Smoke-test candidate NotebookLM package
+        if: steps.latest.outputs.nlm != steps.current.outputs.nlm
+        shell: bash
+        run: |
+          python -m venv /tmp/nlm
+          /tmp/nlm/bin/pip install -q --upgrade pip
+          /tmp/nlm/bin/pip install -q "notebooklm-py[headless,mcp]==${{ steps.latest.outputs.nlm }}"
+          /tmp/nlm/bin/python -c 'import notebooklm; import importlib.metadata as m; print(m.version("notebooklm-py"))'
+
+      - name: Cross-build candidate tunnel-client for Android ARM64
+        if: steps.latest.outputs.tunnel != steps.current.outputs.tunnel
+        shell: bash
+        run: |
+          git clone -q --depth 1 --branch "${{ steps.latest.outputs.tunnel }}" https://github.com/openai/tunnel-client.git /tmp/tunnel-client
+          cd /tmp/tunnel-client
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o /tmp/tunnel-client-android-arm64 ./cmd/client
+          test -s /tmp/tunnel-client-android-arm64
+
+      - name: Open candidate issue when upstream changed
+        if: steps.latest.outputs.nlm != steps.current.outputs.nlm || steps.latest.outputs.tunnel != steps.current.outputs.tunnel
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NLM_CURRENT: ${{ steps.current.outputs.nlm }}
+          NLM_LATEST: ${{ steps.latest.outputs.nlm }}
+          TUNNEL_CURRENT: ${{ steps.current.outputs.tunnel }}
+          TUNNEL_LATEST: ${{ steps.latest.outputs.tunnel }}
+        shell: bash
+        run: |
+          title="ND NotebookLM MCP candidate: notebooklm-py ${NLM_LATEST}, tunnel-client ${TUNNEL_LATEST}"
+          if gh issue list --state open --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then
+            echo "Candidate issue already exists"
+            exit 0
+          fi
+          gh issue create --title "$title" --body "Upstream change detected and basic GitHub smoke/build checks passed.\n\nQualified: notebooklm-py ${NLM_CURRENT}; tunnel-client ${TUNNEL_CURRENT}.\nCandidate: notebooklm-py ${NLM_LATEST}; tunnel-client ${TUNNEL_LATEST}.\n\nDo not promote automatically. The Android runtime must perform a live NotebookLM auth/read/write canary and retain rollback before update-manifest.json is changed."
