@@ -5,8 +5,8 @@ BASE="$HOME/.nd-notebooklm-mcp"
 VENV="$BASE/venv"
 TC="$BASE/tunnel-client"
 KEY_FILE="$BASE/openai-runtime-key"
-TUNNEL_FILE="$BASE/tunnel-id"
 PROFILE="nd-notebooklm"
+TUNNEL_ID="tunnel_6aa11901abe48191adbc946db4ede98b"
 mkdir -p "$BASE"
 chmod 700 "$BASE"
 
@@ -31,20 +31,8 @@ if [[ ! -x "$TC" ]]; then
   trap - EXIT
 fi
 
-TUNNEL_ID=""
-if [[ -s "$TUNNEL_FILE" ]]; then
-  TUNNEL_ID="$(cat "$TUNNEL_FILE")"
-fi
-if [[ -z "$TUNNEL_ID" ]]; then
-  printf '\nOpenAI tunnel ID (starts with tunnel_): '
-  read -r TUNNEL_ID
-  [[ "$TUNNEL_ID" == tunnel_* ]] || fail "A valid tunnel ID is required."
-  printf '%s' "$TUNNEL_ID" > "$TUNNEL_FILE"
-  chmod 600 "$TUNNEL_FILE"
-fi
-
 if [[ ! -s "$KEY_FILE" ]]; then
-  printf '\nOpenAI runtime API key (input is hidden): '
+  printf '\nPaste the OpenAI Runtime API key for this tunnel (input is hidden): '
   read -r -s RUNTIME_KEY
   printf '\n'
   [[ -n "$RUNTIME_KEY" ]] || fail "Runtime API key is required."
@@ -67,6 +55,7 @@ say "Checking NotebookLM MCP and Secure Tunnel readiness"
 "$TC" doctor --profile "$PROFILE" --explain
 
 say "Secure MCP Tunnel is starting"
-printf 'Keep this Cloud Shell session running while using NotebookLM from ChatGPT.\n'
-printf 'Return to ChatGPT and connect the custom plugin to tunnel: %s\n\n' "$TUNNEL_ID"
+printf 'Tunnel: %s\n' "$TUNNEL_ID"
+printf 'Keep this Cloud Shell session open for the initial connectivity test.\n'
+printf 'When the tunnel reports ready, return to ChatGPT and refresh the Tunnel list.\n\n'
 exec "$TC" run --profile "$PROFILE"
