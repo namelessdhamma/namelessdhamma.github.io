@@ -27,9 +27,13 @@ fi
 "$VENV/bin/python" -m pip install -q --upgrade pip
 "$VENV/bin/python" -m pip install -q --upgrade 'notebooklm-py[headless,browser,mcp]'
 
-printf '\nGoogle account email: '
-read -r GOOGLE_EMAIL
+GOOGLE_EMAIL="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -n 1 || true)"
+if [[ -z "$GOOGLE_EMAIL" ]]; then
+  printf '\nGoogle account email: '
+  read -r GOOGLE_EMAIL
+fi
 [[ -n "$GOOGLE_EMAIL" ]] || fail "Google account email is required."
+printf '\nUsing Google account: %s\n' "$GOOGLE_EMAIL"
 
 rm -rf "$BROWSER_DIR"
 mkdir -p "$BROWSER_DIR"
