@@ -44,14 +44,23 @@ retry 5 10 pkg update -y
 apt-get -o Dpkg::Options::=--force-confold -y upgrade
 
 say "Installing free local runtime dependencies"
-retry 5 10 apt-get -o Dpkg::Options::=--force-confold -y install python git golang cloudflared termux-services curl coreutils openssl
+retry 5 10 apt-get -o Dpkg::Options::=--force-confold -y install \
+  python git golang rust clang make pkg-config libffi openssl \
+  cloudflared termux-services curl coreutils
+
+say "Verifying native build toolchain"
+command -v rustc >/dev/null || fail "rustc is unavailable after installing the Termux rust package."
+command -v cargo >/dev/null || fail "cargo is unavailable after installing the Termux rust package."
+rustc --version
+cargo --version
 
 say "Installing NotebookLM MCP $NLM_VERSION"
 if [[ ! -x "$VENV/bin/python" ]]; then
   python -m venv "$VENV"
 fi
-retry 5 15 "$VENV/bin/python" -m pip install -q --retries 15 --timeout 120 --upgrade pip
-retry 5 15 "$VENV/bin/python" -m pip install -q --retries 15 --timeout 120 --prefer-binary --upgrade "notebooklm-py[headless,mcp]==$NLM_VERSION"
+retry 5 15 "$VENV/bin/python" -m pip install -q --retries 15 --timeout 120 --upgrade pip setuptools wheel
+retry 5 15 env PATH="$PREFIX/bin:$PATH" CARGO="$PREFIX/bin/cargo" RUSTC="$PREFIX/bin/rustc" \
+  "$VENV/bin/python" -m pip install -q --retries 15 --timeout 120 --prefer-binary --upgrade "notebooklm-py[headless,mcp]==$NLM_VERSION"
 
 say "Building OpenAI tunnel-client $TUNNEL_VERSION natively for Android/Termux"
 if [[ ! -x "$TC" ]]; then
