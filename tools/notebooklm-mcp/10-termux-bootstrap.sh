@@ -9,7 +9,9 @@ VENV="$BASE/venv"
 TC="$BASE/tunnel-client"
 SRC="$BASE/tunnel-client-src"
 SERVICE="nd-notebooklm-mcp"
+UPDATE_SERVICE="nd-notebooklm-updater"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+UPDATE_URL="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/notebooklm-mcp-bootstrap/tools/notebooklm-mcp/12-termux-self-update.sh"
 
 say(){ printf '\n==> %s\n' "$*"; }
 fail(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -49,9 +51,14 @@ fi
 "$TC" --version || fail "tunnel-client build is not runnable on this Android device."
 cloudflared --version || fail "Termux cloudflared is not runnable."
 
-say "Preparing supervised Termux service"
+say "Installing qualified self-update helper"
+curl -fsSL "$UPDATE_URL" -o "$BASE/self-update.sh"
+chmod 700 "$BASE/self-update.sh"
+
+say "Preparing supervised Termux services"
 SVD="$PREFIX/var/service/$SERVICE"
-mkdir -p "$SVD/log" "$HOME/.termux/boot" "$BASE/logs"
+UPD="$PREFIX/var/service/$UPDATE_SERVICE"
+mkdir -p "$SVD/log" "$UPD/log" "$HOME/.termux/boot" "$BASE/logs"
 cat >"$SVD/run" <<RUN_EOF
 #!/data/data/com.termux/files/usr/bin/sh
 exec 2>&1
@@ -63,7 +70,6 @@ export CLOUDFLARED_PATH="$PREFIX/bin/cloudflared"
 
 MASTER="$HOME/.notebooklm/profiles/default/master_token.json"
 RUNTIME="$BASE/openai-runtime-key"
-PROFILE_DIR="$HOME/.config/openai/tunnel-client/profiles/nd-notebooklm"
 
 [ -s "\$MASTER" ] || { echo "ND-MCP: waiting for NotebookLM master token"; sleep 30; exit 1; }
 [ -s "\$RUNTIME" ] || { echo "ND-MCP: waiting for OpenAI runtime key"; sleep 30; exit 1; }
@@ -83,6 +89,25 @@ exec svlogd -tt "$BASE/logs/service"
 LOG_EOF
 chmod 700 "$SVD/log/run"
 
+cat >"$UPD/run" <<UPDATE_EOF
+#!/data/data/com.termux/files/usr/bin/sh
+exec 2>&1
+export HOME="$HOME"
+export PATH="$PREFIX/bin:$VENV/bin:/system/bin"
+while true; do
+  "$BASE/self-update.sh" || echo "ND-MCP updater: check failed; keeping current qualified runtime"
+  sleep 21600
+done
+UPDATE_EOF
+chmod 700 "$UPD/run"
+
+cat >"$UPD/log/run" <<UPDATE_LOG_EOF
+#!/data/data/com.termux/files/usr/bin/sh
+mkdir -p "$BASE/logs/updater"
+exec svlogd -tt "$BASE/logs/updater"
+UPDATE_LOG_EOF
+chmod 700 "$UPD/log/run"
+
 cat >"$HOME/.termux/boot/00-nd-notebooklm-mcp" <<BOOT_EOF
 #!/data/data/com.termux/files/usr/bin/sh
 termux-wake-lock
@@ -92,6 +117,7 @@ chmod 700 "$HOME/.termux/boot/00-nd-notebooklm-mcp"
 
 # Do not enable until credentials are imported and profile initialized.
 sv-disable "$SERVICE" >/dev/null 2>&1 || true
+sv-disable "$UPDATE_SERVICE" >/dev/null 2>&1 || true
 
 cat <<EOF
 
@@ -101,6 +127,7 @@ Android architecture: $ARCH
 NotebookLM MCP: $NLM_VERSION
 OpenAI tunnel-client: $TUNNEL_VERSION
 Tunnel: $TUNNEL_ID
+Updater: GitHub qualified manifest + local check every 6 hours
 
 No Google/OpenAI secret has been imported yet.
 Next step: secure credential migration from the existing Cloud Shell session.
