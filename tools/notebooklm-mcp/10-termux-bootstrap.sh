@@ -16,6 +16,17 @@ UPDATE_URL="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.gith
 say(){ printf '\n==> %s\n' "$*"; }
 fail(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 
+retry() {
+  local attempts="$1" delay="$2"; shift 2
+  local n=1
+  until "$@"; do
+    if (( n >= attempts )); then return 1; fi
+    printf 'Transient failure; retry %d/%d in %ss...\n' "$n" "$attempts" "$delay" >&2
+    sleep "$delay"
+    n=$((n+1))
+  done
+}
+
 [[ -d /data/data/com.termux/files/usr ]] || fail "Run this inside the Termux app."
 ARCH="$(uname -m)"
 case "$ARCH" in aarch64|arm64) ;; *) fail "This bootstrap currently expects ARM64/aarch64; detected: $ARCH";; esac
@@ -23,24 +34,29 @@ case "$ARCH" in aarch64|arm64) ;; *) fail "This bootstrap currently expects ARM6
 mkdir -p "$BASE" "$HOME/.notebooklm/profiles/default"
 chmod 700 "$BASE" "$HOME/.notebooklm" "$HOME/.notebooklm/profiles" "$HOME/.notebooklm/profiles/default" 2>/dev/null || true
 
+export DEBIAN_FRONTEND=noninteractive
+export PIP_DEFAULT_TIMEOUT=120
+export PIP_RETRIES=15
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+
 say "Updating Termux packages"
-pkg update -y
-pkg upgrade -y
+retry 5 10 pkg update -y
+apt-get -o Dpkg::Options::=--force-confold -y upgrade
 
 say "Installing free local runtime dependencies"
-pkg install -y python git golang cloudflared termux-services curl coreutils openssl
+retry 5 10 apt-get -o Dpkg::Options::=--force-confold -y install python git golang cloudflared termux-services curl coreutils openssl
 
 say "Installing NotebookLM MCP $NLM_VERSION"
 if [[ ! -x "$VENV/bin/python" ]]; then
   python -m venv "$VENV"
 fi
-"$VENV/bin/python" -m pip install -q --upgrade pip
-"$VENV/bin/python" -m pip install -q --upgrade "notebooklm-py[headless,mcp]==$NLM_VERSION"
+retry 5 15 "$VENV/bin/python" -m pip install -q --retries 15 --timeout 120 --upgrade pip
+retry 5 15 "$VENV/bin/python" -m pip install -q --retries 15 --timeout 120 --prefer-binary --upgrade "notebooklm-py[headless,mcp]==$NLM_VERSION"
 
 say "Building OpenAI tunnel-client $TUNNEL_VERSION natively for Android/Termux"
 if [[ ! -x "$TC" ]]; then
   rm -rf "$SRC"
-  git clone -q --depth 1 --branch "$TUNNEL_VERSION" https://github.com/openai/tunnel-client.git "$SRC"
+  retry 5 15 git clone -q --depth 1 --branch "$TUNNEL_VERSION" https://github.com/openai/tunnel-client.git "$SRC"
   (
     cd "$SRC"
     export CGO_ENABLED=0
@@ -52,7 +68,7 @@ fi
 cloudflared --version || fail "Termux cloudflared is not runnable."
 
 say "Installing qualified self-update helper"
-curl -fsSL "$UPDATE_URL" -o "$BASE/self-update.sh"
+retry 5 10 curl --retry 10 --retry-all-errors --connect-timeout 20 -fsSL "$UPDATE_URL" -o "$BASE/self-update.sh"
 chmod 700 "$BASE/self-update.sh"
 
 say "Preparing supervised Termux services"
