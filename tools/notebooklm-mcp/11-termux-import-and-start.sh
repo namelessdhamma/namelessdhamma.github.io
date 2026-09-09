@@ -9,6 +9,7 @@ MASTER="$HOME/.notebooklm/profiles/default/master_token.json"
 RUNTIME="$BASE/openai-runtime-key"
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 SERVICE="nd-notebooklm-mcp"
+UPDATE_SERVICE="nd-notebooklm-updater"
 
 say(){ printf '\n==> %s\n' "$*"; }
 fail(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -67,10 +68,12 @@ export CLOUDFLARED_PATH="$PREFIX/bin/cloudflared"
 say "Running tunnel preflight"
 "$TC" doctor --profile nd-notebooklm --explain
 
-say "Starting Termux service manager and enabling ND NotebookLM MCP"
+say "Starting Termux service manager and enabling ND NotebookLM MCP + updater"
 source "$PREFIX/etc/profile.d/start-services.sh"
 sv-enable "$SERVICE" >/dev/null 2>&1 || true
+sv-enable "$UPDATE_SERVICE" >/dev/null 2>&1 || true
 sv up "$SERVICE"
+sv up "$UPDATE_SERVICE" || true
 sleep 8
 
 if sv status "$SERVICE" | grep -q '^run:'; then
@@ -88,6 +91,7 @@ cat <<EOF
 ANDROID ND NOTEBOOKLM MCP: RUNNING
 $STATUS
 Tunnel: $TUNNEL_ID
+Updater: active; checks GitHub qualified manifest every 6 hours
 
 The Android/Termux runtime is now supervised by termux-services.
 Termux:Boot will start the service after phone reboot once its app has been
