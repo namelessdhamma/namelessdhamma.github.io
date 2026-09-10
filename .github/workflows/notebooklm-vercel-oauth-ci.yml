@@ -1,9 +1,10 @@
-name: NotebookLM Vercel OAuth MCP CI
+name: NotebookLM OAuth MCP CI
 
 on:
   push:
     branches:
       - notebooklm-remote-mcp
+      - notebooklm-railway-backup
     paths:
       - 'tools/notebooklm-mcp/remote-vercel-oauth/**'
       - '.github/workflows/notebooklm-vercel-oauth-ci.yml'
@@ -24,7 +25,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install runtime dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements.txt
+        run: python -m pip install --disable-pip-version-check -r requirements-railway.txt
       - name: Run unit tests
         run: python -m unittest discover -s tests -p 'test_*.py'
       - name: Verify pinned upstream OAuth + FastMCP imports
@@ -33,5 +34,6 @@ jobs:
           from fastmcp import FastMCP
           from notebooklm.mcp._oauth import SelfHostedOAuthProvider
           from vercel.blob import BlobClient
+          import uvicorn
           print('OAUTH_IMPORTS_OK')
           PY
