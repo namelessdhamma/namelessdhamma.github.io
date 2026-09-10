@@ -1,0 +1,59 @@
+name: NotebookLM Remote MCP Live Smoke
+
+on:
+  push:
+    branches:
+      - notebooklm-remote-mcp
+    paths:
+      - '.github/workflows/notebooklm-remote-mcp-live-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-mcp-smoke:
+    runs-on: ubuntu-latest
+    env:
+      MCP_URL: https://nd-notebooklm-remote-mcp.vercel.app/api/mcp
+      HEALTH_URL: https://nd-notebooklm-remote-mcp.vercel.app/api/health
+    steps:
+      - name: Verify health endpoint
+        run: |
+          set -euo pipefail
+          body="$(curl --fail --silent --show-error "$HEALTH_URL")"
+          echo "$body" | jq -e '.ok == true and .service == "nd-notebooklm-remote-mcp" and .mode == "transport-qualification" and .version == "0.1.0"'
+
+      - name: MCP initialize
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"nd-live-smoke","version":"0.1.0"}}}' \
+            "$MCP_URL")"
+          printf '%s\n' "$response"
+          printf '%s' "$response" | grep -q '"serverInfo"'
+
+      - name: MCP list tools
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            "$MCP_URL")"
+          printf '%s\n' "$response"
+          printf '%s' "$response" | grep -q '"nd_ping"'
+
+      - name: MCP call nd_ping
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error \
+            -H 'content-type: application/json' \
+            -H 'accept: application/json, text/event-stream' \
+            --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"nd_ping","arguments":{}}}' \
+            "$MCP_URL")"
+          printf '%s\n' "$response"
+          printf '%s' "$response" | grep -q 'nd-notebooklm-remote-mcp'
+          printf '%s' "$response" | grep -q 'transport-qualification'
