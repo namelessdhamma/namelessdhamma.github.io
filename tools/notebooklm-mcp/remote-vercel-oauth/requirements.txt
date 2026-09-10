@@ -1,2 +1,2 @@
-notebooklm-py[mcp,headless]==0.8.2
+notebooklm-py[mcp,headless,android]==0.8.2
 vercel>=0.5.0,<1
