@@ -37,8 +37,8 @@ class DeploymentConfig:
             raise RuntimeError("Missing NOTEBOOKLM_MASTER_TOKEN_B64")
 
         password = source.get("NOTEBOOKLM_MCP_OAUTH_PASSWORD", "")
-        if len(password) < 32:
-            raise RuntimeError("NOTEBOOKLM_MCP_OAUTH_PASSWORD must be at least 32 characters")
+        if len(password) < 24:
+            raise RuntimeError("NOTEBOOKLM_MCP_OAUTH_PASSWORD must be at least 24 characters")
 
         state_path = Path(
             source.get("ND_NOTEBOOKLM_OAUTH_STATE_PATH", "/tmp/nd-notebooklm-oauth.json")
