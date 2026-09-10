@@ -1,0 +1,39 @@
+name: NotebookLM Remote MCP CI
+
+on:
+  push:
+    branches:
+      - notebooklm-remote-mcp
+    paths:
+      - 'tools/notebooklm-mcp/remote-vercel/**'
+      - '.github/workflows/notebooklm-remote-mcp-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/notebooklm-mcp/remote-vercel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: tools/notebooklm-mcp/remote-vercel/package-lock.json
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
