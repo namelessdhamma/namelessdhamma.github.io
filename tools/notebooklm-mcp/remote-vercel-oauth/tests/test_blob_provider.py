@@ -168,6 +168,28 @@ class BlobBackedProviderTests(unittest.TestCase):
             self.assertIn("code-1", provider2.auth_codes)
             self.assertEqual(provider2.auth_codes["code-1"].client_id, "chatgpt-test")
 
+    def test_warm_instance_refreshes_client_registry_before_lookup(self):
+        registry_store = _MemoryStore()
+        with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
+            provider1 = BlobBackedOAuthProvider(
+                password="a-strong-random-password-1234567890",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp1) / "oauth.json",
+                state_store=registry_store,
+            )
+            provider2 = BlobBackedOAuthProvider(
+                password="a-strong-random-password-1234567890",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp2) / "oauth.json",
+                state_store=registry_store,
+            )
+            self.assertIsNone(asyncio.run(provider2.get_client("chatgpt-test")))
+
+            asyncio.run(provider1.register_client(_client()))
+            refreshed = asyncio.run(provider2.get_client("chatgpt-test"))
+            self.assertIsNotNone(refreshed)
+            self.assertEqual(refreshed.client_id, "chatgpt-test")
+
 
 if __name__ == "__main__":
     unittest.main()
