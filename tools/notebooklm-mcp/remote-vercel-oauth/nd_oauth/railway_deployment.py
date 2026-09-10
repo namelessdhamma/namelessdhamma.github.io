@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from .blob_state import BlobOAuthStateStore
+from .file_state import FileOAuthStateStore
 from .full_server import create_full_mcp
 from .runtime import make_client_factory
 
@@ -16,8 +16,7 @@ class RailwayDeploymentConfig:
     master_token_b64: str
     oauth_password: str
     state_path: Path = Path("/tmp/nd-notebooklm-railway-oauth.json")
-    registry_blob_path: str = "nd-notebooklm-railway/oauth-registry.json"
-    transient_blob_path: str = "nd-notebooklm-railway/oauth-transient.json"
+    persistent_dir: Path = Path("/data/nd-notebooklm")
 
     @classmethod
     def from_environ(cls, env: Mapping[str, str] | None = None) -> "RailwayDeploymentConfig":
@@ -41,27 +40,19 @@ class RailwayDeploymentConfig:
                 "/tmp/nd-notebooklm-railway-oauth.json",
             )
         )
-        registry_blob_path = source.get(
-            "ND_NOTEBOOKLM_OAUTH_REGISTRY_BLOB",
-            "nd-notebooklm-railway/oauth-registry.json",
-        ).strip()
-        transient_blob_path = source.get(
-            "ND_NOTEBOOKLM_OAUTH_TRANSIENT_BLOB",
-            "nd-notebooklm-railway/oauth-transient.json",
-        ).strip()
-
-        if not registry_blob_path or not transient_blob_path:
-            raise RuntimeError("Railway OAuth Blob paths must be non-empty")
-        if registry_blob_path == transient_blob_path:
-            raise RuntimeError("Railway OAuth registry and transient Blob paths must differ")
+        persistent_dir = Path(
+            source.get(
+                "ND_NOTEBOOKLM_OAUTH_PERSIST_DIR",
+                "/data/nd-notebooklm",
+            )
+        )
 
         return cls(
             base_url=base_url,
             master_token_b64=master_token,
             oauth_password=password,
             state_path=state_path,
-            registry_blob_path=registry_blob_path,
-            transient_blob_path=transient_blob_path,
+            persistent_dir=persistent_dir,
         )
 
 
@@ -72,9 +63,13 @@ def build_railway_mcp(
     transient_store=None,
     client_factory=None,
 ):
-    """Build an independent Railway runtime using separate durable OAuth namespaces."""
-    registry_store = registry_store or BlobOAuthStateStore(config.registry_blob_path)
-    transient_store = transient_store or BlobOAuthStateStore(config.transient_blob_path)
+    """Build the Railway standby with Railway-owned durable OAuth state."""
+    registry_store = registry_store or FileOAuthStateStore(
+        config.persistent_dir / "oauth-registry.json"
+    )
+    transient_store = transient_store or FileOAuthStateStore(
+        config.persistent_dir / "oauth-transient.json"
+    )
     client_factory = client_factory or make_client_factory(config.master_token_b64)
 
     return create_full_mcp(
