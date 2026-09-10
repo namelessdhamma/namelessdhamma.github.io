@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "stage": "A",
-  "status": "code-qualified-awaiting-deploy",
+  "status": "remote-mcp-live-awaiting-chatgpt-app-scan",
   "service": "nd-notebooklm-remote-mcp",
   "version": "0.1.0",
   "primary_host": "vercel-hobby",
@@ -17,7 +17,26 @@
     "tests": "success",
     "build": "success"
   },
-  "live_deployment": null,
+  "live_deployment": {
+    "host": "vercel-hobby",
+    "team": "nameless-dhamma",
+    "project_id": "prj_XjtiN9GvRiq5ixFqf1iz0yoL0JEM",
+    "deployment_id": "dpl_FcbXCHx1VuCnf3xPz3mYkNXV3EJ8",
+    "base_url": "https://nd-notebooklm-remote-mcp.vercel.app",
+    "mcp_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/mcp",
+    "health_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/health",
+    "state": "READY",
+    "runtime_errors_1h": 0,
+    "health_http_status": 200,
+    "health_payload_verified": true
+  },
+  "protocol_smoke": {
+    "workflow_run_id": 34431987202,
+    "result": "success",
+    "initialize": "success",
+    "tools_list": "success",
+    "nd_ping_call": "success"
+  },
   "chatgpt_scan_tools": null,
   "chatgpt_nd_ping": null,
   "cold_start": null,
