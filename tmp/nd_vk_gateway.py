@@ -62,7 +62,7 @@ def register():
             sid=int(s["id"]);break
     if sid is None:
         state["phase"]="adding_callback"
-        r=vk("groups.addCallbackServer",{"group_id":gid,"url":CALLBACK_URL,"title":"ND VK Gateway qualification"})
+        r=vk("groups.addCallbackServer",{"group_id":gid,"url":CALLBACK_URL,"title":"ND Gateway"})
         sid=int((r.get("server_id") if isinstance(r,dict) else r))
     state["callback_server_id"]=sid;state["callback_registered"]=True
     time.sleep(1)
