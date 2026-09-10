@@ -62,12 +62,15 @@ def register():
             sid=int(s["id"]);break
     if sid is None:
         state["phase"]="adding_callback"
-        r=vk("groups.addCallbackServer",{"group_id":gid,"url":CALLBACK_URL,"title":"ND Gateway"})
+        r=vk("groups.addCallbackServer",{"group_id":gid,"url":CALLBACK_URL,"title":"ND Gateway","secret_key":SECRET})
         sid=int((r.get("server_id") if isinstance(r,dict) else r))
+    else:
+        state["phase"]="securing_callback"
+        vk("groups.editCallbackServer",{"group_id":gid,"server_id":sid,"url":CALLBACK_URL,"title":"ND Gateway","secret_key":SECRET})
     state["callback_server_id"]=sid;state["callback_registered"]=True
     time.sleep(1)
     state["phase"]="configuring_callback"
-    vk("groups.setCallbackSettings",{"group_id":gid,"server_id":sid,"api_version":V,"secret_key":SECRET,"message_new":1})
+    vk("groups.setCallbackSettings",{"group_id":gid,"server_id":sid,"api_version":V,"message_new":1})
     state["callback_configured"]=True;state["phase"]="ready";state["last_error"]=None
     print("VK_READY",json.dumps({"group_id":gid,"server_id":sid,"callback_configured":True}),flush=True)
 
@@ -116,6 +119,7 @@ class H(BaseHTTPRequestHandler):
         obj=b.get("object") or {};m=obj.get("message") or obj
         if not isinstance(m,dict):return
         peer=m.get("peer_id");uid=m.get("from_id");text=(m.get("text") or "").strip()
+        print("VK_MESSAGE",json.dumps({"from_id":uid,"peer_id":peer,"command":text if text.startswith("/") else "text"},ensure_ascii=False),flush=True)
         if not peer:return
         def reply():
             try:
