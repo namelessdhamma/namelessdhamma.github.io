@@ -30,8 +30,11 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Run tests
+      - name: Run Node tests
         run: npm test
+
+      - name: Run Python probe tests
+        run: python3 -m unittest discover -s python-probe -p 'test_*.py'
 
       - name: Build
         run: npm run build
