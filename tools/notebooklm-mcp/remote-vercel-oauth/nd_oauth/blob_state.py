@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
 
 
 class BlobOAuthStateStore:
@@ -32,6 +38,27 @@ class BlobOAuthStateStore:
     def _read_stream(stream: Any) -> bytes:
         return b"".join(stream)
 
+    @staticmethod
+    def _safe_shape(raw: bytes) -> str:
+        """Return structural OAuth-state diagnostics without exposing credentials."""
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return f"bytes={len(raw)} json=invalid sha={hashlib.sha256(raw).hexdigest()[:12]}"
+        if not isinstance(data, dict):
+            return f"bytes={len(raw)} json=nonobject sha={hashlib.sha256(raw).hexdigest()[:12]}"
+        clients = data.get("clients", {}) if isinstance(data.get("clients", {}), dict) else {}
+        client_hashes = sorted(hashlib.sha256(str(cid).encode()).hexdigest()[:12] for cid in clients)
+        access = data.get("access_tokens", {}) if isinstance(data.get("access_tokens", {}), dict) else {}
+        refresh = data.get("refresh_tokens", {}) if isinstance(data.get("refresh_tokens", {}), dict) else {}
+        pending = data.get("pending", {}) if isinstance(data.get("pending", {}), dict) else {}
+        codes = data.get("auth_codes", {}) if isinstance(data.get("auth_codes", {}), dict) else {}
+        return (
+            f"bytes={len(raw)} clients={len(clients)} client_hashes={client_hashes} "
+            f"access={len(access)} refresh={len(refresh)} pending={len(pending)} codes={len(codes)} "
+            f"sha={hashlib.sha256(raw).hexdigest()[:12]}"
+        )
+
     def restore(self, local_path: Path) -> bool:
         client = self._client_factory()
         try:
@@ -50,6 +77,7 @@ class BlobOAuthStateStore:
             if stream is None:
                 return False
             raw = self._read_stream(stream)
+            logger.info("OAuth blob restore %s: %s", self.pathname, self._safe_shape(raw))
             local_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             local_path.write_bytes(raw)
             local_path.chmod(0o600)
@@ -59,6 +87,7 @@ class BlobOAuthStateStore:
 
     def persist(self, local_path: Path) -> None:
         raw = local_path.read_bytes()
+        logger.info("OAuth blob persist %s: %s", self.pathname, self._safe_shape(raw))
         client = self._client_factory()
         try:
             client.put(
