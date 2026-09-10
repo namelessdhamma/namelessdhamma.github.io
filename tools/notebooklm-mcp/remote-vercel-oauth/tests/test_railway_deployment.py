@@ -14,7 +14,7 @@ class RailwayDeploymentConfigTests(unittest.TestCase):
                 }
             )
 
-    def test_defaults_use_separate_backup_blob_namespaces(self):
+    def test_defaults_use_railway_volume_for_durable_state(self):
         config = RailwayDeploymentConfig.from_environ(
             {
                 "ND_NOTEBOOKLM_OAUTH_BASE_URL": "https://backup.example.test/",
@@ -25,27 +25,18 @@ class RailwayDeploymentConfigTests(unittest.TestCase):
         self.assertEqual(config.base_url, "https://backup.example.test")
         self.assertEqual(config.oauth_password, "y" + ("x" * 23))
         self.assertEqual(config.state_path, Path("/tmp/nd-notebooklm-railway-oauth.json"))
-        self.assertEqual(
-            config.registry_blob_path,
-            "nd-notebooklm-railway/oauth-registry.json",
-        )
-        self.assertEqual(
-            config.transient_blob_path,
-            "nd-notebooklm-railway/oauth-transient.json",
-        )
-        self.assertNotEqual(config.registry_blob_path, config.transient_blob_path)
+        self.assertEqual(config.persistent_dir, Path("/data/nd-notebooklm"))
 
-    def test_rejects_same_registry_and_transient_blob_path(self):
-        with self.assertRaisesRegex(RuntimeError, "must differ"):
-            RailwayDeploymentConfig.from_environ(
-                {
-                    "ND_NOTEBOOKLM_OAUTH_BASE_URL": "https://backup.example.test",
-                    "NOTEBOOKLM_MASTER_TOKEN_B64": "master",
-                    "NOTEBOOKLM_MCP_OAUTH_PASSWORD": "x" * 24,
-                    "ND_NOTEBOOKLM_OAUTH_REGISTRY_BLOB": "same.json",
-                    "ND_NOTEBOOKLM_OAUTH_TRANSIENT_BLOB": "same.json",
-                }
-            )
+    def test_allows_explicit_persistent_directory(self):
+        config = RailwayDeploymentConfig.from_environ(
+            {
+                "ND_NOTEBOOKLM_OAUTH_BASE_URL": "https://backup.example.test",
+                "NOTEBOOKLM_MASTER_TOKEN_B64": "master",
+                "NOTEBOOKLM_MCP_OAUTH_PASSWORD": "x" * 24,
+                "ND_NOTEBOOKLM_OAUTH_PERSIST_DIR": "/mnt/backup/oauth",
+            }
+        )
+        self.assertEqual(config.persistent_dir, Path("/mnt/backup/oauth"))
 
 
 if __name__ == "__main__":
