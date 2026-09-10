@@ -36,7 +36,10 @@ class DeploymentConfig:
         if not master_token:
             raise RuntimeError("Missing NOTEBOOKLM_MASTER_TOKEN_B64")
 
-        password = source.get("NOTEBOOKLM_MCP_OAUTH_PASSWORD", "")
+        # Vercel CLI/UI secret entry can accidentally preserve surrounding
+        # whitespace. Normalize it at the deployment boundary so the connector
+        # password entered by a client is compared against the intended value.
+        password = source.get("NOTEBOOKLM_MCP_OAUTH_PASSWORD", "").strip()
         if len(password) < 24:
             raise RuntimeError("NOTEBOOKLM_MCP_OAUTH_PASSWORD must be at least 24 characters")
 
