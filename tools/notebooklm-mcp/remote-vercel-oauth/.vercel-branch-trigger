@@ -1,1 +1,2 @@
 Trigger Vercel production deployment after OAuth password rotation.
+Reapply production OAuth password and redeploy: 2026-09-10T12:27Z
