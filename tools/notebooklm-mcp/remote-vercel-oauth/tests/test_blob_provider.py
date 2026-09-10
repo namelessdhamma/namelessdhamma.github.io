@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from mcp.server.auth.provider import AuthorizationCode, AuthorizationParams
+from mcp.server.auth.provider import AccessToken, AuthorizationCode, AuthorizationParams, RefreshToken
 from mcp.shared.auth import OAuthClientInformationFull
 
 from nd_oauth.blob_provider import BlobBackedOAuthProvider
@@ -189,6 +189,46 @@ class BlobBackedProviderTests(unittest.TestCase):
             refreshed = asyncio.run(provider2.get_client("chatgpt-test"))
             self.assertIsNotNone(refreshed)
             self.assertEqual(refreshed.client_id, "chatgpt-test")
+
+    def test_warm_instance_refreshes_access_and_refresh_tokens_before_lookup(self):
+        registry_store = _MemoryStore()
+        with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
+            provider1 = BlobBackedOAuthProvider(
+                password="a-strong-random-password-1234567890",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp1) / "oauth.json",
+                state_store=registry_store,
+            )
+            provider2 = BlobBackedOAuthProvider(
+                password="a-strong-random-password-1234567890",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp2) / "oauth.json",
+                state_store=registry_store,
+            )
+            client = _client()
+            provider1.clients[client.client_id] = client
+            provider1.access_tokens["access-1"] = AccessToken(
+                token="access-1",
+                client_id=client.client_id,
+                scopes=[],
+                expires_at=int(time.time() + 300),
+            )
+            provider1.refresh_tokens["refresh-1"] = RefreshToken(
+                token="refresh-1",
+                client_id=client.client_id,
+                scopes=[],
+                expires_at=None,
+            )
+            provider1._access_to_refresh_map["access-1"] = "refresh-1"
+            provider1._refresh_to_access_map["refresh-1"] = "access-1"
+            asyncio.run(provider1._save_state())
+
+            access = asyncio.run(provider2.load_access_token("access-1"))
+            refresh = asyncio.run(provider2.load_refresh_token(client, "refresh-1"))
+            self.assertIsNotNone(access)
+            self.assertIsNotNone(refresh)
+            self.assertEqual(access.client_id, "chatgpt-test")
+            self.assertEqual(refresh.client_id, "chatgpt-test")
 
 
 if __name__ == "__main__":
