@@ -22,7 +22,8 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
     local JSON file, while the password-login handoff and authorization codes
     live only in memory. Vercel Functions can route consecutive OAuth requests
     to different instances, so this adapter mirrors both state classes to
-    independent durable stores.
+    independent durable stores and refreshes durable registry reads on warm
+    instances.
 
     The Google master token is deliberately outside this class.
     """
@@ -56,6 +57,15 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
         super()._write_state_file(data)
         if self._state_path is not None and self._state_path.exists():
             self._durable_state_store.persist(self._state_path)
+
+    def _refresh_registry(self) -> bool:
+        """Refresh the persisted OAuth registry into an already-warm instance."""
+        if self._state_path is None:
+            return False
+        if not self._durable_state_store.restore(self._state_path):
+            return False
+        self._load_state()
+        return True
 
     def _restore_pending(self) -> bool:
         """Restore the short-lived OAuth handoff state from durable storage."""
@@ -123,6 +133,10 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
         )
         self._pending_state_path.chmod(0o600)
         store.persist(self._pending_state_path)
+
+    async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
+        self._refresh_registry()
+        return await super().get_client(client_id)
 
     async def authorize(
         self, client: OAuthClientInformationFull, params: AuthorizationParams
