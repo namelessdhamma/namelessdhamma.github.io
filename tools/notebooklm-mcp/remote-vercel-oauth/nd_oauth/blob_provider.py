@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import Protocol
 
-from mcp.server.auth.provider import AuthorizationParams
-from mcp.shared.auth import OAuthClientInformationFull
+from mcp.server.auth.provider import AuthorizationCode, AuthorizationParams
+from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from notebooklm.mcp._oauth import SelfHostedOAuthProvider, _Pending
 
 
@@ -18,10 +18,11 @@ class OAuthStateStore(Protocol):
 class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
     """SelfHostedOAuthProvider with serverless-safe durable state mirroring.
 
-    Upstream notebooklm-py persists OAuth clients/tokens to a local JSON file,
-    while its short-lived password-login handoff lives only in memory. Vercel
-    Functions can route consecutive OAuth requests to different instances, so we
-    mirror both state classes to independent durable stores.
+    Upstream notebooklm-py persists OAuth clients/access/refresh tokens to a
+    local JSON file, while the password-login handoff and authorization codes
+    live only in memory. Vercel Functions can route consecutive OAuth requests
+    to different instances, so this adapter mirrors both state classes to
+    independent durable stores.
 
     The Google master token is deliberately outside this class.
     """
@@ -57,34 +58,45 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
             self._durable_state_store.persist(self._state_path)
 
     def _restore_pending(self) -> bool:
+        """Restore the short-lived OAuth handoff state from durable storage."""
         store = self._durable_pending_store
         if store is None or not store.restore(self._pending_state_path):
             return False
         try:
             raw = json.loads(self._pending_state_path.read_text(encoding="utf-8"))
-            items = raw.get("pending", {})
-            if not isinstance(items, dict):
+            pending_items = raw.get("pending", {})
+            code_items = raw.get("auth_codes", {})
+            if not isinstance(pending_items, dict) or not isinstance(code_items, dict):
                 return False
-            restored: dict[str, _Pending] = {}
-            for sid, item in items.items():
+
+            restored_pending: dict[str, _Pending] = {}
+            for sid, item in pending_items.items():
                 if not isinstance(sid, str) or not isinstance(item, dict):
                     continue
                 client = OAuthClientInformationFull.model_validate(item["client"])
                 params = AuthorizationParams.model_validate(item["params"])
-                restored[sid] = _Pending(
+                restored_pending[sid] = _Pending(
                     client,
                     params,
                     float(item["expiry"]),
                     int(item["attempts"]),
                 )
+
+            restored_codes: dict[str, AuthorizationCode] = {}
+            for code, item in code_items.items():
+                if not isinstance(code, str) or not isinstance(item, dict):
+                    continue
+                restored_codes[code] = AuthorizationCode.model_validate(item)
         except (OSError, ValueError, TypeError, KeyError, AttributeError):
             return False
 
-        self._pending = restored
+        self._pending = restored_pending
+        self.auth_codes = restored_codes
         self._prune_pending()
         return True
 
     def _persist_pending(self) -> None:
+        """Persist pending login SIDs plus one-time authorization codes."""
         store = self._durable_pending_store
         if store is None:
             return
@@ -99,6 +111,10 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
                     "attempts": entry.attempts,
                 }
                 for sid, entry in self._pending.items()
+            },
+            "auth_codes": {
+                code: auth_code.model_dump(mode="json")
+                for code, auth_code in self.auth_codes.items()
             },
         }
         self._pending_state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,11 +132,27 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
         return login_url
 
     async def _login(self, request):
-        # A warm Vercel instance may have stale pending state created by another
-        # instance. Refresh before both rendering and consuming the login SID.
+        # A warm Vercel instance may have stale pending/code state created by
+        # another instance. Refresh before both rendering and consuming the SID.
         self._restore_pending()
         response = await super()._login(request)
         if request.method == "POST":
-            # Successful login consumes the SID; failed attempts increment it.
+            # Success consumes the SID and creates an auth code; failed attempts
+            # update the SID attempt counter. Persist either transition.
             self._persist_pending()
         return response
+
+    async def load_authorization_code(
+        self, client: OAuthClientInformationFull, authorization_code: str
+    ) -> AuthorizationCode | None:
+        self._restore_pending()
+        return await super().load_authorization_code(client, authorization_code)
+
+    async def exchange_authorization_code(
+        self, client: OAuthClientInformationFull, authorization_code: AuthorizationCode
+    ) -> OAuthToken:
+        token = await super().exchange_authorization_code(client, authorization_code)
+        # Parent consumes the one-time code; mirror that deletion so replay cannot
+        # succeed on a fresh function instance.
+        self._persist_pending()
+        return token
