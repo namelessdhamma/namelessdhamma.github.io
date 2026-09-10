@@ -1,44 +1,42 @@
 {
   "schema": 1,
   "stage": "A",
-  "status": "remote-mcp-live-awaiting-chatgpt-app-scan",
+  "status": "remote-mcp-live-chatgpt-scan-confirmed-call-pending",
   "service": "nd-notebooklm-remote-mcp",
   "version": "0.1.0",
   "primary_host": "vercel-hobby",
   "fallback_hosts": ["enzonic-free", "deplexo-free"],
-  "mcp_path": "/api/mcp",
-  "health_path": "/api/health",
+  "mcp_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/mcp",
+  "health_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/health",
   "contains_google_secrets": false,
   "uses_android": false,
   "uses_secure_mcp_tunnel": false,
-  "ci": {
-    "run_id": 34423782097,
-    "result": "success",
-    "tests": "success",
-    "build": "success"
-  },
-  "live_deployment": {
-    "host": "vercel-hobby",
-    "team": "nameless-dhamma",
+  "vercel": {
+    "team_id": "team_xmefF5bTs0jLPRMCOZOeHKop",
     "project_id": "prj_XjtiN9GvRiq5ixFqf1iz0yoL0JEM",
     "deployment_id": "dpl_FcbXCHx1VuCnf3xPz3mYkNXV3EJ8",
-    "base_url": "https://nd-notebooklm-remote-mcp.vercel.app",
-    "mcp_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/mcp",
-    "health_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/health",
-    "state": "READY",
-    "runtime_errors_1h": 0,
-    "health_http_status": 200,
-    "health_payload_verified": true
+    "deployment_state": "READY",
+    "runtime_errors": 0,
+    "health_status": 200
   },
-  "protocol_smoke": {
-    "workflow_run_id": 34431987202,
-    "result": "success",
-    "initialize": "success",
-    "tools_list": "success",
-    "nd_ping_call": "success"
+  "ci": {
+    "build_run_id": 34423782097,
+    "build_result": "success",
+    "tests": "success",
+    "build": "success",
+    "live_smoke_run_id": 34431987202,
+    "live_smoke_result": "success",
+    "mcp_initialize": "success",
+    "mcp_tools_list": "success",
+    "mcp_nd_ping": "success"
   },
-  "chatgpt_scan_tools": null,
-  "chatgpt_nd_ping": null,
+  "chatgpt": {
+    "custom_app_created": true,
+    "scan_tools": "pass-inferred-from-successful-create-handshake",
+    "evidence": "At 2026-09-10T03:15:22Z Vercel recorded two successful POST /api/mcp requests immediately during ChatGPT custom-app creation, consistent with initialize plus tools/list. The UI completed app creation without an MCP error.",
+    "direct_nd_ping_call": null
+  },
   "cold_start": null,
-  "redeploy_recovery": null
+  "redeploy_recovery": null,
+  "next_gate": "direct ChatGPT invocation of nd_ping, then Stage-B runtime feasibility probe"
 }
