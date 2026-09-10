@@ -46,18 +46,22 @@ class BlobOAuthStateStore:
                 raise
             if result is None:
                 return False
-            # The current Vercel Blob Python SDK's successful download object does
-            # not expose an HTTP `status_code` attribute even though the underlying
-            # request completed with 200. Older/fake clients may expose one. Only
-            # reject an explicitly present non-200 status; otherwise the presence of
-            # a readable stream is the success contract.
             status_code = getattr(result, "status_code", None)
             if status_code is not None and status_code != 200:
                 return False
-            stream = getattr(result, "stream", None)
-            if stream is None:
-                return False
-            raw = self._read_stream(stream)
+
+            # The synchronous Vercel Python BlobClient buffers successful downloads
+            # in GetBlobResult.content (bytes). Async/older adapters may expose a
+            # stream instead, so support both contracts.
+            content = getattr(result, "content", None)
+            if content is not None:
+                raw = bytes(content)
+            else:
+                stream = getattr(result, "stream", None)
+                if stream is None:
+                    return False
+                raw = self._read_stream(stream)
+
             local_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             local_path.write_bytes(raw)
             local_path.chmod(0o600)
