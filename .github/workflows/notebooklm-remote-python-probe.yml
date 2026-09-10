@@ -1,0 +1,31 @@
+name: NotebookLM Remote Python Probe
+
+on:
+  push:
+    branches:
+      - notebooklm-remote-mcp
+    paths:
+      - 'tools/notebooklm-mcp/remote-vercel/python-probe/**'
+      - '.github/workflows/notebooklm-remote-python-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-wheel-and-construction-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install NotebookLM Android backend
+        run: python -m pip install --disable-pip-version-check -r tools/notebooklm-mcp/remote-vercel/python-probe/requirements.txt
+
+      - name: Probe imports and lazy Android client construction
+        run: python tools/notebooklm-mcp/remote-vercel/python-probe/probe.py
