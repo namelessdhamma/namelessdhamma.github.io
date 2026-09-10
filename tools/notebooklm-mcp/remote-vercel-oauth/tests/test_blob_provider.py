@@ -1,7 +1,12 @@
+import asyncio
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+from mcp.server.auth.provider import AuthorizationParams
+from mcp.shared.auth import OAuthClientInformationFull
 
 from nd_oauth.blob_provider import BlobBackedOAuthProvider
 
@@ -21,7 +26,27 @@ class _MemoryStore:
         return True
 
     def persist(self, local_path: Path) -> None:
-        self.persisted.append(local_path.read_bytes())
+        raw = local_path.read_bytes()
+        self.persisted.append(raw)
+        self.payload = raw
+
+
+def _client() -> OAuthClientInformationFull:
+    return OAuthClientInformationFull(
+        client_id="chatgpt-test",
+        redirect_uris=["https://chatgpt.com/connector/callback"],
+    )
+
+
+def _params() -> AuthorizationParams:
+    return AuthorizationParams(
+        state="state-1",
+        scopes=[],
+        code_challenge="challenge-1",
+        redirect_uri="https://chatgpt.com/connector/callback",
+        redirect_uri_provided_explicitly=True,
+        resource=None,
+    )
 
 
 class BlobBackedProviderTests(unittest.TestCase):
@@ -75,6 +100,34 @@ class BlobBackedProviderTests(unittest.TestCase):
                 "a2r": {},
                 "r2a": {},
             })
+
+    def test_pending_authorize_state_survives_a_fresh_provider_instance(self):
+        registry_store = _MemoryStore()
+        pending_store = _MemoryStore()
+
+        with tempfile.TemporaryDirectory() as tmp1:
+            provider1 = BlobBackedOAuthProvider(
+                password="a-strong-random-password-1234567890",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp1) / "oauth.json",
+                state_store=registry_store,
+                pending_store=pending_store,
+            )
+            login_url = asyncio.run(provider1.authorize(_client(), _params()))
+            sid = parse_qs(urlparse(login_url).query)["sid"][0]
+            self.assertIsNotNone(pending_store.payload)
+
+        with tempfile.TemporaryDirectory() as tmp2:
+            provider2 = BlobBackedOAuthProvider(
+                password="a-strong-random-password-1234567890",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp2) / "oauth.json",
+                state_store=registry_store,
+                pending_store=pending_store,
+            )
+            self.assertIn(sid, provider2._pending)
+            self.assertEqual(provider2._pending[sid].client.client_id, "chatgpt-test")
+            self.assertEqual(provider2._pending[sid].params.state, "state-1")
 
 
 if __name__ == "__main__":
