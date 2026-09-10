@@ -1,4 +1,6 @@
 import base64
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -40,12 +42,15 @@ class LiveProbeCoreTests(unittest.TestCase):
 
             kwargs = run.call_args.kwargs
             command = run.call_args.args[0]
-            self.assertEqual(command[-4:], ["auth", "refresh", "--verify"][-4:])
+            self.assertEqual(
+                command,
+                [sys.executable, "-m", "notebooklm", "auth", "refresh", "--verify"],
+            )
             self.assertEqual(kwargs["env"]["NOTEBOOKLM_HOME"], str(home))
             self.assertEqual(kwargs["env"]["NOTEBOOKLM_PROFILE"], "default")
             self.assertTrue(kwargs["check"])
-            self.assertEqual(kwargs["stdout"], -3)
-            self.assertEqual(kwargs["stderr"], -3)
+            self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
+            self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
 
 
 if __name__ == "__main__":
