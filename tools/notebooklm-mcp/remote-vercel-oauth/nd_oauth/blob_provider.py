@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Protocol
 
-from mcp.server.auth.provider import AuthorizationCode, AuthorizationParams
+from mcp.server.auth.provider import AccessToken, AuthorizationCode, AuthorizationParams, RefreshToken
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from notebooklm.mcp._oauth import SelfHostedOAuthProvider, _Pending
 
@@ -137,6 +137,16 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
         self._refresh_registry()
         return await super().get_client(client_id)
+
+    async def load_access_token(self, token: str) -> AccessToken | None:
+        self._refresh_registry()
+        return await super().load_access_token(token)
+
+    async def load_refresh_token(
+        self, client: OAuthClientInformationFull, refresh_token: str
+    ) -> RefreshToken | None:
+        self._refresh_registry()
+        return await super().load_refresh_token(client, refresh_token)
 
     async def authorize(
         self, client: OAuthClientInformationFull, params: AuthorizationParams
