@@ -9,13 +9,18 @@ from pathlib import Path
 
 from notebooklm import NotebookLMClient
 
-from notebooklm_runtime.live_probe_core import is_authorized, materialize_master_token
+from notebooklm_runtime.live_probe_core import (
+    is_authorized,
+    materialize_master_token,
+    refresh_storage_from_master_token,
+)
 
 
 async def _list_notebooks(master_token_b64: str) -> int:
     with tempfile.TemporaryDirectory(prefix="nd-notebooklm-") as tmp:
         home = Path(tmp)
         materialize_master_token(master_token_b64, home)
+        refresh_storage_from_master_token(home)
 
         previous_home = os.environ.get("NOTEBOOKLM_HOME")
         os.environ["NOTEBOOKLM_HOME"] = str(home)
