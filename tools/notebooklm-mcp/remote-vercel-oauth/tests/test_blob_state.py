@@ -11,15 +11,24 @@ class _Blob:
         self.stream = stream
 
 
+class _BlobWithoutStatus:
+    def __init__(self, stream):
+        self.stream = stream
+
+
 class _FakeClient:
-    def __init__(self, existing=None):
+    def __init__(self, existing=None, *, expose_status=True):
         self.existing = existing
+        self.expose_status = expose_status
         self.put_calls = []
 
     def get(self, path, *, access, use_cache):
         if self.existing is None:
             return None
-        return _Blob(iter([self.existing[:3], self.existing[3:]]))
+        stream = iter([self.existing[:3], self.existing[3:]])
+        if self.expose_status:
+            return _Blob(stream)
+        return _BlobWithoutStatus(stream)
 
     def put(self, path, body, **kwargs):
         self.put_calls.append((path, body, kwargs))
@@ -38,6 +47,14 @@ class BlobStateTests(unittest.TestCase):
             self.assertTrue(store.restore(path))
             self.assertEqual(path.read_bytes(), b'{"clients":{}}')
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
+    def test_restore_accepts_current_vercel_download_object_without_status_code(self):
+        client = _FakeClient(b'{"clients":{"chatgpt":{}}}', expose_status=False)
+        store = BlobOAuthStateStore("oauth/state.json", client_factory=lambda: client)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "oauth_state.json"
+            self.assertTrue(store.restore(path))
+            self.assertEqual(path.read_bytes(), b'{"clients":{"chatgpt":{}}}')
 
     def test_restore_missing_blob_is_clean_first_boot(self):
         store = BlobOAuthStateStore("oauth/state.json", client_factory=lambda: _FakeClient())
