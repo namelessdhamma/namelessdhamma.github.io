@@ -18,7 +18,7 @@ src=src.replace("ND_VK_GATEWAY_V12_RESEARCH_INTEGRITY_START", "ND_VK_GATEWAY_V13
 insert_before="def heuristic_route(text):\n"
 if insert_before not in src:
     raise RuntimeError('heuristic_route marker not found')
-ro_code=r'''
+ro_code=r"""
 def ro_get_json(url,headers=None,timeout=30):
     h={'Accept':'application/json','User-Agent':'nd-vk-gateway-readonly/1.0'}
     if headers:h.update(headers)
@@ -141,7 +141,16 @@ def nd_read_context(q,route):
     print('ND_READ_CONTEXT',json.dumps({'sources':len(total),'chars':used,'github':sum(1 for n,_ in pieces if n.startswith('GitHub')),'yandex':sum(1 for n,_ in pieces if n.startswith('Yandex'))},ensure_ascii=False),flush=True)
     return '\n'.join(total)
 
-'''
+def nd_ro_probe():
+    time.sleep(4)
+    g=[];y=[]
+    try:g=github_nd_context('ND архитектура StateHead Registry решения сейчас')
+    except Exception as e:print('ND_RO_PROBE_GITHUB_ERROR',cleanerr(e),flush=True)
+    try:y=yandex_nd_context('книга сон том 2 рассказ 16 черновик')
+    except Exception as e:print('ND_RO_PROBE_YANDEX_ERROR',cleanerr(e),flush=True)
+    print('ND_READONLY_PROBE',json.dumps({'github':bool(g),'github_sources':len(g),'yandex':bool(y),'yandex_sources':len(y),'mutations':False},ensure_ascii=False),flush=True)
+
+"""
 src=src.replace(insert_before,ro_code+insert_before,1)
 
 old_route="""    route=classify_route(text) if forced=='auto' else forced
@@ -165,8 +174,13 @@ new_cmd="""                if text=='/nd-test':send(peer,'ND VK Gateway: свя�
 """
 if old_cmd not in src:raise RuntimeError('command marker not found')
 src=src.replace(old_cmd,new_cmd,1)
+
+probe_marker="threading.Thread(target=startup,daemon=True).start()\n"
+if probe_marker not in src:raise RuntimeError('startup thread marker not found')
+src=src.replace(probe_marker,probe_marker+"threading.Thread(target=nd_ro_probe,daemon=True).start()\n",1)
 '''
 
 replacement=addon+"\nexec(compile(src,'nd_vk_gateway_v13_nd_readonly.py','exec'))"
 wrapper=wrapper.replace(marker,replacement,1)
+print('ND_V13_WRAPPER_LOADED',flush=True)
 exec(compile(wrapper,'nd_vk_gateway_v13_wrapper.py','exec'))
