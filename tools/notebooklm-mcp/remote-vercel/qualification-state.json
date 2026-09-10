@@ -1,31 +1,32 @@
 {
   "schema": 1,
-  "stage": "A",
-  "status": "remote-mcp-live-chatgpt-scan-confirmed-call-pending",
+  "stage": "B",
+  "status": "notebooklm-live-read-path-qualified-auth-hardening-next",
   "service": "nd-notebooklm-remote-mcp",
   "version": "0.1.0",
   "primary_host": "vercel-hobby",
   "fallback_hosts": ["enzonic-free", "deplexo-free"],
   "mcp_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/mcp",
   "health_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/health",
-  "contains_google_secrets": false,
-  "uses_android": false,
+  "contains_google_secrets_in_git": false,
+  "uses_android_device": false,
   "uses_secure_mcp_tunnel": false,
   "vercel": {
     "team_id": "team_xmefF5bTs0jLPRMCOZOeHKop",
     "project_id": "prj_XjtiN9GvRiq5ixFqf1iz0yoL0JEM",
-    "deployment_id": "dpl_FcbXCHx1VuCnf3xPz3mYkNXV3EJ8",
-    "deployment_state": "READY",
-    "runtime_errors": 0,
+    "canonical_deployment_id": "dpl_9kz8oxU8r7CiZBys4us5zGLexkrZ",
+    "canonical_deployment_state": "READY",
+    "python_runtime": "3.12",
+    "notebooklm_py": "0.8.2",
+    "google_master_token_location": "Vercel Sensitive environment variable; never committed",
     "health_status": 200
   },
   "ci": {
-    "build_run_id": 34423782097,
-    "build_result": "success",
-    "tests": "success",
-    "build": "success",
-    "live_smoke_run_id": 34431987202,
-    "live_smoke_result": "success",
+    "stage_b_build_run_id": 34436977356,
+    "stage_b_build_result": "success",
+    "node_tests": "success",
+    "python_tests": "success",
+    "next_build": "success",
     "mcp_initialize": "success",
     "mcp_tools_list": "success",
     "mcp_nd_ping": "success"
@@ -33,10 +34,21 @@
   "chatgpt": {
     "custom_app_created": true,
     "scan_tools": "pass-inferred-from-successful-create-handshake",
-    "evidence": "At 2026-09-10T03:15:22Z Vercel recorded two successful POST /api/mcp requests immediately during ChatGPT custom-app creation, consistent with initialize plus tools/list. The UI completed app creation without an MCP error.",
     "direct_nd_ping_call": null
   },
-  "cold_start": null,
-  "redeploy_recovery": null,
-  "next_gate": "direct ChatGPT invocation of nd_ping, then Stage-B runtime feasibility probe"
+  "stage_b_live_probe": {
+    "timestamp_utc": "2026-09-10T04:32:57Z",
+    "result": "success",
+    "operation": "notebook_list",
+    "notebook_count": 1,
+    "contains_titles": false,
+    "contains_credentials": false,
+    "auth_bootstrap": "master_token.json -> notebooklm auth refresh --verify -> storage_state.json -> NotebookLMClient",
+    "transport": "Vercel serverless Python",
+    "temporary_canary_removed": true,
+    "post_canary_unauthorized_check": 401
+  },
+  "cold_start": "partially-qualified: successful request executed on serverless runtime after fresh deployment; longer idle test still pending",
+  "redeploy_recovery": "qualified for Stage-B read path after code redeploy",
+  "next_gate": "protect the ChatGPT-facing MCP with supported authentication, then expose read-only notebook_list through MCP and qualify direct ChatGPT invocation"
 }
