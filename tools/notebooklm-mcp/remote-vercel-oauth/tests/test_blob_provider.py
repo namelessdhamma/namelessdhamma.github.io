@@ -1,11 +1,12 @@
 import asyncio
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from mcp.server.auth.provider import AuthorizationParams
+from mcp.server.auth.provider import AuthorizationCode, AuthorizationParams
 from mcp.shared.auth import OAuthClientInformationFull
 
 from nd_oauth.blob_provider import BlobBackedOAuthProvider
@@ -46,6 +47,18 @@ def _params() -> AuthorizationParams:
         redirect_uri="https://chatgpt.com/connector/callback",
         redirect_uri_provided_explicitly=True,
         resource=None,
+    )
+
+
+def _auth_code() -> AuthorizationCode:
+    return AuthorizationCode(
+        code="code-1",
+        client_id="chatgpt-test",
+        redirect_uri="https://chatgpt.com/connector/callback",
+        redirect_uri_provided_explicitly=True,
+        scopes=[],
+        expires_at=time.time() + 300,
+        code_challenge="challenge-1",
     )
 
 
@@ -128,6 +141,32 @@ class BlobBackedProviderTests(unittest.TestCase):
             self.assertIn(sid, provider2._pending)
             self.assertEqual(provider2._pending[sid].client.client_id, "chatgpt-test")
             self.assertEqual(provider2._pending[sid].params.state, "state-1")
+
+    def test_authorization_code_survives_a_fresh_provider_instance(self):
+        registry_store = _MemoryStore()
+        transient_store = _MemoryStore()
+
+        with tempfile.TemporaryDirectory() as tmp1:
+            provider1 = BlobBackedOAuthProvider(
+                password="a-strong-random-password-1234567890",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp1) / "oauth.json",
+                state_store=registry_store,
+                pending_store=transient_store,
+            )
+            provider1.auth_codes["code-1"] = _auth_code()
+            provider1._persist_pending()
+
+        with tempfile.TemporaryDirectory() as tmp2:
+            provider2 = BlobBackedOAuthProvider(
+                password="a-strong-random-password-1234567890",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp2) / "oauth.json",
+                state_store=registry_store,
+                pending_store=transient_store,
+            )
+            self.assertIn("code-1", provider2.auth_codes)
+            self.assertEqual(provider2.auth_codes["code-1"].client_id, "chatgpt-test")
 
 
 if __name__ == "__main__":
