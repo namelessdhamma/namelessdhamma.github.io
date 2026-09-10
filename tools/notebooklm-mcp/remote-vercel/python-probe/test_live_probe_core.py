@@ -1,10 +1,9 @@
 import base64
-import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from api._live_probe_core import decode_master_token, is_authorized, materialize_master_token
+from notebooklm_runtime.live_probe_core import decode_master_token, is_authorized, materialize_master_token
 
 
 class LiveProbeCoreTests(unittest.TestCase):
