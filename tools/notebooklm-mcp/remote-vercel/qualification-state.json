@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "stage": "A",
+  "status": "code-qualified-awaiting-deploy",
+  "service": "nd-notebooklm-remote-mcp",
+  "version": "0.1.0",
+  "primary_host": "vercel-hobby",
+  "fallback_hosts": ["enzonic-free", "deplexo-free"],
+  "mcp_path": "/api/mcp",
+  "health_path": "/api/health",
+  "contains_google_secrets": false,
+  "uses_android": false,
+  "uses_secure_mcp_tunnel": false,
+  "ci": {
+    "run_id": 34423782097,
+    "result": "success",
+    "tests": "success",
+    "build": "success"
+  },
+  "live_deployment": null,
+  "chatgpt_scan_tools": null,
+  "chatgpt_nd_ping": null,
+  "cold_start": null,
+  "redeploy_recovery": null
+}
