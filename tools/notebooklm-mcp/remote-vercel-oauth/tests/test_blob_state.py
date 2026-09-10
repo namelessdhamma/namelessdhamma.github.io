@@ -5,30 +5,30 @@ from pathlib import Path
 from nd_oauth.blob_state import BlobOAuthStateStore
 
 
-class _Blob:
+class _BufferedBlob:
+    def __init__(self, content: bytes):
+        self.status_code = 200
+        self.content = content
+
+
+class _StreamBlob:
     def __init__(self, stream):
         self.status_code = 200
         self.stream = stream
 
 
-class _BlobWithoutStatus:
-    def __init__(self, stream):
-        self.stream = stream
-
-
 class _FakeClient:
-    def __init__(self, existing=None, *, expose_status=True):
+    def __init__(self, existing=None, *, mode="buffered"):
         self.existing = existing
-        self.expose_status = expose_status
+        self.mode = mode
         self.put_calls = []
 
     def get(self, path, *, access, use_cache):
         if self.existing is None:
             return None
-        stream = iter([self.existing[:3], self.existing[3:]])
-        if self.expose_status:
-            return _Blob(stream)
-        return _BlobWithoutStatus(stream)
+        if self.mode == "buffered":
+            return _BufferedBlob(self.existing)
+        return _StreamBlob(iter([self.existing[:3], self.existing[3:]]))
 
     def put(self, path, body, **kwargs):
         self.put_calls.append((path, body, kwargs))
@@ -39,8 +39,8 @@ class _FakeClient:
 
 
 class BlobStateTests(unittest.TestCase):
-    def test_restore_writes_private_state_with_mode_0600(self):
-        client = _FakeClient(b'{"clients":{}}')
+    def test_restore_reads_current_sync_vercel_buffered_content_and_writes_mode_0600(self):
+        client = _FakeClient(b'{"clients":{}}', mode="buffered")
         store = BlobOAuthStateStore("oauth/state.json", client_factory=lambda: client)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "oauth_state.json"
@@ -48,8 +48,8 @@ class BlobStateTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b'{"clients":{}}')
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
-    def test_restore_accepts_current_vercel_download_object_without_status_code(self):
-        client = _FakeClient(b'{"clients":{"chatgpt":{}}}', expose_status=False)
+    def test_restore_keeps_stream_fallback_for_compatible_adapters(self):
+        client = _FakeClient(b'{"clients":{"chatgpt":{}}}', mode="stream")
         store = BlobOAuthStateStore("oauth/state.json", client_factory=lambda: client)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "oauth_state.json"
