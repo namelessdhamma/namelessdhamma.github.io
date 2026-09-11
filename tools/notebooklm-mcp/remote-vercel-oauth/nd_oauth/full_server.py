@@ -12,6 +12,7 @@ from .server_app import SERVICE_NAME, SERVICE_VERSION
 def create_full_mcp(
     *,
     password: str,
+    login_password: str | None = None,
     base_url: str,
     state_path: Path,
     registry_store: OAuthStateStore,
@@ -27,6 +28,7 @@ def create_full_mcp(
     """
     auth = BlobBackedOAuthProvider(
         password=password,
+        login_password=login_password,
         base_url=base_url,
         state_path=state_path,
         state_store=registry_store,
