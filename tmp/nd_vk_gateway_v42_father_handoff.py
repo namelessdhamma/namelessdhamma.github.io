@@ -70,20 +70,6 @@ insert="""                low_text=text.lower()
 if needle not in src: raise RuntimeError('V42 command insertion marker not found')
 src=src.replace(needle,insert,1)
 
-# Add a bounded, idempotent startup probe proving gateway->broker semantic write path.
-serve="ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()"
-probe="""def father_handoff_startup_probe():
-    time.sleep(8)
-    try:
-        rr=broker_invoke('sandbox_inbox_submit','',{'idempotency_key':'gateway-v42-selfprobe-v1','content':'V42 gateway-to-broker handoff qualification probe. NON-CANONICAL SELFTEST.','title':'V42 Father Handoff Selftest','actor':'vk_ai_assistant','sender_vk_id':'SELFTEST','gateway_version':'v42-father-handoff','source_refs':[]})
-        ok=isinstance(rr,dict) and rr.get('ok') and rr.get('read_back_verified')
-        print('FATHER_HANDOFF_SELF_PROBE',json.dumps({'ok':bool(ok),'artifact_id':rr.get('artifact_id') if isinstance(rr,dict) else None,'status':rr.get('status') if isinstance(rr,dict) else None,'canonical_mutations':False,'sandbox_mutations':True},ensure_ascii=False),flush=True)
-    except Exception as e:
-        print('FATHER_HANDOFF_SELF_PROBE',json.dumps({'ok':False,'error':cleanerr(e),'canonical_mutations':False,'sandbox_mutations':True},ensure_ascii=False),flush=True)
-threading.Thread(target=father_handoff_startup_probe,daemon=True).start()
-"""
-if serve not in src: raise RuntimeError('V42 serve marker not found')
-src=src.replace(serve,probe+serve,1)
 src=src.replace('ND_V36_WRAPPER_READY','ND_V42_FATHER_HANDOFF_WRAPPER_READY',1)
 print('ND_V42_LOADER_READY',flush=True)
 exec(compile(src,'nd_vk_gateway_v42_father_handoff_loader.py','exec'))
