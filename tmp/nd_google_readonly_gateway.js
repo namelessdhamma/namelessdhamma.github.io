@@ -1,4 +1,4 @@
-const { createPrivateKey, sign: rsaSign } = require("node:crypto");
+import { createPrivateKey, sign as rsaSign } from "node:crypto";
 
 const PORT = Number(process.env.PORT || 3000);
 const CLIENT_EMAIL = process.env.ND_GOOGLE_CLIENT_EMAIL || "";
