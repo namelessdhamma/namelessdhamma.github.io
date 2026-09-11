@@ -42,6 +42,7 @@ class RailwayDeploymentConfigTests(unittest.TestCase):
         )
         self.assertEqual(config.base_url, "https://backup.example.test")
         self.assertEqual(config.oauth_password, "y" + ("x" * 23))
+        self.assertEqual(config.login_password, "y" + ("x" * 23))
         self.assertEqual(config.master_token_b64, "master")
         self.assertEqual(config.state_path, Path("/tmp/nd-notebooklm-railway-oauth.json"))
         self.assertEqual(config.persistent_dir, Path("/data/nd-notebooklm"))
@@ -56,6 +57,22 @@ class RailwayDeploymentConfigTests(unittest.TestCase):
                 "ND_NOTEBOOKLM_MASTER_TOKEN_AESGCM_B64": encrypted,
             }
         )
+        self.assertEqual(config.master_token_b64, "provider-master-token")
+
+    def test_allows_separate_interactive_login_password(self):
+        legacy_password = "p" * 32
+        interactive_password = "q" * 32
+        encrypted = encrypt_master("provider-master-token", legacy_password)
+        config = RailwayDeploymentConfig.from_environ(
+            {
+                "ND_NOTEBOOKLM_OAUTH_BASE_URL": "https://backup.example.test",
+                "NOTEBOOKLM_MCP_OAUTH_PASSWORD": legacy_password,
+                "ND_NOTEBOOKLM_OAUTH_LOGIN_PASSWORD": interactive_password,
+                "ND_NOTEBOOKLM_MASTER_TOKEN_AESGCM_B64": encrypted,
+            }
+        )
+        self.assertEqual(config.oauth_password, legacy_password)
+        self.assertEqual(config.login_password, interactive_password)
         self.assertEqual(config.master_token_b64, "provider-master-token")
 
     def test_rejects_ambiguous_master_token_sources(self):
