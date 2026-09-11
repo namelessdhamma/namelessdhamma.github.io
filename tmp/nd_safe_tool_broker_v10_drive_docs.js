@@ -1,0 +1,119 @@
+const BASE='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/d519ae887c5d7a972b9dc676eef58c964cd6c6b0/tmp/nd_safe_tool_broker_v9_father_comment.js';
+let src=await (await fetch(BASE)).text();
+
+const DRIVE_DOCS_WRITABLE=new Set((process.env.ND_DRIVE_MCP_WRITABLE_FILE_IDS||"").split(",").map(x=>x.trim()).filter(Boolean));
+
+const driveDocsCode=String.raw`
+function ddId(v,label){
+ const s=String(v||"").trim();
+ if(!/^[A-Za-z0-9_-]{10,220}$/.test(s))throw new Error("invalid "+label);
+ return s;
+}
+function ddWritable(id){if(!DRIVE_DOCS_WRITABLE.has(id))throw new Error("drive docs write denied");}
+function ddText(content){
+ let out="";
+ for(const item of (content||[])){
+  for(const e of (item.paragraph?.elements||[]))if(e.textRun?.content)out+=e.textRun.content;
+  for(const row of (item.table?.tableRows||[])){for(const cell of (row.tableCells||[]))out+=ddText(cell.content||[])+"\t";out+="\n";}
+  if(item.tableOfContents?.content)out+=ddText(item.tableOfContents.content);
+ }
+ return out;
+}
+function ddTabs(tabs){
+ const out=[];
+ for(const tab of (tabs||[])){
+  const p=tab.tabProperties||{},d=tab.documentTab||tab;
+  out.push({tab_id:p.tabId||tab.tabId||null,title:p.title||tab.title||null,parent_tab_id:p.parentTabId||tab.parentTabId||null,index:p.index??tab.index??null,text:ddText(d.body?.content||tab.body?.content||[])});
+  out.push(...ddTabs(tab.childTabs||[]));
+ }
+ return out;
+}
+async function ddJson(url,opt={}){
+ const r=await sbReq(url,{...opt,headers:{"Content-Type":"application/json",...(opt.headers||{})}});
+ const t=await r.text();return t?JSON.parse(t):{};
+}
+async function ddDocRaw(id){return await ddJson("https://docs.googleapis.com/v1/documents/"+encodeURIComponent(id)+"?includeTabsContent=true");}
+function ddSnapshot(id,doc){
+ let tabs=ddTabs(doc.tabs||[]);
+ if(!tabs.length)tabs=[{tab_id:null,title:null,parent_tab_id:null,index:0,text:ddText(doc.body?.content||[])}];
+ return {document_id:id,title:doc.title||null,revision_id:doc.revisionId||null,tabs,text:tabs.map(x=>x.text).join("\n")};
+}
+async function docsRead(a={}){
+ const id=ddId(a.document_id,"document_id");
+ return ddSnapshot(id,await ddDocRaw(id));
+}
+async function driveMetadata(a={}){
+ const id=ddId(a.file_id,"file_id");
+ const fields=encodeURIComponent("id,name,mimeType,modifiedTime,version,trashed,webViewLink,parents,capabilities(canEdit,canDownload,canShare),md5Checksum,sha1Checksum,sha256Checksum");
+ return await ddJson("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?supportsAllDrives=true&fields="+fields);
+}
+async function currentnessToken(a={}){
+ const id=ddId(a.file_id,"file_id"),m=await driveMetadata({file_id:id});
+ const o={file_id:id,mime_type:m.mimeType||null,drive_version:m.version||null,modified_time:m.modifiedTime||null,trashed:!!m.trashed,md5:m.md5Checksum||null,sha1:m.sha1Checksum||null,sha256:m.sha256Checksum||null};
+ if(m.mimeType==="application/vnd.google-apps.document")o.docs_revision_id=(await docsRead({document_id:id})).revision_id;
+ return o;
+}
+function ddEnd(doc){
+ if(doc.tabs?.length){
+  const tab=doc.tabs[0],p=tab.tabProperties||{},d=tab.documentTab||tab,c=d.body?.content||tab.body?.content||[];
+  const loc={index:c.length?Math.max(1,Number(c[c.length-1].endIndex||1)-1):1};
+  const tid=p.tabId||tab.tabId;if(tid)loc.tabId=tid;return loc;
+ }
+ const c=doc.body?.content||[];return {index:c.length?Math.max(1,Number(c[c.length-1].endIndex||1)-1):1};
+}
+async function docsAppend(a={}){
+ const id=ddId(a.document_id,"document_id");ddWritable(id);
+ const text=String(a.text??"");if(!text||text.length>120000)throw new Error("invalid append text");
+ const raw=await ddDocRaw(id),current=String(raw.revisionId||""),expected=a.expected_revision_id?String(a.expected_revision_id):null;
+ if(expected&&expected!==current)throw new Error("REVISION_MISMATCH: expected="+expected+" current="+current);
+ const body={requests:[{insertText:{location:ddEnd(raw),text}}],writeControl:{requiredRevisionId:expected||current}};
+ const result=await ddJson("https://docs.googleapis.com/v1/documents/"+encodeURIComponent(id)+":batchUpdate",{method:"POST",body:JSON.stringify(body)});
+ const after=await docsRead({document_id:id});
+ return {document_id:id,before_revision_id:current,after_revision_id:after.revision_id,write_control:result.writeControl||null,appended_chars:text.length};
+}
+async function docsReplaceExact(a={}){
+ const id=ddId(a.document_id,"document_id");ddWritable(id);
+ const oldText=String(a.old_text??""),newText=String(a.new_text??"");
+ if(!oldText||oldText.length>30000||newText.length>30000)throw new Error("invalid replace text");
+ const before=await docsRead({document_id:id}),current=String(before.revision_id||""),expected=a.expected_revision_id?String(a.expected_revision_id):null;
+ if(expected&&expected!==current)throw new Error("REVISION_MISMATCH: expected="+expected+" current="+current);
+ const count=before.text.split(oldText).length-1;if(count!==1)throw new Error("EXACT_MATCH_REQUIRED: found "+count+" occurrences");
+ const body={requests:[{replaceAllText:{containsText:{text:oldText,matchCase:true},replaceText:newText}}],writeControl:{requiredRevisionId:expected||current}};
+ const result=await ddJson("https://docs.googleapis.com/v1/documents/"+encodeURIComponent(id)+":batchUpdate",{method:"POST",body:JSON.stringify(body)});
+ const after=await docsRead({document_id:id});
+ return {document_id:id,before_revision_id:current,after_revision_id:after.revision_id,write_control:result.writeControl||null,replaced_occurrences:1};
+}
+async function changesStartToken(){const j=await ddJson("https://www.googleapis.com/drive/v3/changes/startPageToken?supportsAllDrives=true");return {start_page_token:j.startPageToken};}
+async function changesList(a={}){
+ const token=String(a.page_token||"").trim();if(!token)throw new Error("page_token required");
+ const p=new URLSearchParams({pageToken:token,pageSize:String(Math.max(1,Math.min(Number(a.page_size||100),1000))),includeRemoved:"true",includeItemsFromAllDrives:"true",supportsAllDrives:"true",restrictToMyDrive:"false",spaces:"drive",fields:"nextPageToken,newStartPageToken,changes(removed,fileId,time,changeType,file(id,name,mimeType,modifiedTime,version,trashed,parents))"});
+ return await ddJson("https://www.googleapis.com/drive/v3/changes?"+p.toString());
+}
+`;
+
+const invokeMarker='async function invokeTool(name,q,args={}){';
+if(!src.includes(invokeMarker))throw new Error('invoke marker missing');
+src=src.replace(invokeMarker,driveDocsCode+"\n"+invokeMarker+
+ 'if(name==="docs_read")return await docsRead(args);'+
+ 'if(name==="docs_append")return await docsAppend(args);'+
+ 'if(name==="docs_replace_exact")return await docsReplaceExact(args);'+
+ 'if(name==="drive_get_metadata")return await driveMetadata(args);'+
+ 'if(name==="drive_get_currentness_token")return await currentnessToken(args);'+
+ 'if(name==="drive_changes_start_token")return await changesStartToken(args);'+
+ 'if(name==="drive_changes_list")return await changesList(args);');
+
+const catMarker='TOOL_CATALOG.broker_executable.push(';
+if(!src.includes(catMarker))throw new Error('catalog marker missing');
+src=src.replace(catMarker,catMarker+
+ '{name:"docs_read",description:"Read a Google Doc with revisionId and full text."},'+
+ '{name:"docs_append",description:"Append to an allowlisted Google Doc with requiredRevisionId."},'+
+ '{name:"docs_replace_exact",description:"Exact replace in an allowlisted Google Doc with requiredRevisionId."},'+
+ '{name:"drive_get_metadata",description:"Read Drive version/modifiedTime/current metadata."},'+
+ '{name:"drive_get_currentness_token",description:"Read Drive currentness token plus Docs revisionId."},'+
+ '{name:"drive_changes_start_token",description:"Get Drive changes start token."},'+
+ '{name:"drive_changes_list",description:"List Drive changes for reconciliation."},');
+
+const serve='Bun.serve({port:PORT,fetch:handler});';
+if(!src.includes(serve))throw new Error('serve marker missing');
+src=src.replace(serve,serve+'\nconsole.log("ND_DRIVE_DOCS_TOOLS_V10",JSON.stringify({writable_ids:DRIVE_DOCS_WRITABLE.size,tools:7}));');
+await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64'));
