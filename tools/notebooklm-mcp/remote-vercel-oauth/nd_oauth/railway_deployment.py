@@ -61,6 +61,7 @@ class RailwayDeploymentConfig:
     base_url: str
     master_token_b64: str
     oauth_password: str
+    login_password: str
     state_path: Path = Path("/tmp/nd-notebooklm-railway-oauth.json")
     persistent_dir: Path = Path("/data/nd-notebooklm")
 
@@ -77,6 +78,10 @@ class RailwayDeploymentConfig:
             raise RuntimeError("NOTEBOOKLM_MCP_OAUTH_PASSWORD must be at least 24 characters")
 
         master_token = _load_master_token(source, password)
+
+        login_password = source.get("ND_NOTEBOOKLM_OAUTH_LOGIN_PASSWORD", "").strip() or password
+        if len(login_password) < 24:
+            raise RuntimeError("ND_NOTEBOOKLM_OAUTH_LOGIN_PASSWORD must be at least 24 characters")
 
         state_path = Path(
             source.get(
@@ -95,6 +100,7 @@ class RailwayDeploymentConfig:
             base_url=base_url,
             master_token_b64=master_token,
             oauth_password=password,
+            login_password=login_password,
             state_path=state_path,
             persistent_dir=persistent_dir,
         )
@@ -118,6 +124,7 @@ def build_railway_mcp(
 
     return create_full_mcp(
         password=config.oauth_password,
+        login_password=config.login_password,
         base_url=config.base_url,
         state_path=config.state_path,
         registry_store=registry_store,
