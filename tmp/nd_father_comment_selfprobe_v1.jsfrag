@@ -1,0 +1,26 @@
+setTimeout(async()=>{
+ const run=Date.now().toString(36),prov={actor:"vk_ai_assistant",sender_vk_id:"SELFTEST",actual_model:"broker-selftest",provider:"internal",gateway_version:"broker-v9-selftest",source_refs:["server-side qualification"]},checks=[];let inboxArtifact=null,bookArtifact=null;
+ const push=(name,ok,extra={})=>checks.push({name,ok,...extra});
+ try{
+  const key="nd-v9-selftest-inbox-create-v1";
+  const c=await sandboxCreate({...prov,parent_id:FATHER_FOLDERS.inbox,title:"[SELFTEST] ND Father Sandbox Inbox",content:"selftest seed",kind:"SELFTEST",status:"ARCHIVED_TEST",idempotency_key:key});inboxArtifact=c.artifact_id;push("create_inbox",!!c.artifact_id,{deduplicated:!!c.deduplicated});
+  const r1=await sandboxRead({artifact_id:c.artifact_id});push("readback_create",r1.ok&&r1.authority===SANDBOX_AUTHORITY&&r1.content.length>0);
+  const ukey="nd-v9-selftest-update-"+run,updated="selftest updated "+run;
+  const u=await sandboxUpdate({...prov,artifact_id:c.artifact_id,content:updated,status:"ARCHIVED_TEST",idempotency_key:ukey});push("update_same_artifact",u.ok&&!u.deduplicated,{version:u.version});
+  const r2=await sandboxRead({artifact_id:c.artifact_id});push("readback_update",r2.content===updated&&r2.version===u.version);
+  const d=await sandboxCreate({...prov,parent_id:FATHER_FOLDERS.inbox,title:"[SELFTEST] duplicate attempt",content:"must not duplicate",kind:"SELFTEST",status:"ARCHIVED_TEST",idempotency_key:key});
+  const l=sbLedgerByFolder(FATHER_FOLDERS.inbox),records=await sbComments(l),idem=sbHash("create|"+FATHER_FOLDERS.inbox+"|"+key),creates=records.filter(x=>x.operation==="CREATE"&&x.idempotency_hash===idem),complete=creates.length?sbComplete(records,creates[0].artifact_id,1):null;
+  push("idempotency_no_duplicate",d.deduplicated===true&&d.artifact_id===c.artifact_id&&!!complete&&creates.length===Number(creates[0]?.chunk_count||0),{create_comments:creates.length});
+  const b=await sandboxCreate({...prov,parent_id:FATHER_FOLDERS.book_drafts,title:"[SELFTEST] ND Father Sandbox Book Draft",content:"selftest book draft",kind:"SELFTEST_BOOK",status:"ARCHIVED_TEST",idempotency_key:"nd-v9-selftest-book-create-v1"});bookArtifact=b.artifact_id;push("create_book_drafts",!!b.artifact_id,{deduplicated:!!b.deduplicated});
+ }catch(e){push("positive_path",false,{error:String(e).slice(0,420)});}
+ async function deny(name,fn){try{await fn();push(name,false,{error:"unexpected allow"});}catch(e){const s=String(e);push(name,s.includes("denied")||s.includes("tool denied"),{reason:s.slice(0,200)});}}
+ await deny("deny_statehead_write",()=>sandboxCreate({...prov,parent_id:STATEHEAD_ID,title:"deny",content:"deny",idempotency_key:"deny-statehead-"+run}));
+ try{const [st]=await stateRegistry(),reg=st?.capability_registry?.canonical_artifact_id;await deny("deny_registry_write",()=>sandboxCreate({...prov,parent_id:reg,title:"deny",content:"deny",idempotency_key:"deny-registry-"+run}));}catch(e){push("deny_registry_write",false,{error:String(e).slice(0,200)});}
+ try{const rm=await sbMeta(FATHER_ROOT_ID),outside=(rm.parents||[])[0];await deny("deny_ordinary_drive_folder",()=>sandboxCreate({...prov,parent_id:outside,title:"deny",content:"deny",idempotency_key:"deny-outside-"+run}));}catch(e){push("deny_ordinary_drive_folder",false,{error:String(e).slice(0,200)});}
+ await deny("deny_drive_root",()=>sandboxCreate({...prov,parent_id:"root",title:"deny",content:"deny",idempotency_key:"deny-root-"+run}));
+ await deny("deny_outbox_from_vk",()=>sandboxCreate({...prov,parent_id:FATHER_FOLDERS.outbox,title:"deny",content:"deny",idempotency_key:"deny-outbox-"+run}));
+ await deny("deny_move_out",()=>invokeTool("sandbox_move","",{artifact_id:inboxArtifact,new_parent_id:"root"}));
+ await deny("deny_hard_delete",()=>invokeTool("sandbox_delete","",{artifact_id:inboxArtifact}));
+ const ok=checks.every(x=>x.ok);
+ console.log("ND_FATHER_COMMENT_SANDBOX_SELF_PROBE",JSON.stringify({ok,broker_version:BROKER_VERSION,canonical_mutations:false,sandbox_mutations:true,storage:"OWNER_OWNED_DRIVE_COMMENT_APPEND_ONLY_LEDGERS",checks,artifacts:{inbox:inboxArtifact,book:bookArtifact}}));
+},3500);
