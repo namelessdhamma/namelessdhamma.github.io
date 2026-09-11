@@ -1,0 +1,93 @@
+const FATHER_ROOT_ID="1N7rXBuBg4Z8_35GXcjSC-F0snf37L0rL";
+const FATHER_FOLDERS=Object.freeze({
+  inbox:"1LzNiq6PbE7yNZQqnHxexVbMkDpvI56Zl",
+  book_drafts:"1aQ8cnGd423elt90t8vPjcPvp0x08oiFn",
+  research:"1VksG2jZF6GjJUGPBspXwSTAtdQIx01S8",
+  outbox:"1FfZS1jmrRF-BiCnzPnSqoD_2KHUzzGE8",
+  shared_notes:"1cF1qB25BZPKmtvgoXXkSMrEh_LnYJiRD"
+});
+const FATHER_CHILD_IDS=new Set(Object.values(FATHER_FOLDERS));
+const SANDBOX_AUTHORITY="NON_AUTHORITATIVE_SANDBOX";
+const BROKER_VERSION="v7-father-sandbox";
+
+TOOL_CATALOG.policy={mode:"BOUNDED_WRITE_SANDBOX",canonical_mutations:false,sandbox_mutations:true,model_receives_credentials:false,unknown_tool_behavior:"DENY",write_boundary:"ND Father Workspace descendants only"};
+TOOL_CATALOG.broker_executable.push(
+ {name:"sandbox_create",description:"Create a provenance-bearing non-authoritative Markdown artifact in ND Father Workspace; idempotency key required."},
+ {name:"sandbox_update",description:"Update only broker-created sandbox artifacts; preserve provenance history; idempotency key required."},
+ {name:"sandbox_read",description:"Read only files whose immutable ancestry resolves inside ND Father Workspace."},
+ {name:"sandbox_list",description:"List only folders whose immutable ancestry resolves inside ND Father Workspace."},
+ {name:"sandbox_inbox_submit",description:"Create a RECEIVED work item in 00 Inbox."},
+ {name:"sandbox_book_draft",description:"Create a PROPOSED / NON-CANONICAL derivative in 01 Book Drafts."},
+ {name:"sandbox_research_save",description:"Save a non-authoritative research artifact in 02 Research."},
+ {name:"sandbox_shared_note",description:"Save a NON-CANONICAL shared note in 04 Shared Notes."}
+);
+
+function sbDeny(r){throw new Error("sandbox denied: "+r);}
+function sbHash(v){v=String(v||"").trim();if(!v)sbDeny("idempotency_key required");return createHash("sha256").update(v).digest("hex").slice(0,40);}
+function sbText(v,n=12000){return String(v??"").replace(/\u0000/g,"").slice(0,n);}
+function sbTitle(v){let s=sbText(v,160).replace(/[\\/\r\n\t]+/g," ").replace(/\s+/g," ").trim()||"ND Father Workspace item";return s.toLowerCase().endsWith(".md")?s:s+".md";}
+function sbStatus(v,d="PROPOSED"){return (String(v||d).toUpperCase().replace(/[^A-Z0-9_ /-]/g,"").slice(0,48)||d);}
+function sbEvent(a,kind,h){
+ const actor=String(a?.actor||"vk_ai_assistant");if(!["father_via_vk","vk_ai_assistant"].includes(actor))sbDeny("invalid actor");
+ const sender=String(a?.sender_vk_id||"").slice(0,64);if(sender&&sender!=="SELFTEST"&&!/^\d{1,20}$/.test(sender))sbDeny("invalid sender_vk_id");
+ return {at:new Date().toISOString(),actor,sender_vk_id:sender||null,source_refs:Array.isArray(a?.source_refs)?a.source_refs.slice(0,24).map(x=>sbText(x,500)):[],actual_model:sbText(a?.actual_model,160)||null,provider:sbText(a?.provider,120)||null,gateway_version:sbText(a?.gateway_version,120)||null,broker_version:BROKER_VERSION,idempotency_hash:h,kind};
+}
+function sbSerialize(m,b){return "<!-- ND_SANDBOX_META\n"+JSON.stringify(m,null,2)+"\n-->\n\n"+sbText(b,180000);}
+function sbParse(t){const m=String(t||"").match(/^<!-- ND_SANDBOX_META\n([\s\S]*?)\n-->\n\n([\s\S]*)$/);if(!m)sbDeny("artifact missing sandbox marker");let j;try{j=JSON.parse(m[1]);}catch{sbDeny("artifact metadata invalid");}if(j.authority!==SANDBOX_AUTHORITY)sbDeny("artifact authority mismatch");j.write_history=Array.isArray(j.write_history)?j.write_history:[];return {meta:j,body:m[2]};}
+async function sbReq(url,opt={}){
+ const tok=await accessToken(),headers={Authorization:"Bearer "+tok,"User-Agent":"nd-safe-tool-broker/7.0",...(opt.headers||{})};
+ const r=await fetch(url,{...opt,headers});if(!r.ok)throw new Error("google "+r.status+": "+(await r.text()).slice(0,500));return r;
+}
+async function sbMeta(id){
+ if(!id||id==="root")sbDeny("root outside sandbox");
+ const f=encodeURIComponent("id,name,mimeType,modifiedTime,parents,trashed,shortcutDetails,appProperties");
+ return await (await sbReq("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(id)+"?supportsAllDrives=true&fields="+f)).json();
+}
+async function sbFolder(id,allowRoot=false){
+ id=String(id||"");if(!id||id==="root")sbDeny("folder outside Father Workspace");
+ if(id===FATHER_ROOT_ID){if(allowRoot)return true;sbDeny("writes to workspace root are not allowed");}
+ let cur=id,child=false;const seen=new Set();
+ for(let i=0;i<16;i++){
+  if(cur===FATHER_ROOT_ID){if(!child)sbDeny("not under approved role folder");return true;}
+  if(seen.has(cur))sbDeny("ancestry cycle");seen.add(cur);
+  const m=await sbMeta(cur);if(m.trashed)sbDeny("trashed path");if(m.mimeType==="application/vnd.google-apps.shortcut"||m.shortcutDetails)sbDeny("shortcut path");if(m.mimeType!=="application/vnd.google-apps.folder")sbDeny("target not folder");
+  if(FATHER_CHILD_IDS.has(m.id))child=true;const p=Array.isArray(m.parents)?m.parents:[];if(p.length!==1)sbDeny("ambiguous parent");cur=p[0];
+ }
+ sbDeny("ancestry too deep");
+}
+async function sbFile(id){
+ const m=await sbMeta(String(id||""));if(m.trashed)sbDeny("trashed file");if(m.mimeType==="application/vnd.google-apps.shortcut"||m.shortcutDetails)sbDeny("shortcut file");if(m.mimeType==="application/vnd.google-apps.folder")sbDeny("file id is folder");
+ const p=Array.isArray(m.parents)?m.parents:[];if(p.length!==1)sbDeny("ambiguous file parent");await sbFolder(p[0]);return m;
+}
+function sbMultipart(meta,content){
+ const b="ndb7_"+Date.now()+"_"+Math.random().toString(16).slice(2);
+ return {type:"multipart/related; boundary="+b,body:"--"+b+"\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"+JSON.stringify(meta)+"\r\n--"+b+"\r\nContent-Type: text/markdown; charset=UTF-8\r\n\r\n"+content+"\r\n--"+b+"--"};
+}
+async function sbVerify(id,expected){for(let i=0;i<4;i++){const got=await textFile(id,null,220000).catch(()=>"");if(got===expected)return true;await new Promise(r=>setTimeout(r,250*(i+1)));}throw new Error("sandbox read-back verification failed");}
+async function sbFind(parent,h){
+ const q="'"+parent+"' in parents and trashed=false and appProperties has { key='nd_create_idem' and value='"+h+"' }";
+ const p=new URLSearchParams({q,pageSize:"10",fields:"files(id,name,mimeType,parents,appProperties,modifiedTime)",supportsAllDrives:"true",includeItemsFromAllDrives:"true"});
+ return (await (await sbReq("https://www.googleapis.com/drive/v3/files?"+p)).json()).files||[];
+}
+async function sandboxCreate(a={}){
+ const parent=String(a.parent_id||"");await sbFolder(parent);const h=sbHash(a.idempotency_key),found=await sbFind(parent,h);if(found.length>1)throw new Error("sandbox idempotency collision");
+ if(found.length===1){const m=await sbFile(found[0].id),c=await textFile(m.id,m,220000);return {ok:true,deduplicated:true,id:m.id,name:m.name,parent_id:parent,authority:SANDBOX_AUTHORITY,read_back_verified:!!c};}
+ const kind=sbText(a.kind,80)||"SANDBOX_ARTIFACT",status=sbStatus(a.status),ev=sbEvent(a,kind,h),mm={authority:SANDBOX_AUTHORITY,kind,status,created_at:ev.at,source_ref:sbText(a.source_ref,1000)||null,write_history:[ev]},content=sbSerialize(mm,a.content||"");
+ const meta={name:sbTitle(a.title),parents:[parent],mimeType:"text/markdown",appProperties:{nd_authority:SANDBOX_AUTHORITY,nd_kind:kind.slice(0,100),nd_status:status.slice(0,100),nd_create_idem:h,nd_actor:ev.actor}},mp=sbMultipart(meta,content),fields=encodeURIComponent("id,name,mimeType,parents,modifiedTime,appProperties");
+ const f=await (await sbReq("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields="+fields,{method:"POST",headers:{"Content-Type":mp.type},body:mp.body})).json();
+ await sbFile(f.id);await sbVerify(f.id,content);return {ok:true,deduplicated:false,id:f.id,name:f.name,parent_id:parent,authority:SANDBOX_AUTHORITY,status,read_back_verified:true};
+}
+async function sandboxUpdate(a={}){
+ const id=String(a.file_id||""),m=await sbFile(id);if(m.appProperties?.nd_authority!==SANDBOX_AUTHORITY)sbDeny("updates limited to broker-created artifacts");
+ const old=await textFile(id,m,220000),p=sbParse(old),h=sbHash(a.idempotency_key);if(p.meta.write_history.some(x=>x?.idempotency_hash===h))return {ok:true,deduplicated:true,id,name:m.name,authority:SANDBOX_AUTHORITY,read_back_verified:true};
+ const kind=sbText(p.meta.kind,80)||"SANDBOX_ARTIFACT",ev=sbEvent(a,kind,h);p.meta.write_history.push(ev);if(p.meta.write_history.length>60)p.meta.write_history=p.meta.write_history.slice(-60);p.meta.updated_at=ev.at;if(a.status)p.meta.status=sbStatus(a.status,p.meta.status||"PROPOSED");if(a.source_ref!==undefined)p.meta.source_ref=sbText(a.source_ref,1000)||null;
+ const content=sbSerialize(p.meta,a.content!==undefined?a.content:p.body),meta={appProperties:{...(m.appProperties||{}),nd_authority:SANDBOX_AUTHORITY,nd_kind:kind.slice(0,100),nd_status:String(p.meta.status||"PROPOSED").slice(0,100),nd_last_idem:h,nd_actor:ev.actor}},mp=sbMultipart(meta,content),fields=encodeURIComponent("id,name,mimeType,parents,modifiedTime,appProperties");
+ await sbReq("https://www.googleapis.com/upload/drive/v3/files/"+encodeURIComponent(id)+"?uploadType=multipart&supportsAllDrives=true&fields="+fields,{method:"PATCH",headers:{"Content-Type":mp.type},body:mp.body});await sbFile(id);await sbVerify(id,content);
+ return {ok:true,deduplicated:false,id,name:m.name,authority:SANDBOX_AUTHORITY,status:p.meta.status,read_back_verified:true};
+}
+async function sandboxRead(a={}){const m=await sbFile(String(a.file_id||""));return {ok:true,id:m.id,name:m.name,mimeType:m.mimeType,modifiedTime:m.modifiedTime,authority:m.appProperties?.nd_authority||"SANDBOX_EXTERNAL_FILE",content:await textFile(m.id,m,60000),mutations:false};}
+async function sandboxList(a={}){
+ const id=String(a.folder_id||"");await sbFolder(id,true);const q="'"+id+"' in parents and trashed=false",p=new URLSearchParams({q,pageSize:String(Math.min(100,Math.max(1,Number(a.limit||50)))),orderBy:"modifiedTime desc",fields:"files(id,name,mimeType,modifiedTime,parents,appProperties,shortcutDetails)",supportsAllDrives:"true",includeItemsFromAllDrives:"true"}),j=await (await sbReq("https://www.googleapis.com/drive/v3/files?"+p)).json();
+ return {ok:true,folder_id:id,items:(j.files||[]).map(f=>({id:f.id,name:f.name,mimeType:f.mimeType,modifiedTime:f.modifiedTime,authority:f.appProperties?.nd_authority||null})),mutations:false};
+}
+function sbSemantic(a,parent,kind,status){return sandboxCreate({...a,parent_id:parent,kind,status});}
