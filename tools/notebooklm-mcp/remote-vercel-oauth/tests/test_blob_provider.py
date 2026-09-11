@@ -231,5 +231,26 @@ class BlobBackedProviderTests(unittest.TestCase):
             self.assertEqual(refresh.client_id, "chatgpt-test")
 
 
+    def test_optional_login_password_overrides_gate_digest(self):
+        store = _MemoryStore()
+        with tempfile.TemporaryDirectory() as tmp:
+            provider = BlobBackedOAuthProvider(
+                password="legacy-decryption-password-1234567890",
+                login_password="new-interactive-login-password-123456",
+                base_url="https://oauth.example.com",
+                state_path=Path(tmp) / "oauth.json",
+                state_store=store,
+            )
+            digest = provider._SelfHostedOAuthProvider__pw_digest
+            self.assertEqual(
+                digest,
+                provider._kdf("new-interactive-login-password-123456"),
+            )
+            self.assertNotEqual(
+                digest,
+                provider._kdf("legacy-decryption-password-1234567890"),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
