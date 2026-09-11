@@ -3,7 +3,6 @@ import urllib.request
 BASE='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/835a07aa1af8a66ee4b9643a266e012b329b6190/tmp/nd_vk_gateway_v36_father_ux_research.py'
 src=urllib.request.urlopen(BASE,timeout=30).read().decode('utf-8')
 
-# Extend V36 broker client with bounded args payload for sandbox semantic tools.
 old_sig="def broker_invoke(tool,q):"
 new_sig="def broker_invoke(tool,q,args=None):"
 if old_sig not in src: raise RuntimeError('V42 broker signature marker not found')
@@ -13,7 +12,6 @@ new_payload="payload=json.dumps({'tool':tool,'query':(q or '')[:9000],'args':arg
 if old_payload not in src: raise RuntimeError('V42 broker payload marker not found')
 src=src.replace(old_payload,new_payload,1)
 
-# Extend Russian father UX with deterministic durable handoff/list commands.
 old_help="Nameless Dhamma — помощник в VK. Просто пишите обычными словами. Умею: обычные вопросы; свежий интернет-поиск с источниками; глубокий анализ; чтение архитектуры ND; чтение и сравнение рассказов и черновиков. Команды: /быстро /глубоко /исследовать /книга /авто /источники /статус /сброс /ктоя. Обычно команды не нужны — режим выбирается автоматически."
 new_help="Nameless Dhamma — помощник в VK. Просто пишите обычными словами. Умею: обычные вопросы; свежий интернет-поиск с источниками; глубокий анализ; чтение архитектуры ND; чтение и сравнение рассказов и черновиков; передавать сообщения и рабочие материалы в отдельную безопасную зону ND. Команды: /быстро /глубоко /исследовать /книга /передать /мои /авто /источники /статус /сброс /ктоя. Обычно команды не нужны — режим выбирается автоматически."
 if old_help not in src: raise RuntimeError('V42 help marker not found')
@@ -59,7 +57,7 @@ insert="""                low_text=text.lower()
                         if not items:send(peer,'В папке входящих передач пока нет сохранённых рабочих элементов.');return
                         lines=['Последние передачи в ND:']
                         for x in items[:10]:lines.append('%s — %s — %s'%(x.get('artifact_id','?'),x.get('status','?'),x.get('title','без названия')))
-                        send(peer,'\\n'.join(lines)[:3800])
+                        send(peer,'; '.join(lines)[:3800])
                     except Exception as e:
                         print('FATHER_LIST_ERROR',cleanerr(e),flush=True);send(peer,'Сейчас не удалось прочитать список передач.')
                     return
