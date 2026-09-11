@@ -32,6 +32,7 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
         self,
         *,
         password: str,
+        login_password: str | None = None,
         base_url: str,
         state_path: Path,
         state_store: OAuthStateStore,
@@ -51,6 +52,8 @@ class BlobBackedOAuthProvider(SelfHostedOAuthProvider):
             state_path=state_path,
             trust_proxy=trust_proxy,
         )
+        if login_password is not None and login_password != password:
+            self._SelfHostedOAuthProvider__pw_digest = self._kdf(login_password)
         self._restore_pending()
 
     def _write_state_file(self, data):
