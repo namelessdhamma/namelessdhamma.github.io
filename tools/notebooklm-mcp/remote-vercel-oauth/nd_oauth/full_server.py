@@ -114,7 +114,7 @@ def _register_source_currentness_tools(mcp) -> None:
         source: str,
     ) -> object:
         """Provider-specific NotebookLM freshness check for one source."""
-        client = get_client(ctx)
+        client = await get_client(ctx)
         nb_id = await resolve_notebook(client, notebook)
         src_id = await resolve_source(client, nb_id, source)
         result = await client.sources.check_freshness(nb_id, src_id)
@@ -131,7 +131,7 @@ def _register_source_currentness_tools(mcp) -> None:
         source: str,
     ) -> object:
         """Provider-specific NotebookLM refresh. Success is absence of an exception."""
-        client = get_client(ctx)
+        client = await get_client(ctx)
         nb_id = await resolve_notebook(client, notebook)
         src_id = await resolve_source(client, nb_id, source)
         await client.sources.refresh(nb_id, src_id)
