@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from fastmcp import Context
+from fastmcp import Context, FastMCP
 from notebooklm._app.serialize import to_jsonable
 from notebooklm.mcp._context import get_client
 from notebooklm.mcp._resolve import resolve_notebook, resolve_source
@@ -141,6 +141,55 @@ def _register_source_currentness_tools(mcp) -> None:
             "source_id": src_id,
             "provider_specific": True,
         }
+
+
+def create_drive_only_mcp(
+    *,
+    password: str,
+    login_password: str | None = None,
+    base_url: str,
+    state_path: Path,
+    registry_store: OAuthStateStore,
+    transient_store: OAuthStateStore,
+    trust_proxy: bool = False,
+):
+    """Create the isolated Drive/Docs developer MCP without NotebookLM credentials."""
+    auth = BlobBackedOAuthProvider(
+        password=password,
+        login_password=login_password,
+        base_url=base_url,
+        state_path=state_path,
+        state_store=registry_store,
+        pending_store=transient_store,
+        trust_proxy=trust_proxy,
+    )
+    mcp = FastMCP(
+        name="ND Google Drive MCP",
+        instructions=(
+            "Infrastructure access layer for bounded Google Drive/Docs operations. "
+            "It is not semantic authority and must not mutate ND StateHead or Registry."
+        ),
+        auth=auth,
+    )
+    _register_drive_tools(mcp)
+
+    @mcp.tool
+    def nd_ping_secure() -> str:
+        return json.dumps(
+            {
+                "ok": True,
+                "service": "nd-google-drive-mcp",
+                "mode": "drive-only-fallback",
+                "semantic_authority": False,
+                "drive_bridge_configured": bool(
+                    os.environ.get("ND_DRIVE_BRIDGE_URL")
+                    and os.environ.get("ND_DRIVE_BRIDGE_TOKEN")
+                ),
+            },
+            separators=(",", ":"),
+        )
+
+    return mcp
 
 
 def create_full_mcp(
