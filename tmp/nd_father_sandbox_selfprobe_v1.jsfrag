@@ -1,0 +1,22 @@
+setTimeout(async()=>{
+ const run=Date.now().toString(36),prov={actor:"vk_ai_assistant",sender_vk_id:"SELFTEST",actual_model:"broker-selftest",provider:"internal",gateway_version:"broker-v7-selftest",source_refs:["server-side qualification"]},checks=[];
+ const push=(name,ok,extra={})=>checks.push({name,ok,...extra});let inboxId=null,bookId=null;
+ try{
+  const c=await sandboxCreate({...prov,parent_id:FATHER_FOLDERS.inbox,title:"[SELFTEST] ND Father Sandbox Inbox",content:"selftest seed",kind:"SELFTEST",status:"ARCHIVED_TEST",idempotency_key:"nd-v7-selftest-inbox-create-v1"});inboxId=c.id;push("create_inbox",!!c.id,{deduplicated:!!c.deduplicated});
+  const r1=await sandboxRead({file_id:c.id});push("readback_create",r1.ok&&r1.content.includes("ND_SANDBOX_META"));
+  const u=await sandboxUpdate({...prov,file_id:c.id,content:"selftest updated "+run,status:"ARCHIVED_TEST",idempotency_key:"nd-v7-selftest-update-"+run});push("update_same_artifact",u.ok&&!u.deduplicated);
+  const r2=await sandboxRead({file_id:c.id});push("readback_update",r2.content.includes("selftest updated "+run));
+  const d=await sandboxCreate({...prov,parent_id:FATHER_FOLDERS.inbox,title:"[SELFTEST] ND Father Sandbox Inbox",content:"must not duplicate",kind:"SELFTEST",status:"ARCHIVED_TEST",idempotency_key:"nd-v7-selftest-inbox-create-v1"});
+  const matches=await sbFind(FATHER_FOLDERS.inbox,sbHash("nd-v7-selftest-inbox-create-v1"));push("idempotency_no_duplicate",d.id===c.id&&matches.length===1,{matches:matches.length});
+  const b=await sandboxCreate({...prov,parent_id:FATHER_FOLDERS.book_drafts,title:"[SELFTEST] ND Father Sandbox Book Draft",content:"selftest book draft",kind:"SELFTEST_BOOK",status:"ARCHIVED_TEST",idempotency_key:"nd-v7-selftest-book-create-v1"});bookId=b.id;push("create_book_drafts",!!b.id,{deduplicated:!!b.deduplicated});
+ }catch(e){push("positive_path",false,{error:String(e).slice(0,300)});}
+ async function deny(name,fn){try{await fn();push(name,false,{error:"unexpected allow"});}catch(e){const s=String(e);push(name,s.includes("denied")||s.includes("tool denied"),{reason:s.slice(0,180)});}}
+ await deny("deny_statehead_write",()=>sandboxCreate({...prov,parent_id:STATEHEAD_ID,title:"deny",content:"deny",idempotency_key:"deny-statehead-"+run}));
+ try{const [st]=await stateRegistry(),reg=st?.capability_registry?.canonical_artifact_id;await deny("deny_registry_write",()=>sandboxCreate({...prov,parent_id:reg,title:"deny",content:"deny",idempotency_key:"deny-registry-"+run}));}catch(e){push("deny_registry_write",false,{error:String(e).slice(0,200)});}
+ try{const rm=await sbMeta(FATHER_ROOT_ID),outside=(rm.parents||[])[0];await deny("deny_ordinary_drive_folder",()=>sandboxCreate({...prov,parent_id:outside,title:"deny",content:"deny",idempotency_key:"deny-outside-"+run}));}catch(e){push("deny_ordinary_drive_folder",false,{error:String(e).slice(0,200)});}
+ await deny("deny_drive_root",()=>sandboxCreate({...prov,parent_id:"root",title:"deny",content:"deny",idempotency_key:"deny-root-"+run}));
+ await deny("deny_move_out",()=>invokeTool("sandbox_move","",{file_id:inboxId,new_parent_id:"root"}));
+ await deny("deny_hard_delete",()=>invokeTool("sandbox_delete","",{file_id:inboxId}));
+ const ok=checks.every(x=>x.ok);
+ console.log("ND_FATHER_SANDBOX_SELF_PROBE",JSON.stringify({ok,broker_version:BROKER_VERSION,canonical_mutations:false,sandbox_mutations:true,checks,artifacts:{inbox:inboxId,book:bookId}}));
+},3500);
