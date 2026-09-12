@@ -2,8 +2,20 @@ name: ND Mail Daily
 
 on:
   schedule:
-    - cron: "0 8 * * *"
+    # GitHub warns that jobs scheduled exactly at the top of the hour can be delayed.
+    # Primary: 15:07 Bangkok. Backup: 15:37 Bangkok.
+    - cron: "7 8 * * *"
+    - cron: "37 8 * * *"
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/nd-mail-daily.yml"
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   check-mail:
@@ -14,7 +26,8 @@ jobs:
       GMAIL_APP_PASSWORD: ${{ secrets.ND_MAIL_GMAIL_APP_PASSWORD }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.ND_MAIL_TELEGRAM_BOT_TOKEN }}
       ND_MAIL_MONITOR_ENABLED: "true"
-      ND_MAIL_WINDOW_HOURS: "26"
+      ND_MAIL_TIMEZONE: "Asia/Bangkok"
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - name: Check Gmail and notify Telegram
