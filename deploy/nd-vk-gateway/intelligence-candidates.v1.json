@@ -1,0 +1,60 @@
+{
+  "schema": "nd.vk.intelligence-candidates.v1",
+  "generated_at": "2026-09-13T04:55:00+07:00",
+  "policy": {
+    "selection_basis": "task capability, live availability, exact free status, reliability and operational fit; never geography or vendor identity",
+    "production_authority": false,
+    "free_verification": "A candidate is eligible for zero-cost qualification only when the live OpenRouter catalog reports both prompt and completion price as numeric zero and the id is the exact free endpoint. UNKNOWN is not free.",
+    "promotion": "No model enters answer routing from this file alone. It must pass the ND research/literary suite against the current production baseline."
+  },
+  "baseline": [
+    {
+      "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "roles": ["research", "critic", "long-context", "general"],
+      "status": "CURRENT_PRODUCTION_BASELINE_REVERIFY_LIVE"
+    },
+    {
+      "id": "groq:openai/gpt-oss-120b",
+      "roles": ["research", "general", "fast-strong"],
+      "status": "DIRECT_PROVIDER_BASELINE_REVERIFY_LIVE"
+    }
+  ],
+  "openrouter_candidates": [
+    {
+      "id": "nvidia/nemotron-3-super-120b-a12b:free",
+      "roles_to_test": ["research", "critic", "general", "fast-strong"],
+      "evidence_url": "https://openrouter.ai/nvidia/nemotron-3-super-120b-a12b:free",
+      "evidence_note": "OpenRouter currently labels the exact :free endpoint zero-cost; 262K context displayed."
+    },
+    {
+      "id": "inclusionai/ring-2.6-1t:free",
+      "roles_to_test": ["research", "critic", "long-context"],
+      "evidence_url": "https://openrouter.ai/inclusionai/ring-2.6-1t:free",
+      "evidence_note": "OpenRouter currently labels the exact :free endpoint zero-cost; 262K context displayed."
+    },
+    {
+      "id": "inclusionai/ling-2.6-1t:free",
+      "roles_to_test": ["research", "general", "fast-strong"],
+      "evidence_url": "https://openrouter.ai/inclusionai/ling-2.6-1t:free",
+      "evidence_note": "OpenRouter currently labels the exact :free endpoint zero-cost; 262K context displayed."
+    },
+    {
+      "id": "qwen/qwen3.6-plus:free",
+      "roles_to_test": ["research", "literary", "critic", "long-context", "general"],
+      "evidence_url": "https://openrouter.ai/qwen/qwen3.6-plus:free",
+      "evidence_note": "OpenRouter currently exposes an exact :free endpoint; base non-free endpoint also exists, so exact live catalog pricing must be checked before every qualification run."
+    },
+    {
+      "id": "minimax/minimax-m3:free",
+      "roles_to_test": ["research", "literary", "long-context", "general"],
+      "evidence_url": "https://openrouter.ai/minimax/minimax-m3:free",
+      "evidence_note": "OpenRouter currently labels the exact :free endpoint zero-cost; 1M context displayed."
+    }
+  ],
+  "explicit_exclusions": [
+    {
+      "id": "openrouter/free",
+      "reason": "Random/opaque free-model selection is useful for discovery but cannot provide auditable per-model production qualification."
+    }
+  ]
+}
