@@ -1,0 +1,62 @@
+{
+  "schema": "nd.vk.intelligence-suite.v1",
+  "version": 1,
+  "purpose": "Representative father/ND tasks for model qualification. Synthetic source packets avoid relying on model memory and permit deterministic factual checks.",
+  "cases": [
+    {
+      "id": "research-contradiction-ru-01",
+      "domain": "research",
+      "language": "ru",
+      "prompt": "Ниже четыре источника о вымышленной системе Atlas. A (2026-08-03): версия 4.2 поддерживает режим Delta, но только в облаке. B (2026-08-20): в 4.3 Delta доступен локально при включённом флаге D_LOCAL. C (2026-08-22): документация для 4.2 всё ещё говорит, что локальный Delta невозможен. D (2026-08-28): changelog 4.3.1 сообщает, что D_LOCAL переименован в DELTA_LOCAL; старое имя удалено. Ответь, можно ли 2026-08-29 включить Delta локально, как именно, какие источники устарели и что остаётся неизвестным. Не добавляй фактов вне источников.",
+      "checks": ["recognizes_latest_version", "uses_DELTA_LOCAL", "marks_A_and_C_stale", "does_not_invent", "states_unknowns"]
+    },
+    {
+      "id": "research-counterevidence-ru-02",
+      "domain": "research",
+      "language": "ru",
+      "prompt": "Гипотеза: 'метод Z всегда быстрее метода Y'. Данные: эксперимент 1 — Z 12с, Y 18с; эксперимент 2 — Z 9с, Y 11с; эксперимент 3 на больших входах — Z 41с, Y 26с; эксперимент 4 неизвестного размера — Z 8с, Y 10с. Проанализируй гипотезу как исследователь: сформулируй сильнейший вывод, найди контрпример, предложи минимальный следующий эксперимент и не маскируй неопределённость.",
+      "checks": ["finds_counterexample", "rejects_universal_claim", "proposes_targeted_experiment", "calibrates_uncertainty"]
+    },
+    {
+      "id": "research-provenance-ru-03",
+      "domain": "research",
+      "language": "ru",
+      "prompt": "Сделай краткий вывод только из этих данных и после каждого существенного утверждения укажи источник в квадратных скобках: [A] сервис доступен 99.95% времени за 30 дней; [B] было 3 инцидента, крупнейший длился 11 минут; [C] средняя задержка выросла с 120 до 180 мс; [D] пользовательские жалобы выросли на 8%, но выборка D охватывает только 12% пользователей. Не используй внешние знания.",
+      "checks": ["source_binding", "sample_limitation", "no_external_claims", "concise_synthesis"]
+    },
+    {
+      "id": "literary-voice-ru-01",
+      "domain": "literary",
+      "language": "ru",
+      "prompt": "Отредактируй абзац, сохранив сдержанную литературную интонацию, образность и недосказанность. Не объясняй смысл читателю и не делай текст 'красивее' за счёт штампов. Исходник: «Он вошёл в комнату и понял, что здесь давно никого не было. Пыль лежала на столе, окно было закрыто. Ему стало грустно, потому что он вспомнил детство и своего отца. Он подошёл к шкафу и увидел старую чашку, которая напомнила ему о прошлом». Верни только отредактированный абзац.",
+      "checks": ["show_not_explain", "avoids_cliche", "preserves_subtext", "russian_prose_quality", "no_meta_commentary"]
+    },
+    {
+      "id": "literary-structural-ru-02",
+      "domain": "literary",
+      "language": "ru",
+      "prompt": "Ты литературный редактор. Сцена: герой десять страниц скрывает письмо от брата; затем случайно оставляет его на столе, брат входит, видит письмо, но вместо конфликта они начинают обсуждать погоду и в следующей главе письмо больше не упоминается. Дай максимум 6 коротких пунктов: что здесь структурно не работает и какая самая маленькая правка может вернуть сцене причинность, не переписывая всю главу.",
+      "checks": ["identifies_dropped_setup", "causality", "smallest_effective_edit", "avoids_wholesale_rewrite"]
+    },
+    {
+      "id": "literary-variants-ru-03",
+      "domain": "literary",
+      "language": "ru",
+      "prompt": "Дай три действительно разные версии одной короткой фразы для финала сцены, где сын впервые понимает, что отец боится старости. Нельзя употреблять слова «страх», «старость», «понял», «осознал», «время». Версии должны отличаться художественным приёмом: 1) деталь, 2) действие, 3) пауза/умолчание. Без пояснений.",
+      "checks": ["three_distinct_techniques", "constraint_obedience", "subtlety", "non_generic"]
+    },
+    {
+      "id": "general-father-ru-01",
+      "domain": "general",
+      "language": "ru",
+      "prompt": "Объясни человеку без технической подготовки, что такое резервная копия и чем она отличается от синхронизации. Не больше 120 слов, без англицизмов там, где есть обычное русское слово.",
+      "checks": ["clear_non_technical", "correct_distinction", "under_120_words", "natural_russian"]
+    }
+  ],
+  "scoring": {
+    "research": ["factual_correctness", "contradiction_handling", "uncertainty_calibration", "provenance_discipline", "counterevidence_quality", "russian_quality"],
+    "literary": ["prose_quality", "voice_preservation", "subtext", "structural_judgment", "constraint_obedience", "non_generic_variation", "russian_quality"],
+    "scale": "0-4 per dimension; 0 fail, 2 acceptable, 4 excellent",
+    "promotion_rule": "Candidate must meet the minimum quality floor on every safety-critical research dimension and show a repeatable role-specific advantage or useful fallback value versus the current baseline. One impressive answer is insufficient."
+  }
+}
