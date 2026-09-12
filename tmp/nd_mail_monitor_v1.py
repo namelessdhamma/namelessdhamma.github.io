@@ -293,11 +293,22 @@ def build_report(messages):
         key=lambda g: (-g["score"], g["items"][-1]["date"])
     )
 
-    # Keep the Telegram report short and useful. Do not mention absent categories.
+    # Passport acquisition is the primary purpose of this monitor.
+    # If any passport/consulate message exists today, report it alone so that
+    # infrastructure noise cannot dilute or bury it.
+    passport_groups = [g for g in groups if g["cat"] == "passport"]
+    if passport_groups:
+        items = [report_item(g["cat"], g["items"]) for g in passport_groups[:3]]
+        return (
+            "ВАЖНО: " + "; ".join(items) + ". "
+            "Это приоритет №1: откройте письмо и выполните указанное действие по получению нового загранпаспорта в установленный срок."
+        )
+
+    # Otherwise keep the Telegram report short and useful. Do not mention absent categories.
     top = groups[:4]
     items = [report_item(g["cat"], g["items"]) for g in top]
 
-    has_action_critical = any(g["cat"] in ("passport", "visa", "security", "finance") for g in top)
+    has_action_critical = any(g["cat"] in ("visa", "security", "finance") for g in top)
     first = "Сегодня важное: " + "; ".join(items) + "."
     if has_action_critical:
         second = "Откройте эти письма и выполните действие только там, где оно действительно запрошено."
