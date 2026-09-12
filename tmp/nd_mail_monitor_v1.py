@@ -11,6 +11,11 @@ TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 ENABLED = os.getenv("ND_MAIL_MONITOR_ENABLED", "false").lower() == "true"
 LOCAL_TZ = ZoneInfo(os.getenv("ND_MAIL_TIMEZONE", "Asia/Bangkok"))
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY", "")
+GITHUB_RUN_ID = os.getenv("GITHUB_RUN_ID", "")
+GITHUB_EVENT_NAME = os.getenv("GITHUB_EVENT_NAME", "")
+WORKFLOW_FILE = "nd-mail-daily.yml"
 
 KNOWN_PASSPORT_SENDERS = ("queue-robot@kd-mid.ru",)
 PASSPORT_SUBJECT_TERMS = (
@@ -308,6 +313,44 @@ def build_report(messages):
         + action
     )
 
+def scheduled_report_already_sent_today():
+    """Avoid duplicate Telegram reports when the backup cron also fires."""
+    if GITHUB_EVENT_NAME != "schedule":
+        return False
+    if not (GITHUB_TOKEN and GITHUB_REPOSITORY):
+        return False
+
+    try:
+        owner, repo = GITHUB_REPOSITORY.split("/", 1)
+        url = (
+            f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/"
+            f"{WORKFLOW_FILE}/runs?event=schedule&status=success&per_page=20"
+        )
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode())
+
+        today_local = datetime.now(LOCAL_TZ).date()
+        for run in data.get("workflow_runs", []):
+            if str(run.get("id")) == str(GITHUB_RUN_ID):
+                continue
+            ts = run.get("run_started_at") or run.get("created_at")
+            if not ts:
+                continue
+            dt = datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(LOCAL_TZ)
+            if dt.date() == today_local:
+                return True
+    except Exception as e:
+        log(f"schedule_dedup_warning={type(e).__name__}")
+    return False
+
 def tg_api(method, payload=None):
     url = f"https://api.telegram.org/bot{TG_TOKEN}/{method}"
     data = urllib.parse.urlencode(payload or {}).encode()
@@ -358,6 +401,10 @@ def main():
         raise RuntimeError("GMAIL_APP_PASSWORD is not configured")
     if not TG_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
+
+    if scheduled_report_already_sent_today():
+        log("status=skip duplicate_scheduled_report=true")
+        return 0
 
     start_utc, end_utc, local_date = today_bounds_utc()
 
