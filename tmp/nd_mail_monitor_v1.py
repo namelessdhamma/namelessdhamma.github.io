@@ -211,6 +211,12 @@ def category_for(m):
     sender = m["from"].lower()
     subject = norm(m["subject"]).lower()
 
+    # The monitor answers "what arrived today", so messages sent by this
+    # mailbox itself must never be classified as incoming alerts. This also
+    # prevents qualification/test messages from polluting the daily report.
+    if GMAIL_USER.lower() in sender:
+        return 0, "other"
+
     if any(s in sender for s in KNOWN_PASSPORT_SENDERS):
         return 100, "passport"
 
