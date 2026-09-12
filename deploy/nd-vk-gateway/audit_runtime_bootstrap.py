@@ -17,10 +17,14 @@ TEXT_SUFFIXES = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".json", ".sh", ".
 
 RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("RAW_GITHUB_EXECUTABLE_FETCH", re.compile(r"raw\.githubusercontent\.com", re.I)),
-    ("RUNTIME_APK_INSTALL", re.compile(r"(?:^|[;&|\s])apk\s+add\b", re.I)),
-    ("RUNTIME_APT_INSTALL", re.compile(r"(?:^|[;&|\s])apt(?:-get)?\s+install\b", re.I)),
-    ("RUNTIME_PIP_INSTALL", re.compile(r"(?:^|[;&|\s])pip(?:3)?\s+install\b", re.I)),
-    ("RUNTIME_NPM_INSTALL", re.compile(r"(?:^|[;&|\s])npm\s+(?:i|install)\b", re.I)),
+    ("RUNTIME_APK_INSTALL_SHELL", re.compile(r"(?:^|[;&|\s])apk\s+add\b", re.I)),
+    ("RUNTIME_APK_INSTALL_ARGV", re.compile(r"[\[\(]\s*['\"]apk['\"]\s*,\s*['\"]add['\"]", re.I)),
+    ("RUNTIME_APT_INSTALL_SHELL", re.compile(r"(?:^|[;&|\s])apt(?:-get)?\s+install\b", re.I)),
+    ("RUNTIME_APT_INSTALL_ARGV", re.compile(r"[\[\(]\s*['\"]apt(?:-get)?['\"]\s*,\s*['\"]install['\"]", re.I)),
+    ("RUNTIME_PIP_INSTALL_SHELL", re.compile(r"(?:^|[;&|\s])pip(?:3)?\s+install\b", re.I)),
+    ("RUNTIME_PIP_INSTALL_ARGV", re.compile(r"[\[\(]\s*['\"]pip(?:3)?['\"]\s*,\s*['\"]install['\"]", re.I)),
+    ("RUNTIME_NPM_INSTALL_SHELL", re.compile(r"(?:^|[;&|\s])npm\s+(?:i|install)\b", re.I)),
+    ("RUNTIME_NPM_INSTALL_ARGV", re.compile(r"[\[\(]\s*['\"]npm['\"]\s*,\s*['\"](?:i|install)['\"]", re.I)),
 )
 
 # Build recipes are allowed to install packages at image-build time. They are
