@@ -1,0 +1,14 @@
+console.log('ND_SAFE_TOOL_BROKER_V9G_WRAPPER_START');
+const BASE='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/df3e2e1e3a9be6f2458e0e53554a46e4c2c865db/tmp/nd_safe_tool_broker_v9f_web_resilient.js';
+let outer=await (await fetch(BASE)).text();
+const importOld="await import('file:///tmp/nd-broker-v9f-inner.js');";
+if(!outer.includes(importOld)) throw new Error('v9g v9f import marker missing');
+outer=outer.replace(importOld,`let inner=await Bun.file('/tmp/nd-broker-v9f-inner.js').text();
+const loop='for(const [tool,q] of tests){';
+if(!inner.includes(loop)) throw new Error('v9g self-probe loop marker missing');
+inner=inner.replace(loop,'for(const [tool,q] of tests){if(tool===\"web_current\")await new Promise(r=>setTimeout(r,65000));');
+inner=inner.replace('ND_SAFE_TOOL_BROKER_V9F_WEB_RESILIENT_START','ND_SAFE_TOOL_BROKER_V9G_WEB_RESILIENT_START');
+await Bun.write('/tmp/nd-broker-v9g-inner.js',inner);
+await import('file:///tmp/nd-broker-v9g-inner.js');`);
+await Bun.write('/tmp/nd-broker-v9g-outer.js',outer);
+await import('file:///tmp/nd-broker-v9g-outer.js');
