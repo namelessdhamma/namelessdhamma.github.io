@@ -28,3 +28,30 @@ jobs:
         run: docker build -f deploy/nd-vk-gateway/Dockerfile -t nd-vk-runtime:ci .
       - name: Re-audit built runtime filesystem
         run: docker run --rm --entrypoint python3 nd-vk-runtime:ci /app/audit_runtime_bootstrap.py /app
+      - name: Compile packaged Python sources
+        run: docker run --rm --entrypoint python3 nd-vk-runtime:ci -m compileall -q /app
+      - name: Syntax-check packaged JavaScript sources
+        run: |
+          docker run --rm --entrypoint sh nd-vk-runtime:ci -c '
+            set -eu
+            found=0
+            while IFS= read -r f; do
+              found=1
+              node --check "$f" >/dev/null
+            done <<EOF
+          $(docker run --rm --entrypoint sh nd-vk-runtime:ci -c "find /app -type f \( -name '*.js' -o -name '*.mjs' \) -print | sort")
+          EOF
+            test "$found" -eq 1
+          '
+      - name: Export vendor manifest evidence
+        run: |
+          cid=$(docker create nd-vk-runtime:ci)
+          docker cp "$cid:/app/vendor/vendor-manifest.json" vendor-manifest.json
+          docker rm "$cid" >/dev/null
+          python -m json.tool vendor-manifest.json >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nd-vk-runtime-vendor-manifest-${{ github.sha }}
+          path: vendor-manifest.json
+          if-no-files-found: error
+          retention-days: 30
