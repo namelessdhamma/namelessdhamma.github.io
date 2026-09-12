@@ -10,23 +10,35 @@ NEW = "paths=['00 ตอนนี้ — Now.md','01 แผนที่ — Maps
 _original_urlopen = urllib.request.urlopen
 
 
+def patch_v13_source(raw: str) -> str:
+    if OLD not in raw:
+        raise RuntimeError("V54 vault fallback marker not found")
+    patched = raw.replace(OLD, NEW, 1)
+    if OLD in patched or NEW not in patched:
+        raise RuntimeError("V54 vault fallback replacement invariant failed")
+    return patched
+
+
 def _patched_urlopen(req, *args, **kwargs):
     url = req.full_url if hasattr(req, "full_url") else str(req)
     if url == V13:
         with _original_urlopen(req, *args, **kwargs) as response:
             raw = response.read().decode("utf-8")
-        if OLD not in raw:
-            raise RuntimeError("V54 vault fallback marker not found")
-        raw = raw.replace(OLD, NEW, 1)
+        raw = patch_v13_source(raw)
         print("ND_V54_VAULT_PATHS_PATCHED", flush=True)
         return io.BytesIO(raw.encode("utf-8"))
     return _original_urlopen(req, *args, **kwargs)
 
 
-urllib.request.urlopen = _patched_urlopen
-try:
-    source = _original_urlopen(V42, timeout=30).read().decode("utf-8")
-    print("ND_V54_VAULT_PATHS_LOADER_READY", flush=True)
-    exec(compile(source, "nd_vk_gateway_v54_vault_paths.py", "exec"))
-finally:
-    urllib.request.urlopen = _original_urlopen
+def main() -> None:
+    urllib.request.urlopen = _patched_urlopen
+    try:
+        source = _original_urlopen(V42, timeout=30).read().decode("utf-8")
+        print("ND_V54_VAULT_PATHS_LOADER_READY", flush=True)
+        exec(compile(source, "nd_vk_gateway_v54_vault_paths.py", "exec"))
+    finally:
+        urllib.request.urlopen = _original_urlopen
+
+
+if __name__ == "__main__":
+    main()
