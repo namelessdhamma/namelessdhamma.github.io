@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "status": "QUALIFICATION_LOCK_NOT_PRODUCTION",
+  "purpose": "Evidence lock for eliminating startup-time code/package acquisition from the ND VK gateway. This file does not claim the chain is fully vendored or production-ready.",
+  "production_observed": {
+    "railway_service": "nd-qstash-control-v2",
+    "launcher": "tmp/nd_v53_recovery_v13_v42.py",
+    "launcher_commit": "64b01f98ef8b2a255a5ae15a848554d02ae55d4b",
+    "base_image": "python:3.12-alpine",
+    "runtime_package_install": "apk add --no-cache nodejs",
+    "runtime_raw_github_bootstrap": true
+  },
+  "observed_dependency_edges": [
+    {
+      "from": "tmp/nd_v53_recovery_v13_v42.py@64b01f98ef8b2a255a5ae15a848554d02ae55d4b",
+      "to": "tmp/nd_safe_tool_broker_v13_research_qualification.js@fe8a0ff9d029b3026b76d43863f1cc5e0168ae21",
+      "mechanism": "raw.githubusercontent.com runtime download"
+    },
+    {
+      "from": "tmp/nd_v53_recovery_v13_v42.py@64b01f98ef8b2a255a5ae15a848554d02ae55d4b",
+      "to": "tmp/nd_vk_gateway_v42_father_handoff.py@4bd76056902e914708ff7513352c53d1d4f765a3",
+      "mechanism": "raw.githubusercontent.com runtime download"
+    },
+    {
+      "from": "tmp/nd_safe_tool_broker_v13_research_qualification.js@fe8a0ff9d029b3026b76d43863f1cc5e0168ae21",
+      "to": "tmp/nd_safe_tool_broker_v11_front.js@6b89d7d316d3abe8908509402a08e75d065a628d",
+      "mechanism": "raw.githubusercontent.com runtime fetch"
+    },
+    {
+      "from": "tmp/nd_safe_tool_broker_v11_front.js@6b89d7d316d3abe8908509402a08e75d065a628d",
+      "to": "tmp/nd_safe_tool_broker_v9_father_comment.js@d519ae887c5d7a972b9dc676eef58c964cd6c6b0",
+      "mechanism": "raw.githubusercontent.com runtime fetch"
+    },
+    {
+      "from": "tmp/nd_safe_tool_broker_v11_front.js@6b89d7d316d3abe8908509402a08e75d065a628d",
+      "to": "tmp/nd_drive_docs_v10.jsfrag@719aaebd08ae3335df39b35e85d35cade4a09879",
+      "mechanism": "raw.githubusercontent.com runtime fetch"
+    },
+    {
+      "from": "tmp/nd_safe_tool_broker_v9_father_comment.js@d519ae887c5d7a972b9dc676eef58c964cd6c6b0",
+      "to": "tmp/nd_safe_tool_broker_v2.js@46de9fcfa1f0c44863e9dd491d480e8e5160aca4",
+      "mechanism": "raw.githubusercontent.com runtime fetch"
+    },
+    {
+      "from": "tmp/nd_safe_tool_broker_v9_father_comment.js@d519ae887c5d7a972b9dc676eef58c964cd6c6b0",
+      "to": "tmp/nd_father_comment_sandbox_v1.jsfrag@4608f04ad672c3946d7c029d26d52b8c18a1cf58",
+      "mechanism": "raw.githubusercontent.com runtime fetch"
+    },
+    {
+      "from": "tmp/nd_safe_tool_broker_v9_father_comment.js@d519ae887c5d7a972b9dc676eef58c964cd6c6b0",
+      "to": "tmp/nd_father_comment_selfprobe_v1.jsfrag@4608f04ad672c3946d7c029d26d52b8c18a1cf58",
+      "mechanism": "raw.githubusercontent.com runtime fetch"
+    },
+    {
+      "from": "tmp/nd_vk_gateway_v42_father_handoff.py@4bd76056902e914708ff7513352c53d1d4f765a3",
+      "to": "tmp/nd_vk_gateway_v36_father_ux_research.py@835a07aa1af8a66ee4b9643a266e012b329b6190",
+      "mechanism": "raw.githubusercontent.com runtime download"
+    },
+    {
+      "from": "tmp/nd_vk_gateway_v36_father_ux_research.py@835a07aa1af8a66ee4b9643a266e012b329b6190",
+      "to": "tmp/nd_vk_gateway_v23_nd_readonly_ranked.py@e1fdbc500903ce58f8913e24d361d8d5cd1d3e65",
+      "mechanism": "raw.githubusercontent.com runtime download"
+    },
+    {
+      "from": "tmp/nd_vk_gateway_v23_nd_readonly_ranked.py@e1fdbc500903ce58f8913e24d361d8d5cd1d3e65",
+      "to": "tmp/nd_vk_gateway_v17_nd_readonly_complete.py@ba4b4a9430559450d916ab184f048b52f4d7b4eb",
+      "mechanism": "raw.githubusercontent.com runtime download"
+    },
+    {
+      "from": "tmp/nd_vk_gateway_v17_nd_readonly_complete.py@ba4b4a9430559450d916ab184f048b52f4d7b4eb",
+      "to": "tmp/nd_vk_gateway_v13_nd_readonly.py@9ebbfe3c8dbeb9a57f23e63c34527d5e3afd46fc",
+      "mechanism": "raw.githubusercontent.com runtime download"
+    },
+    {
+      "from": "tmp/nd_vk_gateway_v13_nd_readonly.py@9ebbfe3c8dbeb9a57f23e63c34527d5e3afd46fc",
+      "to": "tmp/nd_vk_gateway_v12_research_integrity.py@8100fde7de32c3e6d873c55d0894c484e2639120",
+      "mechanism": "raw.githubusercontent.com runtime download"
+    }
+  ],
+  "qualification_rule": {
+    "runtime_raw_github_fetches_allowed": 0,
+    "runtime_os_package_installs_allowed": 0,
+    "production_switch_allowed_only_after": [
+      "all executable source dependencies are vendored or compiled into the image/repository artifact",
+      "audit_runtime_bootstrap.py exits 0 on the packaged tree",
+      "parallel health/startup/model-router/authority/read/sandbox probes pass",
+      "rollback pointer to current V53 deployment is retained"
+    ]
+  },
+  "known_incompleteness": "The dependency graph is evidence-backed through V12 on the gateway side and V2/fragments on the broker side, but deeper V12 dependencies must still be recursively resolved before immutable packaging can pass."
+}
