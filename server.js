@@ -32,6 +32,18 @@ async function callTool(name,args={}){
   }
   return r?.result?.structuredContent || {};
 }
+
+async function runAndroidPullProbe(){
+  if(process.env.ANDROID_PULL_PROBE!=='1') return;
+  const stamp=Date.now();
+  const path='ND Integration Tests/True Memory Android Pull Probe '+stamp+'.md';
+  const out=await callTool('create_note',{
+    path,
+    content:'# True Memory Android pull probe\n\nmarker: '+stamp+'\nstatus: awaiting Android bidirectional pull\n'
+  });
+  console.log('ANDROID_PULL_PROBE_RESULT '+JSON.stringify({ok:true,path,etag:out.etag}));
+}
+
 async function runMcpQualification(){
   if(process.env.QUALIFY_MCP!=='1') return;
   const stamp=Date.now();
@@ -202,4 +214,4 @@ const server=http.createServer(async(req,res)=>{
   }
 });
 
-server.listen(PORT,'0.0.0.0',()=>{console.log('ND True Memory WebDAV listening on',PORT); runMcpQualification().catch(e=>console.error('MCP_QUALIFICATION_FATAL',String(e?.message||e)));});
+server.listen(PORT,'0.0.0.0',()=>{console.log('ND True Memory WebDAV listening on',PORT); runMcpQualification().catch(e=>console.error('MCP_QUALIFICATION_FATAL',String(e?.message||e))); runAndroidPullProbe().catch(e=>console.error('ANDROID_PULL_PROBE_FATAL',String(e?.message||e)));});
