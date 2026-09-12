@@ -128,7 +128,21 @@ def find_special_mailbox(imap, flag):
         for raw in boxes or []:
             line = raw.decode(errors="replace")
             if flag in line:
-                m = re.search(r' "([^"]+)"
+                m = re.search(r' "([^"]+)"$', line)
+                if m:
+                    return m.group(1)
+                m = re.search(r' ([^ ]+)$', line)
+                if m:
+                    return m.group(1).strip('"')
+    except Exception:
+        pass
+    return None
+
+def find_all_mailbox(imap):
+    return find_special_mailbox(imap, "\\All")
+
+def find_spam_mailbox(imap):
+    return find_special_mailbox(imap, "\\Spam")
 
 def fetch_today(imap, mailbox, start_utc, end_utc):
     rows = []
