@@ -64,7 +64,6 @@ def vendor(lock_path: pathlib.Path, out_root: pathlib.Path) -> dict:
         entries.append(
             {
                 "pin": pin,
-                "source_url": url,
                 "source_sha256": hashlib.sha256(raw).hexdigest(),
                 "packaged_sha256": hashlib.sha256(transformed).hexdigest(),
                 "bytes": len(transformed),
@@ -73,7 +72,7 @@ def vendor(lock_path: pathlib.Path, out_root: pathlib.Path) -> dict:
 
     manifest = {
         "schema_version": 1,
-        "dependency_lock": str(lock_path),
+        "dependency_lock_name": lock_path.name,
         "entries": entries,
         "runtime_raw_github_fetches_expected": 0,
     }
