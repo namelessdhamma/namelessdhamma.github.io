@@ -6,6 +6,72 @@ const PORT = Number(process.env.PORT || 3000);
 const RPC_URL = process.env.RPC_URL || 'https://zkbmkhpyrddsiuynjgzd.supabase.co/functions/v1/nd-true-memory-webdav-rpc';
 const ROOT = 'ND';
 
+const MCP_URL = process.env.MCP_URL || 'https://zkbmkhpyrddsiuynjgzd.supabase.co/functions/v1/nd-true-memory-obsidian/mcp';
+
+async function mcpCall(method, params={}) {
+  const token = process.env.MCP_TOKEN || '';
+  if (!token) throw new Error('MCP_TOKEN missing');
+  const r = await fetch(MCP_URL,{
+    method:'POST',
+    headers:{
+      'authorization':'Bearer '+token,
+      'content-type':'application/json',
+      'mcp-protocol-version':'2025-06-18'
+    },
+    body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error('MCP HTTP '+r.status);
+  return data;
+}
+async function callTool(name,args={}){
+  const r=await mcpCall('tools/call',{name,arguments:args});
+  if (r?.result?.isError) {
+    const msg=r?.result?.content?.[0]?.text || 'tool error';
+    throw new Error(msg);
+  }
+  return r?.result?.structuredContent || {};
+}
+async function runMcpQualification(){
+  if(process.env.QUALIFY_MCP!=='1') return;
+  const stamp=Date.now();
+  const p1='ND Integration Tests/True Memory MCP Qualification '+stamp+'.md';
+  const p2='ND Integration Tests/True Memory MCP Qualification '+stamp+' Renamed.md';
+  const result={ok:false,steps:[]};
+  let currentPath=p1, currentEtag='';
+  try{
+    const list=await mcpCall('tools/list',{});
+    const names=(list?.result?.tools||[]).map(x=>x.name);
+    result.steps.push({step:'tools_list',hasCreate:names.includes('create_note'),hasUpdate:names.includes('update_note'),hasRename:names.includes('rename_note'),hasDelete:names.includes('delete_note')});
+    const c=await callTool('create_note',{path:p1,content:'# True Memory MCP qualification\n\nstage: create\n'});
+    currentEtag=c.etag; result.steps.push({step:'create',ok:!!c.created});
+    const r1=await callTool('read_note',{path:p1});
+    currentEtag=r1.etag; result.steps.push({step:'read_after_create',ok:r1.path===p1});
+    const u=await callTool('update_note',{path:p1,content:'# True Memory MCP qualification\n\nstage: update\n',expected_etag:currentEtag});
+    currentEtag=u.etag; result.steps.push({step:'update',ok:!!u.updated});
+    const r2=await callTool('read_note',{path:p1});
+    currentEtag=r2.etag; result.steps.push({step:'read_after_update',ok:r2.content.includes('stage: update')});
+    const rn=await callTool('rename_note',{path:p1,new_path:p2,expected_etag:currentEtag});
+    currentPath=p2; currentEtag=rn.etag; result.steps.push({step:'rename',ok:!!rn.renamed});
+    const r3=await callTool('read_note',{path:p2});
+    currentEtag=r3.etag; result.steps.push({step:'read_after_rename',ok:r3.path===p2});
+    const d=await callTool('delete_note',{path:p2,expected_etag:currentEtag});
+    result.steps.push({step:'delete',ok:!!d.deleted});
+    currentPath='';
+    const miss=await mcpCall('tools/call',{name:'read_note',arguments:{path:p2}});
+    const isErr=!!miss?.result?.isError;
+    result.steps.push({step:'read_after_delete',ok:isErr});
+    result.ok=result.steps.every(x=>x.ok!==false);
+  }catch(e){
+    result.error=String(e?.message||e);
+    try{
+      if(currentPath && currentEtag) await callTool('delete_note',{path:currentPath,expected_etag:currentEtag});
+    }catch{}
+  }
+  console.log('MCP_QUALIFICATION_RESULT '+JSON.stringify(result));
+}
+
+
 function esc(s=''){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function authDigest(req){
   const h=req.headers.authorization||'';
@@ -136,4 +202,4 @@ const server=http.createServer(async(req,res)=>{
   }
 });
 
-server.listen(PORT,'0.0.0.0',()=>console.log('ND True Memory WebDAV listening on',PORT));
+server.listen(PORT,'0.0.0.0',()=>{console.log('ND True Memory WebDAV listening on',PORT); runMcpQualification().catch(e=>console.error('MCP_QUALIFICATION_FATAL',String(e?.message||e)));});
