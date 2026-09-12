@@ -21,7 +21,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run audit regression tests
-        run: python -m unittest deploy/nd-vk-gateway/test_audit_runtime_bootstrap.py
+        run: |
+          python -m unittest deploy/nd-vk-gateway/test_audit_runtime_bootstrap.py
+          python -m unittest deploy/nd-vk-gateway/test_vendor_successor_patches.py
       - name: Validate lock JSON
         run: python -m json.tool deploy/nd-vk-gateway/runtime-dependency-lock.v1.json >/dev/null
       - name: Build immutable VK runtime image
@@ -49,6 +51,14 @@ jobs:
           docker cp "$cid:/app/vendor/vendor-manifest.json" vendor-manifest.json
           docker rm "$cid" >/dev/null
           python -m json.tool vendor-manifest.json >/dev/null
+          python - <<'PY'
+          import json
+          m=json.load(open('vendor-manifest.json',encoding='utf-8'))
+          expected={'readonly_vault_orientation_paths_v54'}
+          applied={p for e in m['entries'] for p in e.get('qualified_successor_patches',[])}
+          assert applied==expected,(applied,expected)
+          assert m.get('qualified_successor_patches_expected')==sorted(expected)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: nd-vk-runtime-vendor-manifest-${{ github.sha }}
