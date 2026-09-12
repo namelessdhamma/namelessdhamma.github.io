@@ -1,6 +1,6 @@
 name: ND Mail Daily
 
-# qualification-retry: mailbox parser fixed
+# qualification-retry-2: parser and duplicated tail fixed
 on:
   schedule:
     # GitHub warns that jobs scheduled exactly at the top of the hour can be delayed.
