@@ -211,18 +211,30 @@ def tg_api(method, payload=None):
 def resolve_chat_id():
     if TG_CHAT_ID:
         return TG_CHAT_ID
-    data = tg_api("getUpdates")
+
+    # First try the normal pending-update queue.
+    data = tg_api("getUpdates", {"limit": 100, "timeout": 0})
+    updates = data.get("result", [])
+
+    # If Telegram returns no pending updates, explicitly ask for the most
+    # recent updates. This is useful for a newly-created private bot where
+    # /start may have been sent before the first automation run.
+    if not updates:
+        data = tg_api("getUpdates", {"offset": -100, "limit": 100, "timeout": 0})
+        updates = data.get("result", [])
+
     candidates = []
-    for u in data.get("result", []):
-        msg = u.get("message") or u.get("channel_post") or {}
+    for u in updates:
+        msg = u.get("message") or u.get("edited_message") or u.get("channel_post") or {}
         chat = msg.get("chat") or {}
         cid = chat.get("id")
         ctype = chat.get("type")
         text = (msg.get("text") or "").strip()
         if cid and ctype == "private":
             candidates.append((1 if text.startswith("/start") else 0, u.get("update_id",0), str(cid)))
+
     if not candidates:
-        raise RuntimeError("Telegram chat ID not found. Send /start to the bot once.")
+        raise RuntimeError("Telegram chat ID not found. Send any new message (for example /start) to the bot and rerun.")
     candidates.sort(reverse=True)
     return candidates[0][2]
 
