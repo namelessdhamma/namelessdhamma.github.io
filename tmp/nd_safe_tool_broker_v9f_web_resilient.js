@@ -1,0 +1,15 @@
+console.log('ND_SAFE_TOOL_BROKER_V9F_WRAPPER_START');
+const BASE='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/1c01b3551cdce1997c46aa81dd2ae4c72a551b72/tmp/nd_safe_tool_broker_v9b_web_resilient.js';
+let src=await (await fetch(BASE)).text();
+const citation=',citation_options:"enabled"';
+if(!src.includes(citation)) throw new Error('v9f citation marker missing');
+src=src.replace(citation,'');
+const waitOld='r.status===429?1500:800';
+if(!src.includes(waitOld)) throw new Error('v9f retry marker missing');
+src=src.replace(waitOld,'r.status===429?12000:800');
+const payloadOld='const payload={model:plan.model,messages:[{role:"user",content:plan.query}]};';
+if(!src.includes(payloadOld)) throw new Error('v9f payload marker missing');
+src=src.replace(payloadOld,'const payload={model:plan.model,messages:[{role:"user",content:plan.query}],max_completion_tokens:1200};');
+src=src.replace('ND_SAFE_TOOL_BROKER_V9B_WEB_RESILIENT_START','ND_SAFE_TOOL_BROKER_V9F_WEB_RESILIENT_START');
+await Bun.write('/tmp/nd-broker-v9f-inner.js',src);
+await import('file:///tmp/nd-broker-v9f-inner.js');
