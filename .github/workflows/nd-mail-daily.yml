@@ -1,6 +1,5 @@
 name: ND Mail Daily
 
-# qualification-retry-2: parser and duplicated tail fixed
 on:
   schedule:
     # GitHub warns that jobs scheduled exactly at the top of the hour can be delayed.
@@ -8,11 +7,6 @@ on:
     - cron: "7 8 * * *"
     - cron: "37 8 * * *"
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/nd-mail-daily.yml"
 
 permissions:
   contents: read
