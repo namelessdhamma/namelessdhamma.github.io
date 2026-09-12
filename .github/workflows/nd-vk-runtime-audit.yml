@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - qualify/vk-gateway-runtime
+      - qualify/vk-intelligence-router
     paths:
       - 'deploy/nd-vk-gateway/**'
       - '.github/workflows/nd-vk-runtime-audit.yml'
@@ -24,6 +25,12 @@ jobs:
         run: python -m unittest deploy/nd-vk-gateway/test_audit_runtime_bootstrap.py
       - name: Validate lock JSON
         run: python -m json.tool deploy/nd-vk-gateway/runtime-dependency-lock.v1.json >/dev/null
+      - name: Validate intelligence qualification artifacts
+        run: |
+          python -m json.tool deploy/nd-vk-gateway/intelligence-candidates.v1.json >/dev/null
+          python -m json.tool deploy/nd-vk-gateway/intelligence-suite.v1.json >/dev/null
+          python -m py_compile deploy/nd-vk-gateway/run_intelligence_qualification.py
+          python deploy/nd-vk-gateway/run_intelligence_qualification.py --catalog-only || test "$?" -eq 0
       - name: Build immutable VK runtime image
         run: docker build -f deploy/nd-vk-gateway/Dockerfile -t nd-vk-runtime:ci .
       - name: Re-audit built runtime filesystem
