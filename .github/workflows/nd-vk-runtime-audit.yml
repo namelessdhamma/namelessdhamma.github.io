@@ -24,3 +24,7 @@ jobs:
         run: python -m unittest deploy/nd-vk-gateway/test_audit_runtime_bootstrap.py
       - name: Validate lock JSON
         run: python -m json.tool deploy/nd-vk-gateway/runtime-dependency-lock.v1.json >/dev/null
+      - name: Build immutable VK runtime image
+        run: docker build -f deploy/nd-vk-gateway/Dockerfile -t nd-vk-runtime:ci .
+      - name: Re-audit built runtime filesystem
+        run: docker run --rm --entrypoint python3 nd-vk-runtime:ci /app/audit_runtime_bootstrap.py /app
