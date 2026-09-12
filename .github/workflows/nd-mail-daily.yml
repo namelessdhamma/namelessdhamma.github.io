@@ -1,0 +1,21 @@
+name: ND Mail Daily
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+jobs:
+  check-mail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GMAIL_USER: namelessdhamma@gmail.com
+      GMAIL_APP_PASSWORD: ${{ secrets.ND_MAIL_GMAIL_APP_PASSWORD }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.ND_MAIL_TELEGRAM_BOT_TOKEN }}
+      ND_MAIL_MONITOR_ENABLED: "true"
+      ND_MAIL_WINDOW_HOURS: "26"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Gmail and notify Telegram
+        run: python3 tmp/nd_mail_monitor_v1.py
