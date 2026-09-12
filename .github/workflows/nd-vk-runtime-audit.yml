@@ -7,10 +7,12 @@ on:
       - qualify/vk-intelligence-router
     paths:
       - 'deploy/nd-vk-gateway/**'
+      - 'tmp/nd_vk_gateway_v54_vault_paths.py'
       - '.github/workflows/nd-vk-runtime-audit.yml'
   pull_request:
     paths:
       - 'deploy/nd-vk-gateway/**'
+      - 'tmp/nd_vk_gateway_v54_vault_paths.py'
       - '.github/workflows/nd-vk-runtime-audit.yml'
 
 jobs:
@@ -30,7 +32,8 @@ jobs:
           python -m json.tool deploy/nd-vk-gateway/intelligence-candidates.v1.json >/dev/null
           python -m json.tool deploy/nd-vk-gateway/intelligence-suite.v1.json >/dev/null
           python -m py_compile deploy/nd-vk-gateway/run_intelligence_qualification.py
-          python deploy/nd-vk-gateway/run_intelligence_qualification.py --catalog-only || test "$?" -eq 0
+          python -m py_compile tmp/nd_vk_gateway_v54_vault_paths.py
+          python deploy/nd-vk-gateway/run_intelligence_qualification.py --catalog-only
       - name: Build immutable VK runtime image
         run: docker build -f deploy/nd-vk-gateway/Dockerfile -t nd-vk-runtime:ci .
       - name: Re-audit built runtime filesystem
@@ -41,14 +44,11 @@ jobs:
         run: |
           docker run --rm --entrypoint sh nd-vk-runtime:ci -c '
             set -eu
-            found=0
+            find /app -type f \( -name "*.js" -o -name "*.mjs" \) -print | sort > /tmp/js-files
+            test -s /tmp/js-files
             while IFS= read -r f; do
-              found=1
               node --check "$f" >/dev/null
-            done <<EOF
-          $(docker run --rm --entrypoint sh nd-vk-runtime:ci -c "find /app -type f \( -name '*.js' -o -name '*.mjs' \) -print | sort")
-          EOF
-            test "$found" -eq 1
+            done < /tmp/js-files
           '
       - name: Export vendor manifest evidence
         run: |
