@@ -1,0 +1,26 @@
+name: ND VK runtime bootstrap audit
+
+on:
+  push:
+    branches:
+      - qualify/vk-gateway-runtime
+    paths:
+      - 'deploy/nd-vk-gateway/**'
+      - '.github/workflows/nd-vk-runtime-audit.yml'
+  pull_request:
+    paths:
+      - 'deploy/nd-vk-gateway/**'
+      - '.github/workflows/nd-vk-runtime-audit.yml'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run audit regression tests
+        run: python -m unittest deploy/nd-vk-gateway/test_audit_runtime_bootstrap.py
+      - name: Validate lock JSON
+        run: python -m json.tool deploy/nd-vk-gateway/runtime-dependency-lock.v1.json >/dev/null
