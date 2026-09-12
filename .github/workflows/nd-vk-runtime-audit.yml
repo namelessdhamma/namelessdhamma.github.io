@@ -23,8 +23,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run audit regression tests
-        run: python -m unittest deploy/nd-vk-gateway/test_audit_runtime_bootstrap.py
+      - name: Run regression tests
+        run: |
+          python -m unittest deploy/nd-vk-gateway/test_audit_runtime_bootstrap.py
+          python -m unittest deploy/nd-vk-gateway/test_v54_vault_paths.py
       - name: Validate lock JSON
         run: python -m json.tool deploy/nd-vk-gateway/runtime-dependency-lock.v1.json >/dev/null
       - name: Validate intelligence qualification artifacts
