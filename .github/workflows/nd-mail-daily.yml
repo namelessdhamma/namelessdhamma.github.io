@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 8 * * *"
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "tmp/nd_mail_monitor_v1.py"
+      - ".github/workflows/nd-mail-daily.yml"
 
 jobs:
   check-mail:
