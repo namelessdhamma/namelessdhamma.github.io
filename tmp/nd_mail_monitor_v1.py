@@ -243,36 +243,31 @@ def compact_subject(s):
 
 def group_key(cat, m):
     subject = compact_subject(m["subject"]).lower()
-    # Collapse repeated infrastructure alerts with the same subject.
     if cat == "nd_failure":
-        return cat, subject
-    # Security notices and bookings can have meaningful duplicates, keep subject+sender.
+        # Collapse repeated CI/deployment alerts that differ only by commit/run hashes.
+        normalized = re.sub(r"\([0-9a-f]{6,40}\)", "(commit)", subject)
+        normalized = re.sub(r"\b[0-9a-f]{7,40}\b", "commit", normalized)
+        return cat, normalized
     return cat, m["from"].lower(), subject
 
 def report_item(cat, items):
     m = items[-1]
-    subject = compact_subject(m["subject"])
+    subject = html.escape(compact_subject(m["subject"]))
     count = len(items)
-    time_txt = m["local_time"]
-    suffix = f" ({count} письма)" if count > 1 else ""
+    suffix = f" · повторов: {count}" if count > 1 else ""
 
-    if cat == "passport":
-        return f"паспорт/консульство — {subject}{suffix}"
-    if cat == "visa":
-        return f"виза/иммиграция — {subject}{suffix}"
-    if cat == "security":
-        return f"безопасность — {subject}{suffix}"
-    if cat == "booking":
-        return f"бронирование — {subject}{suffix}"
-    if cat == "study":
-        return f"учёба — {subject}{suffix}"
-    if cat == "finance":
-        return f"финансы — {subject}{suffix}"
-    if cat == "personal":
-        return f"личные сообщения — {subject}{suffix}"
-    if cat == "nd_failure":
-        return f"ND: технический сбой — {subject}{suffix}"
-    return f"{subject}{suffix}"
+    labels = {
+        "passport": "Загранпаспорт / консульство",
+        "visa": "Виза / иммиграция",
+        "security": "Безопасность",
+        "booking": "Бронирование",
+        "study": "Учёба",
+        "finance": "Финансы",
+        "personal": "Личные сообщения",
+        "nd_failure": "ND — технический сбой",
+    }
+    label = labels.get(cat, "Важное письмо")
+    return f"<b>{label}</b>\n• {subject}{suffix}"
 
 def build_report(messages):
     grouped = {}
@@ -294,27 +289,32 @@ def build_report(messages):
     )
 
     # Passport acquisition is the primary purpose of this monitor.
-    # If any passport/consulate message exists today, report it alone so that
-    # infrastructure noise cannot dilute or bury it.
     passport_groups = [g for g in groups if g["cat"] == "passport"]
     if passport_groups:
         items = [report_item(g["cat"], g["items"]) for g in passport_groups[:3]]
         return (
-            "ВАЖНО: " + "; ".join(items) + ". "
-            "Это приоритет №1: откройте письмо и выполните указанное действие по получению нового загранпаспорта в установленный срок."
+            "🚨 <b>ЗАГРАНПАСПОРТ — ПРИОРИТЕТ №1</b>\n\n"
+            + "\n\n".join(items)
+            + "\n\n<b>Действие</b>\n"
+              "Откройте письмо и выполните указанное действие по получению нового загранпаспорта в установленный срок."
         )
 
-    # Otherwise keep the Telegram report short and useful. Do not mention absent categories.
+    # Otherwise keep the Telegram report short, scannable and useful.
     top = groups[:4]
     items = [report_item(g["cat"], g["items"]) for g in top]
 
     has_action_critical = any(g["cat"] in ("visa", "security", "finance") for g in top)
-    first = "Сегодня важное: " + "; ".join(items) + "."
-    if has_action_critical:
-        second = "Откройте эти письма и выполните действие только там, где оно действительно запрошено."
-    else:
-        second = "Немедленного действия по остальным письмам не требуется."
-    return first + " " + second
+    action = (
+        "Откройте эти письма и выполните действие только там, где оно действительно запрошено."
+        if has_action_critical
+        else "Немедленного действия не требуется."
+    )
+    return (
+        "📬 <b>Сегодня важное</b>\n\n"
+        + "\n\n".join(items)
+        + "\n\n<b>Действие</b>\n"
+        + action
+    )
 
 def tg_api(method, payload=None):
     url = f"https://api.telegram.org/bot{TG_TOKEN}/{method}"
@@ -353,6 +353,7 @@ def send_telegram(text):
     tg_api("sendMessage", {
         "chat_id": cid,
         "text": text,
+        "parse_mode": "HTML",
         "disable_web_page_preview": "true",
     })
     log("telegram_send=ok")
