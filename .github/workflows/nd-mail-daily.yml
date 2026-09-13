@@ -6,9 +6,6 @@ on:
     - cron: "7 8 * * *"
     - cron: "7 20 * * *"
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: [.github/workflows/nd-mail-daily.yml]
 
 permissions:
   contents: read
