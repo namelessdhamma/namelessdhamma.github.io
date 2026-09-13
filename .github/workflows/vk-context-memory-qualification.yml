@@ -5,7 +5,9 @@ on:
     paths:
       - "deploy/nd-vk-gateway/context_memory.py"
       - "deploy/nd-vk-gateway/context_memory_store.py"
+      - "deploy/nd-vk-gateway/context_gateway.py"
       - "deploy/nd-vk-gateway/test_context_memory.py"
+      - "deploy/nd-vk-gateway/test_context_gateway.py"
       - "deploy/nd-vk-gateway/CONTEXT_MEMORY_DECISION.md"
       - ".github/workflows/vk-context-memory-qualification.yml"
   workflow_dispatch:
@@ -23,10 +25,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile
-        run: python -m py_compile deploy/nd-vk-gateway/context_memory.py deploy/nd-vk-gateway/context_memory_store.py deploy/nd-vk-gateway/test_context_memory.py
-      - name: A-I plus durable-store regression suite
+        run: python -m py_compile deploy/nd-vk-gateway/context_memory.py deploy/nd-vk-gateway/context_memory_store.py deploy/nd-vk-gateway/context_gateway.py deploy/nd-vk-gateway/test_context_memory.py deploy/nd-vk-gateway/test_context_gateway.py
+      - name: A-I plus durable-store plus integrated-dispatch regression suite
         working-directory: deploy/nd-vk-gateway
-        run: python -m unittest -v test_context_memory.py
+        run: python -m unittest -v test_context_memory.py test_context_gateway.py
       - name: Static authority and budget assertions
         working-directory: deploy/nd-vk-gateway
         run: |
