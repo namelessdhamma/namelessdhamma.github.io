@@ -1,4 +1,4 @@
-import copy, json, unittest
+import copy, hashlib, json, unittest
 import context_memory as m
 import context_memory_store as ms
 
@@ -67,45 +67,78 @@ class ContextMemoryQualification(unittest.TestCase):
         self.assertFalse(m.validate_summary(self.s,'story:16','stale',['vk:event:0'],1))
 
 
-class FakeBroker:
+class LiveContractFakeBroker:
+    """Emulates the pinned Father Comment Sandbox v9 argument/response shape."""
     def __init__(self):
-        self.items={}; self.ids=0; self.idem={}; self.calls=[]; self.corrupt=False
+        self.items={}; self.idem={}; self.calls=[]; self.corrupt=False
+
+    @staticmethod
+    def _aid(key):
+        return 'ND-NOTE-'+hashlib.sha256(('create|shared_notes|'+key).encode()).hexdigest()[:20]
+
     def __call__(self, tool, payload):
         self.calls.append((tool,copy.deepcopy(payload)))
         if tool == 'sandbox_shared_note':
+            self.assert_contract(payload, create=True)
             key=payload['idempotency_key']
-            if key in self.idem: return {'artifact_id':self.idem[key], 'replayed':True}
-            self.ids+=1; aid=f'NOTE-{self.ids}'; self.idem[key]=aid; self.items[aid]=payload['body']; return {'artifact_id':aid}
+            if key in self.idem:
+                aid=self.idem[key]; return {'ok':True,'deduplicated':True,'artifact_id':aid,'authority':'NON_AUTHORITATIVE_SANDBOX','status':'NON-CANONICAL','version':1,'read_back_verified':True}
+            aid=self._aid(key); self.idem[key]=aid; self.items[aid]={'content':payload['content'],'version':1}
+            return {'ok':True,'deduplicated':False,'artifact_id':aid,'authority':'NON_AUTHORITATIVE_SANDBOX','status':'NON-CANONICAL','version':1,'read_back_verified':True}
         if tool == 'sandbox_update':
-            aid=payload['artifact_id']; self.items[aid]=payload['body']; return {'artifact_id':aid,'version_created':True}
+            self.assert_contract(payload, create=False)
+            aid=payload['artifact_id']
+            if aid not in self.items: raise AssertionError('artifact not found')
+            self.items[aid]={'content':payload['content'],'version':self.items[aid]['version']+1}
+            return {'ok':True,'deduplicated':False,'artifact_id':aid,'authority':'NON_AUTHORITATIVE_SANDBOX','status':'NON-CANONICAL','version':self.items[aid]['version'],'read_back_verified':True}
         if tool == 'sandbox_read':
-            body=self.items[payload['artifact_id']]
-            if self.corrupt: body=body.replace('"sha256":', '"sha256":"bad","ignored":')
-            return {'artifact_id':payload['artifact_id'],'body':body}
+            aid=payload['artifact_id']; item=self.items[aid]; content=item['content']
+            if self.corrupt: content=content.replace('"sha256":', '"sha256":"bad","ignored":')
+            return {'ok':True,'artifact_id':aid,'authority':'NON_AUTHORITATIVE_SANDBOX','status':'NON-CANONICAL','version':item['version'],'content':content,'mutations':False}
         raise AssertionError(f'unexpected tool {tool}')
 
+    @staticmethod
+    def assert_contract(payload, create):
+        if 'body' in payload or 'metadata' in payload or 'expected_hash' in payload or 'parent_id' in payload or 'folder_id' in payload:
+            raise AssertionError('payload does not match live broker contract')
+        if 'content' not in payload or 'idempotency_key' not in payload:
+            raise AssertionError('live broker requires content + idempotency_key')
+        if create and 'title' not in payload:
+            raise AssertionError('shared note title required by adapter convention')
+
 class DurableStoreQualification(unittest.TestCase):
-    def test_create_readback_update_restart(self):
-        b=FakeBroker(); s=m.new_state('452972559'); store=ms.FatherWorkspaceMemoryStore(b,'452972559')
-        r1=store.save(s); self.assertTrue(r1['verified']); aid=r1['artifact_id']
+    def test_live_contract_create_readback_update_restart(self):
+        b=LiveContractFakeBroker(); s=m.new_state('452972559'); store=ms.FatherWorkspaceMemoryStore(b,'452972559')
+        r1=store.save(s); self.assertTrue(r1['verified']); aid=r1['artifact_id']; self.assertTrue(aid.startswith('ND-NOTE-'))
         old=copy.deepcopy(s); m.add_turn(s,'user','рассказ 16 продолжим')
         r2=store.save(s,old); self.assertTrue(r2['verified']); self.assertEqual(r2['artifact_id'],aid)
         recovered=ms.FatherWorkspaceMemoryStore(b,'452972559',aid).load()
         self.assertEqual(ms.state_hash(recovered),ms.state_hash(s)); self.assertEqual(recovered['generation'],s['generation'])
-        self.assertEqual([x[0] for x in b.calls],['sandbox_shared_note','sandbox_read','sandbox_update','sandbox_read','sandbox_read'])
+        self.assertEqual([x[0] for x in b.calls],['sandbox_shared_note','sandbox_read','sandbox_read','sandbox_update','sandbox_read','sandbox_read'])
 
-    def test_store_fixed_boundary_and_non_authoritative_metadata(self):
-        b=FakeBroker(); s=m.new_state('452972559'); ms.FatherWorkspaceMemoryStore(b,'452972559').save(s)
-        create=b.calls[0][1]
-        self.assertEqual(create['metadata']['fixed_folder_id'],ms.SHARED_NOTES_FOLDER_ID)
-        self.assertEqual(create['metadata']['authority'],'NON_AUTHORITATIVE_OPERATIONAL_MEMORY')
-        self.assertNotIn('folder_id',create)
+    def test_store_uses_server_fixed_shared_notes_boundary(self):
+        b=LiveContractFakeBroker(); s=m.new_state('452972559'); ms.FatherWorkspaceMemoryStore(b,'452972559').save(s)
+        tool,create=b.calls[0]
+        self.assertEqual(tool,'sandbox_shared_note')
+        self.assertNotIn('folder_id',create); self.assertNotIn('parent_id',create); self.assertNotIn('metadata',create)
+        envelope=json.loads(create['content'])
+        self.assertEqual(envelope['authority'],'NON_AUTHORITATIVE_OPERATIONAL_MEMORY')
+        self.assertEqual(envelope['schema'],ms.STATE_SCHEMA)
 
     def test_store_rejects_wrong_user_and_digest_corruption(self):
-        b=FakeBroker(); s=m.new_state('452972559'); store=ms.FatherWorkspaceMemoryStore(b,'452972559')
+        b=LiveContractFakeBroker(); s=m.new_state('452972559'); store=ms.FatherWorkspaceMemoryStore(b,'452972559')
         bad=copy.deepcopy(s); bad['user_id']='691392544'
         with self.assertRaises(ms.MemoryStoreError): store.save(bad)
         r=store.save(s); b.corrupt=True
         with self.assertRaises(ms.MemoryStoreError): ms.FatherWorkspaceMemoryStore(b,'452972559',r['artifact_id']).load()
+
+    def test_store_rejects_stale_previous_state_before_update(self):
+        b=LiveContractFakeBroker(); s=m.new_state('452972559'); store=ms.FatherWorkspaceMemoryStore(b,'452972559')
+        r=store.save(s); old=copy.deepcopy(s)
+        concurrent=copy.deepcopy(s); m.add_turn(concurrent,'user','конкурирующее изменение')
+        b.items[r['artifact_id']]['content']=store._body(concurrent); b.items[r['artifact_id']]['version']+=1
+        desired=copy.deepcopy(s); m.add_turn(desired,'user','моя правка')
+        with self.assertRaises(ms.MemoryStoreError): store.save(desired,old)
+        self.assertEqual([x[0] for x in b.calls[-1:]],['sandbox_read'])
 
 if __name__=='__main__': unittest.main()
