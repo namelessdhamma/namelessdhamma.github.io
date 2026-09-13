@@ -1,5 +1,6 @@
-import json, tempfile, unittest
+import copy, json, unittest
 import context_memory as m
+import context_memory_store as ms
 
 class ContextMemoryQualification(unittest.TestCase):
     def setUp(self): self.s=m.new_state('452972559')
@@ -18,7 +19,7 @@ class ContextMemoryQualification(unittest.TestCase):
 
     def test_B_story_web_return_no_contamination(self):
         self.story(); m.add_turn(self.s,'user','какая сегодня погода в Мурманске?')
-        self.assertEqual(self.s['active_thread_id'],'story:16')  # transient web must not replace active work
+        self.assertEqual(self.s['active_thread_id'],'story:16')
         p=m.build_context_packet(self.s,'вернёмся к рассказу 16, на чём остановились?')
         self.assertEqual(p['thread_id'],'story:16'); self.assertNotIn('погода',json.dumps(p,ensure_ascii=False).casefold())
 
@@ -56,7 +57,6 @@ class ContextMemoryQualification(unittest.TestCase):
 
     def test_I_no_internal_jargon_required(self):
         self.story(); p=m.build_context_packet(self.s,'рассказ 16 продолжим')
-        # ContextPacket is internal; father-facing UX can remain ordinary Russian.
         father='Продолжаем рассказ 16. Последний принятый вариант восстановлен.'
         for bad in ('ContextPacket','episodic','semantic_memory','thread_id'): self.assertNotIn(bad,father)
         self.assertFalse(p.get('needs_clarification',False))
@@ -65,5 +65,47 @@ class ContextMemoryQualification(unittest.TestCase):
         self.story(); self.assertFalse(m.validate_summary(self.s,'story:16','x',[],1))
         self.assertTrue(m.validate_summary(self.s,'story:16','ok',['vk:event:1'],2))
         self.assertFalse(m.validate_summary(self.s,'story:16','stale',['vk:event:0'],1))
+
+
+class FakeBroker:
+    def __init__(self):
+        self.items={}; self.ids=0; self.idem={}; self.calls=[]; self.corrupt=False
+    def __call__(self, tool, payload):
+        self.calls.append((tool,copy.deepcopy(payload)))
+        if tool == 'sandbox_shared_note':
+            key=payload['idempotency_key']
+            if key in self.idem: return {'artifact_id':self.idem[key], 'replayed':True}
+            self.ids+=1; aid=f'NOTE-{self.ids}'; self.idem[key]=aid; self.items[aid]=payload['body']; return {'artifact_id':aid}
+        if tool == 'sandbox_update':
+            aid=payload['artifact_id']; self.items[aid]=payload['body']; return {'artifact_id':aid,'version_created':True}
+        if tool == 'sandbox_read':
+            body=self.items[payload['artifact_id']]
+            if self.corrupt: body=body.replace('"sha256":', '"sha256":"bad","ignored":')
+            return {'artifact_id':payload['artifact_id'],'body':body}
+        raise AssertionError(f'unexpected tool {tool}')
+
+class DurableStoreQualification(unittest.TestCase):
+    def test_create_readback_update_restart(self):
+        b=FakeBroker(); s=m.new_state('452972559'); store=ms.FatherWorkspaceMemoryStore(b,'452972559')
+        r1=store.save(s); self.assertTrue(r1['verified']); aid=r1['artifact_id']
+        old=copy.deepcopy(s); m.add_turn(s,'user','рассказ 16 продолжим')
+        r2=store.save(s,old); self.assertTrue(r2['verified']); self.assertEqual(r2['artifact_id'],aid)
+        recovered=ms.FatherWorkspaceMemoryStore(b,'452972559',aid).load()
+        self.assertEqual(ms.state_hash(recovered),ms.state_hash(s)); self.assertEqual(recovered['generation'],s['generation'])
+        self.assertEqual([x[0] for x in b.calls],['sandbox_shared_note','sandbox_read','sandbox_update','sandbox_read','sandbox_read'])
+
+    def test_store_fixed_boundary_and_non_authoritative_metadata(self):
+        b=FakeBroker(); s=m.new_state('452972559'); ms.FatherWorkspaceMemoryStore(b,'452972559').save(s)
+        create=b.calls[0][1]
+        self.assertEqual(create['metadata']['fixed_folder_id'],ms.SHARED_NOTES_FOLDER_ID)
+        self.assertEqual(create['metadata']['authority'],'NON_AUTHORITATIVE_OPERATIONAL_MEMORY')
+        self.assertNotIn('folder_id',create)
+
+    def test_store_rejects_wrong_user_and_digest_corruption(self):
+        b=FakeBroker(); s=m.new_state('452972559'); store=ms.FatherWorkspaceMemoryStore(b,'452972559')
+        bad=copy.deepcopy(s); bad['user_id']='691392544'
+        with self.assertRaises(ms.MemoryStoreError): store.save(bad)
+        r=store.save(s); b.corrupt=True
+        with self.assertRaises(ms.MemoryStoreError): ms.FatherWorkspaceMemoryStore(b,'452972559',r['artifact_id']).load()
 
 if __name__=='__main__': unittest.main()
