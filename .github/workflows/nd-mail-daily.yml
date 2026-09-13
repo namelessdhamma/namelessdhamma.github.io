@@ -2,10 +2,9 @@ name: ND Mail Daily
 
 on:
   schedule:
-    # GitHub warns that jobs scheduled exactly at the top of the hour can be delayed.
-    # Primary: 15:07 Bangkok. Backup: 15:37 Bangkok.
+    # Two checks 12 hours apart: 15:07 and 03:07 Asia/Bangkok.
     - cron: "7 8 * * *"
-    - cron: "37 8 * * *"
+    - cron: "7 20 * * *"
   workflow_dispatch:
 
 permissions:
