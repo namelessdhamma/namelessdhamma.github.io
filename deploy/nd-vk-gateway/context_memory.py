@@ -6,10 +6,9 @@ outside process RAM (Father Workspace Shared Notes ledger or another True-Memory
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 import hashlib, json, re, uuid
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 SCHEMA = "ND_VK_CONTEXT_V1"
 DEFAULT_PACKET_BUDGET = 10000
@@ -84,10 +83,12 @@ def resolve_thread(text: str, state: Dict[str, Any]) -> Tuple[str, float, str]:
     if any(x in low for x in ("погода", "новости", "сейчас в интернете", "свежие источники")):
         return "web:transient", .9, "transient_web"
     active = state.get("active_thread_id") or "general:main"
-    if re.match(r"^(нет[, ]|да[, ]|верни|оставь|сделай|а теперь|ещ[её]|предыдущ)", low):
-        return active, .88, "followup_active"
+    # Explicit ambiguous anaphora must be handled before generic follow-up prefixes.
+    # This prevents confident guessing from unrelated history.
     if low in {"сделай как в прошлый раз", "как в прошлый раз", "верни как было"}:
         return active, .66, "ambiguous_anaphora"
+    if re.match(r"^(нет[, ]|да[, ]|верни|оставь|сделай|а теперь|ещ[её]|предыдущ)", low):
+        return active, .88, "followup_active"
     return active, .78, "continuity_default"
 
 
