@@ -21,7 +21,7 @@ permissions:
 jobs:
   qualify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -48,4 +48,21 @@ jobs:
           assert p['provider_agnostic'] is True
           assert p['authority_rule']=='fresh_authority_and_exact_artifact_state_override_derived_memory'
           print('VK_CONTEXT_MEMORY_STATIC_GATE_PASS')
+          PY
+      - name: Build immutable candidate and execute real vendoring patches
+        run: docker build -f deploy/nd-vk-gateway/Dockerfile -t nd-vk-context-memory:candidate .
+      - name: Inspect packaged context and successor manifest
+        run: |
+          docker run --rm --entrypoint python3 nd-vk-context-memory:candidate - <<'PY'
+          import json, pathlib
+          root=pathlib.Path('/app')
+          for f in ('context_memory.py','context_memory_store.py','context_gateway.py'):
+              assert (root/f).is_file(), f
+          m=json.loads((root/'vendor/vendor-manifest.json').read_text())
+          assert set(m['qualified_successor_patches_expected']) == {
+              'readonly_vault_orientation_paths_v54','context_broker_args_v1','context_dispatch_hook_v1'
+          }
+          applied={p for e in m['entries'] for p in e.get('qualified_successor_patches',[])}
+          assert applied==set(m['qualified_successor_patches_expected'])
+          print('VK_CONTEXT_IMMUTABLE_IMAGE_GATE_PASS')
           PY
