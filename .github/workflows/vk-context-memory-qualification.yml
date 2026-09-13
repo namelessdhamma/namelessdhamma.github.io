@@ -1,0 +1,43 @@
+name: VK Context Memory Qualification
+on:
+  push:
+    branches: ["qualify/vk-context-memory"]
+    paths:
+      - "deploy/nd-vk-gateway/context_memory.py"
+      - "deploy/nd-vk-gateway/test_context_memory.py"
+      - "deploy/nd-vk-gateway/CONTEXT_MEMORY_DECISION.md"
+      - ".github/workflows/vk-context-memory-qualification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m py_compile deploy/nd-vk-gateway/context_memory.py deploy/nd-vk-gateway/test_context_memory.py
+      - name: A-I regression suite
+        working-directory: deploy/nd-vk-gateway
+        run: python -m unittest -v test_context_memory.py
+      - name: Static authority and budget assertions
+        working-directory: deploy/nd-vk-gateway
+        run: |
+          python - <<'PY'
+          import context_memory as m
+          assert m.DEFAULT_PACKET_BUDGET == 10000
+          assert m.DEEP_PACKET_BUDGET == 18000
+          assert m.FAST_PACKET_BUDGET == 7000
+          assert sum(m.LAYER_LIMITS.values()) <= 10000
+          s=m.new_state('452972559')
+          p=m.build_context_packet(s,'обычный вопрос')
+          assert p['provider_agnostic'] is True
+          assert p['authority_rule']=='fresh_authority_and_exact_artifact_state_override_derived_memory'
+          print('VK_CONTEXT_MEMORY_STATIC_GATE_PASS')
+          PY
