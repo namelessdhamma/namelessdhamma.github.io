@@ -31,7 +31,7 @@ def zero_price(value) -> bool:
 def http_json(url: str, *, token: str | None = None, payload=None, timeout=90):
     headers = {
         "Accept": "application/json",
-        "User-Agent": "NamelessDhamma-VK-Qualification/1.0",
+        "User-Agent": "NamelessDhamma-VK-Qualification/1.1",
         "HTTP-Referer": "https://namelessdhamma.org",
         "X-Title": "Nameless Dhamma VK Intelligence Qualification",
     }
@@ -65,16 +65,62 @@ def candidate_ids(config: dict) -> list[str]:
     return [str(x["id"]) for x in config.get("openrouter_candidates") or []]
 
 
+def discovery_shape(item: dict) -> bool:
+    """Broad qualification discovery only; never grants production authority."""
+    model_id = str(item.get("id") or "")
+    if not model_id.endswith(":free") or model_id == "openrouter/free":
+        return False
+    architecture = item.get("architecture") or {}
+    outputs = set(architecture.get("output_modalities") or [])
+    if outputs and "text" not in outputs:
+        return False
+    try:
+        context = int(item.get("context_length") or 0)
+    except Exception:
+        context = 0
+    if context < 131072:
+        return False
+    params = set(item.get("supported_parameters") or [])
+    # Keep discovery broad enough to catch new strong candidates while excluding
+    # embeddings and narrow extractors. Reasoning or tool-use is only a discovery
+    # signal; live ND task-suite quality remains the authority.
+    return bool({"reasoning", "reasoning_effort", "tools", "tool_choice"} & params)
+
+
+def discovery_pool(catalog: dict[str, dict]) -> list[dict]:
+    pool = []
+    for model_id, item in catalog.items():
+        if not discovery_shape(item):
+            continue
+        pool.append(
+            {
+                "id": model_id,
+                "context_length": item.get("context_length"),
+                "reasoning": bool((item.get("reasoning") or {}).get("default_enabled") or "reasoning" in (item.get("supported_parameters") or [])),
+                "tools": "tools" in (item.get("supported_parameters") or []),
+            }
+        )
+    return sorted(pool, key=lambda x: (-int(x.get("context_length") or 0), x["id"]))
+
+
 def eligible_candidates(config: dict, catalog: dict[str, dict], requested: set[str] | None = None):
-    out = []
-    for item in config.get("openrouter_candidates") or []:
-        mid = str(item["id"])
-        if requested and mid not in requested:
-            continue
-        if mid not in catalog:
-            continue
-        out.append(item)
-    return out
+    configured = {str(item["id"]): dict(item) for item in config.get("openrouter_candidates") or []}
+    if requested:
+        # Explicit qualification requests may target any currently exact-free
+        # endpoint discovered live. This removes stale hardcoded-candidate drift
+        # without allowing discovery to mutate production routing.
+        out = []
+        for mid in sorted(requested):
+            if mid not in catalog:
+                continue
+            item = configured.get(mid) or {
+                "id": mid,
+                "roles_to_test": ["research", "literary", "critic", "long-context", "general", "fast-strong"],
+                "discovered_live": True,
+            }
+            out.append(item)
+        return out
+    return [item for mid, item in configured.items() if mid in catalog]
 
 
 def chat_openrouter(token: str, model: str, prompt: str, *, max_tokens=1800):
@@ -113,7 +159,7 @@ def chat_openrouter(token: str, model: str, prompt: str, *, max_tokens=1800):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run ND VK live intelligence qualification without changing production routing.")
     parser.add_argument("--domain", choices=["research", "literary", "general", "all"], default="all")
-    parser.add_argument("--model", action="append", default=[], help="Exact OpenRouter model id; may be repeated")
+    parser.add_argument("--model", action="append", default=[], help="Exact OpenRouter model id; may be repeated. Any live exact-free id is allowed for qualification, not production.")
     parser.add_argument("--output", default="intelligence-qualification-results.jsonl")
     parser.add_argument("--catalog-only", action="store_true")
     args = parser.parse_args()
@@ -123,15 +169,19 @@ def main() -> int:
     catalog = live_free_catalog()
     requested = set(args.model) if args.model else None
     eligible = eligible_candidates(config, catalog, requested)
+    pool = discovery_pool(catalog)
 
     catalog_record = {
         "record_type": "catalog",
         "timestamp": int(time.time()),
         "live_free_count": len(catalog),
+        "live_free_ids": sorted(catalog),
+        "discovery_pool": pool,
         "configured_candidates": candidate_ids(config),
         "eligible_candidates": [x["id"] for x in eligible],
         "ineligible_or_unknown": [x for x in candidate_ids(config) if x not in catalog],
-        "policy": "fail_closed_exact_free",
+        "requested_ineligible_or_unknown": sorted((requested or set()) - set(catalog)),
+        "policy": "fail_closed_exact_free; discovery_has_no_production_authority",
     }
     print(json.dumps(catalog_record, ensure_ascii=False))
     if args.catalog_only:
@@ -142,7 +192,7 @@ def main() -> int:
         print("OPENROUTER_API_KEY/OpenRouter missing; catalog verification completed but live inference not run", file=sys.stderr)
         return 3
     if not eligible:
-        print("No configured candidate is currently exact-free; refusing live inference", file=sys.stderr)
+        print("No requested/configured candidate is currently exact-free; refusing live inference", file=sys.stderr)
         return 4
 
     cases = [c for c in (suite.get("cases") or []) if args.domain == "all" or c.get("domain") == args.domain]
@@ -162,6 +212,7 @@ def main() -> int:
                     "expected_checks": case.get("checks") or [],
                     "live_free_verified": True,
                     "production_authority": False,
+                    "discovered_live": bool(model_item.get("discovered_live")),
                 }
                 try:
                     result = chat_openrouter(token, model, str(case["prompt"]))
