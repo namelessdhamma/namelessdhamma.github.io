@@ -1,9 +1,12 @@
 """Durable state adapter for ND VK Father context memory.
 
-The adapter deliberately depends only on the existing Safe Tool Broker contract and a caller-supplied
-`broker_call(tool, payload)` function. It does not know provider/model details and cannot write
-outside Father Workspace. Production binding must use the already-qualified broker identity,
-ancestry/idempotency/read-back guards.
+This adapter is pinned to the existing Father Comment Sandbox contract:
+  sandbox_shared_note(args.content, args.idempotency_key, ...)
+  sandbox_update(args.artifact_id, args.content, args.idempotency_key, ...)
+  sandbox_read(args.artifact_id) -> result.content
+
+The broker, not the caller, fixes sandbox_shared_note to Father Workspace / Shared Notes.
+No folder/parent override is sent. Memory remains NON_AUTHORITATIVE operational state.
 """
 from __future__ import annotations
 
@@ -30,14 +33,13 @@ class MemoryStoreError(RuntimeError):
 
 
 class FatherWorkspaceMemoryStore:
-    """Append/version state through existing bounded sandbox tools.
+    """Version context state through the existing bounded Shared Notes ledger.
 
-    Expected broker contract:
-      sandbox_shared_note({title, body, idempotency_key, metadata?}) -> created artifact
-      sandbox_update({artifact_id, body, idempotency_key, expected_hash?, metadata?}) -> new version
-      sandbox_read({artifact_id}) -> body/hash/read-back metadata
-
-    No direct Drive IDs supplied by the caller can override the fixed Shared Notes boundary.
+    The current broker does not expose an atomic compare-and-swap argument. For an update this
+    adapter therefore performs an explicit latest-state read and rejects a stale previous_state
+    before writing, then requires exact read-back. The gateway integration must additionally keep
+    one in-flight state mutation per VK user; overlapping deployments remain a promotion-time
+    exclusion rather than something this adapter pretends to solve atomically.
     """
 
     def __init__(self, broker_call: Callable[[str, Dict[str, Any]], Dict[str, Any]], user_id: str,
@@ -64,9 +66,9 @@ class FatherWorkspaceMemoryStore:
         return json.dumps(envelope, ensure_ascii=False, sort_keys=True)
 
     def _parse(self, raw: Dict[str, Any]) -> Dict[str, Any]:
-        body = raw.get("body") or raw.get("content") or raw.get("text")
+        body = raw.get("content") or raw.get("body") or raw.get("text")
         if not isinstance(body, str):
-            raise MemoryStoreError("read-back missing body")
+            raise MemoryStoreError("read-back missing content")
         try:
             env = json.loads(body)
         except Exception as exc:
@@ -78,6 +80,8 @@ class FatherWorkspaceMemoryStore:
         state = env.get("state")
         if not isinstance(state, dict) or state_hash(state) != env.get("sha256"):
             raise MemoryStoreError("memory envelope digest mismatch")
+        if int(env.get("generation", -1)) != int(state.get("generation", -2)):
+            raise MemoryStoreError("memory envelope generation mismatch")
         return state
 
     def load(self) -> Optional[Dict[str, Any]]:
@@ -86,37 +90,66 @@ class FatherWorkspaceMemoryStore:
         raw = self.broker_call("sandbox_read", {"artifact_id": self.artifact_id})
         return self._parse(raw)
 
+    def _common_args(self, body: str, key: str) -> Dict[str, Any]:
+        return {
+            "content": body,
+            "idempotency_key": key,
+            "actor": "vk_ai_assistant",
+            "sender_vk_id": self.user_id,
+            "gateway_version": "vk-context-memory-v1",
+            "source_ref": f"vk-context-state:{self.user_id}",
+            "source_refs": [],
+        }
+
     def save(self, state: Dict[str, Any], previous_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         body = self._body(state)
         digest = state_hash(state)
         generation = int(state.get("generation", 0))
         key = f"vk-context:{self.user_id}:g{generation}:{digest[:20]}"
-        metadata = {
-            "kind": STATE_KIND,
-            "schema": STATE_SCHEMA,
-            "user_id": self.user_id,
-            "generation": generation,
-            "sha256": digest,
-            "authority": "NON_AUTHORITATIVE_OPERATIONAL_MEMORY",
-            "fixed_folder_id": SHARED_NOTES_FOLDER_ID,
-        }
+
         if self.artifact_id is None:
-            result = self.broker_call("sandbox_shared_note", {
-                "title": STATE_TITLE, "body": body, "idempotency_key": key, "metadata": metadata,
-            })
+            payload = self._common_args(body, key)
+            payload["title"] = STATE_TITLE
+            result = self.broker_call("sandbox_shared_note", payload)
             aid = result.get("artifact_id") or result.get("id")
             if not aid:
                 raise MemoryStoreError("create did not return artifact_id")
+            if result.get("read_back_verified") is not True:
+                raise MemoryStoreError("broker did not verify create read-back")
             self.artifact_id = str(aid)
         else:
-            expected_hash = state_hash(previous_state) if previous_state else None
-            payload = {"artifact_id": self.artifact_id, "body": body, "idempotency_key": key, "metadata": metadata}
-            if expected_hash: payload["expected_hash"] = expected_hash
-            result = self.broker_call("sandbox_update", payload)
+            if previous_state is None:
+                raise MemoryStoreError("previous_state required for guarded update")
+            if str(previous_state.get("user_id")) != self.user_id:
+                raise MemoryStoreError("previous state user mismatch")
+            if generation <= int(previous_state.get("generation", -1)):
+                raise MemoryStoreError("non-monotonic state generation")
 
-        # Mandatory exact read-back. Save is not acknowledged before digest equality.
+            # Fail closed on stale local state. This is a precondition check, not an atomic CAS;
+            # gateway integration serializes mutations per user and deployment promotion forbids
+            # overlapping writers.
+            latest = self.load()
+            if latest is None or state_hash(latest) != state_hash(previous_state):
+                raise MemoryStoreError("stale previous state")
+
+            payload = self._common_args(body, key)
+            payload["artifact_id"] = self.artifact_id
+            result = self.broker_call("sandbox_update", payload)
+            if str(result.get("artifact_id") or "") != self.artifact_id:
+                raise MemoryStoreError("update artifact identity mismatch")
+            if result.get("read_back_verified") is not True:
+                raise MemoryStoreError("broker did not verify update read-back")
+
+        # Mandatory adapter-level exact read-back. Save is not acknowledged before digest equality.
         readback_raw = self.broker_call("sandbox_read", {"artifact_id": self.artifact_id})
         readback = self._parse(readback_raw)
         if state_hash(readback) != digest or int(readback.get("generation", -1)) != generation:
             raise MemoryStoreError("read-back mismatch")
-        return {"artifact_id": self.artifact_id, "generation": generation, "sha256": digest, "verified": True}
+        return {
+            "artifact_id": self.artifact_id,
+            "generation": generation,
+            "sha256": digest,
+            "verified": True,
+            "atomic_cas": False,
+            "boundary": "FATHER_WORKSPACE_SHARED_NOTES_SERVER_FIXED",
+        }
