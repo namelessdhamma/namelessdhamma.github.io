@@ -4,6 +4,7 @@ on:
     branches: ["qualify/vk-context-memory"]
     paths:
       - "deploy/nd-vk-gateway/context_memory.py"
+      - "deploy/nd-vk-gateway/context_memory_store.py"
       - "deploy/nd-vk-gateway/test_context_memory.py"
       - "deploy/nd-vk-gateway/CONTEXT_MEMORY_DECISION.md"
       - ".github/workflows/vk-context-memory-qualification.yml"
@@ -22,8 +23,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile
-        run: python -m py_compile deploy/nd-vk-gateway/context_memory.py deploy/nd-vk-gateway/test_context_memory.py
-      - name: A-I regression suite
+        run: python -m py_compile deploy/nd-vk-gateway/context_memory.py deploy/nd-vk-gateway/context_memory_store.py deploy/nd-vk-gateway/test_context_memory.py
+      - name: A-I plus durable-store regression suite
         working-directory: deploy/nd-vk-gateway
         run: python -m unittest -v test_context_memory.py
       - name: Static authority and budget assertions
@@ -31,10 +32,12 @@ jobs:
         run: |
           python - <<'PY'
           import context_memory as m
+          import context_memory_store as ms
           assert m.DEFAULT_PACKET_BUDGET == 10000
           assert m.DEEP_PACKET_BUDGET == 18000
           assert m.FAST_PACKET_BUDGET == 7000
           assert sum(m.LAYER_LIMITS.values()) <= 10000
+          assert ms.SHARED_NOTES_FOLDER_ID == '1cF1qB25BZPKmtvgoXXkSMrEh_LnYJiRD'
           s=m.new_state('452972559')
           p=m.build_context_packet(s,'обычный вопрос')
           assert p['provider_agnostic'] is True
