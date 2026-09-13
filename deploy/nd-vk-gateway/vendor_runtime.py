@@ -59,6 +59,13 @@ def _replace_exact(text:str, old:str, new:str, label:str)->str:
     if old in out or new not in out:raise RuntimeError(f"{label} successor invariant failed")
     return out
 
+def _insert_after_exact(text:str, anchor:str, insertion:str, label:str)->str:
+    if text.count(anchor)!=1:raise RuntimeError(f"{label} marker drift: expected exactly 1, got {text.count(anchor)}")
+    if insertion in text:raise RuntimeError(f"{label} successor already present unexpectedly")
+    out=text.replace(anchor,anchor+insertion,1)
+    if out.count(anchor)!=1 or insertion not in out:raise RuntimeError(f"{label} successor invariant failed")
+    return out
+
 def apply_qualified_successor_patches(pin: str, text: str) -> tuple[str,list[str]]:
     patches=[]
     if pin==VAULT_PATH_PATCH_PIN:
@@ -68,7 +75,7 @@ def apply_qualified_successor_patches(pin: str, text: str) -> tuple[str,list[str
         text=_replace_exact(text,V36_BROKER_OLD,V36_BROKER_NEW,'V36 broker args')
         patches.append('context_broker_args_v1')
     elif pin==V9_CONTEXT_PATCH_PIN:
-        text=_replace_exact(text,V9_IMPORT_ANCHOR,V9_IMPORT_NEW,'V9 context import')
+        text=_insert_after_exact(text,V9_IMPORT_ANCHOR,"from context_gateway import dispatch as nd_context_dispatch\n",'V9 context import')
         text=_replace_exact(text,V9_DISPATCH_OLD,V9_DISPATCH_NEW,'V9 context dispatch')
         patches.append('context_dispatch_hook_v1')
     return text,patches
