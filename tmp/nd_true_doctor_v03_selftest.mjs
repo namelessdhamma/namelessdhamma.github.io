@@ -73,7 +73,7 @@ const observed=doctorObserve(manual,[
 ]);
 assert(observed.refined_diagnosis.failure_class==="INSTALL_CONTROL_PLANE","Drive refinement");
 assert(observed.refined_diagnosis.confidence>=0.97,"Drive confidence");
-assert(observed.repair_plan.continuity.action==="USE_QUALIFIED_FAILOVER","qualified failover continuity");
+assert(observed.repair_plan.continuity.action==="CONTINUE_PRIMARY","keep proven primary despite control-plane divergence");
 
 const exposure=doctorStart({
   invocation_mode:"AUTOMATION",
