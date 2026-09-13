@@ -1,0 +1,38 @@
+name: Qualify ND Cloud Browser
+
+on:
+  push:
+    branches:
+      - qualify/nd-cloud-browser-v1
+    paths:
+      - "services/nd-cloud-browser/**"
+      - ".github/workflows/qualify-nd-cloud-browser.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/nd-cloud-browser
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/nd-cloud-browser/package.json
+
+      - name: Install dependencies
+        run: npm install --omit=dev
+
+      - name: Syntax check
+        run: node --check server.js
+
+      - name: Docker build
+        run: docker build -t nd-cloud-browser:qualification .
