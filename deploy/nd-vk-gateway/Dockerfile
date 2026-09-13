@@ -13,9 +13,13 @@ COPY deploy/nd-vk-gateway/run_broker.mjs /app/run_broker.mjs
 COPY deploy/nd-vk-gateway/run_gateway.py /app/run_gateway.py
 COPY deploy/nd-vk-gateway/start.py /app/start.py
 COPY deploy/nd-vk-gateway/audit_runtime_bootstrap.py /app/audit_runtime_bootstrap.py
+COPY deploy/nd-vk-gateway/context_memory.py /app/context_memory.py
+COPY deploy/nd-vk-gateway/context_memory_store.py /app/context_memory_store.py
+COPY deploy/nd-vk-gateway/context_gateway.py /app/context_gateway.py
 
 # Runtime filesystem must contain no raw-GitHub bootstrap or package installer.
 RUN python3 /app/audit_runtime_bootstrap.py /app
+RUN python3 -m py_compile /app/context_memory.py /app/context_memory_store.py /app/context_gateway.py /app/run_gateway.py /app/start.py
 
 ENV ND_VK_VENDOR_ROOT=/app/vendor
 CMD ["python3", "-u", "/app/start.py"]
