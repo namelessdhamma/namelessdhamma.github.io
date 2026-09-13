@@ -484,7 +484,22 @@ export function refineDiagnosis(incident, diagnosis, receipts=[]) {
   if (pointer?.status==="FAIL") {
     d={...d,failure_class:"STATE_MEMORY_POINTER",confidence:0.96,rationale:"authoritative pointer verification failed"};
   }
-  return {...d,probe_count:receipts.length,validated_at:now()};
+  return {
+    ...d,
+    probe_count:receipts.length,
+    probe_summary: {
+      tool_exposure: exposure?.status || null,
+      control_plane_state: cp?.status || null,
+      provider_profile: provider?.status || null,
+      safe_read: read?.status || null,
+      reversible_write: write?.status || null,
+      thread_canary: thread?.status || null,
+      surface_canary: surface?.status || null,
+      runtime_health: runtime?.status || null,
+      pointer_verify: pointer?.status || null
+    },
+    validated_at:now()
+  };
 }
 
 export function continuityDecision(incident, diagnosis, context={}) {
@@ -494,6 +509,8 @@ export function continuityDecision(incident, diagnosis, context={}) {
 
   if (["DATA_INTEGRITY","AUTHORITY_GOVERNANCE"].includes(c))
     return {action:"FAIL_CLOSED",reason:"integrity/authority invariant at risk",alternate:null};
+  if (c==="INSTALL_CONTROL_PLANE" && diagnosis.probe_summary?.safe_read==="PASS")
+    return {action:"CONTINUE_PRIMARY",reason:"required primary read path is live despite control-plane inconsistency; repair metadata state out-of-band",alternate:null};
   if (c==="THREAD_LOCAL")
     return {action:"MIGRATE_THREAD",reason:"thread-local failure with durable context recovery required",alternate:null};
   if (c==="SURFACE")
