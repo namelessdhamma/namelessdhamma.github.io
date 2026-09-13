@@ -22,7 +22,6 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ secrets.ND_MAIL_TELEGRAM_CHAT_ID }}
       ND_MAIL_MONITOR_ENABLED: "true"
       ND_MAIL_TIMEZONE: "Asia/Bangkok"
-      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - name: Check Gmail and notify Telegram
