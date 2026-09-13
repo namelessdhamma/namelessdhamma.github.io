@@ -20,6 +20,7 @@ jobs:
       GMAIL_USER: namelessdhamma@gmail.com
       GMAIL_APP_PASSWORD: ${{ secrets.ND_MAIL_GMAIL_APP_PASSWORD }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.ND_MAIL_TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.ND_MAIL_TELEGRAM_CHAT_ID }}
       ND_MAIL_MONITOR_ENABLED: "true"
       ND_MAIL_TIMEZONE: "Asia/Bangkok"
       GITHUB_TOKEN: ${{ github.token }}
