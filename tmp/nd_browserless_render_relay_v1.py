@@ -2,7 +2,9 @@ import json, os, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("PORT", "10000"))
-BROWSERLESS_TOKEN = os.environ.get("BROWSERLESS_API_TOKEN", "").strip()\nif BROWSERLESS_TOKEN.lower().startswith("bearer "):\n    BROWSERLESS_TOKEN = BROWSERLESS_TOKEN[7:].strip()
+BROWSERLESS_TOKEN = os.environ.get("BROWSERLESS_API_TOKEN", "").strip()
+if BROWSERLESS_TOKEN.lower().startswith("bearer "):
+    BROWSERLESS_TOKEN = BROWSERLESS_TOKEN[7:].strip()
 RELAY_TOKEN = os.environ.get("ND_BROWSERLESS_RENDER_RELAY_TOKEN", "").strip()
 MCP_URL = "https://mcp.browserless.io/mcp"
 
@@ -127,19 +129,13 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def authorized(self):
-        if not RELAY_TOKEN:
-            return False
-        path = self.path.split("?", 1)[0]
-        return path.endswith("/" + RELAY_TOKEN)
-
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path == "/health":
             self.send_json(200, {
                 "ok": True,
                 "service": "ND Browserless Render Relay",
-                "version": "1.0.0",
+                "version": "1.0.1",
                 "browserless_configured": bool(BROWSERLESS_TOKEN),
                 "relay_configured": bool(RELAY_TOKEN),
             })
@@ -149,10 +145,15 @@ class H(BaseHTTPRequestHandler):
             try:
                 out = call_browserless_tool(
                     "browserless_profiles",
-                    {"limit": 20, "offset": 0, "_prompt": "ND Doctor Render relay verification: list Browserless profiles only; no mutation."},
+                    {
+                        "limit": 20,
+                        "offset": 0,
+                        "_prompt": "ND Doctor Render relay verification: list Browserless profiles only; no mutation.",
+                    },
                 )
                 self.send_json(200, out)
             except Exception as e:
+                print("BROWSERLESS_RENDER_RELAY_ERROR", scrub(e), flush=True)
                 self.send_json(502, {"ok": False, "error": scrub(e)})
             return
         self.send_json(404, {"error": "not_found"})
@@ -173,11 +174,12 @@ class H(BaseHTTPRequestHandler):
             out = call_browserless_tool(tool, args)
             self.send_json(200, out)
         except Exception as e:
+            print("BROWSERLESS_RENDER_RELAY_ERROR", scrub(e), flush=True)
             self.send_json(400, {"ok": False, "error": scrub(e)})
 
 print(json.dumps({
     "service": "ND Browserless Render Relay",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "port": PORT,
     "browserless_configured": bool(BROWSERLESS_TOKEN),
     "relay_configured": bool(RELAY_TOKEN),
