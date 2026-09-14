@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 READ_URL = os.environ.get('ND_FATHER_CONTEXT_READ_URL', '').strip()
 APPEND_URL = os.environ.get('ND_FATHER_CONTEXT_APPEND_URL', '').strip()
 ND_READ_URL = os.environ.get('ND_FATHER_ND_READ_URL', '').strip()
+ND_READ_TOKEN = (os.environ.get('ND_FATHER_ND_READ_TOKEN', '') or os.environ.get('QSTASH_TOKEN', '')).strip()
 
 COLUMNS = [
     'artifact_id','version','chunk_index','chunk_count','operation','kind','status','authority',
@@ -20,6 +21,7 @@ ALLOWED_CONTEXT_KINDS = {'conversation_turn', 'qualification_context_turn'}
 MAX_REMOTE_ROWS = 200
 DEFAULT_TURNS = 10
 DEFAULT_CONTEXT_CHARS = 24000
+DEFAULT_ND_CONTEXT_CHARS = 12000
 
 
 def _json_request(url, *, data=None, headers=None, method=None, timeout=15):
@@ -114,17 +116,67 @@ def append_turn(uid, role, content, *, event_id, provider='', model='', source_r
             'row': response.get('row')}
 
 
-def read_nd_context(*, max_chars=12000):
+def _normalize_nd_context(payload, *, max_chars=DEFAULT_ND_CONTEXT_CHARS):
+    """Normalize either a compact projection or the existing Safe Tool Broker /nd/context shape."""
+    max_chars = max(0, int(max_chars))
+    if 'text' in payload:
+        text = str(payload.get('text') or '')[:max_chars]
+        sources = payload.get('sources') or []
+        if not isinstance(sources, list):
+            sources = []
+        clean_sources = []
+        for s in sources[:20]:
+            if isinstance(s, dict) and s.get('source_ref'):
+                clean_sources.append({
+                    'source_ref': str(s.get('source_ref'))[:500],
+                    'title': str(s.get('title') or '')[:500],
+                    'authority': str(s.get('authority') or '')[:80],
+                })
+        return {'text': text, 'sources': clean_sources}
+
+    pieces = payload.get('pieces') or []
+    if not isinstance(pieces, list):
+        pieces = []
+    selected = []
+    sources = []
+    used = 0
+    for p in pieces[:12]:
+        if not isinstance(p, dict):
+            continue
+        authority = str(p.get('authority') or '').upper()
+        # Father gets only governed authoritative/canonical context here. Discovery/non-auth material
+        # remains available through separate research paths and is not silently injected as ND truth.
+        if authority not in ('AUTHORITATIVE', 'CANONICAL'):
+            continue
+        label = str(p.get('label') or 'ND context')[:500]
+        text = str(p.get('text') or '')
+        if not text or used >= max_chars:
+            continue
+        room = max_chars - used
+        text = text[:room]
+        selected.append(label + '\n' + text)
+        used += len(text)
+        sources.append({'source_ref': label, 'title': label, 'authority': authority})
+    return {
+        'text': '\n\n'.join(selected)[:max_chars],
+        'sources': sources[:20],
+        'statehead_status': payload.get('statehead_status'),
+        'registry_version': payload.get('registry_version'),
+    }
+
+
+def read_nd_context(*, query='ND current architecture and relevant project context', max_chars=DEFAULT_ND_CONTEXT_CHARS):
     if not ND_READ_URL:
         return {'text': '', 'sources': []}
-    payload = _json_request(ND_READ_URL, timeout=15)
-    text = str(payload.get('text') or '')[:max_chars]
-    sources = payload.get('sources') or []
-    if not isinstance(sources, list):
-        sources = []
-    clean_sources = []
-    for s in sources[:20]:
-        if isinstance(s, dict) and s.get('source_ref'):
-            clean_sources.append({'source_ref': str(s.get('source_ref'))[:500],
-                                  'title': str(s.get('title') or '')[:500]})
-    return {'text': text, 'sources': clean_sources}
+    url = ND_READ_URL
+    # Existing V7 Safe Tool Broker exposes GET /nd/context?q=... under bearer auth.
+    if '{query}' in url:
+        url = url.replace('{query}', urllib.parse.quote(str(query)[:6000], safe=''))
+    elif '/nd/context' in url and 'q=' not in url:
+        sep = '&' if '?' in url else '?'
+        url = url + sep + 'q=' + urllib.parse.quote(str(query)[:6000], safe='')
+    headers = {'User-Agent': 'ND-VK-Father-Context-V15/1.0'}
+    if ND_READ_TOKEN:
+        headers['Authorization'] = 'Bearer ' + ND_READ_TOKEN
+    payload = _json_request(url, headers=headers, timeout=20)
+    return _normalize_nd_context(payload, max_chars=max_chars)
