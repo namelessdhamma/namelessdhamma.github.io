@@ -24,6 +24,34 @@ class AdapterTests(unittest.TestCase):
         self.assertNotIn('SECRET_DISCOVERY',out['text'])
         self.assertTrue(all(s['authority'] in ('AUTHORITATIVE','CANONICAL') for s in out['sources']))
         self.assertLessEqual(len(out['text']),40)
+        self.assertFalse(out['provenance_rejected'])
+
+    def test_compact_projection_fails_closed_on_mixed_provenance(self):
+        payload={
+            'text':'AUTHORITATIVE_TEXT SECRET_NON_AUTH_TEXT',
+            'sources':[
+                {'source_ref':'StateHead','title':'StateHead','authority':'AUTHORITATIVE'},
+                {'source_ref':'Discovery','title':'Discovery','authority':'NON_AUTH'},
+            ],
+            'statehead_status':'ACTIVE','registry_version':'1.8.1'
+        }
+        out=adapter._normalize_nd_context(payload,max_chars=1000)
+        self.assertEqual(out['text'],'')
+        self.assertEqual(out['sources'],[])
+        self.assertTrue(out['provenance_rejected'])
+
+    def test_compact_projection_accepts_only_governed_sources(self):
+        payload={
+            'text':'governed text',
+            'sources':[
+                {'source_ref':'StateHead','title':'StateHead','authority':'authoritative'},
+                {'source_ref':'System','title':'System','authority':'canonical'},
+            ]
+        }
+        out=adapter._normalize_nd_context(payload,max_chars=1000)
+        self.assertEqual(out['text'],'governed text')
+        self.assertEqual([s['authority'] for s in out['sources']],['AUTHORITATIVE','CANONICAL'])
+        self.assertFalse(out['provenance_rejected'])
 
     def test_hydrate_user_isolates_and_orders(self):
         rows=[
@@ -81,6 +109,29 @@ class HarnessTests(unittest.TestCase):
             env=harness.build_context_envelope(101)
         self.assertLessEqual(sum(len(x['content']) for x in env['conversation']),harness.MAX_CONVERSATION_CHARS)
         self.assertLessEqual(len(env['nd_context']['text']),harness.MAX_ND_CHARS)
+
+    def test_response_messages_are_provider_ready_bounded_and_provenanced(self):
+        hist=[{'role':'user','content':'old question'},{'role':'assistant','content':'old answer'}]
+        nd={
+            'text':'governed context',
+            'sources':[
+                {'source_ref':'StateHead','title':'StateHead','authority':'AUTHORITATIVE'},
+                {'source_ref':'System','title':'System','authority':'CANONICAL'},
+            ],
+            'statehead_status':'ACTIVE','registry_version':'1.8.1'
+        }
+        with mock.patch.object(harness,'hydrate_user',return_value=hist), mock.patch.object(harness,'read_nd_context',return_value=nd):
+            messages,receipt=harness.build_response_messages(101,'X'*(harness.MAX_USER_CHARS+500))
+        self.assertEqual(messages[0]['role'],'system')
+        self.assertEqual(messages[-1]['role'],'user')
+        self.assertEqual(len(messages[-1]['content']),harness.MAX_USER_CHARS)
+        governed=messages[1]['content']
+        self.assertIn('[AUTHORITATIVE]',governed)
+        self.assertIn('[CANONICAL]',governed)
+        self.assertNotIn('NON_AUTH',governed)
+        self.assertEqual(receipt['nd_authorities'],['AUTHORITATIVE','CANONICAL'])
+        self.assertFalse(receipt['non_auth_injection'])
+        self.assertFalse(receipt['production_mutation'])
 
 
 if __name__=='__main__': unittest.main()
