@@ -18,6 +18,7 @@ COLUMNS = [
 ]
 
 ALLOWED_CONTEXT_KINDS = {'conversation_turn', 'qualification_context_turn'}
+ALLOWED_ND_AUTHORITIES = {'AUTHORITATIVE', 'CANONICAL'}
 MAX_REMOTE_ROWS = 200
 DEFAULT_TURNS = 10
 DEFAULT_CONTEXT_CHARS = 24000
@@ -117,22 +118,52 @@ def append_turn(uid, role, content, *, event_id, provider='', model='', source_r
 
 
 def _normalize_nd_context(payload, *, max_chars=DEFAULT_ND_CONTEXT_CHARS):
-    """Normalize either a compact projection or the existing Safe Tool Broker /nd/context shape."""
+    """Normalize either a compact projection or the existing Safe Tool Broker /nd/context shape.
+
+    Governed father context fails closed: only AUTHORITATIVE/CANONICAL material may enter the
+    response envelope. A compact projection with ambiguous or mixed provenance is rejected rather
+    than silently treating unclassified text as ND truth.
+    """
     max_chars = max(0, int(max_chars))
     if 'text' in payload:
-        text = str(payload.get('text') or '')[:max_chars]
         sources = payload.get('sources') or []
         if not isinstance(sources, list):
             sources = []
         clean_sources = []
+        rejected = False
         for s in sources[:20]:
-            if isinstance(s, dict) and s.get('source_ref'):
-                clean_sources.append({
-                    'source_ref': str(s.get('source_ref'))[:500],
-                    'title': str(s.get('title') or '')[:500],
-                    'authority': str(s.get('authority') or '')[:80],
-                })
-        return {'text': text, 'sources': clean_sources}
+            if not isinstance(s, dict):
+                rejected = True
+                continue
+            authority = str(s.get('authority') or '').upper()
+            if authority not in ALLOWED_ND_AUTHORITIES:
+                rejected = True
+                continue
+            source_ref = str(s.get('source_ref') or '')[:500]
+            if not source_ref:
+                rejected = True
+                continue
+            clean_sources.append({
+                'source_ref': source_ref,
+                'title': str(s.get('title') or '')[:500],
+                'authority': authority,
+            })
+        # Compact text is not piece-addressable, so mixed/ambiguous provenance cannot be safely
+        # separated. Fail closed unless all declared sources are governed and at least one exists.
+        if rejected or not clean_sources:
+            return {
+                'text': '', 'sources': [],
+                'statehead_status': payload.get('statehead_status'),
+                'registry_version': payload.get('registry_version'),
+                'provenance_rejected': True,
+            }
+        return {
+            'text': str(payload.get('text') or '')[:max_chars],
+            'sources': clean_sources,
+            'statehead_status': payload.get('statehead_status'),
+            'registry_version': payload.get('registry_version'),
+            'provenance_rejected': False,
+        }
 
     pieces = payload.get('pieces') or []
     if not isinstance(pieces, list):
@@ -146,7 +177,7 @@ def _normalize_nd_context(payload, *, max_chars=DEFAULT_ND_CONTEXT_CHARS):
         authority = str(p.get('authority') or '').upper()
         # Father gets only governed authoritative/canonical context here. Discovery/non-auth material
         # remains available through separate research paths and is not silently injected as ND truth.
-        if authority not in ('AUTHORITATIVE', 'CANONICAL'):
+        if authority not in ALLOWED_ND_AUTHORITIES:
             continue
         label = str(p.get('label') or 'ND context')[:500]
         text = str(p.get('text') or '')
@@ -162,6 +193,7 @@ def _normalize_nd_context(payload, *, max_chars=DEFAULT_ND_CONTEXT_CHARS):
         'sources': sources[:20],
         'statehead_status': payload.get('statehead_status'),
         'registry_version': payload.get('registry_version'),
+        'provenance_rejected': False,
     }
 
 
