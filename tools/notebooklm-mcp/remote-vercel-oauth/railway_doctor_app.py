@@ -94,6 +94,38 @@ async def sources(request: Request) -> JSONResponse:
         )
 
 
+async def qualify_write(request: Request) -> JSONResponse:
+    if not _authorized(request):
+        return _deny()
+    title = "ND Doctor Qualification — temporary — 2026-09-14"
+    try:
+        async with client_factory() as client:
+            created = await client.notebooks.create(title)
+            notebook_id = created.id
+            found_after_create = any(
+                getattr(item, "id", None) == notebook_id
+                for item in await client.notebooks.list()
+            )
+            await client.notebooks.delete(notebook_id)
+            found_after_delete = any(
+                getattr(item, "id", None) == notebook_id
+                for item in await client.notebooks.list()
+            )
+            return JSONResponse({
+                "ok": bool(found_after_create and not found_after_delete),
+                "operation": "reversible_write_qualification",
+                "created_notebook_id": notebook_id,
+                "readback_after_create": found_after_create,
+                "readback_after_delete": not found_after_delete,
+                "cleanup_complete": not found_after_delete,
+            })
+    except Exception as exc:
+        return JSONResponse(
+            {"ok": False, "operation": "reversible_write_qualification", "error": str(exc)[:1500]},
+            status_code=502,
+        )
+
+
 async def ask(request: Request) -> JSONResponse:
     if not _authorized(request):
         return _deny()
@@ -134,6 +166,7 @@ routes = [
     Route("/doctor/notebooks", notebooks, methods=["GET"]),
     Route("/doctor/sources", sources, methods=["GET"]),
     Route("/doctor/ask", ask, methods=["POST"]),
+    Route("/doctor/qualify-write", qualify_write, methods=["POST"]),
     Mount("/", app=mcp_app),
 ]
 
