@@ -6,6 +6,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 
 MCP_URL = "https://mcp.browserless.io/mcp"
 API_VERSION = "2022-11-28"
@@ -246,99 +247,139 @@ def command_verify(mcp):
         raise RuntimeError("Saved profile did not start authenticated")
 
 
-def command_start_github_auth(mcp):
+def create_profile_session(profile_name):
+    url = (
+        "https://production-sfo.browserless.io/profile?token="
+        + urllib.parse.quote(BROWSERLESS_TOKEN, safe="")
+        + "&timeout=120000"
+    )
+    req = urllib.request.Request(
+        url,
+        data=json.dumps({"name": profile_name}).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "ND-Browserless-GitHub-Gateway/2.0",
+        },
+        method="POST",
+    )
     try:
-        mcp.call("browserless_skill", {"site": "github.com"})
-        mcp.call("browserless_skill", {"id": "autonomous-login"})
-    except Exception:
-        pass
-
-    opened = agent(
-        mcp,
-        createProfile={"name": "nd-github"},
-        method="goto",
-        params={"url": "https://github.com/login", "waitUntil": "domcontentloaded"},
-        rationale="Opening GitHub login",
-    )
-    opened_text = content_text(opened)
-    sid = extract_session_id(opened_text)
-    if not sid:
-        raise RuntimeError("Browserless did not return a profile sessionId: " + opened_text[:1000])
-
-    live = agent(
-        mcp,
-        sessionId=sid,
-        method="liveURL",
-        params={"timeout": 100000, "interactable": True},
-        rationale="Sharing live GitHub login",
-    )
-    live_text = content_text(live)
-    live_url = extract_live_url(live_text)
-    if not live_url:
-        close_agent(mcp, sid)
-        raise RuntimeError("Browserless did not return a liveURL: " + live_text[:1000])
-
-    comment(
-        "ND Browserless Gateway - GitHub login window is live\n\n"
-        + live_url
-        + "\n\nOpen it immediately. The gateway is monitoring the same Browserless session and will save nd-github automatically when GitHub reports the account is signed in."
-    )
-
-    deadline = time.time() + 95
-    authenticated = False
-    evidence = ""
-    while time.time() < deadline:
-        time.sleep(4)
-        try:
-            check = agent(
-                mcp,
-                sessionId=sid,
-                method="evaluate",
-                params={
-                    "content": "(() => ({ href: location.href, title: document.title, user: document.querySelector('meta[name=\\\"user-login\\\"]')?.content || '', signedIn: Boolean(document.querySelector('meta[name=\\\"user-login\\\"]')?.content) }))()"
-                },
-                rationale="Monitoring GitHub login",
-            )
-            evidence = content_text(check)
-            if signed_in_from_text(evidence):
-                authenticated = True
-                break
-        except Exception as e:
-            evidence = redact(e)
-            time.sleep(2)
-
-    if not authenticated:
-        close_agent(mcp, sid)
-        comment(
-            "ND Browserless Gateway - GitHub login: TIMEOUT\n\n"
-            "The live window ended before an authenticated GitHub state was detected. Run /browserless start-github-auth again when ready."
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")
+        raise RuntimeError(
+            "Browserless profile API HTTP {}: {}".format(e.code, redact(body[:1200]))
         )
-        raise RuntimeError("GitHub authentication was not detected before timeout")
 
-    saved = agent(
-        mcp,
-        sessionId=sid,
-        method="saveProfile",
-        params={"name": "nd-github"},
-        rationale="Saving GitHub profile",
+
+def verify_profile_direct(profile_name):
+    from playwright.sync_api import sync_playwright
+
+    ws = (
+        "wss://production-sfo.browserless.io/chromium/playwright?token="
+        + urllib.parse.quote(BROWSERLESS_TOKEN, safe="")
+        + "&profile="
+        + urllib.parse.quote(profile_name, safe="")
     )
-    saved_text = content_text(saved)
-    close_agent(mcp, sid)
+    with sync_playwright() as p:
+        browser = p.chromium.connect(ws, timeout=30000)
+        try:
+            contexts = browser.contexts
+            context = contexts[0] if contexts else browser.new_context()
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto("https://github.com/", wait_until="domcontentloaded", timeout=30000)
+            user = page.evaluate(
+                "() => document.querySelector('meta[name=\\\"user-login\\\"]')?.content || ''"
+            )
+            return bool(user), str(user or ""), page.url
+        finally:
+            browser.close()
 
-    ok, fresh_evidence = verify_profile(mcp, "nd-github")
+
+def command_start_github_auth(mcp):
+    from playwright.sync_api import sync_playwright
+
+    profile_name = "nd-github"
+    session = create_profile_session(profile_name)
+    connect = session.get("connect")
+    if not connect:
+        raise RuntimeError("Browserless /profile response did not include connect")
+
+    with sync_playwright() as p:
+        browser = p.chromium.connect_over_cdp(connect, timeout=30000)
+        try:
+            if not browser.contexts:
+                raise RuntimeError("Browserless profile session has no browser context")
+            context = browser.contexts[0]
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto(
+                "https://github.com/login",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+
+            cdp = context.new_cdp_session(page)
+            live = cdp.send(
+                "Browserless.liveURL",
+                {
+                    "timeout": 100000,
+                    "interactable": True,
+                    "quality": 70,
+                    "type": "jpeg",
+                    "resizable": True,
+                },
+            )
+            live_url = live.get("liveURL")
+            if not live_url:
+                raise RuntimeError("Browserless.liveURL did not return a liveURL")
+
+            comment(
+                "ND Browserless Gateway - GitHub login window is live\n\n"
+                + live_url
+                + "\n\nOpen it immediately. This same Browserless profile-creation "
+                "session is being monitored. Once GitHub reports the account as "
+                "signed in, the gateway will save nd-github automatically."
+            )
+
+            deadline = time.time() + 96
+            authenticated_user = ""
+            while time.time() < deadline:
+                try:
+                    authenticated_user = page.evaluate(
+                        "() => document.querySelector('meta[name=\\\"user-login\\\"]')?.content || ''"
+                    )
+                    if authenticated_user:
+                        break
+                except Exception:
+                    pass
+                time.sleep(2)
+
+            if not authenticated_user:
+                comment(
+                    "ND Browserless Gateway - GitHub login: TIMEOUT\n\n"
+                    "No authenticated GitHub state was detected before the Free-plan "
+                    "session deadline. Start the flow again when ready."
+                )
+                raise RuntimeError("GitHub authentication was not detected before timeout")
+
+            saved = cdp.send("Browserless.saveProfile", {"name": profile_name})
+            if not saved.get("ok"):
+                raise RuntimeError("Browserless.saveProfile failed: " + redact(saved))
+
+        finally:
+            browser.close()
+
+    ok, user, url = verify_profile_direct(profile_name)
     state = "PASS" if ok else "FAIL"
     comment(
         "ND Browserless Gateway - GitHub qualification: {}\n\n"
-        "- human login detected in the live Browserless session\n"
-        "- saveProfile(nd-github) executed\n"
-        "- fresh-session profile reuse: {}\n\n"
-        "Fresh-session evidence:\n{}\n\nSave response:\n{}".format(
-            state, state, fresh_evidence[:4000], saved_text[:2000]
-        )
+        "- authenticated user detected: {}\n"
+        "- Browserless.saveProfile(nd-github): PASS\n"
+        "- fresh-session profile reuse: {}\n"
+        "- fresh URL: {}\n".format(state, user or "(none)", state, url)
     )
     if not ok:
-        raise RuntimeError("Profile was saved but fresh-session reuse failed")
-
+        raise RuntimeError("Profile saved but fresh-session reuse failed")
 
 def main():
     if ACTOR != "namelessdhamma":
