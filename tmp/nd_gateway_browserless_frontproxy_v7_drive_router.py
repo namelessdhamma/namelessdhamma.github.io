@@ -1,4 +1,4 @@
-import json, os, subprocess, sys, time, urllib.parse, urllib.request
+import json, os, subprocess, sys, time, threading, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
 
@@ -36,6 +36,59 @@ try:
     print('ND_DRIVE_CHILD_LAUNCHED '+json.dumps({'port':DRIVE_PORT}),flush=True)
 except Exception as e:
     print('ND_DRIVE_CHILD_START_ERROR '+json.dumps({'error':str(e)[:500]}),flush=True)
+
+def drive_internal_call(tool,args):
+    token=os.environ.get('ND_DRIVE_BRIDGE_TOKEN','').strip()
+    if not token: raise RuntimeError('drive_bridge_token_missing')
+    raw=json.dumps({'tool':tool,'args':args},ensure_ascii=False).encode('utf-8')
+    req=urllib.request.Request(
+        DRIVE_URL+'/drive/invoke',data=raw,method='POST',
+        headers={'Content-Type':'application/json','X-ND-Bridge-Key':token,'User-Agent':'ND-Drive-v7-Qualification/1.0'})
+    with urllib.request.urlopen(req,timeout=90) as r:
+        obj=json.loads(r.read().decode('utf-8','replace') or '{}')
+    if not obj.get('ok'): raise RuntimeError('drive_bridge_invalid_response')
+    return obj.get('result') or {}
+
+def drive_qualify_once():
+    time.sleep(4)
+    writable=[x.strip() for x in os.environ.get('ND_DRIVE_MCP_WRITABLE_FILE_IDS','').split(',') if x.strip()]
+    if not writable:
+        print('ND_DRIVE_WRITE_QUALIFICATION '+json.dumps({'ok':False,'reason':'no_writable_target'}),flush=True);return
+    doc=writable[0]
+    marker='\n[ND_DRIVE_EXTERNAL_WRITE_PROBE_'+str(int(time.time()))+']\n'
+    appended=False
+    stale_rejected=False
+    try:
+        before=drive_internal_call('docs_read',{'document_id':doc})
+        before_rev=before.get('revision_id')
+        ap=drive_internal_call('docs_append',{'document_id':doc,'text':marker,'expected_revision_id':before_rev})
+        appended=True
+        after=drive_internal_call('docs_read',{'document_id':doc})
+        readback=marker in (after.get('text') or '')
+        try:
+            drive_internal_call('docs_append',{'document_id':doc,'text':'\n[ND_STALE_SHOULD_NOT_WRITE]\n','expected_revision_id':before_rev})
+        except HTTPError as e:
+            stale_rejected=(e.code==409)
+        except Exception as e:
+            stale_rejected=('409' in str(e) or 'REVISION_MISMATCH' in str(e))
+        clean=drive_internal_call('docs_replace_exact',{'document_id':doc,'old_text':marker,'new_text':'','expected_revision_id':after.get('revision_id')})
+        appended=False
+        final=drive_internal_call('docs_read',{'document_id':doc})
+        clean_final=(marker not in (final.get('text') or '') and '[ND_STALE_SHOULD_NOT_WRITE]' not in (final.get('text') or ''))
+        ok=bool(readback and stale_rejected and clean_final and ap.get('after_revision_id')!=before_rev)
+        print('ND_DRIVE_WRITE_QUALIFICATION '+json.dumps({'ok':ok,'document_id':doc,'readback':readback,'stale_rejected':stale_rejected,'cleanup':clean_final,'before_revision':before_rev,'after_revision':ap.get('after_revision_id'),'final_revision':final.get('revision_id')},ensure_ascii=False),flush=True)
+    except Exception as e:
+        print('ND_DRIVE_WRITE_QUALIFICATION '+json.dumps({'ok':False,'document_id':doc,'error':str(e)[:700]}),flush=True)
+        if appended:
+            try:
+                cur=drive_internal_call('docs_read',{'document_id':doc})
+                if marker in (cur.get('text') or ''):
+                    drive_internal_call('docs_replace_exact',{'document_id':doc,'old_text':marker,'new_text':'','expected_revision_id':cur.get('revision_id')})
+                    print('ND_DRIVE_WRITE_QUALIFICATION_CLEANUP '+json.dumps({'ok':True,'document_id':doc}),flush=True)
+            except Exception as ce:
+                print('ND_DRIVE_WRITE_QUALIFICATION_CLEANUP '+json.dumps({'ok':False,'document_id':doc,'error':str(ce)[:500]}),flush=True)
+
+threading.Thread(target=drive_qualify_once,daemon=True).start()
 
 def clean_error(x):
     s=str(x)
