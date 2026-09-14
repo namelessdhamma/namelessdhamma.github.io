@@ -1,0 +1,32 @@
+name: ND Browserless GitHub Gateway
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  browserless:
+    if: >
+      github.event.issue.pull_request == null &&
+      github.actor == 'namelessdhamma' &&
+      startsWith(github.event.comment.body, '/browserless ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Browserless gateway
+        env:
+          BROWSERLESS_API_TOKEN: ${{ secrets.BROWSERLESS_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMAND: ${{ github.event.comment.body }}
+          ACTOR: ${{ github.actor }}
+        run: python3 tools/browserless-github-gateway/gateway.py
