@@ -2,7 +2,7 @@ name: ND Browserless Issue Gateway
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
 
 permissions:
   contents: read
