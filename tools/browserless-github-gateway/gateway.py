@@ -15,6 +15,8 @@ GITHUB_TOKEN = os.environ.get("GH_TOKEN", "").strip()
 REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "").strip()
 ISSUE_NUMBER = os.environ.get("ISSUE_NUMBER", "").strip()
 COMMAND = os.environ.get("COMMAND", "").strip().lower()
+if COMMAND.startswith("[browserless] "):
+    COMMAND = "/browserless " + COMMAND[len("[browserless] "):]
 ACTOR = os.environ.get("ACTOR", "").strip()
 
 
