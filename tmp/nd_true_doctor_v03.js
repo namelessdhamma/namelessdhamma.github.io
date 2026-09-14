@@ -3,8 +3,8 @@
 // Qualification artifact: broad autonomous mutation is intentionally NOT enabled.
 
 export const DOCTOR_ID = "ND_TRUE_DOCTOR";
-export const DOCTOR_VERSION = "0.3.0";
-export const CONTRACT_VERSION = "doctor-contract/0.3";
+export const DOCTOR_VERSION = "0.4.0-rc1";
+export const CONTRACT_VERSION = "doctor-contract/0.4-rc1";
 
 export const INVOCATION_MODES = Object.freeze(["AUTOMATION", "MANUAL_CHAT"]);
 export const HEALTH_STATES = Object.freeze(["READY", "DEGRADED", "BLOCKED", "UNKNOWN"]);
@@ -14,12 +14,14 @@ export const CONTINUITY_ACTIONS = Object.freeze([
   "MIGRATE_THREAD",
   "SWITCH_SURFACE",
   "USE_QUALIFIED_FAILOVER",
+  "RESTORE_SAME_CHAT_CAPABILITY",
   "HUMAN_GATE",
   "FAIL_CLOSED"
 ]);
 
 export const FAILURE_CLASSES = Object.freeze([
   "TOOL_EXPOSURE",
+  "CHATGPT_CONVERSATION_MCP_GATE",
   "SCHEMA_RUNTIME",
   "INSTALL_CONTROL_PLANE",
   "PERMISSION",
@@ -255,6 +257,8 @@ export function classifyIncident(i={}) {
     signals.push(["TOOL_EXPOSURE",0.88,"expected tool absent from active execution surface"]);
   if (has(blob,"401","unauthorized","oauth","refresh token","invalid_grant"))
     signals.push(["AUTH_OAUTH",0.93,"authentication/session evidence"]);
+  if (has(blob,"this conversation does not support developer mcps","conversation does not support developer mcp"))
+    signals.push(["CHATGPT_CONVERSATION_MCP_GATE",0.995,"developer/custom MCP rejected by ChatGPT conversation execution gate before provider execution"]);
   if (has(blob,"403","permission denied","insufficient_scope","forbidden"))
     signals.push(["PERMISSION",0.90,"permission/scope evidence"]);
   if (has(blob,"429","rate limit","quota","too many requests"))
@@ -368,6 +372,7 @@ export function contextualizeDiagnosis(incident, preliminary, context) {
 
 export function discriminatingProbe(failureClass) {
   switch (failureClass) {
+    case "CHATGPT_CONVERSATION_MCP_GATE": return "TOOL_EXPOSURE + CONTROL_PLANE_STATE + PROVIDER_PROFILE + SAME_CHAT_RELAY";
     case "SCHEMA_RUNTIME": return "TOOL_EXPOSURE + exact runtime action + PROVIDER_PROFILE";
     case "INSTALL_CONTROL_PLANE": return "CONTROL_PLANE_STATE + PROVIDER_PROFILE";
     case "TOOL_EXPOSURE": return "TOOL_EXPOSURE + PROVIDER_PROFILE + optional THREAD_CANARY";
@@ -390,7 +395,8 @@ export function planProbes(incident, diagnosis, context={}, options={}) {
   const c=diagnosis.failure_class;
   let names=[];
 
-  if (c==="SCHEMA_RUNTIME") names=["TOOL_EXPOSURE","PROVIDER_PROFILE"];
+  if (c==="CHATGPT_CONVERSATION_MCP_GATE") names=["TOOL_EXPOSURE","CONTROL_PLANE_STATE","PROVIDER_PROFILE"];
+  else if (c==="SCHEMA_RUNTIME") names=["TOOL_EXPOSURE","PROVIDER_PROFILE"];
   else if (c==="INSTALL_CONTROL_PLANE") names=["CONTROL_PLANE_STATE","PROVIDER_PROFILE","SAFE_READ"];
   else if (c==="TOOL_EXPOSURE") names=["TOOL_EXPOSURE","PROVIDER_PROFILE","SAFE_READ","THREAD_CANARY"];
   else if (c==="AUTH_OAUTH") names=["PROVIDER_PROFILE"];
@@ -447,6 +453,13 @@ export function refineDiagnosis(incident, diagnosis, receipts=[]) {
   const surface=probe(receipts,"surface_canary");
   const runtime=probe(receipts,"runtime_health");
   const pointer=probe(receipts,"pointer_verify");
+
+  // Exact conversation-gate signature plus healthy control/provider evidence isolates ChatGPT routing.
+  if (/this conversation does not support developer mcps/i.test(incident.error_signature||incident.runtime_error||"") &&
+      (cp?.status==="PASS" || provider?.status==="PASS" || read?.status==="PASS")) {
+    d={...d,failure_class:"CHATGPT_CONVERSATION_MCP_GATE",confidence:0.995,
+      rationale:"exact developer-MCP conversation gate reproduced while permission/provider evidence remains healthy"};
+  }
 
   // Independent provider success is negative evidence for provider outage.
   if ((pass(receipts,"provider_profile") || pass(receipts,"safe_read")) &&
@@ -511,6 +524,8 @@ export function continuityDecision(incident, diagnosis, context={}) {
     return {action:"FAIL_CLOSED",reason:"integrity/authority invariant at risk",alternate:null};
   if (c==="INSTALL_CONTROL_PLANE" && diagnosis.probe_summary?.safe_read==="PASS")
     return {action:"CONTINUE_PRIMARY",reason:"required primary read path is live despite control-plane inconsistency; repair metadata state out-of-band",alternate:null};
+  if (c==="CHATGPT_CONVERSATION_MCP_GATE")
+    return {action:"RESTORE_SAME_CHAT_CAPABILITY",reason:"native custom-MCP route is conversation-blocked; restore equivalent provider capability through an already-authorized independent relay in this same chat",alternate:alternates[0]||null};
   if (c==="THREAD_LOCAL")
     return {action:"MIGRATE_THREAD",reason:"thread-local failure with durable context recovery required",alternate:null};
   if (c==="SURFACE")
@@ -541,7 +556,11 @@ export function repairRoute(incident, diagnosis, context={}) {
   const add=(...xs)=>base.actions.push(...xs);
   const verify=(...xs)=>base.verification.push(...xs);
 
-  if (c==="THREAD_LOCAL") {
+  if (c==="CHATGPT_CONVERSATION_MCP_GATE") {
+    add("preserve parent objective and incident evidence","do not reinstall or repair provider OAuth when provider/control-plane probes pass","bind an independent same-chat relay to the same provider capability","repeat the original provider operation through the relay","keep native route eligible for later recovery");
+    verify("relay reaches the intended provider","original operation semantics succeed in this same chat","no privilege widening or duplicate side effects","native provider role is not silently demoted");
+    base.executable_safe_recipe_ids.push("SAFE_SAME_CHAT_RELAY");
+  } else if (c==="THREAD_LOCAL") {
     add("capture durable incident+context packet","package fresh-thread bootstrap","rehydrate from True Memory","repeat exact parent operation once");
     verify("same operation succeeds","current pointers and parent objective preserved");
     base.executable_safe_recipe_ids.push("SAFE_CONTEXT_REHYDRATE");
@@ -695,7 +714,8 @@ export async function executeSafeRecipe(episode, recipeId, adapter={}) {
   const map={
     SAFE_BOUNDED_RETRY:"boundedRetry",
     SAFE_CONTEXT_REHYDRATE:"contextRehydrate",
-    SAFE_QUALIFIED_FAILOVER:"qualifiedFailover"
+    SAFE_QUALIFIED_FAILOVER:"qualifiedFailover",
+    SAFE_SAME_CHAT_RELAY:"sameChatRelay"
   };
   const fn=adapter[map[recipeId]];
   if (typeof fn!=="function")
@@ -726,6 +746,6 @@ export function doctorStatus(contextInput={}) {
     repair_recipes:context.repair_recipes.length,
     expected_profiles:context.expected_profiles.length,
     broad_autonomous_mutation:false,
-    next_maturity_gate:"v0.4 evidence-backed executable RepairRecipes"
+    next_maturity_gate:"v0.4 same-chat repair bridge field qualification"
   };
 }
