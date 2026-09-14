@@ -328,6 +328,7 @@ async def doctor_notebooks(request: Request):
     try:
         return JSONResponse(_mcp_call("notebook_list", {"limit": 20}))
     except Exception as exc:
+        print("ND_NOTEBOOKLM_DOCTOR_ERROR notebooks", str(exc)[:500], flush=True)
         return JSONResponse({"ok": False, "error": str(exc)[:1000]}, status_code=502)
 
 async def doctor_server_info(request: Request):
@@ -336,6 +337,7 @@ async def doctor_server_info(request: Request):
     try:
         return JSONResponse(_mcp_call("server_info", {"include_account": True}))
     except Exception as exc:
+        print("ND_NOTEBOOKLM_DOCTOR_ERROR server_info", str(exc)[:500], flush=True)
         return JSONResponse({"ok": False, "error": str(exc)[:1000]}, status_code=502)
 
 routes = [
