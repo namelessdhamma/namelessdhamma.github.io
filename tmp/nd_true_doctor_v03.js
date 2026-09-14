@@ -467,7 +467,7 @@ export function refineDiagnosis(incident, diagnosis, receipts=[]) {
     d={...d,failure_class: exposure?.status==="FAIL"?"TOOL_EXPOSURE":d.alternatives?.[0]?.failure_class || "UNKNOWN",
       confidence:0.82,rationale:"independent provider/read probe passed; provider-down hypothesis rejected"};
   }
-  if (exposure?.status==="FAIL" && (provider?.status==="PASS" || read?.status==="PASS")) {
+  if (d.failure_class!=="CHATGPT_CONVERSATION_MCP_GATE" && exposure?.status==="FAIL" && (provider?.status==="PASS" || read?.status==="PASS")) {
     d={...d,failure_class:"TOOL_EXPOSURE",confidence:0.97,
       rationale:"active tool exposure failed while independent provider path passed"};
   }
