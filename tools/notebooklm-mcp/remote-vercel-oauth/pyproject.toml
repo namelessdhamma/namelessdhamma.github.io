@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
   "notebooklm-py[mcp,headless,android]==0.8.2",
   "vercel>=0.5.0,<1",
+  "PyJWT[crypto]>=2.10,<3",
 ]
 
 [tool.vercel]
