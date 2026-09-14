@@ -1,6 +1,6 @@
 import {
   DOCTOR_ID, DOCTOR_VERSION, doctorStart, doctorObserve, doctorFinalize,
-  createProbeReceipt, PROBE_SPECS, doctorStatus, runPlannedProbes
+  createProbeReceipt, PROBE_SPECS, doctorStatus, runPlannedProbes, executeSafeRecipe
 } from "./nd_true_doctor_v03.js";
 
 const assert=(cond,msg)=>{if(!cond) throw new Error(msg)};
@@ -157,6 +157,55 @@ const autoRun=await runPlannedProbes(auto,adapter);
 assert(probeCalls===1,"injected probe adapter ran");
 assert(autoRun.refined_diagnosis.failure_class==="INSTALL_CONTROL_PLANE","automated probe orchestration");
 
+
+const browserlessContext={
+  context_revision:"test-browserless-r1",
+  expected_profiles:[{
+    profile_id:"ETP-BROWSERLESS",
+    supervisor:"True Research / True Developer",
+    capability:"Browserless authenticated profile qualification",
+    criticality:"CRITICAL",
+    desired_state:"READY",
+    primary_path:"Browserless custom MCP",
+    qualified_alternates:["Doctor Make relay"],
+    required_semantics:{read:true,write:true,execute:true},
+    current_health:"BLOCKED_CURRENT_CONVERSATION"
+  }],
+  recent_incidents:[],
+  patterns:[]
+};
+
+const browserless=doctorStart({
+  invocation_mode:"MANUAL_CHAT",
+  supervisor:"True Research / True Developer",
+  capability:"Browserless authenticated profile qualification",
+  provider:"Browserless",
+  error_signature:"FORBIDDEN: This conversation does not support developer MCPs",
+  observed_state:"native custom MCP blocked before provider execution",
+  authority_context:{diagnose:true,probe_readonly:true,reversible_qualification_write:false,safe_recipe_execution:true,material_mutation:false}
+},browserlessContext);
+
+const browserlessObserved=doctorObserve(browserless,[
+  createProbeReceipt(PROBE_SPECS.TOOL_EXPOSURE,{status:"FAIL",ok:false,error:"FORBIDDEN: This conversation does not support developer MCPs"}),
+  createProbeReceipt(PROBE_SPECS.CONTROL_PLANE_STATE,{status:"PASS",ok:true,observed:"Browserless app permission full_access"}),
+  createProbeReceipt(PROBE_SPECS.PROVIDER_PROFILE,{status:"PASS",ok:true,observed:"Browserless provider reachable independently"})
+]);
+assert(browserlessObserved.refined_diagnosis.failure_class==="CHATGPT_CONVERSATION_MCP_GATE","Browserless conversation gate classification");
+assert(browserlessObserved.refined_diagnosis.confidence>=0.99,"Browserless gate confidence");
+assert(browserlessObserved.repair_plan.continuity.action==="RESTORE_SAME_CHAT_CAPABILITY","same-chat continuity action");
+assert(browserlessObserved.repair_plan.executable_safe_recipe_ids.includes("SAFE_SAME_CHAT_RELAY"),"same-chat relay recipe exposed");
+
+const relayResult=await executeSafeRecipe(browserlessObserved,"SAFE_SAME_CHAT_RELAY",{
+  sameChatRelay:async({idempotency_key})=>({
+    ok:true,
+    mutated:false,
+    observed:"same-chat provider capability restored through independent relay",
+    evidence_refs:["relay-canary",idempotency_key]
+  })
+});
+assert(relayResult.status==="PASS","same-chat relay recipe executes");
+assert(relayResult.mutated===false,"same-chat relay does not imply provider mutation");
+
 const status=doctorStatus(context);
 assert(status.field_ready===true,"field ready");
 assert(status.shared_context===true,"shared context");
@@ -165,7 +214,7 @@ assert(status.broad_autonomous_mutation===false,"broad mutation remains off");
 console.log(JSON.stringify({
   doctor_id:DOCTOR_ID,
   version:DOCTOR_VERSION,
-  tests:15,
+  tests:21,
   pass:true,
   modes:["AUTOMATION","MANUAL_CHAT"],
   shared_context:true,
