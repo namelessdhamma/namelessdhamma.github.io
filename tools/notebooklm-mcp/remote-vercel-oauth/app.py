@@ -56,7 +56,7 @@ def _verify_github_oidc(request: Request) -> dict | None:
             return None
         if claims.get("actor") != _GITHUB_ACTOR:
             return None
-        if claims.get("event_name") not in {"push", "issue_comment", "issues", "workflow_dispatch"}:
+        if claims.get("event_name") not in {"push", "issue_comment", "issues", "workflow_dispatch", "schedule"}:
             return None
         return claims
     except Exception:
@@ -233,6 +233,14 @@ async def github_bridge(request: Request) -> JSONResponse:
                 items = await client.sources.list(nb_id)
                 result = {"notebook_id": nb_id, "count": len(items), "sources": to_jsonable(items)}
 
+            elif operation == "source_fulltext":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                source_id = str(args.get("source_id") or "").strip()
+                if not source_id:
+                    return JSONResponse({"ok": False, "error": "missing_source_id"}, status_code=400)
+                fulltext = await client.sources.get_fulltext(nb_id, source_id)
+                result = {"notebook_id": nb_id, "source_id": source_id, "fulltext": to_jsonable(fulltext)}
+
             elif operation == "chat_ask":
                 nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
                 question = str(args.get("question") or "").strip()
@@ -276,6 +284,14 @@ async def github_bridge(request: Request) -> JSONResponse:
                 if not url.startswith(("https://", "http://")):
                     return JSONResponse({"ok": False, "error": "invalid_url"}, status_code=400)
                 src = await client.sources.add_url(nb_id, url)
+                result = {"notebook_id": nb_id, "source": to_jsonable(src)}
+
+            elif operation == "source_add_drive":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                file_id = str(args.get("file_id") or "").strip()
+                if not file_id:
+                    return JSONResponse({"ok": False, "error": "missing_file_id"}, status_code=400)
+                src = await client.sources.add_drive(nb_id, file_id)
                 result = {"notebook_id": nb_id, "source": to_jsonable(src)}
 
             elif operation == "source_delete":
