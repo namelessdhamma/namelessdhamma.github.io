@@ -15,17 +15,13 @@ on:
     - cron: "30 21 * * *"
     - cron: "0 22 * * *"
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/nd-mail-daily.yml"
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: nd-mail-${{ github.event_name == 'schedule' && github.event.schedule || 'qualification' }}
+  group: nd-mail-daily
   cancel-in-progress: false
 
 jobs:
