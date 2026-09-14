@@ -2,7 +2,7 @@ import json, os, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("PORT", "10000"))
-BROWSERLESS_TOKEN = os.environ.get("BROWSERLESS_API_TOKEN", "").strip()
+BROWSERLESS_TOKEN = os.environ.get("BROWSERLESS_API_TOKEN", "").strip()\nif BROWSERLESS_TOKEN.lower().startswith("bearer "):\n    BROWSERLESS_TOKEN = BROWSERLESS_TOKEN[7:].strip()
 RELAY_TOKEN = os.environ.get("ND_BROWSERLESS_RENDER_RELAY_TOKEN", "").strip()
 MCP_URL = "https://mcp.browserless.io/mcp"
 
