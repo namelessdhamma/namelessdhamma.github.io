@@ -5,7 +5,10 @@ import hashlib
 import json
 import time
 
+import jwt
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from jwt import PyJWKClient
 from notebooklm._app.serialize import to_jsonable
 from notebooklm.mcp._resolve import resolve_notebook
 from starlette.applications import Starlette
@@ -24,6 +27,41 @@ _DOCTOR_PUBLIC_KEY = Ed25519PublicKey.from_public_bytes(
     base64.b64decode(_DOCTOR_PUBLIC_KEY_B64)
 )
 _MAX_SKEW_SECONDS = 90
+_GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
+_GITHUB_OIDC_AUDIENCE = "nd-notebooklm"
+_GITHUB_REPOSITORY = "namelessdhamma/namelessdhamma.github.io"
+_GITHUB_ACTOR = "namelessdhamma"
+_GITHUB_JWKS = PyJWKClient(
+    "https://token.actions.githubusercontent.com/.well-known/jwks"
+)
+
+
+def _verify_github_oidc(request: Request) -> dict | None:
+    auth = request.headers.get("authorization", "").strip()
+    if not auth.lower().startswith("bearer "):
+        return None
+    token = auth[7:].strip()
+    if not token:
+        return None
+    try:
+        signing_key = _GITHUB_JWKS.get_signing_key_from_jwt(token)
+        claims = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            audience=_GITHUB_OIDC_AUDIENCE,
+            issuer=_GITHUB_OIDC_ISSUER,
+        )
+        if claims.get("repository") != _GITHUB_REPOSITORY:
+            return None
+        if claims.get("actor") != _GITHUB_ACTOR:
+            return None
+        if claims.get("event_name") not in {"issue_comment", "issues", "workflow_dispatch"}:
+            return None
+        return claims
+    except Exception:
+        return None
+
 
 config = DeploymentConfig.from_environ()
 client_factory = make_client_factory(config.master_token_b64)
@@ -165,8 +203,111 @@ async def doctor_ask(request: Request) -> JSONResponse:
         )
 
 
+
+async def github_bridge(request: Request) -> JSONResponse:
+    claims = _verify_github_oidc(request)
+    if claims is None:
+        return _deny()
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid_json"}, status_code=400)
+
+    operation = str(payload.get("operation") or "").strip()
+    args = payload.get("args") or {}
+    if not isinstance(args, dict):
+        return JSONResponse({"ok": False, "error": "invalid_args"}, status_code=400)
+
+    try:
+        async with client_factory() as client:
+            if operation == "notebook_list":
+                items = await client.notebooks.list()
+                result = {"count": len(items), "notebooks": to_jsonable(items)}
+
+            elif operation == "notebook_get":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                result = {"notebook": to_jsonable(await client.notebooks.get(nb_id))}
+
+            elif operation == "source_list":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                items = await client.sources.list(nb_id)
+                result = {"notebook_id": nb_id, "count": len(items), "sources": to_jsonable(items)}
+
+            elif operation == "chat_ask":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                question = str(args.get("question") or "").strip()
+                if not question or len(question) > 8000:
+                    return JSONResponse({"ok": False, "error": "invalid_question"}, status_code=400)
+                answer = await client.chat.ask(nb_id, question)
+                result = {"notebook_id": nb_id, "answer": to_jsonable(answer)}
+
+            elif operation == "notebook_create":
+                title = str(args.get("title") or "").strip()
+                if not title:
+                    return JSONResponse({"ok": False, "error": "missing_title"}, status_code=400)
+                result = {"notebook": to_jsonable(await client.notebooks.create(title))}
+
+            elif operation == "notebook_rename":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                title = str(args.get("title") or "").strip()
+                if not title:
+                    return JSONResponse({"ok": False, "error": "missing_title"}, status_code=400)
+                result = {"notebook": to_jsonable(await client.notebooks.rename(nb_id, title))}
+
+            elif operation == "notebook_delete":
+                if args.get("confirm") is not True:
+                    return JSONResponse({"ok": False, "error": "confirm_required"}, status_code=400)
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                await client.notebooks.delete(nb_id)
+                result = {"deleted_notebook_id": nb_id}
+
+            elif operation == "source_add_text":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                title = str(args.get("title") or "").strip()
+                content = str(args.get("content") or "")
+                if not title or not content:
+                    return JSONResponse({"ok": False, "error": "missing_title_or_content"}, status_code=400)
+                src = await client.sources.add_text(nb_id, title, content)
+                result = {"notebook_id": nb_id, "source": to_jsonable(src)}
+
+            elif operation == "source_add_url":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                url = str(args.get("url") or "").strip()
+                if not url.startswith(("https://", "http://")):
+                    return JSONResponse({"ok": False, "error": "invalid_url"}, status_code=400)
+                src = await client.sources.add_url(nb_id, url)
+                result = {"notebook_id": nb_id, "source": to_jsonable(src)}
+
+            elif operation == "source_delete":
+                if args.get("confirm") is not True:
+                    return JSONResponse({"ok": False, "error": "confirm_required"}, status_code=400)
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                source_id = str(args.get("source_id") or "").strip()
+                if not source_id:
+                    return JSONResponse({"ok": False, "error": "missing_source_id"}, status_code=400)
+                await client.sources.delete(nb_id, source_id)
+                result = {"notebook_id": nb_id, "deleted_source_id": source_id}
+
+            else:
+                return JSONResponse({"ok": False, "error": "operation_not_allowed"}, status_code=400)
+
+        return JSONResponse({
+            "ok": True,
+            "provider": "NotebookLM",
+            "transport": "github_actions_oidc_to_vercel",
+            "operation": operation,
+            "result": result,
+            "oidc_repository": claims.get("repository"),
+        })
+    except Exception as exc:
+        return JSONResponse(
+            {"ok": False, "operation": operation, "error": str(exc)[:1600]},
+            status_code=502,
+        )
+
 routes = [
     Route("/doctor/health", doctor_health, methods=["GET"]),
+    Route("/doctor/github", github_bridge, methods=["POST"]),
     Route("/doctor/notebooks", doctor_notebooks, methods=["GET"]),
     Route("/doctor/sources", doctor_sources, methods=["GET"]),
     Route("/doctor/ask", doctor_ask, methods=["POST"]),
