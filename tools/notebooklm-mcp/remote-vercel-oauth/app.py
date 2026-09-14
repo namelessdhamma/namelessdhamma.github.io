@@ -56,7 +56,7 @@ def _verify_github_oidc(request: Request) -> dict | None:
             return None
         if claims.get("actor") != _GITHUB_ACTOR:
             return None
-        if claims.get("event_name") not in {"issue_comment", "issues", "workflow_dispatch"}:
+        if claims.get("event_name") not in {"push", "issue_comment", "issues", "workflow_dispatch"}:
             return None
         return claims
     except Exception:
