@@ -1,0 +1,26 @@
+name: ND Browserless Issue Gateway
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  browserless:
+    if: github.actor == 'namelessdhamma' && startsWith(github.event.issue.title, '[browserless] ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run gateway
+        env:
+          BROWSERLESS_API_TOKEN: ${{ secrets.BROWSERLESS_API_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          COMMAND: ${{ github.event.issue.title }}
+          ACTOR: ${{ github.actor }}
+        run: python3 tools/browserless-github-gateway/gateway.py
