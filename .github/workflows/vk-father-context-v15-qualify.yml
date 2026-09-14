@@ -1,0 +1,22 @@
+name: VK Father Context V15 Qualification
+
+on:
+  push:
+    branches:
+      - qualify/vk-father-context-v15
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  context-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run bounded V15 context tests
+        run: python -m unittest tmp/test_nd_vk_father_context_v15.py -v
