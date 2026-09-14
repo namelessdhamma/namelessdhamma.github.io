@@ -29,7 +29,7 @@ _DOCTOR_PUBLIC_KEY = Ed25519PublicKey.from_public_bytes(
 _MAX_SKEW_SECONDS = 90
 _GITHUB_OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 _GITHUB_OIDC_AUDIENCE = "nd-notebooklm"
-_GITHUB_REPOSITORY = "namelessdhamma/namelessdhamma.github.io"
+_GITHUB_REPOSITORIES = {"namelessdhamma/namelessdhamma.github.io", "namelessdhamma/nameless-dhamma-vault"}
 _GITHUB_ACTOR = "namelessdhamma"
 _GITHUB_JWKS = PyJWKClient(
     "https://token.actions.githubusercontent.com/.well-known/jwks"
@@ -52,7 +52,7 @@ def _verify_github_oidc(request: Request) -> dict | None:
             audience=_GITHUB_OIDC_AUDIENCE,
             issuer=_GITHUB_OIDC_ISSUER,
         )
-        if claims.get("repository") != _GITHUB_REPOSITORY:
+        if claims.get("repository") not in _GITHUB_REPOSITORIES:
             return None
         if claims.get("actor") != _GITHUB_ACTOR:
             return None
