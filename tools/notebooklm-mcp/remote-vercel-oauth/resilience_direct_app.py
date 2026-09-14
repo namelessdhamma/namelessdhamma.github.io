@@ -29,6 +29,50 @@ _REPOSITORY = 'namelessdhamma/nameless-dhamma-vault'
 _ACTOR = 'namelessdhamma'
 _JWKS = PyJWKClient('https://token.actions.githubusercontent.com/.well-known/jwks')
 
+def _bootstrap_private_key():
+    if not BOOTSTRAP_X25519_PRIVATE_B64:
+        return None
+    raw = base64.b64decode(BOOTSTRAP_X25519_PRIVATE_B64.encode('ascii'), validate=True)
+    if len(raw) != 32:
+        raise RuntimeError('invalid_bootstrap_private_key')
+    return x25519.X25519PrivateKey.from_private_bytes(raw)
+
+
+def _bootstrap_public_key_b64() -> str:
+    key = _bootstrap_private_key()
+    if key is None:
+        return ''
+    raw = key.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return base64.b64encode(raw).decode('ascii')
+
+
+def _open_sealed(envelope: dict) -> str:
+    key = _bootstrap_private_key()
+    if key is None:
+        raise RuntimeError('bootstrap_private_key_unconfigured')
+    peer = x25519.X25519PublicKey.from_public_bytes(
+        base64.b64decode(str(envelope.get('ephemeral_public_key_b64') or '').encode('ascii'), validate=True)
+    )
+    nonce = base64.b64decode(str(envelope.get('nonce_b64') or '').encode('ascii'), validate=True)
+    ciphertext = base64.b64decode(str(envelope.get('ciphertext_b64') or '').encode('ascii'), validate=True)
+    shared = key.exchange(peer)
+    aes_key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=None,
+        info=b'nd-notebooklm-bootstrap-v1',
+    ).derive(shared)
+    plain = AESGCM(aes_key).decrypt(
+        nonce,
+        ciphertext,
+        b'nd-notebooklm-master-token-b64',
+    )
+    return plain.decode('utf-8')
+
+
 def verify_oidc(request: Request) -> dict | None:
     auth = request.headers.get('authorization', '').strip()
     if not auth.lower().startswith('bearer '):
@@ -76,6 +120,50 @@ async def health(request: Request) -> JSONResponse:
         'credential_configured': bool(MASTER_TOKEN_B64),
         'transport': 'github_actions_oidc_direct',
     })
+
+async def bootstrap_public_key(request: Request) -> JSONResponse:
+    public_key = _bootstrap_public_key_b64()
+    if not public_key:
+        return JSONResponse({'ok': False, 'error': 'bootstrap_key_unconfigured'}, status_code=503)
+    return JSONResponse({
+        'ok': True,
+        'service': RUNTIME_NAME,
+        'algorithm': 'X25519+HKDF-SHA256+AESGCM',
+        'public_key_b64': public_key,
+    })
+
+
+async def bootstrap_import_sealed(request: Request) -> JSONResponse:
+    claims = verify_oidc(request)
+    if claims is None:
+        return bad('not_found', 404)
+    try:
+        payload = await request.json()
+        credential_b64 = _open_sealed(payload)
+        materialize_master_token(credential_b64, HOME)
+        os.environ['NOTEBOOKLM_HOME'] = str(HOME)
+        os.environ['NOTEBOOKLM_PROFILE'] = 'default'
+        os.environ.pop('NOTEBOOKLM_AUTH_JSON', None)
+        await asyncio.to_thread(refresh_storage, HOME)
+        async with NotebookLMClient.from_storage(
+            profile='default',
+            backend=BACKEND,
+            timeout=30.0,
+            server_error_max_retries=1,
+            rate_limit_max_retries=1,
+        ) as client:
+            count = len(await client.notebooks.list())
+        return JSONResponse({
+            'ok': True,
+            'service': RUNTIME_NAME,
+            'backend': BACKEND,
+            'credential_persisted': True,
+            'notebook_count': count,
+            'oidc_repository': claims.get('repository'),
+        })
+    except Exception as exc:
+        return JSONResponse({'ok': False, 'error': str(exc)[:1200]}, status_code=502)
+
 
 async def github(request: Request) -> JSONResponse:
     claims = verify_oidc(request)
@@ -170,4 +258,4 @@ async def github(request: Request) -> JSONResponse:
     except Exception as exc:
         return JSONResponse({'ok': False, 'operation': operation, 'error': str(exc)[:1600]}, status_code=502)
 
-app = Starlette(routes=[Route('/health', health, methods=['GET']), Route('/github', github, methods=['POST'])])
+app = Starlette(routes=[Route('/health', health, methods=['GET']), Route('/github', github, methods=['POST']), Route('/bootstrap/public-key', bootstrap_public_key, methods=['GET']), Route('/bootstrap/import-sealed', bootstrap_import_sealed, methods=['POST'])])
