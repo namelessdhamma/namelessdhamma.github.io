@@ -5,6 +5,5 @@
     "app.py": {
       "maxDuration": 90
     }
-  },
-  "buildCommand": "python export_railway_credential.py"
+  }
 }
