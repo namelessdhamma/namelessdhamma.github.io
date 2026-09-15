@@ -482,6 +482,19 @@ return {
   buttons: await page.locator('button').evaluateAll(es => es.map(e => (e.innerText||e.textContent||'').trim()).filter(Boolean).slice(0,100))
 };
 """
+        elif action=='inspect_apikeys':
+            code="""
+await page.goto('https://memos-dashboard.openmem.net/apikeys/', {waitUntil:'domcontentloaded'});
+await page.waitForTimeout(2000);
+return {
+  url: page.url(),
+  title: await page.title(),
+  body: (await page.locator('body').innerText()).slice(0,8000),
+  inputs: await page.locator('input').evaluateAll(es => es.map(e => ({type:e.type,placeholder:e.placeholder,name:e.name,value:e.value}))),
+  buttons: await page.locator('button').evaluateAll(es => es.map(e => (e.innerText||e.textContent||'').trim()).filter(Boolean).slice(0,100)),
+  links: await page.locator('a').evaluateAll(es => es.map(e => ({text:(e.innerText||e.textContent||'').trim(),href:e.href})).filter(x=>x.text||x.href).slice(0,100))
+};
+"""
         else:
             raise RuntimeError('unknown_kernel_memos_action')
         obj=kernel_playwright_execute(code,60)
