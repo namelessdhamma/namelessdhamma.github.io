@@ -15,6 +15,8 @@ MEMOS_API_KEY=os.environ.get('MEMOS_API_KEY','').strip()
 MEMOS_BASE_URL=os.environ.get('MEMOS_BASE_URL','https://memos.memtensor.cn/api/openmem/v1').strip().rstrip('/')
 MEMOS_USER_ID=os.environ.get('MEMOS_USER_ID','nd-true-memory-qualification').strip() or 'nd-true-memory-qualification'
 MEMOS_ALLOW_WRITES=os.environ.get('MEMOS_ALLOW_WRITES','false').strip().lower() in ('1','true','yes','on')
+MEMOS_MCP_PATH_TOKEN=os.environ.get('MEMOS_MCP_PATH_TOKEN','').strip()
+ND_MEMOS_QUALIFY_TRIGGER=os.environ.get('ND_MEMOS_QUALIFY_TRIGGER','').strip()
 KERNEL_API_KEY=os.environ.get('KERNEL_API_KEY','').strip()
 ND_KERNEL_BOOTSTRAP_TRIGGER=os.environ.get('ND_KERNEL_BOOTSTRAP_TRIGGER','').strip()
 ND_KERNEL_MEMOS_ACTION=os.environ.get('ND_KERNEL_MEMOS_ACTION','').strip()
@@ -432,6 +434,227 @@ def memos_upstream_ok(code,obj):
     return True
 
 
+MEMOS_CORE_PATHS={
+    'add_message':'/add/message',
+    'search_memory':'/search/memory',
+    'get_memory':'/get/memory',
+    'update_memory':'/update/memory',
+    'delete_memory':'/delete/memory',
+}
+
+def memos_prepare_payload(operation,args):
+    if not isinstance(args,dict):
+        raise RuntimeError('arguments_must_be_object')
+    p=dict(args)
+    p.pop('user_id',None)
+    if operation=='add_message':
+        msgs=p.get('messages')
+        conv=str(p.get('conversation_id') or '').strip()
+        if not conv or len(conv)>256:
+            raise RuntimeError('invalid_conversation_id')
+        if not isinstance(msgs,list) or not msgs or len(msgs)>200:
+            raise RuntimeError('invalid_messages')
+        total=0; clean=[]
+        for m in msgs:
+            if not isinstance(m,dict):
+                raise RuntimeError('invalid_message_item')
+            role=str(m.get('role') or '').strip()
+            content=str(m.get('content') or '')
+            if role not in ('user','assistant','system','tool') or not content or len(content)>100000:
+                raise RuntimeError('invalid_message')
+            total+=len(content)
+            if total>500000:
+                raise RuntimeError('messages_too_large')
+            item={'role':role,'content':content}
+            for k in ('name','tool_call_id'):
+                if k in m: item[k]=m[k]
+            clean.append(item)
+        p['messages']=clean
+        p['conversation_id']=conv
+        p['user_id']=MEMOS_USER_ID
+    elif operation=='search_memory':
+        q=str(p.get('query') or '').strip()
+        if not q or len(q)>50000:
+            raise RuntimeError('invalid_query')
+        p['query']=q
+        p['user_id']=MEMOS_USER_ID
+    elif operation=='get_memory':
+        p['user_id']=MEMOS_USER_ID
+    elif operation=='update_memory':
+        mid=str(p.get('memory_id') or '').strip()
+        if not mid:
+            raise RuntimeError('memory_id_required')
+        p['memory_id']=mid
+    elif operation=='delete_memory':
+        mids=p.get('memory_ids')
+        all_for_user=bool(p.pop('all_for_user',False))
+        if mids:
+            if not isinstance(mids,list) or not mids or len(mids)>500:
+                raise RuntimeError('invalid_memory_ids')
+            p={'memory_ids':[str(x) for x in mids if str(x).strip()]}
+            if not p['memory_ids']:
+                raise RuntimeError('invalid_memory_ids')
+        elif all_for_user:
+            p={'user_id':MEMOS_USER_ID}
+        else:
+            raise RuntimeError('memory_ids_or_all_for_user_required')
+    else:
+        raise RuntimeError('unknown_memos_operation')
+    return p
+
+def memos_core_call(operation,args):
+    if operation not in MEMOS_CORE_PATHS:
+        return 400,{'ok':False,'provider':'memos','error':'unknown_operation'}
+    if operation in ('add_message','update_memory','delete_memory') and not MEMOS_ALLOW_WRITES:
+        return 403,{'ok':False,'provider':'memos','error':'memos_writes_disabled'}
+    try:
+        payload=memos_prepare_payload(operation,args)
+    except Exception as e:
+        return 400,{'ok':False,'provider':'memos','error':clean_error(e)}
+    code,obj=memos_http(MEMOS_CORE_PATHS[operation],payload)
+    return code,{
+        'ok':memos_upstream_ok(code,obj),
+        'provider':'memos',
+        'operation':operation,
+        'authority':False,
+        'upstream_status':code,
+        'upstream':obj,
+    }
+
+def memos_mcp_tools():
+    common_note='ND True Memory derived memory layer. MemOS is not canonical authority; current StateHead/Registry/artifacts override recalled memory.'
+    return [
+      {
+        'name':'memos_add_message',
+        'description':'Write conversation turns into ND MemOS and let MemOS extract/update long-term memories. '+common_note,
+        'inputSchema':{'type':'object','properties':{
+          'conversation_id':{'type':'string'},
+          'messages':{'type':'array','items':{'type':'object','properties':{
+            'role':{'type':'string','enum':['user','assistant','system','tool']},
+            'content':{'type':'string'}
+          },'required':['role','content'],'additionalProperties':True}},
+          'agent_id':{'type':'string'}
+        },'required':['conversation_id','messages'],'additionalProperties':True}
+      },
+      {
+        'name':'memos_search_memory',
+        'description':'Semantic/hybrid search over ND MemOS memories with optional native MemOS retrieval filters. '+common_note,
+        'inputSchema':{'type':'object','properties':{
+          'query':{'type':'string'},
+          'conversation_id':{'type':'string'},
+          'agent_id':{'type':'string'},
+          'memory_limit_number':{'type':'integer','minimum':1,'maximum':200},
+          'include_memory_view':{'type':'array','items':{'type':'string'}},
+          'filter':{'type':'object','additionalProperties':True},
+          'relativity':{'type':'number'}
+        },'required':['query'],'additionalProperties':True}
+      },
+      {
+        'name':'memos_get_memory',
+        'description':'List/paginate ND MemOS memories using native MemOS get-memory parameters. '+common_note,
+        'inputSchema':{'type':'object','properties':{
+          'agent_id':{'type':'string'},
+          'page':{'type':'integer','minimum':1},
+          'page_size':{'type':'integer','minimum':1,'maximum':200},
+          'include_memory_view':{'type':'array','items':{'type':'string'}},
+          'filter':{'type':'object','additionalProperties':True}
+        },'additionalProperties':True}
+      },
+      {
+        'name':'memos_update_memory',
+        'description':'Update an existing ND MemOS memory by memory_id, including title/content/status fields supported by MemOS. '+common_note,
+        'inputSchema':{'type':'object','properties':{
+          'memory_id':{'type':'string'},
+          'title':{'type':'string'},
+          'content':{'type':'string'},
+          'status':{'type':'string'},
+          'tags':{'type':'array','items':{'type':'string'}}
+        },'required':['memory_id'],'additionalProperties':True}
+      },
+      {
+        'name':'memos_delete_memory',
+        'description':'Delete specific ND MemOS memories, or explicitly clear the fixed ND user namespace with all_for_user=true. '+common_note,
+        'inputSchema':{'type':'object','properties':{
+          'memory_ids':{'type':'array','items':{'type':'string'}},
+          'all_for_user':{'type':'boolean','default':False}
+        },'additionalProperties':False}
+      },
+      {
+        'name':'memos_core_call',
+        'description':'Full core MemOS memory operation passthrough for ND. Supports add_message, search_memory, get_memory, update_memory, delete_memory; user scope is pinned server-side. '+common_note,
+        'inputSchema':{'type':'object','properties':{
+          'operation':{'type':'string','enum':['add_message','search_memory','get_memory','update_memory','delete_memory']},
+          'payload':{'type':'object','additionalProperties':True}
+        },'required':['operation','payload'],'additionalProperties':False}
+      }
+    ]
+
+def memos_mcp_tool_call(name,args):
+    mapping={
+      'memos_add_message':'add_message',
+      'memos_search_memory':'search_memory',
+      'memos_get_memory':'get_memory',
+      'memos_update_memory':'update_memory',
+      'memos_delete_memory':'delete_memory',
+    }
+    if name=='memos_core_call':
+        if not isinstance(args,dict):
+            return 400,{'ok':False,'error':'arguments_must_be_object'}
+        op=str(args.get('operation') or '')
+        payload=args.get('payload') or {}
+        return memos_core_call(op,payload)
+    op=mapping.get(name)
+    if not op:
+        return 404,{'ok':False,'error':'unknown_tool'}
+    return memos_core_call(op,args or {})
+
+def memos_qualification_once():
+    if not ND_MEMOS_QUALIFY_TRIGGER or not MEMOS_API_KEY or not MEMOS_ALLOW_WRITES:
+        return
+    time.sleep(3)
+    marker='ND_MEMOS_QUAL_'+ND_MEMOS_QUALIFY_TRIGGER
+    conv='nd-memos-qualification-'+ND_MEMOS_QUALIFY_TRIGGER[-24:]
+    result={'trigger':ND_MEMOS_QUALIFY_TRIGGER,'marker':marker,'steps':{}}
+    try:
+        code,add=memos_core_call('add_message',{'conversation_id':conv,'messages':[
+          {'role':'user','content':'Qualification marker: '+marker+'. Store this as a temporary test memory.'},
+          {'role':'assistant','content':'Acknowledged temporary qualification marker '+marker+'.'}
+        ]})
+        result['steps']['add']={'code':code,'ok':bool(add.get('ok'))}
+        found=[]
+        search_obj=None
+        for _ in range(12):
+            time.sleep(3)
+            sc,search_obj=memos_core_call('search_memory',{'query':marker,'conversation_id':conv,'memory_limit_number':20})
+            up=(search_obj or {}).get('upstream') or {}
+            data=up.get('data') or {}
+            found=data.get('memory_detail_list') or data.get('memory_list') or []
+            if found: break
+        result['steps']['search']={'ok':bool(found),'count':len(found)}
+        mid=''
+        for item in found:
+            if isinstance(item,dict) and item.get('id'):
+                mid=str(item.get('id')); break
+        if mid:
+            uc,upd=memos_core_call('update_memory',{'memory_id':mid,'content':marker+' UPDATED'})
+            result['steps']['update']={'code':uc,'ok':bool(upd.get('ok')),'memory_id':mid}
+            gc,geto=memos_core_call('get_memory',{'page':1,'page_size':100})
+            result['steps']['get']={'code':gc,'ok':bool(geto.get('ok'))}
+            dc,dele=memos_core_call('delete_memory',{'memory_ids':[mid]})
+            result['steps']['delete']={'code':dc,'ok':bool(dele.get('ok'))}
+        else:
+            result['steps']['update']={'ok':False,'reason':'no_memory_id'}
+            result['steps']['get']={'ok':False,'reason':'no_memory_id'}
+            result['steps']['delete']={'ok':False,'reason':'no_memory_id'}
+        result['ok']=all(bool((result['steps'].get(k) or {}).get('ok')) for k in ('add','search','update','get','delete'))
+    except Exception as e:
+        result['ok']=False
+        result['error']=clean_error(e)
+    print('ND_MEMOS_FULL_QUALIFICATION '+json.dumps(result,ensure_ascii=False),flush=True)
+
+threading.Thread(target=memos_qualification_once,daemon=True).start()
+
+
 def kernel_bootstrap_once():
     if not KERNEL_API_KEY or not ND_KERNEL_BOOTSTRAP_TRIGGER:
         return
@@ -670,92 +893,78 @@ class H(BaseHTTPRequestHandler):
             'writes_enabled':bool(MEMOS_ALLOW_WRITES),
             'fixed_user_id':MEMOS_USER_ID,
             'authority':False,
-            'routes':['probe','search','add']
+            'routes':['probe','search','get','add','update','delete','mcp']
         })
         return True
 
+    def memos_mcp(self):
+        p=self.path.split('?',1)[0]
+        expected=('/nd/memory/memos/mcp/'+MEMOS_MCP_PATH_TOKEN) if MEMOS_MCP_PATH_TOKEN else ''
+        if not expected or p!=expected: return False
+        try:
+            n=int(self.headers.get('Content-Length','0') or 0)
+            if n>1048576: raise RuntimeError('request_too_large')
+            msg=json.loads(self.rfile.read(n).decode('utf-8') or '{}')
+            if not isinstance(msg,dict): raise RuntimeError('invalid_jsonrpc')
+        except Exception as e:
+            self.send_json(400,{'jsonrpc':'2.0','error':{'code':-32700,'message':clean_error(e)},'id':None}); return True
+        mid=msg.get('id')
+        method=str(msg.get('method') or '')
+        if method=='notifications/initialized':
+            self.send_response(204); self.end_headers(); return True
+        if method=='initialize':
+            self.send_json(200,{'jsonrpc':'2.0','id':mid,'result':{
+                'protocolVersion':'2025-06-18',
+                'capabilities':{'tools':{}},
+                'serverInfo':{'name':'nd-memos-remote-mcp','version':'1.0.0'},
+                'instructions':'ND True Memory MemOS bridge with full core read/write lifecycle. MemOS is derived memory, not canonical authority.'
+            }}); return True
+        if method=='ping':
+            self.send_json(200,{'jsonrpc':'2.0','id':mid,'result':{}}); return True
+        if method=='tools/list':
+            self.send_json(200,{'jsonrpc':'2.0','id':mid,'result':{'tools':memos_mcp_tools()}}); return True
+        if method=='tools/call':
+            params=msg.get('params') or {}
+            name=str(params.get('name') or '')
+            args=params.get('arguments') or {}
+            code,obj=memos_mcp_tool_call(name,args)
+            payload={'jsonrpc':'2.0','id':mid,'result':{
+              'content':[{'type':'text','text':json.dumps(obj,ensure_ascii=False)}],
+              'structuredContent':obj,
+              'isError':not bool(obj.get('ok'))
+            }}
+            self.send_json(200,payload); return True
+        self.send_json(200,{'jsonrpc':'2.0','id':mid,'error':{'code':-32601,'message':'Method not found'}}); return True
+
     def memos_post(self):
         p=self.path.split('?',1)[0]
-        allowed=('/nd/memory/memos/probe','/nd/memory/memos/search','/nd/memory/memos/add')
-        if p not in allowed: return False
+        allowed={
+          '/nd/memory/memos/probe':'probe',
+          '/nd/memory/memos/search':'search_memory',
+          '/nd/memory/memos/get':'get_memory',
+          '/nd/memory/memos/add':'add_message',
+          '/nd/memory/memos/update':'update_memory',
+          '/nd/memory/memos/delete':'delete_memory',
+        }
+        op=allowed.get(p)
+        if not op: return False
         if not auth_ok(self.headers):
             self.send_json(403,{'ok':False,'error':'forbidden'}); return True
         if not MEMOS_API_KEY:
             self.send_json(503,{'ok':False,'provider':'memos','error':'memos_not_configured'}); return True
         try:
             n=int(self.headers.get('Content-Length','0') or 0)
-            if n > 262144: raise RuntimeError('request_too_large')
+            if n > 1048576: raise RuntimeError('request_too_large')
             body=json.loads(self.rfile.read(n).decode('utf-8') or '{}') if n else {}
             if not isinstance(body,dict): raise RuntimeError('body_must_be_object')
         except Exception as e:
             self.send_json(400,{'ok':False,'error':clean_error(e)}); return True
+        if op=='probe':
+            code,obj=memos_core_call('search_memory',{'query':'ND_MEMOS_CONNECTIVITY_PROBE','conversation_id':'nd-memos-connectivity-probe'})
+        else:
+            code,obj=memos_core_call(op,body)
+        self.send_json(200 if bool(obj.get('ok')) else code,obj); return True
 
-        if p.endswith('/probe'):
-            code,obj=memos_http('/search/memory',{
-                'query':'ND_MEMOS_CONNECTIVITY_PROBE',
-                'user_id':MEMOS_USER_ID,
-                'conversation_id':'nd-memos-connectivity-probe'
-            })
-            self.send_json(200 if memos_upstream_ok(code,obj) else code,{
-                'ok':memos_upstream_ok(code,obj),
-                'provider':'memos',
-                'operation':'probe',
-                'upstream_status':code,
-                'upstream':obj
-            }); return True
-
-        if p.endswith('/search'):
-            query=str(body.get('query') or '').strip()
-            if not query or len(query)>20000:
-                self.send_json(400,{'ok':False,'error':'invalid_query'}); return True
-            payload={'query':query,'user_id':MEMOS_USER_ID}
-            conv=str(body.get('conversation_id') or '').strip()
-            if conv:
-                if len(conv)>256:
-                    self.send_json(400,{'ok':False,'error':'conversation_id_too_long'}); return True
-                payload['conversation_id']=conv
-            code,obj=memos_http('/search/memory',payload)
-            self.send_json(200 if memos_upstream_ok(code,obj) else code,{
-                'ok':memos_upstream_ok(code,obj),
-                'provider':'memos',
-                'operation':'search',
-                'upstream_status':code,
-                'upstream':obj
-            }); return True
-
-        if not MEMOS_ALLOW_WRITES:
-            self.send_json(403,{'ok':False,'provider':'memos','error':'memos_writes_disabled'}); return True
-        conv=str(body.get('conversation_id') or '').strip()
-        messages=body.get('messages')
-        if not conv or len(conv)>256:
-            self.send_json(400,{'ok':False,'error':'invalid_conversation_id'}); return True
-        if not isinstance(messages,list) or not messages or len(messages)>100:
-            self.send_json(400,{'ok':False,'error':'invalid_messages'}); return True
-        clean=[]
-        total=0
-        for m in messages:
-            if not isinstance(m,dict):
-                self.send_json(400,{'ok':False,'error':'invalid_message_item'}); return True
-            role=str(m.get('role') or '').strip()
-            content=str(m.get('content') or '')
-            if role not in ('user','assistant') or not content or len(content)>50000:
-                self.send_json(400,{'ok':False,'error':'invalid_message'}); return True
-            total += len(content)
-            if total>200000:
-                self.send_json(400,{'ok':False,'error':'messages_too_large'}); return True
-            clean.append({'role':role,'content':content})
-        code,obj=memos_http('/add/message',{
-            'user_id':MEMOS_USER_ID,
-            'conversation_id':conv,
-            'messages':clean
-        })
-        self.send_json(200 if memos_upstream_ok(code,obj) else code,{
-            'ok':memos_upstream_ok(code,obj),
-            'provider':'memos',
-            'operation':'add',
-            'upstream_status':code,
-            'upstream':obj
-        }); return True
 
     def drive_forward(self):
         n=int(self.headers.get('Content-Length','0') or 0); body=self.rfile.read(n) if n else None
@@ -843,6 +1052,7 @@ class H(BaseHTTPRequestHandler):
         p=self.path.split('?',1)[0]
         if p.startswith('/drive/'):
             self.drive_forward(); return
+        if self.memos_mcp(): return
         if self.memos_post(): return
         if self.bootstrap_browserless(): return
         if p=='/nd/router/request':
@@ -862,5 +1072,5 @@ class H(BaseHTTPRequestHandler):
 
 # NotebookLM bootstrap transport is exercised on demand only. Startup self-probe removed to avoid Browserless same-session contention.
 
-print('ND_BROWSERLESS_FRONT_PROXY_V9_MEMOS '+json.dumps({'port':PORT,'inner_port':INNER_PORT,'router_control':bool(ROUTER_TOKEN),'groq':bool(GROQ_API_KEY),'openrouter':bool(OPENROUTER_API_KEY),'memos':bool(MEMOS_API_KEY),'memos_writes':bool(MEMOS_ALLOW_WRITES)}),flush=True)
+print('ND_BROWSERLESS_FRONT_PROXY_V9_MEMOS '+json.dumps({'port':PORT,'inner_port':INNER_PORT,'router_control':bool(ROUTER_TOKEN),'groq':bool(GROQ_API_KEY),'openrouter':bool(OPENROUTER_API_KEY),'memos':bool(MEMOS_API_KEY),'memos_writes':bool(MEMOS_ALLOW_WRITES),'memos_mcp':bool(MEMOS_MCP_PATH_TOKEN)}),flush=True)
 ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
