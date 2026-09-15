@@ -51,6 +51,21 @@ def linear_call(op,tool='',args=None):
         if LINEAR_API_KEY: z=z.replace(LINEAR_API_KEY,'[REDACTED]')
         return 502,{'ok':False,'provider':'linear','transport':'railway_to_official_linear_mcp','error':z[:1200]}
 
+def linear_qualification_once():
+    time.sleep(6)
+    result={'configured':bool(LINEAR_API_KEY)}
+    try:
+        c1,o1=linear_call('tools_list')
+        tools=((((o1.get('response') or {}).get('result') or {}).get('tools')) or [])
+        c2,o2=linear_call('tool_call','get_workspace',{})
+        content=((((o2.get('response') or {}).get('result') or {}).get('content')) or [])
+        result.update({'ok':c1==200 and c2==200 and bool(o1.get('ok')) and bool(o2.get('ok')),'tools_count':len(tools),'workspace_read':bool(content),'serverInfo':o2.get('serverInfo') or o1.get('serverInfo')})
+    except Exception as e:
+        result.update({'ok':False,'error':str(e)[:800]})
+    print('ND_LINEAR_RAILWAY_QUALIFICATION '+json.dumps(result,ensure_ascii=False),flush=True)
+
+threading.Thread(target=linear_qualification_once,daemon=True).start()
+
 '''
 assert s.count(anchor)==1
 s=s.replace(anchor,code+anchor,1)
