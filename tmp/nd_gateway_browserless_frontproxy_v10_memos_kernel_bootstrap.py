@@ -516,6 +516,32 @@ for (const p of pages) {
 }
 return {activeUrl:page.url(), pages:details};
 """
+        elif action=='raw_dashboard':
+            code="""
+const r=await context.request.get('https://memos-dashboard.openmem.net/', {maxRedirects:0});
+const text=await r.text();
+return {status:r.status(), headers:r.headers(), body:text.slice(0,12000)};
+"""
+        elif action=='discover_dashboard_scripts':
+            code="""
+await page.goto('https://memos-dashboard.openmem.net/', {waitUntil:'domcontentloaded'});
+await page.waitForTimeout(1200);
+const scripts=await page.locator('script[src]').evaluateAll(es=>es.map(e=>e.src));
+const out=[];
+for(const src of scripts.slice(0,40)){
+  try{
+    const txt=await page.evaluate(async u=>await (await fetch(u)).text(),src);
+    const needles=['Welcome to MemOS','verification code','Get verification code','Please enter your email address','apikey','api key'];
+    const hits=[];
+    for(const n of needles){
+      const i=txt.toLowerCase().indexOf(n.toLowerCase());
+      if(i>=0) hits.push({needle:n,snippet:txt.slice(Math.max(0,i-700),i+1600)});
+    }
+    if(hits.length) out.push({src,hits});
+  }catch(e){}
+}
+return {url:page.url(),scripts:scripts.slice(0,40),matches:out};
+"""
         else:
             raise RuntimeError('unknown_kernel_memos_action')
         obj=kernel_playwright_execute(code,60)
