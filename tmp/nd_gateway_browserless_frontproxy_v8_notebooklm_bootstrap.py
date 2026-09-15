@@ -170,7 +170,7 @@ def notebooklm_bootstrap_start(target):
         raise RuntimeError('invalid_target')
     if not BROWSERLESS_TOKEN:
         raise RuntimeError('browserless_not_configured')
-    payload={'ttl':300000,'stealth':True,'headless':False,'browser':'chrome','blockAds':False}
+    payload={'ttl':300000,'stealth':True}
     _,session=_json_request(_bl_api_url('/session'),'POST',payload,timeout=60)
     browserql=str(session.get('browserQL') or '')
     stop=str(session.get('stop') or '')
