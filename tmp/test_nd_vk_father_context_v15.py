@@ -42,7 +42,12 @@ class HarnessTests(unittest.TestCase):
    {'sender_vk_id':'1','operation':'append','kind':'durable_fact','status':'committed','created_at':'2','source_ref':'ledger','content_chunk':json.dumps({'text':'Живёт в Мурманской области'},ensure_ascii=False)},
    {'sender_vk_id':'1','operation':'append','kind':'durable_fact','status':'committed','created_at':'3','source_ref':'ledger','content_chunk':json.dumps({'text':'спасибо'},ensure_ascii=False)},
    {'sender_vk_id':'1','operation':'append','kind':'conversation_turn','status':'committed','created_at':'0','content_chunk':json.dumps({'content':'Раньше обсуждали Мурманскую погоду'},ensure_ascii=False)}]
-  with mock.patch.object(harness,'read_context_rows',return_value=rows): mem=harness._parse_memory(1,'Мурманская погода')
+  # setUp intentionally patches the same reader empty; override that patch on the harness symbol for this fixture.
+  self.rows.stop()
+  try:
+   with mock.patch.object(harness,'read_context_rows',return_value=rows): mem=harness._parse_memory(1,'Мурманская погода')
+  finally:
+   self.rows.start()
   self.assertTrue(mem['summary']); self.assertEqual(len(mem['facts']),1); self.assertEqual(len(mem['retrieved']),1)
  def test_channels_separate_and_bounded(self):
   with mock.patch.object(harness,'read_nd_context',return_value=self.governed()):
