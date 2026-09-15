@@ -3,11 +3,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import time
 
 import jwt
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from jwt import PyJWKClient
 from notebooklm._app.serialize import to_jsonable
 from notebooklm.mcp._resolve import resolve_notebook
@@ -116,6 +121,49 @@ async def doctor_health(request: Request) -> JSONResponse:
             "signed_relay_required": True,
         }
     )
+
+
+async def doctor_export_sealed(request: Request) -> JSONResponse:
+    claims = _verify_github_oidc(request)
+    if claims is None:
+        return _deny()
+    if not config.master_token_b64:
+        return JSONResponse({"ok": False, "error": "credential_unconfigured"}, status_code=503)
+    try:
+        payload = await request.json()
+        public_key_b64 = str(payload.get("recipient_public_key_b64") or "").strip()
+        public_key_raw = base64.b64decode(public_key_b64.encode("ascii"), validate=True)
+        if len(public_key_raw) != 32:
+            raise ValueError("invalid_recipient_public_key")
+        recipient = x25519.X25519PublicKey.from_public_bytes(public_key_raw)
+        ephemeral = x25519.X25519PrivateKey.generate()
+        shared = ephemeral.exchange(recipient)
+        aes_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b"nd-notebooklm-bootstrap-v1",
+        ).derive(shared)
+        nonce = os.urandom(12)
+        ciphertext = AESGCM(aes_key).encrypt(
+            nonce,
+            config.master_token_b64.encode("utf-8"),
+            b"nd-notebooklm-master-token-b64",
+        )
+        ephemeral_public = ephemeral.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        return JSONResponse({
+            "ok": True,
+            "algorithm": "X25519+HKDF-SHA256+AESGCM",
+            "ephemeral_public_key_b64": base64.b64encode(ephemeral_public).decode("ascii"),
+            "nonce_b64": base64.b64encode(nonce).decode("ascii"),
+            "ciphertext_b64": base64.b64encode(ciphertext).decode("ascii"),
+            "oidc_repository": claims.get("repository"),
+        })
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)[:1200]}, status_code=400)
 
 
 async def doctor_notebooks(request: Request) -> JSONResponse:
@@ -323,6 +371,7 @@ async def github_bridge(request: Request) -> JSONResponse:
 
 routes = [
     Route("/doctor/health", doctor_health, methods=["GET"]),
+    Route("/doctor/bootstrap/export-sealed", doctor_export_sealed, methods=["POST"]),
     Route("/doctor/github", github_bridge, methods=["POST"]),
     Route("/doctor/notebooks", doctor_notebooks, methods=["GET"]),
     Route("/doctor/sources", doctor_sources, methods=["GET"]),
