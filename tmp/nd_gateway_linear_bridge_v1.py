@@ -79,4 +79,5 @@ needle="threading.Thread(target=drive_qualify_once,daemon=True).start()"
 if s.count(needle)==1:
     s=s.replace(needle,"# Drive startup qualification invocation disabled after Generation 8.1 adoption",1)
 
+print('ND_LINEAR_WRAPPER_PATCH endpoint=%s selftest=%s env=%s' % ('/nd/linear/invoke' in s,'ND_LINEAR_RAILWAY_QUALIFICATION' in s,'ND_LINEAR_API_KEY' in s),flush=True)
 exec(compile(s,'nd_gateway_linear_bridge_v1_runtime.py','exec'))
