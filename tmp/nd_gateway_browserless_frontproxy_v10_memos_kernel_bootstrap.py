@@ -623,31 +623,7 @@ class H(BaseHTTPRequestHandler):
             except Exception as e: self.send_json(400,{'ok':False,'error':clean_error(e)}); return
         self.forward()
 
-def notebooklm_bootstrap_transport_probe():
-    time.sleep(2)
-    stop=''
-    try:
-        _,session=_json_request(_bl_api_url('/session'),'POST',{'ttl':60000,'stealth':True},timeout=30)
-        bql=str(session.get('browserQL') or '')
-        stop=str(session.get('stop') or '')
-        if not bql:
-            raise RuntimeError('probe_session_missing_browserql')
-        q1='mutation NDProbe { goto(url: "https://example.com", waitUntil: domContentLoaded) { status } liveURL(timeout: 30000, interactable: false, quality: 20) { liveURL } }'
-        r1=_bql(bql,q1)
-        print('ND_NOTEBOOKLM_BOOTSTRAP_PROBE '+json.dumps({'step':'example','ok':bool(((r1.get('data') or {}).get('liveURL') or {}).get('liveURL')),'errors':r1.get('errors')},ensure_ascii=False),flush=True)
-        q2='mutation NDGoogleProbe { goto(url: "https://accounts.google.com/EmbeddedSetup/identifier?flowName=EmbeddedSetupAndroid", waitUntil: domContentLoaded) { status } liveURL(timeout: 30000, interactable: false, quality: 20) { liveURL } }'
-        r2=_bql(bql,q2)
-        print('ND_NOTEBOOKLM_BOOTSTRAP_PROBE '+json.dumps({'step':'google','ok':bool(((r2.get('data') or {}).get('liveURL') or {}).get('liveURL')),'errors':r2.get('errors')},ensure_ascii=False),flush=True)
-    except Exception as e:
-        print('ND_NOTEBOOKLM_BOOTSTRAP_PROBE '+json.dumps({'step':'exception','ok':False,'error':clean_error(e)},ensure_ascii=False),flush=True)
-    finally:
-        if stop:
-            try:
-                _json_request(stop,'DELETE',timeout=15)
-            except Exception:
-                pass
-
-threading.Thread(target=notebooklm_bootstrap_transport_probe,daemon=True).start()
+# NotebookLM bootstrap transport is exercised on demand only. Startup self-probe removed to avoid Browserless same-session contention.
 
 print('ND_BROWSERLESS_FRONT_PROXY_V9_MEMOS '+json.dumps({'port':PORT,'inner_port':INNER_PORT,'router_control':bool(ROUTER_TOKEN),'groq':bool(GROQ_API_KEY),'openrouter':bool(OPENROUTER_API_KEY),'memos':bool(MEMOS_API_KEY),'memos_writes':bool(MEMOS_ALLOW_WRITES)}),flush=True)
 ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
