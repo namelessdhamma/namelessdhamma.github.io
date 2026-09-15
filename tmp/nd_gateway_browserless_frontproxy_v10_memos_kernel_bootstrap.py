@@ -346,35 +346,59 @@ def memos_upstream_ok(code,obj):
 def kernel_bootstrap_once():
     if not KERNEL_API_KEY or not ND_KERNEL_BOOTSTRAP_TRIGGER:
         return
+    headers={
+        'Authorization':'Bearer '+KERNEL_API_KEY,
+        'Content-Type':'application/json',
+        'User-Agent':'ND-Kernel-MemOS-Bootstrap/1.1'
+    }
+    try:
+        req=urllib.request.Request('https://api.onkernel.com/browsers',headers=headers,method='GET')
+        with urllib.request.urlopen(req,timeout=30) as r:
+            existing=json.loads(r.read().decode('utf-8','replace') or '[]')
+        if isinstance(existing,dict):
+            existing=existing.get('data') or existing.get('browsers') or []
+        for b in (existing or []):
+            if not isinstance(b,dict) or b.get('deleted_at'): continue
+            live=str(b.get('browser_live_view_url') or '')
+            start_url=str(b.get('start_url') or '')
+            name=str(b.get('name') or '')
+            if live and ('memos-dashboard.openmem.net' in start_url or name.startswith('nd-memos-registration')):
+                print('ND_KERNEL_MEMOS_BOOTSTRAP '+json.dumps({
+                    'ok':True,'reused':True,'session_id':b.get('session_id'),
+                    'browser_live_view_url':live,'timeout_seconds':b.get('timeout_seconds'),
+                    'start_url':start_url
+                },ensure_ascii=False),flush=True)
+                return
+    except Exception as e:
+        print('ND_KERNEL_MEMOS_LIST '+json.dumps({'ok':False,'error':clean_error(e)},ensure_ascii=False),flush=True)
     payload={
         'stealth':True,
         'headless':False,
         'timeout_seconds':7200,
         'start_url':'https://memos-dashboard.openmem.net/',
-        'name':'nd-memos-registration'
+        'name':'nd-memos-registration-'+ND_KERNEL_BOOTSTRAP_TRIGGER[-12:]
     }
     req=urllib.request.Request(
         'https://api.onkernel.com/browsers',
         data=json.dumps(payload).encode('utf-8'),
         method='POST',
-        headers={
-            'Authorization':'Bearer '+KERNEL_API_KEY,
-            'Content-Type':'application/json',
-            'User-Agent':'ND-Kernel-MemOS-Bootstrap/1.0'
-        })
+        headers=headers)
     try:
         with urllib.request.urlopen(req,timeout=60) as r:
             obj=json.loads(r.read().decode('utf-8','replace') or '{}')
-        safe={
-            'ok':True,
+        print('ND_KERNEL_MEMOS_BOOTSTRAP '+json.dumps({
+            'ok':True,'reused':False,
             'session_id':obj.get('session_id'),
             'browser_live_view_url':obj.get('browser_live_view_url'),
             'timeout_seconds':obj.get('timeout_seconds'),
             'start_url':obj.get('start_url')
-        }
-        print('ND_KERNEL_MEMOS_BOOTSTRAP '+json.dumps(safe,ensure_ascii=False),flush=True)
+        },ensure_ascii=False),flush=True)
+    except HTTPError as e:
+        try: body=e.read().decode('utf-8','replace')[:1200]
+        except Exception: body=''
+        print('ND_KERNEL_MEMOS_BOOTSTRAP '+json.dumps({'ok':False,'status':e.code,'error':clean_error(body or str(e))},ensure_ascii=False),flush=True)
     except Exception as e:
-        print('ND_KERNEL_MEMOS_BOOTSTRAP '+json.dumps({'ok':False,'error':clean_error(e)}),flush=True)
+        print('ND_KERNEL_MEMOS_BOOTSTRAP '+json.dumps({'ok':False,'error':clean_error(e)},ensure_ascii=False),flush=True)
 
 threading.Thread(target=kernel_bootstrap_once,daemon=True).start()
 
