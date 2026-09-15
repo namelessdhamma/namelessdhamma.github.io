@@ -110,9 +110,19 @@ def _json_request(url,method='GET',payload=None,headers=None,timeout=90):
         data=json.dumps(payload,ensure_ascii=False).encode('utf-8')
         h.setdefault('Content-Type','application/json')
     req=urllib.request.Request(url,data=data,headers=h,method=method)
-    with urllib.request.urlopen(req,timeout=timeout) as r:
-        raw=r.read().decode('utf-8','replace')
-        return r.status,(json.loads(raw) if raw else {})
+    try:
+        with urllib.request.urlopen(req,timeout=timeout) as r:
+            raw=r.read().decode('utf-8','replace')
+            return r.status,(json.loads(raw) if raw else {})
+    except HTTPError as e:
+        try:
+            raw=e.read().decode('utf-8','replace')
+        except Exception:
+            raw=''
+        detail=raw[:1200]
+        if BROWSERLESS_TOKEN:
+            detail=detail.replace(BROWSERLESS_TOKEN,'[REDACTED]').replace(urllib.parse.quote(BROWSERLESS_TOKEN,safe=''),'[REDACTED]')
+        raise RuntimeError('HTTP %s: %s' % (e.code, detail or e.reason))
 
 def _bql(session_url,query):
     url=session_url
@@ -180,7 +190,7 @@ def notebooklm_bootstrap_start(target):
     stop=str(session.get('stop') or '')
     if not browserql or not stop:
         raise RuntimeError('browserless_session_missing_urls')
-    query='mutation StartNotebookLMBootstrap { goto(url: "https://accounts.google.com/EmbeddedSetup", waitUntil: domContentLoaded) { status } liveURL(timeout: 240000, interactable: true, quality: 60) { liveURL } }'
+    query='mutation StartNotebookLMBootstrap { goto(url: "https://accounts.google.com/EmbeddedSetup/identifier?flowName=EmbeddedSetupAndroid", waitUntil: domContentLoaded) { status } liveURL(timeout: 240000, interactable: true, quality: 60) { liveURL } }'
     obj=_bql(browserql,query)
     live=((((obj.get('data') or {}).get('liveURL') or {}).get('liveURL')) or '')
     if not live:
@@ -494,7 +504,9 @@ class H(BaseHTTPRequestHandler):
             live=notebooklm_bootstrap_start(target)
             self.send_response(302); self.send_header('Location',live); self.send_header('Cache-Control','no-store'); self.end_headers()
         except Exception as e:
-            self.send_json(502,{'ok':False,'target':target,'error':clean_error(e)})
+            err=clean_error(e)
+            print('ND_NOTEBOOKLM_BOOTSTRAP_START_ERROR '+json.dumps({'target':target,'error':err},ensure_ascii=False),flush=True)
+            self.send_json(502,{'ok':False,'target':target,'error':err})
         return True
 
     def do_GET(self):
