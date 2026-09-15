@@ -179,22 +179,37 @@ def _bootstrap_poll(target,browserql,stop_url):
         except Exception:
             pass
 
+def _bootstrap_stage_error(stage,e):
+    if isinstance(e,HTTPError):
+        try: body=e.read().decode('utf-8','replace')
+        except Exception: body=''
+        return RuntimeError(stage+':http_'+str(e.code)+':'+(body[:1000] or str(e.reason)))
+    return RuntimeError(stage+':'+str(e))
+
 def notebooklm_bootstrap_start(target):
     if target not in ('railway','render'):
         raise RuntimeError('invalid_target')
     if not BROWSERLESS_TOKEN:
         raise RuntimeError('browserless_not_configured')
     payload={'ttl':300000,'stealth':True}
-    _,session=_json_request(_bl_api_url('/session'),'POST',payload,timeout=60)
+    try:
+        _,session=_json_request(_bl_api_url('/session'),'POST',payload,timeout=60)
+    except Exception as e:
+        raise _bootstrap_stage_error('session_create',e)
     browserql=str(session.get('browserQL') or '')
     stop=str(session.get('stop') or '')
     if not browserql or not stop:
-        raise RuntimeError('browserless_session_missing_urls')
+        raise RuntimeError('session_create:browserless_session_missing_urls')
     query='mutation StartNotebookLMBootstrap { goto(url: "https://accounts.google.com/EmbeddedSetup/identifier?flowName=EmbeddedSetupAndroid", waitUntil: domContentLoaded) { status } liveURL(timeout: 240000, interactable: true, quality: 60) { liveURL } }'
-    obj=_bql(browserql,query)
+    try:
+        obj=_bql(browserql,query)
+    except Exception as e:
+        raise _bootstrap_stage_error('bql_google_liveurl',e)
+    if obj.get('errors'):
+        raise RuntimeError('bql_google_liveurl:graphql:'+json.dumps(obj.get('errors'),ensure_ascii=False)[:1000])
     live=((((obj.get('data') or {}).get('liveURL') or {}).get('liveURL')) or '')
     if not live:
-        raise RuntimeError('browserless_liveurl_missing')
+        raise RuntimeError('bql_google_liveurl:browserless_liveurl_missing')
     NL_BOOTSTRAP[target]={'ok':None,'target':target,'phase':'waiting_google','live_url':live,'started_at':int(time.time())}
     threading.Thread(target=_bootstrap_poll,args=(target,browserql,stop),daemon=True).start()
     return live
@@ -506,7 +521,7 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             err=clean_error(e)
             print('ND_NOTEBOOKLM_BOOTSTRAP_START_ERROR '+json.dumps({'target':target,'error':err},ensure_ascii=False),flush=True)
-            self.send_json(502,{'ok':False,'target':target,'error':err})
+            self.send_json(502,{'ok':False,'target':target,'error':err,'rev':'notebooklm-bootstrap-diag-3'})
         return True
 
     def do_GET(self):
