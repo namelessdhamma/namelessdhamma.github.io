@@ -192,32 +192,99 @@ def _bootstrap_stage_error(stage,e):
         return RuntimeError(stage+':http_'+str(e.code)+':'+(body[:1000] or str(e.reason)))
     return RuntimeError(stage+':'+str(e))
 
+def _kernel_json(path, method='GET', payload=None, timeout=90):
+    if not KERNEL_API_KEY:
+        raise RuntimeError('kernel_not_configured')
+    data=None
+    headers={'Authorization':'Bearer '+KERNEL_API_KEY,'User-Agent':'ND-NotebookLM-Kernel-Bootstrap/1.0'}
+    if payload is not None:
+        data=json.dumps(payload,ensure_ascii=False).encode('utf-8')
+        headers['Content-Type']='application/json'
+    req=urllib.request.Request('https://api.onkernel.com'+path,data=data,headers=headers,method=method)
+    try:
+        with urllib.request.urlopen(req,timeout=timeout) as r:
+            raw=r.read().decode('utf-8','replace')
+            return r.status,(json.loads(raw) if raw else {})
+    except HTTPError as e:
+        try:
+            raw=e.read().decode('utf-8','replace')
+        except Exception:
+            raw=''
+        raise RuntimeError('kernel_http_%s:%s' % (e.code,clean_error(raw or str(e))))
+
+def _kernel_playwright(session_id, code, timeout_sec=30):
+    path='/browsers/'+urllib.parse.quote(session_id,safe='')+'/playwright/execute'
+    _,obj=_kernel_json(path,'POST',{'code':code,'timeout_sec':timeout_sec},timeout=max(45,timeout_sec+15))
+    if not isinstance(obj,dict) or not obj.get('success'):
+        raise RuntimeError('kernel_playwright_failed:'+clean_error((obj or {}).get('error') or obj))
+    return obj.get('result')
+
+def _kernel_bootstrap_poll(target, session_id):
+    state=NL_BOOTSTRAP.setdefault(target,{})
+    deadline=time.time()+900
+    state.update({'phase':'waiting_google','started_at':int(time.time()),'transport':'kernel'})
+    try:
+        while time.time()<deadline:
+            try:
+                result=_kernel_playwright(session_id, """
+const cookies = await context.cookies('https://accounts.google.com');
+const found = cookies.find(c => c.name === 'oauth_token' && c.value);
+let title = '';
+try { title = await page.title(); } catch {}
+return { oauth_token: found ? found.value : '', url: page.url(), title };
+""", 30)
+                token=str((result or {}).get('oauth_token') or '')
+                state['page_url']=str((result or {}).get('url') or '')[:500]
+                state['page_title']=str((result or {}).get('title') or '')[:200]
+                if token:
+                    state['phase']='exchanging'
+                    exchange=_bootstrap_exchange(target,token)
+                    NL_BOOTSTRAP[target]={
+                        'ok':True,'target':target,'phase':'done','transport':'kernel',
+                        'notebook_count':exchange.get('notebook_count'),
+                        'credential_persisted':exchange.get('credential_persisted'),
+                        'path':exchange.get('path')
+                    }
+                    return
+            except Exception as e:
+                state['last_poll_error']=clean_error(e)
+            time.sleep(3)
+        state['phase']='timeout'
+        state['ok']=False
+    except Exception as e:
+        NL_BOOTSTRAP[target]={'ok':False,'target':target,'phase':'failed','transport':'kernel','error':clean_error(e)}
+    finally:
+        try:
+            _kernel_json('/browsers/'+urllib.parse.quote(session_id,safe=''),'DELETE',None,timeout=20)
+        except Exception:
+            pass
+
 def notebooklm_bootstrap_start(target):
     if target not in ('railway','render'):
         raise RuntimeError('invalid_target')
-    if not BROWSERLESS_TOKEN:
-        raise RuntimeError('browserless_not_configured')
-    payload={'ttl':300000,'stealth':True}
+    if not KERNEL_API_KEY:
+        raise RuntimeError('kernel_not_configured')
+    name='nd-notebooklm-'+target+'-'+str(int(time.time()))
+    payload={
+        'stealth':True,
+        'headless':False,
+        'timeout_seconds':1200,
+        'start_url':'https://accounts.google.com/EmbeddedSetup',
+        'name':name
+    }
     try:
-        _,session=_json_request(_bl_api_url('/session'),'POST',payload,timeout=60)
+        _,session=_kernel_json('/browsers','POST',payload,timeout=60)
     except Exception as e:
-        raise _bootstrap_stage_error('session_create',e)
-    browserql=str(session.get('browserQL') or '')
-    stop=str(session.get('stop') or '')
-    if not browserql or not stop:
-        raise RuntimeError('session_create:browserless_session_missing_urls')
-    query='mutation StartNotebookLMBootstrap { goto(url: "https://accounts.google.com/EmbeddedSetup/identifier?flowName=EmbeddedSetupAndroid", waitUntil: domContentLoaded) { status } liveURL(timeout: 120000, interactable: true, quality: 60) { liveURL } }'
-    try:
-        obj=_bql(browserql,query)
-    except Exception as e:
-        raise _bootstrap_stage_error('bql_google_liveurl',e)
-    if obj.get('errors'):
-        raise RuntimeError('bql_google_liveurl:graphql:'+json.dumps(obj.get('errors'),ensure_ascii=False)[:1000])
-    live=((((obj.get('data') or {}).get('liveURL') or {}).get('liveURL')) or '')
-    if not live:
-        raise RuntimeError('bql_google_liveurl:browserless_liveurl_missing')
-    NL_BOOTSTRAP[target]={'ok':None,'target':target,'phase':'waiting_google','live_url':live,'started_at':int(time.time())}
-    threading.Thread(target=_bootstrap_poll,args=(target,browserql,stop),daemon=True).start()
+        raise _bootstrap_stage_error('kernel_session_create',e)
+    session_id=str(session.get('session_id') or '')
+    live=str(session.get('browser_live_view_url') or '')
+    if not session_id or not live:
+        raise RuntimeError('kernel_session_create:missing_session_or_live_url')
+    NL_BOOTSTRAP[target]={
+        'ok':None,'target':target,'phase':'waiting_google','transport':'kernel',
+        'session_id':session_id,'live_url':live,'started_at':int(time.time())
+    }
+    threading.Thread(target=_kernel_bootstrap_poll,args=(target,session_id),daemon=True).start()
     return live
 
 def notebooklm_bootstrap_status(target):
@@ -227,7 +294,7 @@ def notebooklm_bootstrap_status(target):
 
 def clean_error(x):
     s=str(x)
-    for token in (BROWSERLESS_TOKEN,ROUTER_TOKEN,GROQ_API_KEY,OPENROUTER_API_KEY,MEMOS_API_KEY):
+    for token in (BROWSERLESS_TOKEN,ROUTER_TOKEN,GROQ_API_KEY,OPENROUTER_API_KEY,MEMOS_API_KEY,KERNEL_API_KEY):
         if token:
             s=s.replace(token,'[REDACTED]')
             s=s.replace(urllib.parse.quote(token,safe=''),'[REDACTED]')
