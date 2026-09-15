@@ -25,6 +25,7 @@ ND_NOTEBOOKLM_BOOTSTRAP_KEY=os.environ.get('ND_NOTEBOOKLM_BOOTSTRAP_KEY','').str
 ND_NOTEBOOKLM_BOOTSTRAP_SHARED_TOKEN=os.environ.get('ND_NOTEBOOKLM_BOOTSTRAP_SHARED_TOKEN','').strip()
 ND_NOTEBOOKLM_BOOTSTRAP_EXCHANGE_URL=os.environ.get('ND_NOTEBOOKLM_BOOTSTRAP_EXCHANGE_URL','').strip()
 NL_BOOTSTRAP={}
+NL_BOOTSTRAP_LOCK=threading.Lock()
 if BROWSERLESS_TOKEN.lower().startswith('bearer '): BROWSERLESS_TOKEN=BROWSERLESS_TOKEN[7:].strip()
 INNER_URL='http://127.0.0.1:%d' % INNER_PORT
 GATEWAY_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/c9b857d38df4e196ae3b560347a02d6a2304f9c1/tmp/nd_vk_gateway_v14_web_recovery.py'
@@ -285,49 +286,43 @@ def _kernel_cleanup_old_notebooklm_sessions():
 def notebooklm_bootstrap_start(target):
     if target not in ('railway','render'):
         raise RuntimeError('invalid_target')
-    if not KERNEL_API_KEY:
-        raise RuntimeError('kernel_not_configured')
-    _kernel_cleanup_old_notebooklm_sessions()
-    name='nd-notebooklm-'+target+'-'+str(int(time.time()))
-    payload={
-        'stealth':True,
-        'headless':False,
-        'timeout_seconds':1200,
-        'start_url':'https://accounts.google.com/EmbeddedSetup',
-        'name':name
-    }
-    try:
-        _,session=_kernel_json('/browsers','POST',payload,timeout=60)
-    except Exception as e:
-        raise _bootstrap_stage_error('kernel_session_create',e)
-    session_id=str(session.get('session_id') or '')
-    live=str(session.get('browser_live_view_url') or '')
-    if not session_id or not live:
-        raise RuntimeError('kernel_session_create:missing_session_or_live_url')
-    preflight={}
-    try:
-        preflight=_kernel_playwright(session_id, """
-await page.waitForTimeout(1200);
-let title=''; let text='';
-try { title=await page.title(); } catch {}
-try { text=(await page.locator('body').innerText()).slice(0,240); } catch {}
-return {url:page.url(),title,text};
-""",30) or {}
-        print('ND_NOTEBOOKLM_KERNEL_PREFLIGHT '+json.dumps({
-            'url':str(preflight.get('url') or '')[:500],
-            'title':str(preflight.get('title') or '')[:200],
-            'text':str(preflight.get('text') or '')[:240]
-        },ensure_ascii=False),flush=True)
-    except Exception as e:
-        print('ND_NOTEBOOKLM_KERNEL_PREFLIGHT '+json.dumps({'error':clean_error(e)},ensure_ascii=False),flush=True)
-    NL_BOOTSTRAP[target]={
-        'ok':None,'target':target,'phase':'waiting_google','transport':'kernel',
-        'session_id':session_id,'live_url':live,'started_at':int(time.time()),
-        'page_url':str(preflight.get('url') or '')[:500],
-        'page_title':str(preflight.get('title') or '')[:200]
-    }
-    threading.Thread(target=_kernel_bootstrap_poll,args=(target,session_id),daemon=True).start()
-    return live
+    if not BROWSERLESS_TOKEN:
+        raise RuntimeError('browserless_not_configured')
+    with NL_BOOTSTRAP_LOCK:
+        existing=NL_BOOTSTRAP.get(target) or {}
+        if (
+            existing.get('phase')=='waiting_google'
+            and existing.get('live_url')
+            and int(time.time())-int(existing.get('started_at') or 0) < 270
+        ):
+            return str(existing.get('live_url'))
+        # Reclaim only stale NotebookLM Kernel sessions left by the failed fallback path.
+        _kernel_cleanup_old_notebooklm_sessions()
+        payload={'ttl':300000,'stealth':True}
+        try:
+            _,session=_json_request(_bl_api_url('/session'),'POST',payload,timeout=60)
+        except Exception as e:
+            raise _bootstrap_stage_error('browserless_session_create',e)
+        browserql=str(session.get('browserQL') or '')
+        stop=str(session.get('stop') or '')
+        if not browserql or not stop:
+            raise RuntimeError('browserless_session_create:missing_session_urls')
+        query='mutation StartNotebookLMBootstrap { goto(url: "https://accounts.google.com/EmbeddedSetup", waitUntil: domContentLoaded) { status } liveURL(timeout: 120000, interactable: true, quality: 60) { liveURL } }'
+        try:
+            obj=_bql(browserql,query)
+        except Exception as e:
+            raise _bootstrap_stage_error('browserless_google_liveurl',e)
+        if obj.get('errors'):
+            raise RuntimeError('browserless_google_liveurl:graphql:'+json.dumps(obj.get('errors'),ensure_ascii=False)[:1000])
+        live=((((obj.get('data') or {}).get('liveURL') or {}).get('liveURL')) or '')
+        if not live:
+            raise RuntimeError('browserless_google_liveurl:missing_live_url')
+        NL_BOOTSTRAP[target]={
+            'ok':None,'target':target,'phase':'waiting_google','transport':'browserless',
+            'live_url':live,'started_at':int(time.time())
+        }
+        threading.Thread(target=_bootstrap_poll,args=(target,browserql,stop),daemon=True).start()
+        return live
 
 def notebooklm_bootstrap_status(target):
     st=dict(NL_BOOTSTRAP.get(target) or {'ok':None,'target':target,'phase':'not_started'})
