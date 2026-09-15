@@ -16,15 +16,13 @@ class AdapterTests(unittest.TestCase):
  def test_append_post_privacy(self):
   seen={}
   def fake(url,**kw): seen.update({'url':url,**kw}); return {'ok':True}
-  with mock.patch.object(adapter,'APPEND_URL','https://x.invalid/h'),mock.patch.object(adapter,'_json_request',side_effect=fake): adapter.append_turn(1,'user','секрет',event_id='e')
-  self.assertEqual(seen['method'],'POST'); self.assertNotIn('секрет',seen['url'])
+  with mock.patch.object(adapter,'APPEND_URL','https://x.invalid/h'),mock.patch.object(adapter,'_json_request',side_effect=fake): adapter.append_turn(1,'user','private',event_id='e')
+  self.assertEqual(seen['method'],'POST'); self.assertNotIn('private',seen['url'])
 
 class CompletionTests(unittest.TestCase):
- def setUp(self):
-  self.gov={'text':'ND evidence','sources':[{'source_ref':'StateHead','title':'StateHead','authority':'AUTHORITATIVE'}],'statehead_status':'ACTIVE','registry_version':'1.8.1'}
+ def setUp(self): self.gov={'text':'ND evidence','sources':[{'source_ref':'StateHead','title':'StateHead','authority':'AUTHORITATIVE'}],'statehead_status':'ACTIVE','registry_version':'1.8.1'}
  def ctx(self,q,**kw):
-  with mock.patch.object(harness,'hydrate_user',return_value=[]),mock.patch.object(harness,'read_context_rows',return_value=[]),mock.patch.object(harness,'read_nd_context',return_value=self.gov) as nd:
-   m,r=harness.build_response_messages(1,q,**kw); return m,r,nd
+  with mock.patch.object(harness,'hydrate_user',return_value=[]),mock.patch.object(harness,'read_context_rows',return_value=[]),mock.patch.object(harness,'read_nd_context',return_value=self.gov) as nd: m,r=harness.build_response_messages(1,q,**kw); return m,r,nd
  def test_general_role_precedes_all_data(self):
   m,r,_=self.ctx('Что такое Ниббана?'); self.assertEqual(m[0]['role'],'system'); self.assertIn('general-purpose',m[0]['content']); self.assertTrue(r['nd_injected'])
  def test_protected_current_world_auto_excludes_nd(self):
@@ -48,24 +46,21 @@ class CompletionTests(unittest.TestCase):
  def test_recent_context_bounded(self):
   h=[{'role':'user','content':'x'*20000},{'role':'assistant','content':'y'*20000}]; self.assertLessEqual(sum(len(x['content']) for x in harness._clip_messages(h)),harness.MAX_CONVERSATION_CHARS)
  def test_unattributed_nd_dropped(self):
-  with mock.patch.object(harness,'hydrate_user',return_value=[]),mock.patch.object(harness,'read_context_rows',return_value=[]),mock.patch.object(harness,'read_nd_context',return_value={'text':'BAD','sources':[]}): m,r=harness.build_response_messages(1,'ND проект')
+  with mock.patch.object(harness,'hydrate_user',return_value=[]),mock.patch.object(harness,'read_context_rows',return_value=[]),mock.patch.object(harness,'read_nd_context',return_value={'text':'BAD','sources':[]}): m,r=harness.build_response_messages(1,'проект ND')
   self.assertFalse(r['nd_injected']); self.assertNotIn('BAD',' '.join(x['content'] for x in m))
  def test_user_text_bounded(self):
   m,r,_=self.ctx('x'*(harness.MAX_USER_CHARS+100)); self.assertEqual(len(m[-1]['content']),harness.MAX_USER_CHARS)
- def test_provider_switch_receipt_is_provider_neutral(self):
+ def test_provider_neutral_receipt(self):
   _,r,_=self.ctx('Как сварить гречку?'); self.assertNotIn('provider',r); self.assertEqual(r['product_role'],'GENERAL_PURPOSE_RU')
- def test_restart_policy_reads_ledger_each_build(self):
+ def test_restart_reads_ledger_each_build(self):
   with mock.patch.object(harness,'hydrate_user',return_value=[]),mock.patch.object(harness,'read_context_rows',return_value=[]) as rr: harness.build_context_envelope(1,'Привет'); self.assertTrue(rr.called)
-
- def test_30_query_relevance_and_domain_leakage_matrix(self):
+ def test_30_query_matrix(self):
   ordinary=['Как сварить гречку?','Почему небо голубое?','Как починить молнию на куртке?','Сколько минут варить яйцо?','Что подарить другу?','Объясни проценты','Как очистить чайник?','Что такое инфляция?','Как написать заявление?','Почему кошка мурлычет?']
   current=['Кто сейчас премьер-министр Таиланда?','Какие новости сегодня?','Какая сейчас погода?','Какой текущий курс доллара?','Последние новости OpenAI','Кто сейчас президент США?','Актуальное расписание поездов','Что произошло сегодня в Бангкоке?','Какая последняя версия Python?','Текущая цена золота?']
-  ndq=['Что такое Ниббана в контексте ND?','Что говорит Dhamma о sati?','Покажи проект ND','Как True Memory связан с ND?','Что такое vipassana в проекте ND?','Расскажи про satipatthana в ND','Что в Nameless Dhamma про память?','Какой канонический контекст ND?','Что проект ND говорит о Nibbana?','Объясни Дхамму по материалам ND']
+  ndq=['Что такое Ниббана в контексте ND?','Что говорит Dhamma о sati?','Покажи проект ND','Как True Memory связан с проектом?','Что такое vipassana в проекте ND?','Расскажи про satipatthana','Что в Nameless Dhamma про память?','Какой канонический контекст Nameless Dhamma?','Что проект ND говорит о Nibbana?','Объясни Дхамму по материалам ND']
   self.assertEqual(len(ordinary)+len(current)+len(ndq),30)
-  for q in ordinary:
-   self.assertFalse(harness.should_retrieve_nd(q),q)
-  for q in current:
-   self.assertFalse(harness.should_retrieve_nd(q),q); self.assertTrue(harness.needs_current_web(q),q)
+  for q in ordinary: self.assertFalse(harness.should_retrieve_nd(q),q)
+  for q in current: self.assertFalse(harness.should_retrieve_nd(q),q); self.assertTrue(harness.needs_current_web(q),q)
   for q in ndq: self.assertTrue(harness.should_retrieve_nd(q),q)
 
 if __name__=='__main__': unittest.main()
