@@ -202,7 +202,7 @@ def notebooklm_bootstrap_start(target):
     stop=str(session.get('stop') or '')
     if not browserql or not stop:
         raise RuntimeError('session_create:browserless_session_missing_urls')
-    query='mutation StartNotebookLMBootstrap { goto(url: "https://accounts.google.com/EmbeddedSetup/identifier?flowName=EmbeddedSetupAndroid", waitUntil: domContentLoaded) { status } liveURL(timeout: 240000, interactable: true, quality: 60) { liveURL } }'
+    query='mutation StartNotebookLMBootstrap { goto(url: "https://accounts.google.com/EmbeddedSetup/identifier?flowName=EmbeddedSetupAndroid", waitUntil: domContentLoaded) { status } liveURL(timeout: 120000, interactable: true, quality: 60) { liveURL } }'
     try:
         obj=_bql(browserql,query)
     except Exception as e:
