@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import os
 import secrets
@@ -63,11 +64,17 @@ def _load_master_token_b64() -> str:
 
 
 def _bootstrap_private_key():
-    if not BOOTSTRAP_X25519_PRIVATE_B64:
+    if BOOTSTRAP_X25519_PRIVATE_B64:
+        raw = base64.b64decode(BOOTSTRAP_X25519_PRIVATE_B64.encode('ascii'), validate=True)
+        if len(raw) != 32:
+            raise RuntimeError('invalid_bootstrap_private_key')
+        return x25519.X25519PrivateKey.from_private_bytes(raw)
+    existing_secret = os.environ.get('NOTEBOOKLM_MCP_OAUTH_PASSWORD', '').strip()
+    if not existing_secret:
         return None
-    raw = base64.b64decode(BOOTSTRAP_X25519_PRIVATE_B64.encode('ascii'), validate=True)
-    if len(raw) != 32:
-        raise RuntimeError('invalid_bootstrap_private_key')
+    raw = hashlib.sha256(
+        b'nd-notebooklm-bootstrap-x25519-v1\0' + existing_secret.encode('utf-8')
+    ).digest()
     return x25519.X25519PrivateKey.from_private_bytes(raw)
 
 
