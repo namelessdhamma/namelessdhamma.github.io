@@ -1,0 +1,94 @@
+name: ND Internet Failover
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "status | browserless | kernel | tinyfish"
+        required: true
+        default: "status"
+        type: choice
+        options:
+          - status
+          - browserless
+          - kernel
+          - tinyfish
+      tool:
+        description: "Provider tool name; use __tools__ for discovery"
+        required: false
+        default: "__tools__"
+        type: string
+      arguments_json:
+        description: "JSON object passed to the provider tool"
+        required: false
+        default: "{}"
+        type: string
+      request_key:
+        description: "Required for TinyFish run start and Kernel browser create"
+        required: false
+        default: ""
+        type: string
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nd-internet-failover-${{ github.event_name }}-${{ inputs.provider || 'status' }}-${{ inputs.request_key || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  health:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [browserless, kernel, tinyfish]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+      - name: Provider tools health probe
+        continue-on-error: true
+        env:
+          ND_PROVIDER: ${{ matrix.provider }}
+          ND_TOOL: __tools__
+          ND_ARGUMENTS_JSON: "{}"
+          BROWSERLESS_API_TOKEN: ${{ secrets.BROWSERLESS_API_TOKEN }}
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+          TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
+        run: python3 tmp/nd_internet_mesh_gha_v1.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nd-internet-health-${{ matrix.provider }}-${{ github.run_id }}
+          path: nd-internet-failover-result.json
+          if-no-files-found: error
+          retention-days: 14
+
+  dispatch:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+      - name: Execute bounded failover call
+        env:
+          ND_PROVIDER: ${{ inputs.provider }}
+          ND_TOOL: ${{ inputs.tool }}
+          ND_ARGUMENTS_JSON: ${{ inputs.arguments_json }}
+          ND_REQUEST_KEY: ${{ inputs.request_key }}
+          BROWSERLESS_API_TOKEN: ${{ secrets.BROWSERLESS_API_TOKEN }}
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+          TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
+        run: python3 tmp/nd_internet_mesh_gha_v1.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nd-internet-failover-result-${{ github.run_id }}
+          path: nd-internet-failover-result.json
+          if-no-files-found: error
+          retention-days: 14
