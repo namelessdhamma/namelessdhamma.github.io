@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import time
+import threading
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -340,7 +341,40 @@ async def doctor_server_info(request: Request):
         print("ND_NOTEBOOKLM_DOCTOR_ERROR server_info", str(exc)[:500], flush=True)
         return JSONResponse({"ok": False, "error": str(exc)[:1000]}, status_code=502)
 
+
+def _startup_semantic_probe():
+    time.sleep(2)
+    try:
+        result = _mcp_call("server_info", {"include_account": False})
+        info = result.get("serverInfo") or {}
+        print(
+            "ND_NOTEBOOKLM_OAUTH_BRIDGE_PROBE "
+            + json.dumps(
+                {
+                    "ok": True,
+                    "provider": "NotebookLM",
+                    "server_name": info.get("name"),
+                    "server_version": info.get("version"),
+                    "cached_provider_token": bool(_load_token()),
+                },
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+    except Exception as exc:
+        print(
+            "ND_NOTEBOOKLM_OAUTH_BRIDGE_PROBE "
+            + json.dumps(
+                {"ok": False, "provider": "NotebookLM", "error": str(exc)[:500]},
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
+
+threading.Thread(target=_startup_semantic_probe, daemon=True).start()
+
 routes = [
+    Route("/health", doctor_health, methods=["GET"]),
     Route("/doctor/health", doctor_health, methods=["GET"]),
     Route("/doctor/notebooks/{token}", doctor_notebooks, methods=["GET"]),
     Route("/doctor/server-info/{token}", doctor_server_info, methods=["GET"]),
