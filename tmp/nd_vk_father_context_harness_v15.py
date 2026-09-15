@@ -17,8 +17,8 @@ WEB_MISSING_HEADER="CURRENT-WORLD VERIFICATION REQUIRED, BUT NO FRESH WEB/TOOL E
 ND_TERMS=('nameless dhamma','nd ','nd-','dhamma','дхамм','ниббан','nibb','satipa','сатипат','vipassan','випассан','пали','pāli','true memory','true research','проект nd')
 CURRENT_TERMS=('сейчас','сегодня','последн','актуальн','текущ','новост','кто сейчас','курс ','погода','расписан','latest','current','today','news')
 CURRENT_ROLE_PATTERNS=(
-    re.compile(r'\bкто\s+(?:является\s+)?(?:нынешн(?:ий|яя|ее)|действующ(?:ий|ая|ее))\b',re.I),
-    re.compile(r'\b(?:нынешн(?:ий|яя|ее)|действующ(?:ий|ая|ее))\s+(?:премьер|президент|глава|министр|мэр|руководител)',re.I),
+    re.compile(r'\bкто\s+(?:является\s+)?(?:нынешн\w*|действующ\w*)\b',re.I),
+    re.compile(r'\b(?:нынешн\w*|действующ\w*)\s+(?:премьер|президент|глава|министр|мэр|руководител)',re.I),
     re.compile(r'\b(?:who\s+is\s+the\s+)?(?:incumbent|present)\s+(?:prime minister|president|mayor|minister)\b',re.I),
 )
 LOW_VALUE_RE=re.compile(r'^(ок|хорошо|понял|спасибо|ага|да|нет|👍|👌)[.! ]*$',re.I)
