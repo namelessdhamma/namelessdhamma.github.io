@@ -654,6 +654,29 @@ def memos_qualification_once():
 
 threading.Thread(target=memos_qualification_once,daemon=True).start()
 
+def memos_mcp_selftest_once():
+    if not MEMOS_MCP_PATH_TOKEN:
+        return
+    time.sleep(7)
+    base='http://127.0.0.1:%d/nd/memory/memos/mcp/%s' % (PORT,urllib.parse.quote(MEMOS_MCP_PATH_TOKEN,safe=''))
+    def call(obj):
+        req=urllib.request.Request(base,data=json.dumps(obj).encode('utf-8'),method='POST',headers={'Content-Type':'application/json','Accept':'application/json'})
+        with urllib.request.urlopen(req,timeout=20) as r:
+            return r.status,json.loads(r.read().decode('utf-8','replace') or '{}')
+    out={'ok':False}
+    try:
+        s1,r1=call({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'nd-memos-selftest','version':'1.0'}}})
+        s2,r2=call({'jsonrpc':'2.0','id':2,'method':'tools/list','params':{}})
+        tools=((r2.get('result') or {}).get('tools') or [])
+        names=[str(x.get('name') or '') for x in tools if isinstance(x,dict)]
+        required={'memos_add_message','memos_search_memory','memos_get_memory','memos_update_memory','memos_delete_memory','memos_core_call'}
+        out={'ok':s1==200 and s2==200 and required.issubset(set(names)),'initialize_status':s1,'tools_status':s2,'tools':names}
+    except Exception as e:
+        out={'ok':False,'error':clean_error(e)}
+    print('ND_MEMOS_MCP_SELFTEST '+json.dumps(out,ensure_ascii=False),flush=True)
+
+threading.Thread(target=memos_mcp_selftest_once,daemon=True).start()
+
 
 def kernel_bootstrap_once():
     if not KERNEL_API_KEY or not ND_KERNEL_BOOTSTRAP_TRIGGER:
