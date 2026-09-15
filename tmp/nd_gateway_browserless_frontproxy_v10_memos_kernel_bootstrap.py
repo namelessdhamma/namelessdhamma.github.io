@@ -507,13 +507,14 @@ if(await target.count()) {
   if(await target.count()) await target.first().click();
 }
 await page.waitForTimeout(2200);
-return {
-  url: page.url(),
-  title: await page.title(),
-  body: (await page.locator('body').innerText()).slice(0,5000),
-  inputs: await page.locator('input').evaluateAll(es => es.map(e => ({type:e.type,placeholder:e.placeholder,name:e.name,value:e.value}))),
-  buttons: await page.locator('button').evaluateAll(es => es.map(e => (e.innerText||e.textContent||'').trim()).filter(Boolean).slice(0,100))
-};
+const pages=context.pages();
+const details=[];
+for (const p of pages) {
+  let body='';
+  try { body=(await p.locator('body').innerText()).slice(0,3500); } catch(e){}
+  details.push({url:p.url(), title:await p.title(), body});
+}
+return {activeUrl:page.url(), pages:details};
 """
         else:
             raise RuntimeError('unknown_kernel_memos_action')
