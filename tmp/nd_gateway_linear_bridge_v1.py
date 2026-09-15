@@ -59,5 +59,9 @@ a2="        if p.startswith('/drive/'):\n            self.drive_forward(); retur
 b2=a2+"""        if p=='/nd/linear/invoke':\n            if not auth_ok(self.headers): self.send_json(403,{'ok':False,'error':'forbidden'}); return\n            try:\n                n=int(self.headers.get('Content-Length','0') or 0); q=json.loads(self.rfile.read(n).decode() or '{}')\n                c,o=linear_call(str(q.get('operation') or ''),str(q.get('tool') or ''),q.get('arguments') or {})\n                self.send_json(c,o); return\n            except Exception as e:\n                self.send_json(400,{'ok':False,'provider':'linear','error':str(e)[:800]}); return\n"""
 assert s.count(a2)==1
 s=s.replace(a2,b2,1)
-exec(compile(s,'nd_gateway_linear_bridge_v1_runtime.py','exec'))
 
+needle="threading.Thread(target=drive_qualify_once,daemon=True).start()"
+if s.count(needle)==1:
+    s=s.replace(needle,"# Drive startup qualification invocation disabled after Generation 8.1 adoption",1)
+
+exec(compile(s,'nd_gateway_linear_bridge_v1_runtime.py','exec'))
