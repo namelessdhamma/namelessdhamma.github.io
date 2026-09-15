@@ -280,9 +280,27 @@ def notebooklm_bootstrap_start(target):
     live=str(session.get('browser_live_view_url') or '')
     if not session_id or not live:
         raise RuntimeError('kernel_session_create:missing_session_or_live_url')
+    preflight={}
+    try:
+        preflight=_kernel_playwright(session_id, """
+await page.waitForTimeout(1200);
+let title=''; let text='';
+try { title=await page.title(); } catch {}
+try { text=(await page.locator('body').innerText()).slice(0,240); } catch {}
+return {url:page.url(),title,text};
+""",30) or {}
+        print('ND_NOTEBOOKLM_KERNEL_PREFLIGHT '+json.dumps({
+            'url':str(preflight.get('url') or '')[:500],
+            'title':str(preflight.get('title') or '')[:200],
+            'text':str(preflight.get('text') or '')[:240]
+        },ensure_ascii=False),flush=True)
+    except Exception as e:
+        print('ND_NOTEBOOKLM_KERNEL_PREFLIGHT '+json.dumps({'error':clean_error(e)},ensure_ascii=False),flush=True)
     NL_BOOTSTRAP[target]={
         'ok':None,'target':target,'phase':'waiting_google','transport':'kernel',
-        'session_id':session_id,'live_url':live,'started_at':int(time.time())
+        'session_id':session_id,'live_url':live,'started_at':int(time.time()),
+        'page_url':str(preflight.get('url') or '')[:500],
+        'page_title':str(preflight.get('title') or '')[:200]
     }
     threading.Thread(target=_kernel_bootstrap_poll,args=(target,session_id),daemon=True).start()
     return live
