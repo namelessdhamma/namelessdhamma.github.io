@@ -17,6 +17,10 @@ MEMOS_USER_ID=os.environ.get('MEMOS_USER_ID','nd-true-memory-qualification').str
 MEMOS_ALLOW_WRITES=os.environ.get('MEMOS_ALLOW_WRITES','false').strip().lower() in ('1','true','yes','on')
 KERNEL_API_KEY=os.environ.get('KERNEL_API_KEY','').strip()
 ND_KERNEL_BOOTSTRAP_TRIGGER=os.environ.get('ND_KERNEL_BOOTSTRAP_TRIGGER','').strip()
+ND_KERNEL_MEMOS_ACTION=os.environ.get('ND_KERNEL_MEMOS_ACTION','').strip()
+ND_KERNEL_MEMOS_SESSION_ID=os.environ.get('ND_KERNEL_MEMOS_SESSION_ID','').strip()
+ND_KERNEL_MEMOS_EMAIL=os.environ.get('ND_KERNEL_MEMOS_EMAIL','').strip()
+ND_KERNEL_MEMOS_CODE=os.environ.get('ND_KERNEL_MEMOS_CODE','').strip()
 ND_NOTEBOOKLM_BOOTSTRAP_KEY=os.environ.get('ND_NOTEBOOKLM_BOOTSTRAP_KEY','').strip()
 ND_NOTEBOOKLM_BOOTSTRAP_SHARED_TOKEN=os.environ.get('ND_NOTEBOOKLM_BOOTSTRAP_SHARED_TOKEN','').strip()
 ND_NOTEBOOKLM_BOOTSTRAP_EXCHANGE_URL=os.environ.get('ND_NOTEBOOKLM_BOOTSTRAP_EXCHANGE_URL','').strip()
@@ -401,6 +405,94 @@ def kernel_bootstrap_once():
         print('ND_KERNEL_MEMOS_BOOTSTRAP '+json.dumps({'ok':False,'error':clean_error(e)},ensure_ascii=False),flush=True)
 
 threading.Thread(target=kernel_bootstrap_once,daemon=True).start()
+
+
+def kernel_playwright_execute(code,timeout_sec=60):
+    if not KERNEL_API_KEY or not ND_KERNEL_MEMOS_SESSION_ID:
+        raise RuntimeError('kernel_action_unconfigured')
+    url='https://api.onkernel.com/browsers/'+urllib.parse.quote(ND_KERNEL_MEMOS_SESSION_ID,safe='')+'/playwright/execute'
+    payload={'code':code,'timeout_sec':timeout_sec}
+    req=urllib.request.Request(
+        url,data=json.dumps(payload).encode('utf-8'),method='POST',
+        headers={
+            'Authorization':'Bearer '+KERNEL_API_KEY,
+            'Content-Type':'application/json',
+            'User-Agent':'ND-Kernel-MemOS-Registration/1.0'
+        })
+    try:
+        with urllib.request.urlopen(req,timeout=timeout_sec+15) as r:
+            return json.loads(r.read().decode('utf-8','replace') or '{}')
+    except HTTPError as e:
+        try: body=e.read().decode('utf-8','replace')[:2000]
+        except Exception: body=''
+        raise RuntimeError('kernel_playwright_http_%s:%s'%(e.code,body or e.reason))
+
+def kernel_memos_action_once():
+    action=ND_KERNEL_MEMOS_ACTION
+    if not action: return
+    time.sleep(2)
+    try:
+        if action=='inspect':
+            code="""
+await page.goto('https://memos-dashboard.openmem.net/', {waitUntil:'domcontentloaded'});
+await page.waitForTimeout(2500);
+return {
+  url: page.url(),
+  title: await page.title(),
+  body: (await page.locator('body').innerText()).slice(0,6000),
+  inputs: await page.locator('input').evaluateAll(es => es.map(e => ({type:e.type, placeholder:e.placeholder, value:e.value, name:e.name}))),
+  buttons: await page.locator('button').evaluateAll(es => es.map(e => (e.innerText||e.textContent||'').trim()).filter(Boolean).slice(0,50))
+};
+"""
+        elif action=='request_code':
+            if not ND_KERNEL_MEMOS_EMAIL: raise RuntimeError('memos_email_missing')
+            email=json.dumps(ND_KERNEL_MEMOS_EMAIL)
+            code=f"""
+await page.goto('https://memos-dashboard.openmem.net/', {{waitUntil:'domcontentloaded'}});
+await page.waitForTimeout(1500);
+const email={email};
+const emailInput=page.locator('input').first();
+await emailInput.fill(email);
+const btn=page.getByRole('button', {{name:/Get verification code/i}});
+await btn.click();
+await page.waitForTimeout(1500);
+return {{url:page.url(), body:(await page.locator('body').innerText()).slice(0,3500)}};
+"""
+        elif action=='submit_code':
+            if not ND_KERNEL_MEMOS_CODE: raise RuntimeError('memos_code_missing')
+            vcode=json.dumps(ND_KERNEL_MEMOS_CODE)
+            code=f"""
+const code={vcode};
+const inputs=page.locator('input');
+const n=await inputs.count();
+if(n<2) throw new Error('verification input not found');
+await inputs.nth(1).fill(code);
+await page.getByRole('button', {{name:/Confirm/i}}).click();
+await page.waitForTimeout(3500);
+return {{url:page.url(), body:(await page.locator('body').innerText()).slice(0,5000)}};
+"""
+        elif action=='inspect_dashboard':
+            code="""
+await page.waitForTimeout(1200);
+return {
+  url: page.url(),
+  title: await page.title(),
+  body: (await page.locator('body').innerText()).slice(0,8000),
+  links: await page.locator('a').evaluateAll(es => es.map(e => ({text:(e.innerText||e.textContent||'').trim(), href:e.href})).filter(x=>x.text||x.href).slice(0,100)),
+  buttons: await page.locator('button').evaluateAll(es => es.map(e => (e.innerText||e.textContent||'').trim()).filter(Boolean).slice(0,100))
+};
+"""
+        else:
+            raise RuntimeError('unknown_kernel_memos_action')
+        obj=kernel_playwright_execute(code,60)
+        # Never log verification code even if echoed by upstream.
+        safe=json.dumps(obj,ensure_ascii=False)
+        if ND_KERNEL_MEMOS_CODE: safe=safe.replace(ND_KERNEL_MEMOS_CODE,'[REDACTED]')
+        print('ND_KERNEL_MEMOS_ACTION '+safe[:12000],flush=True)
+    except Exception as e:
+        print('ND_KERNEL_MEMOS_ACTION '+json.dumps({'success':False,'action':action,'error':clean_error(e)},ensure_ascii=False),flush=True)
+
+threading.Thread(target=kernel_memos_action_once,daemon=True).start()
 
 class H(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
