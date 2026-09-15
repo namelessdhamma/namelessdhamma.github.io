@@ -259,11 +259,35 @@ return { oauth_token: found ? found.value : '', url: page.url(), title };
         except Exception:
             pass
 
+def _kernel_cleanup_old_notebooklm_sessions():
+    try:
+        _,obj=_kernel_json('/browsers','GET',None,timeout=30)
+        items=obj if isinstance(obj,list) else ((obj or {}).get('data') or (obj or {}).get('browsers') or [])
+        cleaned=0
+        for b in (items or []):
+            if not isinstance(b,dict) or b.get('deleted_at'):
+                continue
+            name=str(b.get('name') or '')
+            sid=str(b.get('session_id') or b.get('id') or '')
+            if name.startswith('nd-notebooklm-') and sid:
+                try:
+                    _kernel_json('/browsers/'+urllib.parse.quote(sid,safe=''),'DELETE',None,timeout=20)
+                    cleaned+=1
+                except Exception:
+                    pass
+        if cleaned:
+            print('ND_NOTEBOOKLM_KERNEL_CLEANUP '+json.dumps({'cleaned':cleaned}),flush=True)
+        return cleaned
+    except Exception as e:
+        print('ND_NOTEBOOKLM_KERNEL_CLEANUP '+json.dumps({'cleaned':0,'error':clean_error(e)},ensure_ascii=False),flush=True)
+        return 0
+
 def notebooklm_bootstrap_start(target):
     if target not in ('railway','render'):
         raise RuntimeError('invalid_target')
     if not KERNEL_API_KEY:
         raise RuntimeError('kernel_not_configured')
+    _kernel_cleanup_old_notebooklm_sessions()
     name='nd-notebooklm-'+target+'-'+str(int(time.time()))
     payload={
         'stealth':True,
