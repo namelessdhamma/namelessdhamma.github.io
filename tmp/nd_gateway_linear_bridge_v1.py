@@ -1,29 +1,19 @@
-import urllib.request
+import urllib.request, json
 
+print('ND_LINEAR_BRIDGE_WRAPPER_BOOT {"version":"v1.1"}',flush=True)
 U='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/61bc11a0025e0c4b32dc555d9248ff87261dd7f8/tmp/nd_gateway_browserless_frontproxy_v10_memos_kernel_bootstrap.py'
 s=urllib.request.urlopen(U,timeout=30).read().decode()
 
 a="OPENROUTER_MODEL=os.environ.get('OPENROUTER_MODEL','openrouter/free').strip()\n"
-b=a+"LINEAR_API_KEY=os.environ.get('ND_LINEAR_API_KEY','').strip()\nLINEAR_BRIDGE_TOKEN=os.environ.get('ND_LINEAR_BRIDGE_TOKEN','').strip()\nLINEAR_MCP_URL='https://mcp.linear.app/mcp'\n"
+b=a+"LINEAR_API_KEY=os.environ.get('ND_LINEAR_API_KEY','').strip()\nLINEAR_MCP_URL='https://mcp.linear.app/mcp'\n"
 assert s.count(a)==1
 s=s.replace(a,b,1)
 
 anchor='def memos_http(path,payload):\n'
 code=r'''
-def linear_auth_ok(headers):
-    if auth_ok(headers): return True
-    if not LINEAR_BRIDGE_TOKEN: return False
-    cookie=str(headers.get('Cookie') or '')
-    for part in cookie.split(';'):
-        if '=' not in part: continue
-        k,v=part.split('=',1)
-        if k.strip()=='nd_linear_bridge' and v.strip()==LINEAR_BRIDGE_TOKEN:
-            return True
-    return False
-
 def linear_post(payload,sid=None):
     if not LINEAR_API_KEY: raise RuntimeError('linear_not_configured')
-    h={'Authorization':'Bearer '+LINEAR_API_KEY,'Content-Type':'application/json','Accept':'application/json, text/event-stream','User-Agent':'ND-Railway-Linear/1.0'}
+    h={'Authorization':'Bearer '+LINEAR_API_KEY,'Content-Type':'application/json','Accept':'application/json, text/event-stream','User-Agent':'ND-Railway-Linear/1.1'}
     if sid:
         h['Mcp-Session-Id']=sid; h['MCP-Protocol-Version']='2025-06-18'
     req=urllib.request.Request(LINEAR_MCP_URL,data=json.dumps(payload).encode(),method='POST',headers=h)
@@ -45,7 +35,7 @@ def linear_post(payload,sid=None):
 
 def linear_call(op,tool='',args=None):
     try:
-        c,sid,hello=linear_post({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'ND Railway Linear','version':'1.0'}}})
+        c,sid,hello=linear_post({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2025-06-18','capabilities':{},'clientInfo':{'name':'ND Railway Linear','version':'1.1'}}})
         if c!=200: raise RuntimeError('linear_initialize_failed')
         linear_post({'jsonrpc':'2.0','method':'notifications/initialized','params':{}},sid)
         if op=='tools_list':
@@ -64,7 +54,7 @@ def linear_call(op,tool='',args=None):
 
 def linear_qualification_once():
     time.sleep(6)
-    result={'configured':bool(LINEAR_API_KEY),'bridge_auth':bool(LINEAR_BRIDGE_TOKEN)}
+    result={'configured':bool(LINEAR_API_KEY)}
     try:
         c1,o1=linear_call('tools_list')
         tools=((((o1.get('response') or {}).get('result') or {}).get('tools')) or [])
@@ -82,7 +72,7 @@ assert s.count(anchor)==1
 s=s.replace(anchor,code+anchor,1)
 
 a2="        if p.startswith('/drive/'):\n            self.drive_forward(); return\n"
-b2=a2+"""        if p=='/nd/linear/invoke':\n            if not linear_auth_ok(self.headers): self.send_json(403,{'ok':False,'error':'forbidden'}); return\n            try:\n                n=int(self.headers.get('Content-Length','0') or 0); q=json.loads(self.rfile.read(n).decode() or '{}')\n                c,o=linear_call(str(q.get('operation') or ''),str(q.get('tool') or ''),q.get('arguments') or {})\n                self.send_json(c,o); return\n            except Exception as e:\n                self.send_json(400,{'ok':False,'provider':'linear','error':str(e)[:800]}); return\n"""
+b2=a2+"""        if p=='/nd/linear/invoke':\n            if not auth_ok(self.headers): self.send_json(403,{'ok':False,'error':'forbidden'}); return\n            try:\n                n=int(self.headers.get('Content-Length','0') or 0); q=json.loads(self.rfile.read(n).decode() or '{}')\n                c,o=linear_call(str(q.get('operation') or ''),str(q.get('tool') or ''),q.get('arguments') or {})\n                self.send_json(c,o); return\n            except Exception as e:\n                self.send_json(400,{'ok':False,'provider':'linear','error':str(e)[:800]}); return\n"""
 assert s.count(a2)==1
 s=s.replace(a2,b2,1)
 
@@ -90,5 +80,5 @@ needle="threading.Thread(target=drive_qualify_once,daemon=True).start()"
 if s.count(needle)==1:
     s=s.replace(needle,"# Drive startup qualification invocation disabled after Generation 8.1 adoption",1)
 
-print('ND_LINEAR_WRAPPER_PATCH endpoint=%s selftest=%s env=%s bridge=%s' % ('/nd/linear/invoke' in s,'ND_LINEAR_RAILWAY_QUALIFICATION' in s,'ND_LINEAR_API_KEY' in s,'ND_LINEAR_BRIDGE_TOKEN' in s),flush=True)
+print('ND_LINEAR_BRIDGE_PATCH_READY '+json.dumps({'endpoint':('/nd/linear/invoke' in s),'credential_env':('ND_LINEAR_API_KEY' in s)}),flush=True)
 exec(compile(s,'nd_gateway_linear_bridge_v1_runtime.py','exec'))
