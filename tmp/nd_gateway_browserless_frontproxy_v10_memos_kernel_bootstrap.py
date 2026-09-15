@@ -885,6 +885,8 @@ return {url:page.url(),scripts:scripts.slice(0,40),matches:out};
 
 threading.Thread(target=kernel_memos_action_once,daemon=True).start()
 
+GEMINI_GITHUB_RELAY_URL='https://zkbmkhpyrddsiuynjgzd.supabase.co/functions/v1/nd-gemini-mcp/github'
+
 class H(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
     def send_json(self,code,obj):
@@ -1071,12 +1073,52 @@ class H(BaseHTTPRequestHandler):
         token=auth[7:].strip()
         if len(token)<20: self.send_json(400,{'ok':False,'error':'invalid_token_shape'}); return True
         BROWSERLESS_TOKEN=token; self.send_json(200,{'ok':True,'configured':True,'persistence':'process_memory'}); return True
+    def gemini_github_relay(self):
+        p=self.path.split('?',1)[0]
+        if p!='/gemini/github': return False
+        try:
+            n=int(self.headers.get('Content-Length','0') or 0)
+            if n<0 or n>524288:
+                self.send_json(413,{'ok':False,'error':'request_too_large'}); return True
+            body=self.rfile.read(n) if n else b'{}'
+            auth=(self.headers.get('Authorization') or '').strip()
+            if not auth.startswith('Bearer '):
+                self.send_json(401,{'ok':False,'error':'missing_oidc_bearer'}); return True
+            req=urllib.request.Request(
+                GEMINI_GITHUB_RELAY_URL,
+                data=body,
+                method='POST',
+                headers={
+                    'Authorization':auth,
+                    'Content-Type':'application/json',
+                    'Accept':'application/json',
+                    'User-Agent':'ND-Gemini-Railway-Relay/1.0'
+                }
+            )
+            try:
+                with urllib.request.urlopen(req,timeout=180) as r:
+                    raw=r.read()
+                    try: obj=json.loads(raw.decode('utf-8','replace') or '{}')
+                    except Exception: obj={'ok':False,'error':'invalid_upstream_json'}
+                    if isinstance(obj,dict):
+                        obj.setdefault('relay','railway_to_supabase')
+                    self.send_json(r.status,obj); return True
+            except HTTPError as e:
+                raw=e.read().decode('utf-8','replace')
+                try: obj=json.loads(raw or '{}')
+                except Exception: obj={'ok':False,'error':'upstream_http_'+str(e.code)}
+                if isinstance(obj,dict): obj.setdefault('relay','railway_to_supabase')
+                self.send_json(e.code,obj); return True
+        except Exception as e:
+            self.send_json(502,{'ok':False,'error':'gemini_relay_unavailable','detail':clean_error(e),'relay':'railway_to_supabase'}); return True
+
     def do_POST(self):
         p=self.path.split('?',1)[0]
         if p.startswith('/drive/'):
             self.drive_forward(); return
         if self.memos_mcp(): return
         if self.memos_post(): return
+        if self.gemini_github_relay(): return
         if self.bootstrap_browserless(): return
         if p=='/nd/router/request':
             if not auth_ok(self.headers): self.send_json(403,{'ok':False,'error':'forbidden'}); return
