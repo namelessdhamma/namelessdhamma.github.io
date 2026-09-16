@@ -1,0 +1,19 @@
+name: ND YouTube MCP Node Qualification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  nodecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/youtube-full-mcp-v01
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check tmp/nd_youtube_full_mcp_server_v01.mjs
+      - run: |
+          cp tmp/nd_youtube_full_mcp_server_v01.mjs /tmp/nd-state-refresh-v2.js
+          node --check /tmp/nd-state-refresh-v2.js
