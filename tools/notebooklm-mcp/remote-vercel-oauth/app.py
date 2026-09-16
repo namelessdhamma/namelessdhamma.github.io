@@ -201,21 +201,16 @@ def _drive_create_json_sync(
         },
         separators=(",", ":"),
     ).encode("utf-8")
+    crlf = bytes([13, 10])
+    bnd = boundary.encode("ascii")
     body = (
-        ("--" + boundary + "
-Content-Type: application/json; charset=UTF-8
-
-").encode("ascii")
-        + meta
-        + ("
---" + boundary + "
-Content-Type: application/json
-
-").encode("ascii")
-        + content
-        + ("
---" + boundary + "--
-").encode("ascii")
+        b"--" + bnd + crlf
+        + b"Content-Type: application/json; charset=UTF-8" + crlf + crlf
+        + meta + crlf
+        + b"--" + bnd + crlf
+        + b"Content-Type: application/json" + crlf + crlf
+        + content + crlf
+        + b"--" + bnd + b"--" + crlf
     )
     url = (
         "https://www.googleapis.com/upload/drive/v3/files"
