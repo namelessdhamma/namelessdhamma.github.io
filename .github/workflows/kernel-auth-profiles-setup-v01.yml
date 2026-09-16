@@ -22,7 +22,7 @@ jobs:
         env:
           ND_PROVIDER: kernel
           ND_TOOL: manage_profiles
-          ND_ARGUMENTS_JSON: '{"action":"setup","profile_name":"nd-social-google","update_existing":true,"context":"Creating a persistent browser profile for one-time Google login so YouTube remains available as an independent browser fallback."}'
+          ND_ARGUMENTS_JSON: '{"action":"setup","profile_name":"nd-social-google","context":"Creating a persistent browser profile for one-time Google login so YouTube remains available as an independent browser fallback."}'
           KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
         run: |
           python3 tmp/nd_internet_mesh_gha_v1.py
