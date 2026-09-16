@@ -1,0 +1,99 @@
+name: ND Kernel Linear Finalize
+
+on:
+  push:
+    branches:
+      - qualify/social-gateway-v01
+    paths:
+      - '.github/workflows/kernel-linear-finalize-v01.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+      - name: Persist and verify Linear Kernel profile
+        env:
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          sys.path.insert(0,'tmp')
+          import nd_internet_mesh_gha_v1 as m
+
+          result={}
+          live_sid='mljgucdugscb2fw8r3ycp3pa'
+
+          # Read current page before closing, then delete session to persist profile.
+          try:
+              result['live_page']=m.call_tool('kernel','execute_playwright_code',{
+                  'session_id':live_sid,
+                  'code':"""await page.waitForTimeout(500); const body=(await page.locator('body').innerText()).slice(0,3000); return {url:page.url(), title:await page.title(), body};""",
+                  'context':'Checking the completed Linear login page before closing the setup browser and saving its authenticated state into the persistent profile.'
+              })
+          except Exception as e:
+              result['live_page_error']=str(e)
+
+          try:
+              result['saved']=m.call_tool('kernel','manage_browsers',{
+                  'action':'delete',
+                  'session_id':live_sid,
+                  'context':'Closing the completed Linear authorization browser so its cookies and authenticated workspace state are saved to the persistent profile.'
+              })
+          except Exception as e:
+              result['save_error']=str(e)
+
+          # Fresh browser from saved profile.
+          verify=m.call_tool('kernel','manage_browsers',{
+              'action':'create',
+              'name':'nd-linear-verify',
+              'profile_name':'nd-linear',
+              'save_profile_changes':False,
+              'start_url':'https://linear.app/namelessdhamma',
+              'headless':True,
+              'timeout_seconds':180,
+              'telemetry_enabled':False,
+              'context':'Opening a fresh browser from the saved Linear profile to verify authentication persists independently across browser sessions.'
+          })
+          result['verify_create']=verify
+
+          def deep(o,k):
+              if isinstance(o,dict):
+                  if o.get(k): return o[k]
+                  for v in o.values():
+                      z=deep(v,k)
+                      if z: return z
+              if isinstance(o,list):
+                  for v in o:
+                      z=deep(v,k)
+                      if z: return z
+              return None
+
+          sid=deep(verify,'session_id')
+          if not sid:
+              raise RuntimeError('verify_session_id_missing')
+
+          try:
+              result['verify']=m.call_tool('kernel','execute_playwright_code',{
+                  'session_id':sid,
+                  'code':"""await page.waitForTimeout(2200); const body=(await page.locator('body').innerText()).slice(0,4000); return {url:page.url(), title:await page.title(), body};""",
+                  'context':'Inspecting the fresh Linear workspace page to confirm persistent authentication without asking the user to sign in again.'
+              })
+          finally:
+              try:
+                  result['verify_cleanup']=m.call_tool('kernel','manage_browsers',{
+                      'action':'delete',
+                      'session_id':sid,
+                      'context':'Deleting the temporary Linear verification browser after confirming profile persistence so no unnecessary session remains active.'
+                  })
+              except Exception as e:
+                  result['verify_cleanup_error']=str(e)
+
+          print(json.dumps(result,ensure_ascii=False))
+          PY
