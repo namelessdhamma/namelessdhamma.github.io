@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - notebooklm-remote-mcp
+      - qualify/social-vercel-mcp-v01
     paths:
       - 'tools/notebooklm-mcp/remote-vercel/**'
       - '.github/workflows/notebooklm-remote-mcp-ci.yml'
