@@ -1,0 +1,28 @@
+name: ND Kernel Auth Bootstrap Discovery
+
+on:
+  push:
+    branches:
+      - qualify/social-gateway-v01
+    paths:
+      - '.github/workflows/kernel-auth-bootstrap-v01.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+      - name: Discover Kernel MCP tools
+        env:
+          ND_PROVIDER: kernel
+          ND_TOOL: __tools__
+          ND_ARGUMENTS_JSON: '{}'
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: python3 tmp/nd_internet_mesh_gha_v1.py
