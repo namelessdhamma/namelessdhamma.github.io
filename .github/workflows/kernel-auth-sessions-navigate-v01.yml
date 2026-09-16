@@ -1,0 +1,65 @@
+name: ND Kernel Auth Sessions Navigate
+
+on:
+  push:
+    branches:
+      - qualify/social-gateway-v01
+    paths:
+      - '.github/workflows/kernel-auth-sessions-navigate-v01.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  navigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+      - name: Navigate active Kernel setup sessions
+        env:
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          sys.path.insert(0, 'tmp')
+          import nd_internet_mesh_gha_v1 as m
+
+          def find_session(profile):
+              out=m.call_tool('kernel','manage_browsers',{
+                  'action':'list',
+                  'query':profile,
+                  'status':'active',
+                  'limit':20,
+                  'context':'Finding the active profile-setup browser so it can be placed on the correct provider login page before user authorization.'
+              })
+              items=[]
+              def walk(x):
+                  if isinstance(x,dict):
+                      if x.get('session_id') and (x.get('profile_name')==profile or profile in json.dumps(x)):
+                          items.append(x)
+                      for v in x.values(): walk(v)
+                  elif isinstance(x,list):
+                      for v in x: walk(v)
+              walk(out)
+              if not items:
+                  raise RuntimeError('active session not found for '+profile)
+              return str(items[0]['session_id'])
+
+          jobs=[
+              ('nd-social-google','https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fwww.youtube.com%2F'),
+              ('nd-linear','https://linear.app/namelessdhamma')
+          ]
+          result={}
+          for profile,url in jobs:
+              sid=find_session(profile)
+              nav=m.call_tool('kernel','execute_playwright_code',{
+                  'session_id':sid,
+                  'code':f"""await page.goto({json.dumps(url)}, {{waitUntil:'domcontentloaded'}}); await page.waitForTimeout(1200); return {{url:page.url(), title:await page.title()}};""",
+                  'context':'Navigating a persistent authorization session to its provider login page before the user completes the one-time sign-in.'
+              })
+              result[profile]={'navigated':True,'page':nav}
+          print(json.dumps(result,ensure_ascii=False))
+          PY
