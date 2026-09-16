@@ -75,7 +75,7 @@ def read_probes():
     probes={}
     probes['business']=_read(BUSINESS_ID,'id,name') if BUSINESS_ID else {'ok':False,'error':'missing_business_id','outcome':'CONFIRMED_NOT_APPLIED'}
     probes['page']=_read(PAGE_ID,'id,name,username') if PAGE_ID else {'ok':False,'error':'missing_page_id','outcome':'CONFIRMED_NOT_APPLIED'}
-    probes['instagram']=_read(IG_ID,'id,username,account_type,media_count') if IG_ID else {'ok':False,'error':'missing_instagram_id','outcome':'CONFIRMED_NOT_APPLIED'}
+    probes['instagram']=_read(IG_ID,'id,username,media_count') if IG_ID else {'ok':False,'error':'missing_instagram_id','outcome':'CONFIRMED_NOT_APPLIED'}
     probes['ads']=_read(AD_ACCOUNT_ID,'id,name,account_id,account_status,currency,timezone_name') if AD_ACCOUNT_ID else {'ok':False,'error':'missing_ad_account_id','outcome':'CONFIRMED_NOT_APPLIED'}
     ok=all(bool(v.get('ok')) for v in probes.values())
     return {'ok':ok,'route':'railway','provider':'meta','graph_version':GRAPH_VERSION,'probes':probes}
