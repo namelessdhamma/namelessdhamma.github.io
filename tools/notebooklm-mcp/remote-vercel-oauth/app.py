@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -130,6 +131,178 @@ async def _drive_http(method: str, url: str, payload: dict | None = None) -> dic
     bearer = await _mint_drive_bearer()
     try:
         return await asyncio.to_thread(_drive_http_sync, bearer, method, url, payload)
+    finally:
+        bearer = ""
+
+
+def _drive_file_bytes_sync(bearer: str, file_id: str) -> bytes:
+    url = (
+        "https://www.googleapis.com/drive/v3/files/"
+        + urllib.parse.quote(file_id, safe="")
+        + "?alt=media&supportsAllDrives=true"
+    )
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={
+            "Authorization": "Bearer " + bearer,
+            "User-Agent": "nd-true-memory-canonical-io/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        raise RuntimeError("google_drive_read_" + str(exc.code) + ":" + body[:900]) from None
+
+
+async def _drive_file_bytes(file_id: str) -> bytes:
+    bearer = await _mint_drive_bearer()
+    try:
+        return await asyncio.to_thread(_drive_file_bytes_sync, bearer, file_id)
+    finally:
+        bearer = ""
+
+
+async def _drive_read_canonical_json(args: dict) -> dict:
+    file_id = str(args.get("file_id") or "").strip()
+    allowed = {
+        _DRIVE_CANONICAL_TARGETS["registry"],
+    }
+    if file_id not in allowed:
+        raise RuntimeError("canonical_read_target_denied")
+    raw = await _drive_file_bytes(file_id)
+    if len(raw) > 500000:
+        raise RuntimeError("canonical_file_too_large")
+    text = raw.decode("utf-8-sig")
+    parsed = json.loads(text)
+    return {
+        "file_id": file_id,
+        "byte_length": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "text": text,
+        "parsed": parsed,
+    }
+
+
+def _drive_create_json_sync(
+    bearer: str,
+    name: str,
+    parent_id: str,
+    content: bytes,
+) -> dict:
+    boundary = "ndcanonicalboundary"
+    meta = json.dumps(
+        {
+            "name": name,
+            "mimeType": "application/json",
+            "parents": [parent_id],
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    body = (
+        ("--" + boundary + "
+Content-Type: application/json; charset=UTF-8
+
+").encode("ascii")
+        + meta
+        + ("
+--" + boundary + "
+Content-Type: application/json
+
+").encode("ascii")
+        + content
+        + ("
+--" + boundary + "--
+").encode("ascii")
+    )
+    url = (
+        "https://www.googleapis.com/upload/drive/v3/files"
+        "?uploadType=multipart&supportsAllDrives=true"
+        "&fields=id,name,mimeType,modifiedTime,version,parents,md5Checksum,sha1Checksum,sha256Checksum,webViewLink"
+    )
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": "Bearer " + bearer,
+            "Content-Type": "multipart/related; boundary=" + boundary,
+            "Content-Length": str(len(body)),
+            "User-Agent": "nd-true-memory-canonical-io/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as response:
+            return json.loads(response.read().decode("utf-8", "replace") or "{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise RuntimeError("google_drive_create_" + str(exc.code) + ":" + detail[:900]) from None
+
+
+def _drive_delete_sync(bearer: str, file_id: str) -> None:
+    url = (
+        "https://www.googleapis.com/drive/v3/files/"
+        + urllib.parse.quote(file_id, safe="")
+        + "?supportsAllDrives=true"
+    )
+    req = urllib.request.Request(
+        url,
+        method="DELETE",
+        headers={
+            "Authorization": "Bearer " + bearer,
+            "User-Agent": "nd-true-memory-canonical-io/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60):
+            return
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise RuntimeError("google_drive_delete_" + str(exc.code) + ":" + detail[:900]) from None
+
+
+async def _drive_create_immutable_json(args: dict) -> dict:
+    if args.get("confirm") is not True:
+        raise RuntimeError("confirm_required")
+    name = str(args.get("name") or "").strip()
+    if not re.fullmatch(r"ND_[A-Za-z0-9_.-]{1,180}\.json", name):
+        raise RuntimeError("invalid_canonical_json_name")
+    content_text = str(args.get("content") or "")
+    raw = content_text.encode("utf-8")
+    if not raw or len(raw) > 500000:
+        raise RuntimeError("invalid_canonical_json_content")
+    json.loads(content_text)
+    parent_id = _DRIVE_CANONICAL_TARGETS["durable_root"]
+    bearer = await _mint_drive_bearer()
+    created_id = ""
+    try:
+        meta = await asyncio.to_thread(
+            _drive_create_json_sync,
+            bearer,
+            name,
+            parent_id,
+            raw,
+        )
+        created_id = str(meta.get("id") or "")
+        if not created_id:
+            raise RuntimeError("drive_create_missing_id")
+        readback = await asyncio.to_thread(_drive_file_bytes_sync, bearer, created_id)
+        if readback != raw:
+            await asyncio.to_thread(_drive_delete_sync, bearer, created_id)
+            created_id = ""
+            raise RuntimeError("drive_create_readback_mismatch")
+        sha256 = hashlib.sha256(readback).hexdigest()
+        return {
+            "file_id": created_id,
+            "name": name,
+            "parent_id": parent_id,
+            "byte_length": len(readback),
+            "sha256": sha256,
+            "metadata": meta,
+            "readback_exact": True,
+        }
     finally:
         bearer = ""
 
@@ -471,6 +644,12 @@ async def github_bridge(request: Request) -> JSONResponse:
         async with client_factory() as client:
             if operation == "drive_permissions_audit":
                 result = await _drive_permissions_audit()
+
+            elif operation == "drive_read_canonical_json":
+                result = await _drive_read_canonical_json(args)
+
+            elif operation == "drive_create_immutable_json":
+                result = await _drive_create_immutable_json(args)
 
             elif operation == "drive_repair_railway_rw":
                 result = await _drive_repair_railway_rw(args)
