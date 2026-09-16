@@ -1,0 +1,38 @@
+{
+  "version": "0.1",
+  "provider": "linear",
+  "role": "independent_browser_fallback",
+  "canonical_account": "namelessdhamma@gmail.com",
+  "workspace": "Nameless Dhamma",
+  "workspace_url": "https://linear.app/namelessdhamma",
+  "kernel_profile": {
+    "name": "nd-linear",
+    "save_changes": true,
+    "managed_auth": false,
+    "reason": "Preserve one of the three free Managed Auth connections; plain profile persistence is sufficient for fallback qualification."
+  },
+  "qualification": [
+    "Launch Kernel browser with profile nd-linear and save_changes=true.",
+    "User completes Linear login in Live View only if the profile is not already authenticated.",
+    "Run nd_kernel_linear_profile_probe_v01.js and require ok=true.",
+    "Close the browser explicitly.",
+    "Launch a second fresh browser with the same nd-linear profile.",
+    "Run the same probe again; require ok=true without another login.",
+    "Only then mark Kernel Linear route AUTH_PERSISTENCE_PASS."
+  ],
+  "existing_routes": [
+    {
+      "route": "native_chatgpt_linear",
+      "state": "LIVE"
+    },
+    {
+      "route": "github_official_linear_mcp",
+      "state": "QUALIFIED_ACTIVE_FAILOVER"
+    },
+    {
+      "route": "railway_linear_credential",
+      "state": "CONFIGURED_READ_QUALIFIED"
+    }
+  ],
+  "writes": "Do not use Kernel for Linear mutations until a separate reversible write/readback qualification is explicitly run."
+}
