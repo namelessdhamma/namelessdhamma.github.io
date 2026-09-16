@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 const PORT=Number(process.env.PORT||5678);
+const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v2-20260916';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 const ROUTE=String(process.env.ND_YANDEX_MCP_ROUTE_TOKEN||'').trim();
 const YANDEX_MCP_PATH=ROUTE?'/yandex/mcp/'+ROUTE:'';
@@ -231,7 +232,10 @@ const muxServer=http.createServer(async(req,res)=>{
     }
 
     if(path==='/youtube/qualification'){
-      return j(res,ytQualification.state==="fail"?503:200,ytQualification);
+      return j(res,ytQualification.state==="fail"?503:200,{...ytQualification,code_rev:ND_YOUTUBE_MUX_CODE_REV});
+    }
+    if(path==='/youtube/qualification-v2'){
+      return j(res,ytQualification.state==="fail"?503:200,{...ytQualification,code_rev:ND_YOUTUBE_MUX_CODE_REV});
     }
 
 
@@ -284,7 +288,9 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   yandex_tools:yandexTools().length,
   youtube_configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),
   youtube_writes:YT_WRITES,
-  youtube_tools:YT_TOOLS.length
+  youtube_tools:YT_TOOLS.length,
+  code_rev:ND_YOUTUBE_MUX_CODE_REV,
+  qualification_rev:YT_QUALIFY_REV||null
 }));
 muxServer.listen(PORT,'0.0.0.0');
 setTimeout(runYoutubeQualification,2000);
