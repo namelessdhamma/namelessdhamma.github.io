@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "generated_for": "ND Social Gateway Stage 2",
+  "identity": {
+    "email": "namelessdhamma@gmail.com",
+    "handle": "@namelessdhamma"
+  },
+  "direct_host": {
+    "provider": "vercel",
+    "project_name": "nd-notebooklm-remote-mcp",
+    "project_id": "prj_XjtiN9GvRiq5ixFqf1iz0yoL0JEM",
+    "base_url": "https://nd-notebooklm-remote-mcp.vercel.app",
+    "mcp_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/mcp"
+  },
+  "providers": {
+    "youtube": {
+      "state": "READY_FOR_AUTH",
+      "official_api": true,
+      "auth_mode": "oauth2_authorization_code_refresh_token",
+      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/oauth/youtube/callback",
+      "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+      "token_url": "https://oauth2.googleapis.com/token",
+      "scopes": [
+        "https://www.googleapis.com/auth/youtube.force-ssl",
+        "https://www.googleapis.com/auth/youtube.upload",
+        "https://www.googleapis.com/auth/yt-analytics.readonly"
+      ],
+      "required_secrets": [
+        "ND_YOUTUBE_CLIENT_ID",
+        "ND_YOUTUBE_CLIENT_SECRET",
+        "ND_YOUTUBE_REFRESH_TOKEN"
+      ],
+      "required_ids": [
+        "ND_YOUTUBE_CHANNEL_ID"
+      ],
+      "manual_action": "Authorize the new canonical ND YouTube channel under namelessdhamma@gmail.com.",
+      "notes": [
+        "Use offline access and consent so a refresh token is issued.",
+        "Legacy personal YouTube channel is excluded from production publishing."
+      ]
+    },
+    "telegram": {
+      "state": "READY_FOR_TOKEN",
+      "official_api": true,
+      "auth_mode": "bot_token",
+      "api_base": "https://api.telegram.org",
+      "required_secrets": [
+        "ND_TELEGRAM_BOT_TOKEN"
+      ],
+      "required_ids": [
+        "ND_TELEGRAM_CHANNEL_ID"
+      ],
+      "discovery_hint": "@namelessdhamma",
+      "manual_action": "Create or reuse an ND bot in @BotFather and grant it the minimum required admin rights on @namelessdhamma.",
+      "notes": [
+        "Bot username must end in bot; channel username remains @namelessdhamma."
+      ]
+    },
+    "instagram": {
+      "state": "READY_FOR_AUTH",
+      "official_api": true,
+      "auth_group": "meta",
+      "auth_mode": "meta_oauth_shared_with_facebook",
+      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/oauth/meta/callback",
+      "required_secrets": [
+        "ND_META_APP_ID",
+        "ND_META_APP_SECRET",
+        "ND_META_USER_ACCESS_TOKEN"
+      ],
+      "required_ids": [
+        "ND_INSTAGRAM_USER_ID",
+        "ND_FACEBOOK_PAGE_ID"
+      ],
+      "scopes": [
+        "instagram_basic",
+        "instagram_content_publish",
+        "instagram_manage_comments",
+        "instagram_manage_insights",
+        "pages_show_list",
+        "pages_read_engagement"
+      ],
+      "manual_action": "Authorize the Meta app once; select the Facebook Page connected to the @namelessdhamma Instagram professional account.",
+      "notes": [
+        "Facebook and Instagram share one Meta app/OAuth flow."
+      ]
+    },
+    "facebook": {
+      "state": "READY_FOR_AUTH",
+      "official_api": true,
+      "auth_group": "meta",
+      "auth_mode": "meta_oauth_shared_with_instagram",
+      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/oauth/meta/callback",
+      "required_secrets": [
+        "ND_META_APP_ID",
+        "ND_META_APP_SECRET",
+        "ND_META_USER_ACCESS_TOKEN"
+      ],
+      "required_ids": [
+        "ND_FACEBOOK_PAGE_ID"
+      ],
+      "scopes": [
+        "pages_show_list",
+        "pages_read_engagement",
+        "pages_manage_posts",
+        "read_insights"
+      ],
+      "manual_action": "Authorize the same Meta app used for Instagram and select the ND Facebook Page.",
+      "notes": [
+        "No second Meta login should be required if the shared flow succeeds."
+      ]
+    },
+    "tiktok": {
+      "state": "READY_FOR_APP_AUTH",
+      "official_api": true,
+      "auth_mode": "oauth2_authorization_code_refresh_token",
+      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/oauth/tiktok/callback",
+      "authorize_url": "https://www.tiktok.com/v2/auth/authorize/",
+      "token_url": "https://open.tiktokapis.com/v2/oauth/token/",
+      "scopes": [
+        "user.info.basic",
+        "user.info.stats",
+        "video.list",
+        "video.publish",
+        "video.upload"
+      ],
+      "required_secrets": [
+        "ND_TIKTOK_CLIENT_KEY",
+        "ND_TIKTOK_CLIENT_SECRET",
+        "ND_TIKTOK_REFRESH_TOKEN"
+      ],
+      "required_ids": [
+        "ND_TIKTOK_OPEN_ID"
+      ],
+      "manual_action": "Register/authorize the ND TikTok developer app and grant requested scopes to @namelessdhamma.",
+      "notes": [
+        "Public Direct Post requires TikTok approval/audit; unaudited clients are restricted for direct-post visibility."
+      ]
+    },
+    "vk": {
+      "state": "READY_FOR_CREDENTIAL_BINDING",
+      "official_api": true,
+      "auth_mode": "community_access_token",
+      "required_secrets": [
+        "VK_GROUP_TOKEN"
+      ],
+      "required_ids": [
+        "VK_GROUP_ID"
+      ],
+      "discovery_hint": "@namelessdhamma",
+      "manual_action": "None expected if the existing ND VK community token remains valid; bind the already-existing credential to the direct Vercel route.",
+      "notes": [
+        "Do not create a new VK service or app unless credential recovery proves impossible."
+      ]
+    },
+    "line": {
+      "state": "READY_FOR_CHANNEL_AUTH",
+      "official_api": true,
+      "auth_mode": "messaging_api_channel_access_token",
+      "api_base": "https://api.line.me",
+      "required_secrets": [
+        "ND_LINE_CHANNEL_ACCESS_TOKEN",
+        "ND_LINE_CHANNEL_SECRET"
+      ],
+      "required_ids": [
+        "ND_LINE_CHANNEL_ID"
+      ],
+      "discovery_hint": "@namelessdhamma",
+      "manual_action": "Enable Messaging API on the existing ND LINE Official Account and issue a channel access token.",
+      "notes": [
+        "Reuse the existing LINE Official Account; do not create another account."
+      ]
+    },
+    "dzen": {
+      "state": "READY_FOR_SESSION_AUTH_EXPERIMENTAL",
+      "official_api": false,
+      "auth_mode": "authenticated_session_cookie",
+      "api_base": "https://dzen.ru/editor-api/",
+      "required_secrets": [
+        "ND_DZEN_SESSION_BUNDLE"
+      ],
+      "required_ids": [
+        "ND_DZEN_CHANNEL_ID"
+      ],
+      "discovery_hint": "@namelessdhamma",
+      "manual_action": "Authenticate the existing ND Dzen account once; capture a bounded reusable session only after explicit qualification.",
+      "notes": [
+        "No current public official publishing API was confirmed.",
+        "Direct route is experimental and uses undocumented editor-api semantics.",
+        "It must fail closed if session/endpoint behavior changes; Kernel remains the independent UI fallback."
+      ]
+    }
+  }
+}
