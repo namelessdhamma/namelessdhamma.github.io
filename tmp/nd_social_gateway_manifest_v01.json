@@ -303,8 +303,8 @@
     "project_name": "nd-notebooklm-remote-mcp",
     "project_id": "prj_XjtiN9GvRiq5ixFqf1iz0yoL0JEM",
     "production_domain": "https://nd-notebooklm-remote-mcp.vercel.app",
-    "mcp_path": "/social/mcp",
-    "oauth_callback_prefix": "/social/oauth",
+    "mcp_path": "/api/social-mcp",
+    "oauth_callback_prefix": "/api/social-oauth",
     "deployment_state": "NOT_MODIFIED_IN_STAGE_2"
   }
 }
