@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "gateway_id": "nd-social-gateway",
+  "gateway_version": "0.1.0-qualification",
+  "authority": "True SMM",
+  "execution_policy": {
+    "host_reuse_first": true,
+    "new_railway_service_allowed": false,
+    "failed_route_is_not_failed_capability": true,
+    "route_order": ["direct_mcp", "github", "railway", "kernel"],
+    "browserless_enabled": false,
+    "tinyfish_enabled": false
+  },
+  "operations": [
+    "status",
+    "account",
+    "publish",
+    "schedule",
+    "edit",
+    "delete",
+    "metrics",
+    "comments"
+  ],
+  "providers": {
+    "youtube": {
+      "canonical_account": "ND_NEW_CHANNEL",
+      "adapter_family": "youtube_data_api",
+      "operations": ["status","account","publish","schedule","edit","delete","metrics","comments"],
+      "routes": {
+        "direct_mcp": {"state":"AWAITING_AUTH","transport":"ChatGPT Developer Mode / remote MCP"},
+        "github": {"state":"PLANNED","transport":"GitHub control transport"},
+        "railway": {"state":"PLANNED","transport":"existing nd-qstash-control-v2"},
+        "kernel": {"state":"PLANNED","transport":"authenticated Kernel profile"}
+      }
+    },
+    "telegram": {
+      "canonical_account": "ND_TELEGRAM",
+      "adapter_family": "telegram_bot_api",
+      "operations": ["status","account","publish","schedule","edit","delete","metrics","comments"],
+      "routes": {
+        "direct_mcp": {"state":"AWAITING_AUTH","transport":"direct Telegram MCP/API adapter"},
+        "github": {"state":"PLANNED","transport":"GitHub control transport"},
+        "railway": {"state":"PLANNED","transport":"existing nd-qstash-control-v2"},
+        "kernel": {"state":"PLANNED","transport":"authenticated Kernel profile"}
+      }
+    },
+    "instagram": {
+      "canonical_account": "ND_INSTAGRAM",
+      "adapter_family": "meta_instagram_graph_api",
+      "operations": ["status","account","publish","schedule","edit","delete","metrics","comments"],
+      "routes": {
+        "direct_mcp": {"state":"AWAITING_AUTH","transport":"ChatGPT Developer Mode / Meta-compatible MCP"},
+        "github": {"state":"PLANNED","transport":"GitHub control transport"},
+        "railway": {"state":"PLANNED","transport":"existing nd-qstash-control-v2"},
+        "kernel": {"state":"PLANNED","transport":"authenticated Kernel profile"}
+      }
+    },
+    "facebook": {
+      "canonical_account": "ND_FACEBOOK_PAGE",
+      "adapter_family": "meta_graph_api",
+      "operations": ["status","account","publish","schedule","edit","delete","metrics","comments"],
+      "routes": {
+        "direct_mcp": {"state":"AWAITING_AUTH","transport":"ChatGPT Developer Mode / Meta-compatible MCP"},
+        "github": {"state":"PLANNED","transport":"GitHub control transport"},
+        "railway": {"state":"PLANNED","transport":"existing nd-qstash-control-v2"},
+        "kernel": {"state":"PLANNED","transport":"authenticated Kernel profile"}
+      }
+    },
+    "tiktok": {
+      "canonical_account": "ND_TIKTOK",
+      "adapter_family": "tiktok_content_posting_api",
+      "operations": ["status","account","publish","schedule","edit","delete","metrics","comments"],
+      "routes": {
+        "direct_mcp": {"state":"AWAITING_AUTH","transport":"ChatGPT Developer Mode / TikTok MCP or API adapter"},
+        "github": {"state":"PLANNED","transport":"GitHub control transport"},
+        "railway": {"state":"PLANNED","transport":"existing nd-qstash-control-v2"},
+        "kernel": {"state":"PLANNED","transport":"authenticated Kernel profile"}
+      }
+    },
+    "vk": {
+      "canonical_account": "ND_VK",
+      "adapter_family": "existing_nd_vk_gateway",
+      "operations": ["status","account","publish","schedule","edit","delete","metrics","comments"],
+      "routes": {
+        "direct_mcp": {"state":"REPAIR_REQUIRED","transport":"existing direct VK MCP"},
+        "github": {"state":"EXISTS_UNQUALIFIED_FOR_SMM","transport":"existing GitHub/VK control path"},
+        "railway": {"state":"EXISTS_UNQUALIFIED_FOR_SMM","transport":"existing ND VK runtime in Railway"},
+        "kernel": {"state":"PLANNED","transport":"authenticated Kernel profile"}
+      }
+    },
+    "line": {
+      "canonical_account": "ND_LINE_OFFICIAL",
+      "adapter_family": "line_messaging_api",
+      "operations": ["status","account","publish","schedule","edit","delete","metrics","comments"],
+      "routes": {
+        "direct_mcp": {"state":"AWAITING_AUTH","transport":"direct LINE MCP/API adapter"},
+        "github": {"state":"PLANNED","transport":"GitHub control transport"},
+        "railway": {"state":"PLANNED","transport":"existing nd-qstash-control-v2"},
+        "kernel": {"state":"PLANNED","transport":"authenticated Kernel profile"}
+      }
+    },
+    "dzen": {
+      "canonical_account": "ND_DZEN",
+      "adapter_family": "dzen_hybrid",
+      "operations": ["status","account","publish","schedule","edit","delete","metrics","comments"],
+      "routes": {
+        "direct_mcp": {"state":"UNRESOLVED","transport":"direct MCP/API if qualified"},
+        "github": {"state":"PLANNED","transport":"GitHub control transport to qualified adapter"},
+        "railway": {"state":"PLANNED","transport":"existing nd-qstash-control-v2"},
+        "kernel": {"state":"PLANNED","transport":"authenticated Kernel profile"}
+      }
+    }
+  }
+}
