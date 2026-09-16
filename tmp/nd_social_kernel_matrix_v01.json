@@ -1,0 +1,52 @@
+{
+  "version": "0.1",
+  "route": "kernel",
+  "profile_policy": "named_profile_save_changes",
+  "profiles": {
+    "youtube": {
+      "profile": "nd-social-google",
+      "start_url": "https://console.cloud.google.com/",
+      "kernel_status": "SUPPORTED_CANDIDATE"
+    },
+    "telegram": {
+      "profile": "nd-social-telegram",
+      "start_url": "https://web.telegram.org/",
+      "kernel_status": "UNQUALIFIED"
+    },
+    "instagram": {
+      "profile": null,
+      "start_url": "https://www.instagram.com/",
+      "kernel_status": "KNOWN_UNSUPPORTED_BY_KERNEL"
+    },
+    "facebook": {
+      "profile": null,
+      "start_url": "https://www.facebook.com/",
+      "kernel_status": "KNOWN_UNSUPPORTED_BY_KERNEL"
+    },
+    "tiktok": {
+      "profile": "nd-social-tiktok",
+      "start_url": "https://www.tiktok.com/",
+      "kernel_status": "UNQUALIFIED"
+    },
+    "vk": {
+      "profile": "nd-social-vk",
+      "start_url": "https://vk.com/",
+      "kernel_status": "UNQUALIFIED"
+    },
+    "line": {
+      "profile": "nd-social-line",
+      "start_url": "https://manager.line.biz/",
+      "kernel_status": "UNQUALIFIED"
+    },
+    "dzen": {
+      "profile": "nd-social-dzen",
+      "start_url": "https://dzen.ru/",
+      "kernel_status": "UNQUALIFIED"
+    }
+  },
+  "notes": [
+    "Kernel Profiles persist cookies, local storage and session state between browser runs.",
+    "Profiles should be created once and browser sessions launched with save_changes enabled during authorization.",
+    "Facebook and Instagram are listed by Kernel as unsupported websites; do not claim route PASS."
+  ]
+}
