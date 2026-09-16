@@ -1,4 +1,4 @@
-import urllib.request
+import urllib.request, os
 BASE='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/4861bf8228e4e4f19f7db98ef1970c4f41338cb6/tmp/nd_gateway_linear_bridge_v1.py'
 src=urllib.request.urlopen(BASE,timeout=30).read().decode('utf-8')
 load_marker="s=urllib.request.urlopen(U,timeout=30).read().decode()\n"
