@@ -9,6 +9,7 @@ assert wrapper.count(target)==1
 
 inject=r"""
 # ---- ND Social Kernel auth bootstrap v0.1 ----
+import base64
 ND_SOCIAL_KERNEL_BOOTSTRAP_TRIGGER=os.environ.get('ND_SOCIAL_KERNEL_BOOTSTRAP_TRIGGER','').strip()
 ND_SOCIAL_KERNEL_PROVIDER=os.environ.get('ND_SOCIAL_KERNEL_PROVIDER','').strip().lower()
 ND_SOCIAL_KERNEL_START_URL=os.environ.get('ND_SOCIAL_KERNEL_START_URL','').strip()
