@@ -168,6 +168,44 @@ async function youtubeMcp(req,res){
 }
 async function youtubeHealth(){try{const x=await channel(),s=x.snippet||{},st=x.statistics||{};return {ok:true,service:"nd-youtube-full-mcp",read_write:YT_WRITES,channel:{id:x.id,title:s.title,customUrl:s.customUrl,subscriberCount:st.subscriberCount,videoCount:st.videoCount,viewCount:st.viewCount}};}catch(e){return {ok:false,service:"nd-youtube-full-mcp",error:cleanErr(e)};}}
 
+const YT_QUALIFY_REV=String(process.env.ND_YOUTUBE_QUALIFY_REV||"").trim();
+let ytQualification={state:YT_QUALIFY_REV?"pending":"disabled",rev:YT_QUALIFY_REV||null};
+
+async function runYoutubeQualification(){
+  if(!YT_QUALIFY_REV)return;
+  let playlistId="";
+  const title="ND MCP QUALIFICATION "+Date.now();
+  try{
+    const created=await yapi("POST","playlists",{part:"snippet,status"},{snippet:{title,description:"Temporary private playlist for ND YouTube MCP reversible write qualification."},status:{privacyStatus:"private"}});
+    playlistId=String(created?.id||"");
+    if(!playlistId)throw new Error("qualification_create_missing_id");
+    const readback=await yapi("GET","playlists",{part:"id,snippet,status",id:playlistId});
+    const item=readback?.items?.[0];
+    if(!item||item.id!==playlistId)throw new Error("qualification_readback_missing");
+    if(item?.status?.privacyStatus!=="private")throw new Error("qualification_not_private");
+    await yapi("DELETE","playlists",{id:playlistId});
+    const after=await yapi("GET","playlists",{part:"id",id:playlistId});
+    if((after?.items||[]).length)throw new Error("qualification_delete_readback_failed");
+    ytQualification={
+      state:"pass",
+      rev:YT_QUALIFY_REV,
+      created_private:true,
+      readback:true,
+      deleted:true,
+      delete_readback:true,
+      playlist_id:playlistId,
+      title
+    };
+    console.log("ND_YOUTUBE_REVERSIBLE_WRITE_QUALIFICATION",JSON.stringify(ytQualification));
+  }catch(e){
+    if(playlistId){
+      try{await yapi("DELETE","playlists",{id:playlistId});}catch{}
+    }
+    ytQualification={state:"fail",rev:YT_QUALIFY_REV,error:cleanErr(e),cleanup_attempted:Boolean(playlistId)};
+    console.error("ND_YOUTUBE_REVERSIBLE_WRITE_QUALIFICATION",JSON.stringify(ytQualification));
+  }
+}
+
 
 
 
@@ -190,6 +228,10 @@ const muxServer=http.createServer(async(req,res)=>{
     if(path==='/youtube/health'){
       const h=await youtubeHealth();
       return j(res,h.ok?200:503,h);
+    }
+
+    if(path==='/youtube/qualification'){
+      return j(res,ytQualification.state==="fail"?503:200,ytQualification);
     }
 
 
@@ -245,3 +287,5 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   youtube_tools:YT_TOOLS.length
 }));
 muxServer.listen(PORT,'0.0.0.0');
+setTimeout(runYoutubeQualification,2000);
+
