@@ -7,6 +7,9 @@ on:
     paths:
       - 'tmp/nd_social_gateway_*'
       - 'tmp/nd_social_direct_*'
+      - 'tmp/nd_social_kernel_*'
+      - 'tmp/nd_social_provider_*'
+      - 'tmp/nd_social_railway_*'
       - '.github/workflows/nd-social-gateway-qualification.yml'
   workflow_dispatch:
 
