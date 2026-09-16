@@ -1,6 +1,6 @@
-import {createServer} from "node:http";
-import {spawn} from "node:child_process";
-import {writeFile} from "node:fs/promises";
+const {createServer}=require("node:http");
+const {spawn}=require("node:child_process");
+const {writeFile}=require("node:fs/promises");
 
 const PORT=Number(process.env.N8N_PORT||process.env.PORT||5678);
 const PATH_TOKEN=String(process.env.ND_YOUTUBE_MCP_PATH_TOKEN||"").trim();
