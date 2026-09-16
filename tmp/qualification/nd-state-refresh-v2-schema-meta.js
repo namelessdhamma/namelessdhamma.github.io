@@ -268,7 +268,8 @@ if(prev&&prev.source_signature===sourceSig&&prev.semantic){
   'domains must contain architecture,research,literature,visual,development,tooling; each has status,summary,open_gaps,next_step,evidence_level.',
   'tasks items: owner,status,title_th,title_en,summary_th,summary_en. Allowed owner: True Research, True Memory, True Developer, True Writer, True Visual, True SMM, True Version, ND Agent.',
   'human keys: now_th,now_en,changes_th,changes_en,architecture_th,architecture_en,research_th,research_en,literature_th,literature_en,visual_th,visual_en,automation_th,automation_en,obsidian_th,obsidian_en.',
-  'Human fields and task titles/summaries must contain no Cyrillic. Thai first, English duplicate. Be concise.'
+  'Human fields and task titles/summaries must contain no Cyrillic. Thai first, English duplicate. Be concise.',
+  'Every field ending in _th, including task title_th and summary_th, MUST contain actual Thai script characters (U+0E00-U+0E7F). Never use English-only text or romanized Thai in any *_th field.'
  ].join('\n');
  try{
   const mr=await ai(sys,JSON.stringify(compactEvidence),JSON.stringify(emergencyEvidence));
@@ -287,6 +288,7 @@ if(prev&&prev.source_signature===sourceSig&&prev.semantic){
   }
   if(!noCyr(JSON.stringify(x.tasks))||!noCyr(JSON.stringify(x.human)))throw new Error('MODEL_CYRILLIC');
   for(const k of Object.keys(x.human).filter(k=>k.endsWith('_th')))if(!hasThai(x.human[k]))throw new Error('MODEL_THAI_'+k);
+  for(const [i,t] of x.tasks.entries())for(const k of ['title_th','summary_th'])if(!hasThai(t&&t[k]))throw new Error('MODEL_THAI_TASK_'+i+'_'+k);
   semantic=x;model={provider:mr.provider,model:mr.model};semanticRefresh='MODEL_REFRESHED';
  }catch(e){
   console.error('MODEL_SYNTHESIS_FALLBACK',String(e).slice(0,500));
