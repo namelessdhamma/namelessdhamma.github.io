@@ -1,0 +1,125 @@
+name: ND Kernel Auth Repair
+
+on:
+  push:
+    branches:
+      - qualify/social-gateway-v01
+    paths:
+      - '.github/workflows/kernel-auth-repair-v01.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+      - name: Repair Google profile and create long-lived Linear session
+        env:
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          sys.path.insert(0,'tmp')
+          import nd_internet_mesh_gha_v1 as m
+
+          result={}
+
+          # 1) Google: inspect known setup session if still active, then close to persist.
+          google_setup_sid='is2dxfugbkorewzowt8xvkgp'
+          try:
+              g=m.call_tool('kernel','manage_browsers',{
+                  'action':'get',
+                  'session_id':google_setup_sid,
+                  'context':'Checking whether the completed Google authorization setup session is still active before persisting its browser profile safely.'
+              })
+              result['google_setup_get']=g
+              try:
+                  snap=m.call_tool('kernel','execute_playwright_code',{
+                      'session_id':google_setup_sid,
+                      'code':"""await page.waitForTimeout(500); return {url:page.url(), title:await page.title()};""",
+                      'context':'Reading only the current page identity to confirm the Google setup session reached an authenticated provider page before saving.'
+                  })
+                  result['google_setup_page']=snap
+              except Exception as e:
+                  result['google_setup_page_error']=str(e)
+              try:
+                  d=m.call_tool('kernel','manage_browsers',{
+                      'action':'delete',
+                      'session_id':google_setup_sid,
+                      'context':'Closing the completed Google setup browser so its authenticated cookies and login state are saved to the persistent profile.'
+                  })
+                  result['google_setup_saved']=d
+              except Exception as e:
+                  result['google_setup_delete_error']=str(e)
+          except Exception as e:
+              result['google_setup_get_error']=str(e)
+
+          # 2) Verify saved Google profile in a fresh browser.
+          try:
+              gv=m.call_tool('kernel','manage_browsers',{
+                  'action':'create',
+                  'name':'nd-social-google-verify',
+                  'profile_name':'nd-social-google',
+                  'save_profile_changes':False,
+                  'start_url':'https://www.youtube.com/account',
+                  'headless':True,
+                  'timeout_seconds':180,
+                  'telemetry_enabled':False,
+                  'context':'Opening a fresh browser from the saved Google profile to verify that YouTube authentication persisted across browser sessions.'
+              })
+              def deep(o,k):
+                  if isinstance(o,dict):
+                      if o.get(k): return o[k]
+                      for v in o.values():
+                          z=deep(v,k)
+                          if z: return z
+                  if isinstance(o,list):
+                      for v in o:
+                          z=deep(v,k)
+                          if z: return z
+                  return None
+              gsid=deep(gv,'session_id')
+              result['google_verify_create']=gv
+              if gsid:
+                  try:
+                      chk=m.call_tool('kernel','execute_playwright_code',{
+                          'session_id':gsid,
+                          'code':"""await page.waitForTimeout(1800); const body=(await page.locator('body').innerText()).slice(0,2500); return {url:page.url(), title:await page.title(), body};""",
+                          'context':'Inspecting the fresh YouTube page to confirm the persistent Google profile is authenticated without asking the user to sign in again.'
+                      })
+                      result['google_verify']=chk
+                  finally:
+                      try:
+                          m.call_tool('kernel','manage_browsers',{
+                              'action':'delete','session_id':gsid,
+                              'context':'Deleting the temporary YouTube verification browser after checking profile persistence so no unnecessary session remains active.'
+                          })
+                      except Exception as e:
+                          result['google_verify_cleanup_error']=str(e)
+          except Exception as e:
+              result['google_verify_error']=str(e)
+
+          # 3) Linear: create a long-lived visible browser tied to persistent profile.
+          try:
+              lin=m.call_tool('kernel','manage_browsers',{
+                  'action':'create',
+                  'name':'nd-linear-auth-live',
+                  'profile_name':'nd-linear',
+                  'save_profile_changes':True,
+                  'start_url':'https://linear.app/namelessdhamma',
+                  'headless':False,
+                  'timeout_seconds':7200,
+                  'telemetry_enabled':False,
+                  'context':'Creating a long-lived visible Linear authorization browser that will save login state into the persistent recovery profile after sign-in.'
+              })
+              result['linear_live']=lin
+          except Exception as e:
+              result['linear_live_error']=str(e)
+
+          print(json.dumps(result,ensure_ascii=False))
+          PY
