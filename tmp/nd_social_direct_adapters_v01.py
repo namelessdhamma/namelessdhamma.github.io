@@ -135,7 +135,7 @@ def structural_selftest() -> Dict[str,Any]:
     host=cat.get("direct_host") or {}
     if host.get("project_name")!="nd-notebooklm-remote-mcp":
         failures.append("direct_host_reuse")
-    if host.get("mcp_url")!="https://nd-notebooklm-remote-mcp.vercel.app/social/mcp":
+    if host.get("mcp_url")!="https://nd-notebooklm-remote-mcp.vercel.app/api/social-mcp":
         failures.append("mcp_url")
     for p in PROVIDERS:
         spec=cat["providers"][p]
