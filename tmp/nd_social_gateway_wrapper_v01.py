@@ -49,7 +49,7 @@ assert s.count(_get_anchor)==1
 s=s.replace(_get_anchor,_get_repl,1)
 
 _post_anchor="        if p=='/nd/linear/invoke':\n"
-_post_repl="""        if p=='/nd/social/resolve':
+_post_repl='''        if p=='/nd/social/resolve':
             if not auth_ok(self.headers): self.send_json(403,{'ok':False,'error':'forbidden'}); return
             try:
                 n=int(self.headers.get('Content-Length','0') or 0)
@@ -62,7 +62,7 @@ _post_repl="""        if p=='/nd/social/resolve':
             except Exception as e:
                 self.send_json(400,{'ok':False,'provider':'nd-social-gateway','error':str(e)[:800]}); return
         if p=='/nd/linear/invoke':
-"""
+'''
 assert s.count(_post_anchor)==1
 s=s.replace(_post_anchor,_post_repl,1)
 
