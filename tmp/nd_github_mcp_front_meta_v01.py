@@ -3,7 +3,7 @@ import urllib.request
 BASE='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/cbd3279fa9fa0eec25609a438883d9660077d681/tmp/nd_github_mcp_front_v1.py'
 src=urllib.request.urlopen(BASE,timeout=30).read().decode('utf-8')
 old="UPSTREAM='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/6c051774bffff04055a9479d7b95178f5fd9fb60/tmp/nd_gateway_linear_bridge_v2b_father_profile.py'"
-new="UPSTREAM='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/40808f91b0f15d27aa573ef64542d0b2e89ad1e1/tmp/nd_meta_inner_wrapper_v01.py'"
+new="UPSTREAM='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/183b2e6a90f02bdfb6e75e13139a58e639d99b7e/tmp/nd_meta_inner_wrapper_v01.py'"
 if src.count(old)!=1:
     raise RuntimeError('current GitHub MCP front upstream marker not found exactly once')
 src=src.replace(old,new,1)
