@@ -1,0 +1,44 @@
+name: ND Kernel Auth Profiles Setup
+
+on:
+  push:
+    branches:
+      - qualify/social-gateway-v01
+    paths:
+      - '.github/workflows/kernel-auth-profiles-setup-v01.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+      - name: Setup Google YouTube persistent profile
+        env:
+          ND_PROVIDER: kernel
+          ND_TOOL: manage_profiles
+          ND_ARGUMENTS_JSON: '{"action":"setup","profile_name":"nd-social-google","update_existing":true,"context":"Creating a persistent browser profile for one-time Google login so YouTube remains available as an independent browser fallback."}'
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: |
+          python3 tmp/nd_internet_mesh_gha_v1.py
+          cp nd-internet-failover-result.json /tmp/google.json
+      - name: Setup Linear persistent profile
+        env:
+          ND_PROVIDER: kernel
+          ND_TOOL: manage_profiles
+          ND_ARGUMENTS_JSON: '{"action":"setup","profile_name":"nd-linear","update_existing":true,"context":"Creating a persistent browser profile for one-time Linear login so the workspace has an independent authenticated browser fallback."}'
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: |
+          python3 tmp/nd_internet_mesh_gha_v1.py
+          cp nd-internet-failover-result.json /tmp/linear.json
+      - name: Emit setup results
+        run: |
+          echo '=== GOOGLE_PROFILE_SETUP ==='
+          cat /tmp/google.json
+          echo '=== LINEAR_PROFILE_SETUP ==='
+          cat /tmp/linear.json
