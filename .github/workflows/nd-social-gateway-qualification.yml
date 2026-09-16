@@ -27,7 +27,10 @@ jobs:
           python -m py_compile tmp/nd_social_gateway_core_v01.py
           python -m py_compile tmp/nd_social_gateway_wrapper_v01.py
           python -m py_compile tmp/nd_social_direct_adapters_v01.py
+          python -m py_compile tmp/nd_social_direct_protocol_v01.py
       - name: Run gateway structural self-test
         run: python tmp/nd_social_gateway_selftest_v01.py
       - name: Run direct-adapter Stage 2 self-test
         run: python tmp/nd_social_direct_selftest_v01.py
+      - name: Run Direct MCP protocol self-test
+        run: python tmp/nd_social_direct_protocol_selftest_v01.py
