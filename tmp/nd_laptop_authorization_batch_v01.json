@@ -1,0 +1,88 @@
+{
+  "version": "0.1",
+  "purpose": "Laptop authorization batch for ND social providers plus independent Linear browser fallback.",
+  "identity": {
+    "email": "namelessdhamma@gmail.com",
+    "handle": "@namelessdhamma"
+  },
+  "sequence": [
+    {
+      "order": 1,
+      "target": "youtube",
+      "type": "social_provider_oauth",
+      "manual_goal": "Authorize canonical ND YouTube under namelessdhamma@gmail.com and obtain refreshable OAuth credentials.",
+      "kernel_profile": "nd-social-google",
+      "start_url": "https://console.cloud.google.com/"
+    },
+    {
+      "order": 2,
+      "target": "meta",
+      "type": "social_provider_oauth",
+      "providers": [
+        "facebook",
+        "instagram"
+      ],
+      "manual_goal": "Authorize one shared Meta app for ND Facebook Page + @namelessdhamma Instagram professional account.",
+      "kernel_profile": null,
+      "note": "Kernel is not used for Facebook/Instagram because Kernel documents these websites as unsupported."
+    },
+    {
+      "order": 3,
+      "target": "telegram",
+      "type": "social_provider_token",
+      "manual_goal": "Create/reuse ND bot and grant required rights on @namelessdhamma.",
+      "kernel_profile": "nd-social-telegram",
+      "start_url": "https://web.telegram.org/"
+    },
+    {
+      "order": 4,
+      "target": "tiktok",
+      "type": "social_provider_oauth",
+      "manual_goal": "Authorize/register ND TikTok developer app and Content Posting scopes.",
+      "kernel_profile": "nd-social-tiktok",
+      "start_url": "https://www.tiktok.com/"
+    },
+    {
+      "order": 5,
+      "target": "line",
+      "type": "social_provider_channel_auth",
+      "manual_goal": "Enable Messaging API on existing ND LINE Official Account and issue channel credentials.",
+      "kernel_profile": "nd-social-line",
+      "start_url": "https://manager.line.biz/"
+    },
+    {
+      "order": 6,
+      "target": "dzen",
+      "type": "social_provider_session",
+      "manual_goal": "Authenticate ND Dzen account and capture bounded reusable session for experimental direct route.",
+      "kernel_profile": "nd-social-dzen",
+      "start_url": "https://dzen.ru/"
+    },
+    {
+      "order": 7,
+      "target": "linear",
+      "type": "independent_browser_fallback",
+      "manual_goal": "Log into the already-existing Nameless Dhamma Linear workspace in a persistent Kernel profile. No new Linear app/API credential is required.",
+      "kernel_profile": "nd-linear",
+      "start_url": "https://linear.app/namelessdhamma",
+      "existing_routes": [
+        "native ChatGPT Linear connector",
+        "GitHub provider gateway -> official Linear MCP",
+        "Railway ND_LINEAR_API_KEY route"
+      ],
+      "desired_new_route": "Kernel persistent authenticated browser profile",
+      "note": "This is resilience qualification only; native Linear remains primary."
+    }
+  ],
+  "vk": {
+    "manual_auth_expected": false,
+    "action": "First reuse and qualify existing VK_GROUP_TOKEN. Ask for manual reauthorization only if proven unusable."
+  },
+  "rules": [
+    "Do not create duplicate accounts or apps when an existing provider identity/app can be reused.",
+    "Persist secrets only in provider/runtime secret stores; never in source files or chat.",
+    "After each auth, immediately run read/account verification before proceeding.",
+    "Browser profiles use save_changes=true and are closed explicitly after session-state verification.",
+    "Public writes remain disabled until provider-specific write qualification."
+  ]
+}
