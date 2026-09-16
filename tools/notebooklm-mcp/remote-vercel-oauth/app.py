@@ -169,6 +169,7 @@ async def _drive_read_canonical_json(args: dict) -> dict:
     file_id = str(args.get("file_id") or "").strip()
     allowed = {
         _DRIVE_CANONICAL_TARGETS["registry"],
+        "1NOSIIePt_ykCs1nDU4A4sEWKpVEfvtW1",
     }
     if file_id not in allowed:
         raise RuntimeError("canonical_read_target_denied")
