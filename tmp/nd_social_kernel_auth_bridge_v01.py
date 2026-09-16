@@ -14,13 +14,42 @@ ND_SOCIAL_KERNEL_BOOTSTRAP_TRIGGER=os.environ.get('ND_SOCIAL_KERNEL_BOOTSTRAP_TR
 ND_SOCIAL_KERNEL_PROVIDER=os.environ.get('ND_SOCIAL_KERNEL_PROVIDER','').strip().lower()
 ND_SOCIAL_KERNEL_START_URL=os.environ.get('ND_SOCIAL_KERNEL_START_URL','').strip()
 ND_SOCIAL_KERNEL_SESSION_ID=os.environ.get('ND_SOCIAL_KERNEL_SESSION_ID','').strip()
+ND_SOCIAL_KERNEL_PROFILE=os.environ.get('ND_SOCIAL_KERNEL_PROFILE','').strip()
+ND_SOCIAL_KERNEL_CLOSE_SESSION_ID=os.environ.get('ND_SOCIAL_KERNEL_CLOSE_SESSION_ID','').strip()
 ND_SOCIAL_KERNEL_ACTION_B64=os.environ.get('ND_SOCIAL_KERNEL_ACTION_B64','').strip()
 ND_SOCIAL_KERNEL_ACTION_REV=os.environ.get('ND_SOCIAL_KERNEL_ACTION_REV','').strip()
+
+def social_kernel_profile_ensure(name):
+    if not name:
+        return ''
+    try:
+        _,obj=_kernel_json('/profiles','GET',None,timeout=30)
+        items=obj if isinstance(obj,list) else ((obj or {}).get('data') or (obj or {}).get('profiles') or [])
+        for p in (items or []):
+            if isinstance(p,dict) and str(p.get('name') or '')==name:
+                return name
+        _kernel_json('/profiles','POST',{'name':name},timeout=30)
+        return name
+    except Exception as e:
+        msg=clean_error(e)
+        if '409' in msg:
+            return name
+        raise
+
+def social_kernel_close_once():
+    if not KERNEL_API_KEY or not ND_SOCIAL_KERNEL_CLOSE_SESSION_ID:
+        return
+    try:
+        _kernel_json('/browsers/'+urllib.parse.quote(ND_SOCIAL_KERNEL_CLOSE_SESSION_ID,safe=''),'DELETE',None,timeout=30)
+        print('ND_SOCIAL_KERNEL_CLOSE '+json.dumps({'ok':True,'session_id':ND_SOCIAL_KERNEL_CLOSE_SESSION_ID}),flush=True)
+    except Exception as e:
+        print('ND_SOCIAL_KERNEL_CLOSE '+json.dumps({'ok':False,'session_id':ND_SOCIAL_KERNEL_CLOSE_SESSION_ID,'error':clean_error(e)},ensure_ascii=False),flush=True)
 
 def social_kernel_bootstrap_once():
     if not KERNEL_API_KEY or not ND_SOCIAL_KERNEL_BOOTSTRAP_TRIGGER or not ND_SOCIAL_KERNEL_START_URL:
         return
     provider=(ND_SOCIAL_KERNEL_PROVIDER or 'generic')[:40]
+    profile=(ND_SOCIAL_KERNEL_PROFILE or ('nd-social-'+provider))[:100]
     suffix=ND_SOCIAL_KERNEL_BOOTSTRAP_TRIGGER[-12:]
     name='nd-social-auth-'+provider+'-'+suffix
     try:
@@ -39,12 +68,14 @@ def social_kernel_bootstrap_once():
                         'timeout_seconds':b.get('timeout_seconds')
                     },ensure_ascii=False),flush=True)
                     return
+        social_kernel_profile_ensure(profile)
         payload={
             'stealth':True,
             'headless':False,
             'timeout_seconds':7200,
             'start_url':ND_SOCIAL_KERNEL_START_URL,
-            'name':name
+            'name':name,
+            'profile':{'name':profile,'save_changes':True}
         }
         _,obj=_kernel_json('/browsers','POST',payload,timeout=60)
         print('ND_SOCIAL_KERNEL_AUTH_BOOTSTRAP '+json.dumps({
@@ -79,6 +110,7 @@ def social_kernel_action_once():
             'session_id':ND_SOCIAL_KERNEL_SESSION_ID,'error':clean_error(e)
         },ensure_ascii=False),flush=True)
 
+threading.Thread(target=social_kernel_close_once,daemon=True).start()
 threading.Thread(target=social_kernel_bootstrap_once,daemon=True).start()
 threading.Thread(target=social_kernel_action_once,daemon=True).start()
 # ---- end social kernel auth bootstrap ----
