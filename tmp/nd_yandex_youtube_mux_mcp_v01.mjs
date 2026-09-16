@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 const PORT=Number(process.env.PORT||5678);
-const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v2-20260916';
+const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v3-20260916';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 const ROUTE=String(process.env.ND_YANDEX_MCP_ROUTE_TOKEN||'').trim();
 const YANDEX_MCP_PATH=ROUTE?'/yandex/mcp/'+ROUTE:'';
@@ -180,13 +180,23 @@ async function runYoutubeQualification(){
     const created=await yapi("POST","playlists",{part:"snippet,status"},{snippet:{title,description:"Temporary private playlist for ND YouTube MCP reversible write qualification."},status:{privacyStatus:"private"}});
     playlistId=String(created?.id||"");
     if(!playlistId)throw new Error("qualification_create_missing_id");
-    const readback=await yapi("GET","playlists",{part:"id,snippet,status",id:playlistId});
-    const item=readback?.items?.[0];
-    if(!item||item.id!==playlistId)throw new Error("qualification_readback_missing");
+    let item=null;
+    for(let attempt=0;attempt<6;attempt++){
+      if(attempt)await new Promise(r=>setTimeout(r,1000));
+      const readback=await yapi("GET","playlists",{part:"id,snippet,status",id:playlistId});
+      item=readback?.items?.[0]||null;
+      if(item?.id===playlistId)break;
+    }
+    if(!item||item.id!==playlistId)throw new Error("qualification_readback_missing_after_retry");
     if(item?.status?.privacyStatus!=="private")throw new Error("qualification_not_private");
     await yapi("DELETE","playlists",{id:playlistId});
-    const after=await yapi("GET","playlists",{part:"id",id:playlistId});
-    if((after?.items||[]).length)throw new Error("qualification_delete_readback_failed");
+    let deleted=false;
+    for(let attempt=0;attempt<6;attempt++){
+      if(attempt)await new Promise(r=>setTimeout(r,1000));
+      const after=await yapi("GET","playlists",{part:"id",id:playlistId});
+      if(!(after?.items||[]).length){deleted=true;break;}
+    }
+    if(!deleted)throw new Error("qualification_delete_readback_failed_after_retry");
     ytQualification={
       state:"pass",
       rev:YT_QUALIFY_REV,
