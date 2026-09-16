@@ -1,0 +1,29 @@
+name: ND Social Gateway Qualification
+
+on:
+  push:
+    branches:
+      - qualify/social-gateway-v01
+    paths:
+      - 'tmp/nd_social_gateway_*'
+      - '.github/workflows/nd-social-gateway-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  structural-qualification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile social gateway modules
+        run: |
+          python -m py_compile tmp/nd_social_gateway_core_v01.py
+          python -m py_compile tmp/nd_social_gateway_wrapper_v01.py
+      - name: Run structural self-test
+        run: python tmp/nd_social_gateway_selftest_v01.py
