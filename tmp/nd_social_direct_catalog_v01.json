@@ -10,14 +10,14 @@
     "project_name": "nd-notebooklm-remote-mcp",
     "project_id": "prj_XjtiN9GvRiq5ixFqf1iz0yoL0JEM",
     "base_url": "https://nd-notebooklm-remote-mcp.vercel.app",
-    "mcp_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/mcp"
+    "mcp_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/social-mcp"
   },
   "providers": {
     "youtube": {
       "state": "READY_FOR_AUTH",
       "official_api": true,
       "auth_mode": "oauth2_authorization_code_refresh_token",
-      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/oauth/youtube/callback",
+      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/social-oauth/youtube/callback",
       "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
       "token_url": "https://oauth2.googleapis.com/token",
       "scopes": [
@@ -61,7 +61,7 @@
       "official_api": true,
       "auth_group": "meta",
       "auth_mode": "meta_oauth_shared_with_facebook",
-      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/oauth/meta/callback",
+      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/social-oauth/meta/callback",
       "required_secrets": [
         "ND_META_APP_ID",
         "ND_META_APP_SECRET",
@@ -89,7 +89,7 @@
       "official_api": true,
       "auth_group": "meta",
       "auth_mode": "meta_oauth_shared_with_instagram",
-      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/oauth/meta/callback",
+      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/social-oauth/meta/callback",
       "required_secrets": [
         "ND_META_APP_ID",
         "ND_META_APP_SECRET",
@@ -113,7 +113,7 @@
       "state": "READY_FOR_APP_AUTH",
       "official_api": true,
       "auth_mode": "oauth2_authorization_code_refresh_token",
-      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/social/oauth/tiktok/callback",
+      "callback_url": "https://nd-notebooklm-remote-mcp.vercel.app/api/social-oauth/tiktok/callback",
       "authorize_url": "https://www.tiktok.com/v2/auth/authorize/",
       "token_url": "https://open.tiktokapis.com/v2/oauth/token/",
       "scopes": [
