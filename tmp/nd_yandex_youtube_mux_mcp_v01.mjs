@@ -187,16 +187,26 @@ async function youtubeQualification(){
     if(!playlistId)throw new Error('qualification_playlist_id_missing');
     created=true;
 
-    const verify=await yapi('GET','playlists',{part:'id,snippet,status',id:playlistId});
-    const item=(verify.items||[]).find(x=>x.id===playlistId);
+    let item=null;
+    for(let i=0;i<8;i++){
+      if(i)await new Promise(r=>setTimeout(r,1000));
+      const verify=await yapi('GET','playlists',{part:'id,snippet,status',id:playlistId});
+      item=(verify.items||[]).find(x=>x.id===playlistId)||null;
+      if(item)break;
+    }
     if(!item)throw new Error('qualification_playlist_readback_missing');
     if(item.status?.privacyStatus!=='private')throw new Error('qualification_playlist_not_private');
 
     await ytCallTool('youtube_delete_playlist',{playlist_id:playlistId,confirm:true});
     deleted=true;
 
-    const after=await yapi('GET','playlists',{part:'id',id:playlistId});
-    const absent=(after.items||[]).length===0;
+    let absent=false;
+    for(let i=0;i<8;i++){
+      if(i)await new Promise(r=>setTimeout(r,1000));
+      const after=await yapi('GET','playlists',{part:'id',id:playlistId});
+      absent=(after.items||[]).length===0;
+      if(absent)break;
+    }
     if(!absent)throw new Error('qualification_delete_readback_failed');
 
     return {
