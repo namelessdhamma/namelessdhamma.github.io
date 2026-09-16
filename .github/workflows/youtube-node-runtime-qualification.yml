@@ -1,0 +1,39 @@
+name: ND YouTube MCP Node Runtime Qualification
+
+on:
+  push:
+    branches:
+      - qualify/youtube-full-mcp-v01
+    paths:
+      - 'tmp/nd_youtube_full_mcp_server_v01.mjs'
+      - '.github/workflows/youtube-node-runtime-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate CommonJS runtime file
+        run: |
+          cp tmp/nd_youtube_full_mcp_server_v01.mjs /tmp/nd-youtube-server.js
+          node --check /tmp/nd-youtube-server.js
+          ND_YOUTUBE_MCP_PATH_TOKEN=test_token_123456789012345678901234567890 \
+          ND_YOUTUBE_CLIENT_ID=dummy \
+          ND_YOUTUBE_CLIENT_SECRET=dummy \
+          ND_YOUTUBE_REFRESH_TOKEN=dummy \
+          ND_SOCIAL_WRITES_ENABLED=true \
+          N8N_PORT=5678 \
+          node /tmp/nd-youtube-server.js >/tmp/server.log 2>&1 &
+          PID=$!
+          sleep 2
+          curl -fsS http://127.0.0.1:5678/nd/youtube/mcp/test_token_123456789012345678901234567890
+          kill $PID
+          cat /tmp/server.log
