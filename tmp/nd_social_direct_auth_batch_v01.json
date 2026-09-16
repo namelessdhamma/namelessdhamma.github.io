@@ -1,0 +1,100 @@
+{
+  "version": "0.1",
+  "identity": {
+    "email": "namelessdhamma@gmail.com",
+    "handle": "@namelessdhamma"
+  },
+  "objective": "One bounded authorization session after all four transport layers are technically prepared.",
+  "manual_batches": [
+    {
+      "order": 1,
+      "group": "google",
+      "providers": [
+        "youtube"
+      ],
+      "actions": [
+        "Authorize the new canonical ND YouTube channel owned by namelessdhamma@gmail.com.",
+        "Grant only the requested YouTube Data/Analytics scopes.",
+        "Issue/store refreshable OAuth credentials."
+      ],
+      "expected_manual_logins": 1
+    },
+    {
+      "order": 2,
+      "group": "meta",
+      "providers": [
+        "facebook",
+        "instagram"
+      ],
+      "actions": [
+        "Authorize one shared Meta app.",
+        "Select the ND Facebook Page.",
+        "Select/link the @namelessdhamma Instagram professional account."
+      ],
+      "expected_manual_logins": 1
+    },
+    {
+      "order": 3,
+      "group": "telegram",
+      "providers": [
+        "telegram"
+      ],
+      "actions": [
+        "Create or reuse one ND bot in @BotFather.",
+        "Grant the bot only the channel admin rights required for publishing/management on @namelessdhamma."
+      ],
+      "expected_manual_logins": 1
+    },
+    {
+      "order": 4,
+      "group": "tiktok",
+      "providers": [
+        "tiktok"
+      ],
+      "actions": [
+        "Authorize/register the ND TikTok developer app.",
+        "Grant the approved Content Posting scopes to @namelessdhamma."
+      ],
+      "expected_manual_logins": 1,
+      "caveat": "Public Direct Post may remain restricted until TikTok app audit/approval."
+    },
+    {
+      "order": 5,
+      "group": "line",
+      "providers": [
+        "line"
+      ],
+      "actions": [
+        "Enable Messaging API for the existing ND LINE Official Account.",
+        "Issue the channel access credential."
+      ],
+      "expected_manual_logins": 1
+    },
+    {
+      "order": 6,
+      "group": "dzen",
+      "providers": [
+        "dzen"
+      ],
+      "actions": [
+        "Authenticate the existing ND Dzen account once.",
+        "Allow a bounded session capture only for qualification of the experimental direct editor-api route."
+      ],
+      "expected_manual_logins": 1,
+      "caveat": "No official public publishing API was confirmed."
+    }
+  ],
+  "no_manual_action_expected_initially": [
+    {
+      "provider": "vk",
+      "reason": "Existing ND VK credentials/runtime already exist; attempt credential binding/recovery before asking the user to reauthorize."
+    }
+  ],
+  "rules": [
+    "Do not request any manual authorization until the remaining transport layers are prepared.",
+    "Never expose tokens in chat or repository files.",
+    "Use minimum scopes/permissions.",
+    "Verify each authorization by readback before enabling writes.",
+    "A failed route must trigger route recovery rather than a new service."
+  ]
+}
