@@ -1,5 +1,11 @@
 name: ND YouTube MCP Node Qualification
 on:
+  push:
+    branches:
+      - qualify/youtube-full-mcp-v01
+    paths:
+      - 'tmp/nd_youtube_full_mcp_server_v01.mjs'
+      - '.github/workflows/youtube-mcp-node-qualification.yml'
   workflow_dispatch:
 permissions:
   contents: read
