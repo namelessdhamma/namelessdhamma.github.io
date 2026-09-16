@@ -1,0 +1,42 @@
+name: ND YouTube Qstash MCP Qualification
+
+on:
+  push:
+    branches:
+      - qualify/youtube-full-mcp-v01
+    paths:
+      - 'tmp/nd_gateway_youtube_full_mcp_v01.py'
+      - '.github/workflows/youtube-qstash-mcp-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile wrapper
+        run: python -m py_compile tmp/nd_gateway_youtube_full_mcp_v01.py
+      - name: Structural assertions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('tmp/nd_gateway_youtube_full_mcp_v01.py').read_text()
+          required=[
+            'youtube_account','youtube_update_video','youtube_delete_video',
+            'youtube_upload_video_from_url','youtube_create_comment',
+            'youtube_create_playlist','youtube_analytics','youtube_api',
+            'ND_YOUTUBE_MCP_PATH_TOKEN','ND_SOCIAL_WRITES_ENABLED',
+            "protocolVersion':'2025-06-18"
+          ]
+          missing=[x for x in required if x not in s]
+          if missing:
+              raise SystemExit('missing:'+','.join(missing))
+          print({'ok':True,'required':len(required)})
+          PY
