@@ -31,6 +31,7 @@ from starlette.routing import Mount, Route
 
 from nd_oauth.deployment import DeploymentConfig, build_app_from_environ
 from nd_oauth.runtime import make_client_factory
+from nd_oauth.full_server import _yt_channel
 
 # Public verification key only. The corresponding private signing material stays
 # on the Railway Doctor relay and is deterministically derived from its existing
@@ -751,7 +752,43 @@ async def github_bridge(request: Request) -> JSONResponse:
             status_code=502,
         )
 
+
+async def youtube_health(request: Request) -> JSONResponse:
+    try:
+        item = _yt_channel()
+        snippet = item.get("snippet") or {}
+        stats = item.get("statistics") or {}
+        content = item.get("contentDetails") or {}
+        return JSONResponse(
+            {
+                "ok": True,
+                "provider": "YouTube",
+                "credential_refresh": True,
+                "channel": {
+                    "id": item.get("id"),
+                    "title": snippet.get("title"),
+                    "customUrl": snippet.get("customUrl"),
+                    "subscriberCount": stats.get("subscriberCount"),
+                    "videoCount": stats.get("videoCount"),
+                    "viewCount": stats.get("viewCount"),
+                    "uploadsPlaylist": ((content.get("relatedPlaylists") or {}).get("uploads")),
+                },
+                "mcp_write_tools_enabled": True,
+            }
+        )
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "ok": False,
+                "provider": "YouTube",
+                "error": str(exc)[:1200],
+            },
+            status_code=502,
+        )
+
+
 routes = [
+    Route("/youtube/health", youtube_health, methods=["GET"]),
     Route("/doctor/health", doctor_health, methods=["GET"]),
     Route("/doctor/bootstrap/export-sealed", doctor_export_sealed, methods=["POST"]),
     Route("/doctor/github", github_bridge, methods=["POST"]),
