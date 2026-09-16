@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import json
 import os
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 import jwt
 
@@ -15,6 +19,9 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from jwt import PyJWKClient
 from notebooklm._app.serialize import to_jsonable
+from notebooklm._android.auth import NOTEBOOKLM_OAUTH_SPEC
+from notebooklm._auth.master_token_types import _master_token_from_legacy_record
+from notebooklm._auth.mint_service import MintService
 from notebooklm.mcp._resolve import resolve_notebook
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -71,6 +78,200 @@ def _verify_github_oidc(request: Request) -> dict | None:
 config = DeploymentConfig.from_environ()
 client_factory = make_client_factory(config.master_token_b64)
 mcp_app = build_app_from_environ()
+
+_DRIVE_CANONICAL_TARGETS = {
+    "statehead": "1gB6zqJPsQQmv7cT3nxFOtM_EcrUqC3v_MN9ChymclOQ",
+    "registry": "1UqlM3UKzDrBQ_sfFZDvQbg3j39_uLjRV",
+    "durable_root": "1cnJSi9cmYV_P-EBP1Hy780s3m1s6ybli",
+}
+
+
+async def _mint_drive_bearer() -> str:
+    raw = base64.b64decode(config.master_token_b64.encode("ascii"), validate=True)
+    record = json.loads(raw.decode("utf-8"))
+    master = _master_token_from_legacy_record(record)
+    try:
+        minted = await MintService().mint_oauth(master, NOTEBOOKLM_OAUTH_SPEC)
+        if not minted.token:
+            raise RuntimeError("drive_bearer_mint_failed")
+        return minted.token
+    finally:
+        del master, raw, record
+
+
+def _drive_http_sync(
+    bearer: str,
+    method: str,
+    url: str,
+    payload: dict | None = None,
+) -> dict:
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={
+            "Authorization": "Bearer " + bearer,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "nd-notebooklm-drive-permission-repair/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            body = response.read().decode("utf-8", "replace")
+            return json.loads(body or "{}")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        raise RuntimeError("google_drive_http_" + str(exc.code) + ":" + body[:900]) from None
+
+
+async def _drive_http(method: str, url: str, payload: dict | None = None) -> dict:
+    bearer = await _mint_drive_bearer()
+    try:
+        return await asyncio.to_thread(_drive_http_sync, bearer, method, url, payload)
+    finally:
+        bearer = ""
+
+
+async def _drive_permissions(file_id: str) -> list[dict]:
+    fields = urllib.parse.quote(
+        "permissions(id,type,role,emailAddress,displayName,deleted)",
+        safe=",()",
+    )
+    url = (
+        "https://www.googleapis.com/drive/v3/files/"
+        + urllib.parse.quote(file_id, safe="")
+        + "/permissions?supportsAllDrives=true&fields="
+        + fields
+    )
+    data = await _drive_http("GET", url)
+    return list(data.get("permissions") or [])
+
+
+async def _drive_metadata_user(file_id: str) -> dict:
+    fields = urllib.parse.quote(
+        "id,name,mimeType,modifiedTime,version,trashed,parents,capabilities(canEdit,canShare)",
+        safe=",()",
+    )
+    url = (
+        "https://www.googleapis.com/drive/v3/files/"
+        + urllib.parse.quote(file_id, safe="")
+        + "?supportsAllDrives=true&fields="
+        + fields
+    )
+    return await _drive_http("GET", url)
+
+
+def _service_account_permissions(perms: list[dict]) -> list[dict]:
+    out = []
+    for item in perms:
+        email = str(item.get("emailAddress") or "").strip().lower()
+        if email.endswith(".iam.gserviceaccount.com") or email.endswith("@developer.gserviceaccount.com"):
+            out.append({
+                "id": item.get("id"),
+                "email": email,
+                "role": item.get("role"),
+                "type": item.get("type"),
+            })
+    return out
+
+
+async def _ensure_permission(file_id: str, email: str, role: str) -> dict:
+    perms = await _drive_permissions(file_id)
+    current = next(
+        (
+            p for p in perms
+            if str(p.get("emailAddress") or "").strip().lower() == email.lower()
+        ),
+        None,
+    )
+    base = (
+        "https://www.googleapis.com/drive/v3/files/"
+        + urllib.parse.quote(file_id, safe="")
+        + "/permissions"
+    )
+    if current:
+        current_role = str(current.get("role") or "")
+        if current_role != role:
+            pid = str(current.get("id") or "")
+            if not pid:
+                raise RuntimeError("permission_id_missing")
+            await _drive_http(
+                "PATCH",
+                base + "/" + urllib.parse.quote(pid, safe="") + "?supportsAllDrives=true",
+                {"role": role},
+            )
+            action = "updated"
+        else:
+            action = "unchanged"
+    else:
+        await _drive_http(
+            "POST",
+            base + "?supportsAllDrives=true&sendNotificationEmail=false",
+            {"type": "user", "role": role, "emailAddress": email},
+        )
+        action = "created"
+    after = await _drive_permissions(file_id)
+    verified = next(
+        (
+            p for p in after
+            if str(p.get("emailAddress") or "").strip().lower() == email.lower()
+        ),
+        None,
+    )
+    if not verified or str(verified.get("role") or "") != role:
+        raise RuntimeError("permission_readback_failed")
+    return {"action": action, "role": role, "permission_id": verified.get("id")}
+
+
+async def _drive_permissions_audit() -> dict:
+    state_perms = await _drive_permissions(_DRIVE_CANONICAL_TARGETS["statehead"])
+    service_accounts = _service_account_permissions(state_perms)
+    targets = {}
+    for name, file_id in _DRIVE_CANONICAL_TARGETS.items():
+        try:
+            metadata = await _drive_metadata_user(file_id)
+            perms = await _drive_permissions(file_id)
+            targets[name] = {
+                "file_id": file_id,
+                "visible": True,
+                "name": metadata.get("name"),
+                "service_accounts": _service_account_permissions(perms),
+            }
+        except Exception as exc:
+            targets[name] = {
+                "file_id": file_id,
+                "visible": False,
+                "error": str(exc)[:500],
+            }
+    return {"statehead_service_accounts": service_accounts, "targets": targets}
+
+
+async def _drive_repair_railway_rw(args: dict) -> dict:
+    if args.get("confirm") is not True:
+        raise RuntimeError("confirm_required")
+    state_perms = await _drive_permissions(_DRIVE_CANONICAL_TARGETS["statehead"])
+    candidates = _service_account_permissions(state_perms)
+    if len(candidates) != 1:
+        raise RuntimeError("expected_exactly_one_statehead_service_account")
+    email = str(candidates[0]["email"])
+    changes = {}
+    changes["statehead"] = await _ensure_permission(
+        _DRIVE_CANONICAL_TARGETS["statehead"], email, "writer"
+    )
+    changes["registry"] = await _ensure_permission(
+        _DRIVE_CANONICAL_TARGETS["registry"], email, "reader"
+    )
+    changes["durable_root"] = await _ensure_permission(
+        _DRIVE_CANONICAL_TARGETS["durable_root"], email, "writer"
+    )
+    return {
+        "service_account_email": email,
+        "changes": changes,
+        "targets": dict(_DRIVE_CANONICAL_TARGETS),
+        "credential_exposed": False,
+    }
 
 
 def _canonical(request: Request, body: bytes = b"") -> bytes:
@@ -268,7 +469,13 @@ async def github_bridge(request: Request) -> JSONResponse:
 
     try:
         async with client_factory() as client:
-            if operation == "notebook_list":
+            if operation == "drive_permissions_audit":
+                result = await _drive_permissions_audit()
+
+            elif operation == "drive_repair_railway_rw":
+                result = await _drive_repair_railway_rw(args)
+
+            elif operation == "notebook_list":
                 items = await client.notebooks.list()
                 result = {"count": len(items), "notebooks": to_jsonable(items)}
 
