@@ -171,67 +171,6 @@ async function youtubeHealth(){try{const x=await channel(),s=x.snippet||{},st=x.
 
 
 
-async function youtubeQualification(){
-  const account=await ytCallTool('youtube_account',{});
-  const title='ND MCP Qualification '+new Date().toISOString();
-  let playlistId='';
-  let created=false;
-  let deleted=false;
-  try{
-    const create=await ytCallTool('youtube_create_playlist',{
-      title,
-      description:'Temporary reversible MCP qualification artifact. Safe to delete.',
-      privacy_status:'private'
-    });
-    playlistId=String(create?.result?.id||'');
-    if(!playlistId)throw new Error('qualification_playlist_id_missing');
-    created=true;
-
-    let item=null;
-    for(let i=0;i<8;i++){
-      if(i)await new Promise(r=>setTimeout(r,1000));
-      const verify=await yapi('GET','playlists',{part:'id,snippet,status',id:playlistId});
-      item=(verify.items||[]).find(x=>x.id===playlistId)||null;
-      if(item)break;
-    }
-    if(!item)throw new Error('qualification_playlist_readback_missing');
-    if(item.status?.privacyStatus!=='private')throw new Error('qualification_playlist_not_private');
-
-    await ytCallTool('youtube_delete_playlist',{playlist_id:playlistId,confirm:true});
-    deleted=true;
-
-    let absent=false;
-    for(let i=0;i<8;i++){
-      if(i)await new Promise(r=>setTimeout(r,1000));
-      const after=await yapi('GET','playlists',{part:'id',id:playlistId});
-      absent=(after.items||[]).length===0;
-      if(absent)break;
-    }
-    if(!absent)throw new Error('qualification_delete_readback_failed');
-
-    return {
-      ok:true,
-      provider:'YouTube',
-      account:account.channel,
-      tool_count:YT_TOOLS.length,
-      tool_names:YT_TOOLS.map(x=>x.name),
-      reversible_write:{
-        operation:'private_playlist_create_read_delete',
-        created,
-        privacy:'private',
-        readback:true,
-        deleted,
-        delete_readback_absent:absent
-      }
-    };
-  }catch(e){
-    if(created && !deleted && playlistId){
-      try{await ytCallTool('youtube_delete_playlist',{playlist_id:playlistId,confirm:true});deleted=true;}catch{}
-    }
-    throw e;
-  }
-}
-
 const muxServer=http.createServer(async(req,res)=>{
   try{
     const path=new URL(req.url||'/','http://local').pathname;
@@ -253,14 +192,6 @@ const muxServer=http.createServer(async(req,res)=>{
       return j(res,h.ok?200:503,h);
     }
 
-    if(YT_PATH_TOKEN && path===('/youtube/qualification/'+YT_PATH_TOKEN)){
-      try{
-        const q=await youtubeQualification();
-        return j(res,200,q);
-      }catch(e){
-        return j(res,502,{ok:false,provider:'YouTube',error:cleanErr(e)});
-      }
-    }
 
     if(path==='/'){
       const body={
