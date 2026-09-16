@@ -196,10 +196,19 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.is_mcp(): self.mcp(); return
         self.forward()
-    def do_GET(self): self.forward()
+    def do_GET(self):
+        if self.path.split('?',1)[0]=='/nd/github/health':
+            self.send_json(200,{'ok':True,'service':'nd-github-direct-mcp','version':'1.1.0','configured':bool(GITHUB_PAT and PATH_TOKEN),'owner':OWNER,'inline_only':True,'attachments':False}); return
+        self.forward()
     def do_DELETE(self): self.forward()
     def do_PUT(self): self.forward()
     def do_PATCH(self): self.forward()
 
-print('ND_GITHUB_MCP_FRONT_V1 '+json.dumps({'port':PORT,'inner_port':INNER_PORT,'configured':bool(GITHUB_PAT and PATH_TOKEN),'owner':OWNER,'inline_only':True}),flush=True)
+try:
+    _probe=call('github_get_repo',{'repo':'namelessdhamma.github.io'})
+    print('ND_GITHUB_MCP_SELFTEST '+json.dumps({'ok':bool(_probe.get('ok')),'repo':((_probe.get('repository') or {}).get('full_name')),'inline_only':True,'attachments':False}),flush=True)
+except Exception as _e:
+    print('ND_GITHUB_MCP_SELFTEST '+json.dumps({'ok':False,'error':clean(_e)}),flush=True)
+
+print('ND_GITHUB_MCP_FRONT_V1_1 '+json.dumps({'port':PORT,'inner_port':INNER_PORT,'configured':bool(GITHUB_PAT and PATH_TOKEN),'owner':OWNER,'inline_only':True,'attachments':False}),flush=True)
 ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
