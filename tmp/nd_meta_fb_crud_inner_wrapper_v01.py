@@ -1,7 +1,7 @@
 import urllib.request
 
 BASE='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/183b2e6a90f02bdfb6e75e13139a58e639d99b7e/tmp/nd_meta_inner_wrapper_v01.py'
-HELPER='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/33083a14be309fa6717b9fab114fe854a8600e96/tmp/nd_meta_fb_crud_helper_v01.py'
+HELPER='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/1a57bcf1528d2bf0def720fa142b64ebdacdd510/tmp/nd_meta_fb_crud_helper_v01.py'
 
 outer=urllib.request.urlopen(BASE,timeout=30).read().decode('utf-8')
 final_outer_exec="exec(compile(src,'nd_meta_inner_wrapper_v01_outer.py','exec'))"
