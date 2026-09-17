@@ -145,3 +145,4 @@ def patch_linear_wrapper_source(src):
       runtime_exec,
     ]
     return src.replace(runtime_exec,"\n".join(lines),1)
+# checkpoint-pin: meta-fb-crud-v1
