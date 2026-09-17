@@ -3,6 +3,7 @@ import unittest
 
 
 # These contract tests intentionally inspect the production adapter surface.
+# This commit also triggers the full branch CI after the bounded production patch.
 class DriveSourceContractTests(unittest.TestCase):
     def test_source_add_drive_requires_and_passes_title(self):
         app = (Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
