@@ -27,6 +27,21 @@ class DriveSourceContractTests(unittest.TestCase):
         self.assertIn('"refreshed": not bool(initial_fresh)', block)
         self.assertIn('"is_fresh": bool(final_fresh)', block)
 
+    def test_source_bind_drive_searches_safely_and_avoids_duplicates(self):
+        app = (Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
+        self.assertIn('async def _drive_search_files(', app)
+        self.assertIn('elif operation == "source_bind_drive":', app)
+        block = app.split('elif operation == "source_bind_drive":', 1)[1].split('elif operation == "source_add_drive":', 1)[0]
+
+        self.assertIn('provide_exactly_one_drive_selector', block)
+        self.assertIn('_drive_metadata_user(file_id)', block)
+        self.assertIn('_drive_search_files(name=name, query=query)', block)
+        self.assertIn('"drive_file_not_found"', block)
+        self.assertIn('"drive_file_ambiguous"', block)
+        self.assertIn('drive_document_id', block)
+        self.assertIn('"already_bound": True', block)
+        self.assertIn('client.sources.add_drive(nb_id, file_id, title)', block)
+
 
 if __name__ == "__main__":
     unittest.main()
