@@ -1,4 +1,4 @@
-import json, os, subprocess, sys, threading, time, urllib.error, urllib.request
+import hashlib, json, os, subprocess, sys, threading, time, urllib.error, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
 
@@ -66,7 +66,7 @@ def clean(x):
     z=str(x)
     if PATH_TOKEN:
         z=z.replace(PATH_TOKEN,'[REDACTED]')
-    return z[:2000]
+    return z[:4000]
 
 def copy_request_headers(h):
     out={}
@@ -77,7 +77,7 @@ def copy_request_headers(h):
     for k,v in h.items():
         if k.lower() in allowed:
             out[k]=v
-    out['User-Agent']='ND-Tldraw-MCP-Relay/1.1'
+    out['User-Agent']='ND-Tldraw-MCP-Relay/1.2'
     return out
 
 def send_upstream_response(handler, response, stream=False):
@@ -87,7 +87,7 @@ def send_upstream_response(handler, response, stream=False):
     for k,v in response.headers.items():
         if k.lower() in ('content-type','mcp-session-id','cache-control','retry-after'):
             handler.send_header(k,v)
-    handler.send_header('X-ND-MCP-Relay','tldraw-v1.1')
+    handler.send_header('X-ND-MCP-Relay','tldraw-v1.2')
     if is_stream:
         handler.send_header('Connection','close')
         handler.end_headers()
@@ -104,6 +104,21 @@ def send_upstream_response(handler, response, stream=False):
         handler.end_headers()
         if raw:
             handler.wfile.write(raw)
+
+QUALIFICATION={
+    'ok':False,
+    'stage':'not_started',
+    'full_dynamic_passthrough':True,
+    'allowlist':False,
+    'tools_paginated_to_exhaustion':False,
+    'tools_count':0,
+    'tools':[],
+    'tool_surface_sha256':None,
+    'serverInfo':{},
+    'capabilities':{},
+    'error':None,
+}
+QUAL_LOCK=threading.Lock()
 
 class H(BaseHTTPRequestHandler):
     protocol_version='HTTP/1.1'
@@ -189,17 +204,27 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         path=self.path.split('?',1)[0]
         if path=='/tldraw/health':
+            with QUAL_LOCK:
+                q=dict(QUALIFICATION)
             self.send_json(200,{
                 'ok':True,
                 'service':'nd-tldraw-mcp-relay',
-                'version':'1.1.0',
+                'version':'1.2.0',
                 'provider':'official-tldraw-mcp-app',
                 'upstream':TLDRAW_MCP,
                 'transport':'streamable-http-relay',
                 'path_token_configured':bool(PATH_TOKEN),
                 'inner_runtime':'nd-qstash-control-v2-v12',
-                'semantic_broker_probe_preserved':True
+                'semantic_broker_probe_preserved':True,
+                'full_dynamic_passthrough':True,
+                'allowlist':False,
+                'qualification':q
             })
+            return
+        if path=='/tldraw/qualification':
+            with QUAL_LOCK:
+                q=dict(QUALIFICATION)
+            self.send_json(200,q)
             return
         if self.tldraw_path():
             self.tldraw_proxy()
@@ -218,12 +243,135 @@ class H(BaseHTTPRequestHandler):
             return
         self.forward_inner()
 
-print('ND_TLDRAW_MCP_RELAY_V1_1_READY '+json.dumps({
+def decode_mcp(raw,ctype):
+    text=raw.decode('utf-8','replace')
+    if 'text/event-stream' in str(ctype).lower():
+        vals=[]
+        for line in text.splitlines():
+            if line.startswith('data:'):
+                s=line[5:].strip()
+                if s:
+                    vals.append(s)
+        if not vals:
+            return None
+        return json.loads(vals[-1])
+    if not text.strip():
+        return None
+    return json.loads(text)
+
+def local_mcp_call(payload,session_id=None,expect_body=True):
+    if not PATH_TOKEN:
+        raise RuntimeError('path_token_unconfigured')
+    url='http://127.0.0.1:%d/tldraw/mcp/%s' % (PORT,PATH_TOKEN)
+    headers={
+        'Content-Type':'application/json',
+        'Accept':'application/json, text/event-stream',
+        'MCP-Protocol-Version':'2025-06-18',
+        'User-Agent':'ND-Tldraw-Full-Surface-Qualifier/1.0'
+    }
+    if session_id:
+        headers['MCP-Session-Id']=session_id
+    req=urllib.request.Request(url,data=json.dumps(payload).encode('utf-8'),headers=headers,method='POST')
+    with urllib.request.urlopen(req,timeout=90) as r:
+        raw=r.read()
+        sid=str(r.headers.get('Mcp-Session-Id') or r.headers.get('MCP-Session-Id') or session_id or '').strip()
+        obj=decode_mcp(raw,r.headers.get('Content-Type')) if (expect_body or raw) else None
+        return obj,sid,r.status
+
+def qualify_full_surface():
+    time.sleep(1.0)
+    try:
+        with QUAL_LOCK:
+            QUALIFICATION['stage']='initialize'
+        hello,sid,_=local_mcp_call({
+            'jsonrpc':'2.0','id':'nd-tldraw-init','method':'initialize','params':{
+                'protocolVersion':'2025-06-18',
+                'capabilities':{},
+                'clientInfo':{'name':'ND tldraw full-surface qualifier','version':'1.0'}
+            }
+        })
+        if not isinstance(hello,dict) or hello.get('error'):
+            raise RuntimeError('initialize_failed:'+json.dumps(hello,ensure_ascii=False)[:1200])
+        result=hello.get('result') or {}
+        if sid:
+            try:
+                local_mcp_call({'jsonrpc':'2.0','method':'notifications/initialized','params':{}},session_id=sid,expect_body=False)
+            except Exception as e:
+                print('ND_TLDRAW_INITIALIZED_NOTIFICATION_WARN '+clean(e),flush=True)
+
+        all_tools=[]
+        cursor=None
+        pages=0
+        while True:
+            pages+=1
+            if pages>100:
+                raise RuntimeError('tools_pagination_guard_exceeded')
+            params={} if cursor is None else {'cursor':cursor}
+            obj,sid,_=local_mcp_call({'jsonrpc':'2.0','id':'nd-tldraw-tools-%d'%pages,'method':'tools/list','params':params},session_id=sid)
+            if not isinstance(obj,dict) or obj.get('error'):
+                raise RuntimeError('tools_list_failed:'+json.dumps(obj,ensure_ascii=False)[:1200])
+            page=(obj.get('result') or {})
+            tools=page.get('tools') or []
+            if not isinstance(tools,list):
+                raise RuntimeError('tools_not_list')
+            all_tools.extend(tools)
+            cursor=page.get('nextCursor')
+            if not cursor:
+                break
+
+        canonical=json.dumps(all_tools,ensure_ascii=False,sort_keys=True,separators=(',',':'))
+        digest=hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+        names=[str(t.get('name') or '') for t in all_tools]
+        if not all_tools or not all(names):
+            raise RuntimeError('empty_or_invalid_tool_surface')
+        q={
+            'ok':True,
+            'stage':'complete',
+            'full_dynamic_passthrough':True,
+            'allowlist':False,
+            'tools_paginated_to_exhaustion':True,
+            'pages':pages,
+            'tools_count':len(all_tools),
+            'tool_names':names,
+            'tools':all_tools,
+            'tool_surface_sha256':digest,
+            'serverInfo':result.get('serverInfo') or {},
+            'capabilities':result.get('capabilities') or {},
+            'protocolVersion':result.get('protocolVersion'),
+            'session_established':bool(sid),
+            'error':None,
+        }
+        with QUAL_LOCK:
+            QUALIFICATION.clear(); QUALIFICATION.update(q)
+        print('ND_TLDRAW_FULL_SURFACE_QUALIFICATION '+json.dumps(q,ensure_ascii=False),flush=True)
+    except Exception as e:
+        q={
+            'ok':False,
+            'stage':'failed',
+            'full_dynamic_passthrough':True,
+            'allowlist':False,
+            'tools_paginated_to_exhaustion':False,
+            'tools_count':0,
+            'tools':[],
+            'tool_surface_sha256':None,
+            'serverInfo':{},
+            'capabilities':{},
+            'error':clean(e),
+        }
+        with QUAL_LOCK:
+            QUALIFICATION.clear(); QUALIFICATION.update(q)
+        print('ND_TLDRAW_FULL_SURFACE_QUALIFICATION '+json.dumps(q,ensure_ascii=False),flush=True)
+
+print('ND_TLDRAW_MCP_RELAY_V1_2_READY '+json.dumps({
     'provider':'official-tldraw-mcp-app',
     'upstream':TLDRAW_MCP,
     'path_token_configured':bool(PATH_TOKEN),
     'inner_port':INNER_PORT,
-    'semantic_broker_probe_preserved':True
+    'semantic_broker_probe_preserved':True,
+    'full_dynamic_passthrough':True,
+    'allowlist':False
 }),flush=True)
 
-ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
+server=ThreadingHTTPServer(('0.0.0.0',PORT),H)
+threading.Thread(target=qualify_full_surface,daemon=True).start()
+server.serve_forever()
