@@ -12,6 +12,20 @@ class DriveSourceContractTests(unittest.TestCase):
         self.assertIn('"missing_file_id_or_title"', block)
         self.assertIn('client.sources.add_drive(nb_id, file_id, title)', block)
 
+    def test_source_ensure_fresh_is_idempotent_and_bounded(self):
+        app = (Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
+        self.assertIn('elif operation == "source_ensure_fresh":', app)
+        block = app.split('elif operation == "source_ensure_fresh":', 1)[1].split('elif operation == "source_sync_drive":', 1)[0]
+
+        self.assertIn('initial_fresh = await client.sources.check_freshness(nb_id, source_id)', block)
+        self.assertIn('if initial_fresh:', block)
+        self.assertIn('refreshed = await client.sources.refresh(nb_id, source_id)', block)
+        self.assertIn('for attempt in range(max_checks):', block)
+        self.assertIn('await asyncio.sleep(poll_seconds)', block)
+        self.assertIn('final_fresh = await client.sources.check_freshness(nb_id, source_id)', block)
+        self.assertIn('"refreshed": not bool(initial_fresh)', block)
+        self.assertIn('"is_fresh": bool(final_fresh)', block)
+
 
 if __name__ == "__main__":
     unittest.main()
