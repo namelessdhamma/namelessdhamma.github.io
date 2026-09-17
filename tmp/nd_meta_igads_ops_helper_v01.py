@@ -128,8 +128,6 @@ def patch_linear_wrapper_source(src):
     out=_base_patch(src)
     runtime_exec="exec(compile(s,'nd_gateway_linear_bridge_v1_runtime.py','exec'))"
     if out.count(runtime_exec)!=1: raise RuntimeError('igads ops runtime exec marker mismatch')
-    inject="threading.Thread(target=meta_igads_ops_selftest_once,daemon=True).start()
-print('ND_META_IGADS_OPS_HELPER_READY '+json.dumps({'direct_mcp':True,'tools':9,'facebook_crud':True,'instagram_ops':True,'ads_ops':True,'public_publish':False,'ads_activation':False},ensure_ascii=False),flush=True)
-"+runtime_exec
+    inject="threading.Thread(target=meta_igads_ops_selftest_once,daemon=True).start()\\nprint('ND_META_IGADS_OPS_HELPER_READY '+json.dumps({'direct_mcp':True,'tools':9,'facebook_crud':True,'instagram_ops':True,'ads_ops':True,'public_publish':False,'ads_activation':False},ensure_ascii=False),flush=True)\\n"+runtime_exec
     return out.replace(runtime_exec,inject,1)
 # checkpoint-pin: meta-igads-ops-v1
