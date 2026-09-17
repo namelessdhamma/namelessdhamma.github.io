@@ -118,8 +118,7 @@ def meta_igads_ops_selftest_once():
         print('ND_META_IGADS_OPS_SELFTEST '+json.dumps({'ok':False,'error':str(e)[:700]},ensure_ascii=False),flush=True)
 """
 
-ns['RUNTIME_GLOBALS']=ns['RUNTIME_GLOBALS']+"
-"+IGADS_OPS_EXT
+ns['RUNTIME_GLOBALS']=ns['RUNTIME_GLOBALS']+"\\n"+IGADS_OPS_EXT
 ns['MCP_METHOD']=ns['MCP_METHOD'].replace('Nameless Dhamma Meta MCP with guarded Facebook Page and comment CRUD.','Nameless Dhamma Meta MCP with guarded Facebook, Instagram media and PAUSED-only Ads operations.')
 RUNTIME_GLOBALS=ns['RUNTIME_GLOBALS']
 MCP_METHOD=ns['MCP_METHOD']
