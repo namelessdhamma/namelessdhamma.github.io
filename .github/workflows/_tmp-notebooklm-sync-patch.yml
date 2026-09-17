@@ -1,0 +1,43 @@
+name: TEMP NotebookLM Drive Sync Patch
+
+on:
+  push:
+    branches:
+      - notebooklm-remote-mcp
+    paths:
+      - '.github/workflows/_tmp-notebooklm-sync-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: notebooklm-remote-mcp
+      - name: Patch source_sync_drive into existing bridge
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tools/notebooklm-mcp/remote-vercel-oauth/app.py')
+          s = p.read_text()
+          anchor = '''            elif operation == "source_delete":\n'''
+          if s.count(anchor) != 1:
+              raise SystemExit(f'anchor_count={s.count(anchor)}')
+          block = '''            elif operation == "source_sync_drive":\n                if args.get("confirm") is not True:\n                    return JSONResponse({"ok": False, "error": "confirm_required"}, status_code=400)\n                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))\n                source_id = str(args.get("source_id") or "").strip()\n                if not source_id:\n                    return JSONResponse({"ok": False, "error": "missing_source_id"}, status_code=400)\n                refreshed = await client.sources.refresh(nb_id, source_id)\n                result = {"notebook_id": nb_id, "source_id": source_id, "refresh_result": to_jsonable(refreshed)}\n\n'''
+          p.write_text(s.replace(anchor, block + anchor, 1))
+          PY
+          python -m py_compile tools/notebooklm-mcp/remote-vercel-oauth/app.py
+          grep -n -A10 -B2 'source_sync_drive' tools/notebooklm-mcp/remote-vercel-oauth/app.py
+      - name: Commit bridge delta
+        shell: bash
+        run: |
+          git config user.name 'nd-bounded-patch'
+          git config user.email 'namelessdhamma@gmail.com'
+          git add tools/notebooklm-mcp/remote-vercel-oauth/app.py
+          git diff --cached --check
+          git commit -m 'feat(notebooklm): expose Drive source refresh'
+          git push origin HEAD:notebooklm-remote-mcp
