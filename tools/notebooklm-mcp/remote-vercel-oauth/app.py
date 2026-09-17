@@ -733,6 +733,55 @@ async def github_bridge(request: Request) -> JSONResponse:
                 is_fresh = await client.sources.check_freshness(nb_id, source_id)
                 result = {"notebook_id": nb_id, "source_id": source_id, "is_fresh": bool(is_fresh), "needs_refresh": not bool(is_fresh)}
 
+            elif operation == "source_ensure_fresh":
+                if args.get("confirm") is not True:
+                    return JSONResponse({"ok": False, "error": "confirm_required"}, status_code=400)
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                source_id = str(args.get("source_id") or "").strip()
+                if not source_id:
+                    return JSONResponse({"ok": False, "error": "missing_source_id"}, status_code=400)
+                try:
+                    max_checks = int(args.get("max_checks", 8))
+                    poll_seconds = float(args.get("poll_seconds", 4.0))
+                except (TypeError, ValueError):
+                    return JSONResponse({"ok": False, "error": "invalid_poll_settings"}, status_code=400)
+                max_checks = max(1, min(max_checks, 10))
+                poll_seconds = max(1.0, min(poll_seconds, 5.0))
+                initial_fresh = await client.sources.check_freshness(nb_id, source_id)
+                final_fresh = bool(initial_fresh)
+                refreshed = None
+                checks = 0
+                if initial_fresh:
+                    final_fresh = True
+                else:
+                    refreshed = await client.sources.refresh(nb_id, source_id)
+                    for attempt in range(max_checks):
+                        await asyncio.sleep(poll_seconds)
+                        checks = attempt + 1
+                        final_fresh = await client.sources.check_freshness(nb_id, source_id)
+                        if final_fresh:
+                            break
+                fulltext_ready = False
+                if final_fresh:
+                    try:
+                        await client.sources.get_fulltext(nb_id, source_id)
+                        fulltext_ready = True
+                    except Exception:
+                        fulltext_ready = False
+                result = {
+                    "notebook_id": nb_id,
+                    "source_id": source_id,
+                    "initial_fresh": bool(initial_fresh),
+                    "refreshed": not bool(initial_fresh),
+                    "refresh_result": to_jsonable(refreshed),
+                    "is_fresh": bool(final_fresh),
+                    "needs_refresh": not bool(final_fresh),
+                    "fulltext_ready": fulltext_ready,
+                    "checks": checks,
+                    "max_checks": max_checks,
+                    "poll_seconds": poll_seconds,
+                }
+
             elif operation == "source_sync_drive":
                 if args.get("confirm") is not True:
                     return JSONResponse({"ok": False, "error": "confirm_required"}, status_code=400)
