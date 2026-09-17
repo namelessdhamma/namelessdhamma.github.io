@@ -719,9 +719,10 @@ async def github_bridge(request: Request) -> JSONResponse:
             elif operation == "source_add_drive":
                 nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
                 file_id = str(args.get("file_id") or "").strip()
-                if not file_id:
-                    return JSONResponse({"ok": False, "error": "missing_file_id"}, status_code=400)
-                src = await client.sources.add_drive(nb_id, file_id)
+                title = str(args.get("title") or "").strip()
+                if not file_id or not title:
+                    return JSONResponse({"ok": False, "error": "missing_file_id_or_title"}, status_code=400)
+                src = await client.sources.add_drive(nb_id, file_id, title)
                 result = {"notebook_id": nb_id, "source": to_jsonable(src)}
 
             elif operation == "source_delete":
