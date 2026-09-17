@@ -725,6 +725,16 @@ async def github_bridge(request: Request) -> JSONResponse:
                 src = await client.sources.add_drive(nb_id, file_id, title)
                 result = {"notebook_id": nb_id, "source": to_jsonable(src)}
 
+            elif operation == "source_sync_drive":
+                if args.get("confirm") is not True:
+                    return JSONResponse({"ok": False, "error": "confirm_required"}, status_code=400)
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                source_id = str(args.get("source_id") or "").strip()
+                if not source_id:
+                    return JSONResponse({"ok": False, "error": "missing_source_id"}, status_code=400)
+                refreshed = await client.sources.refresh(nb_id, source_id)
+                result = {"notebook_id": nb_id, "source_id": source_id, "refresh_result": to_jsonable(refreshed)}
+
             elif operation == "source_delete":
                 if args.get("confirm") is not True:
                     return JSONResponse({"ok": False, "error": "confirm_required"}, status_code=400)
