@@ -1,3 +1,4 @@
+import json
 import urllib.request
 
 BASE='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/bd211fd66784d31a4a5c3d07044465dcd3756d87/tmp/nd_meta_vk_multiplex_front_v02.py'
