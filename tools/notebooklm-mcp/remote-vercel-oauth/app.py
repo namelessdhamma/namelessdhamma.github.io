@@ -332,6 +332,41 @@ async def _drive_metadata_user(file_id: str) -> dict:
     return await _drive_http("GET", url)
 
 
+def _drive_query_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+async def _drive_search_files(*, name: str = "", query: str = "") -> list[dict]:
+    if bool(name) == bool(query):
+        raise RuntimeError("provide_exactly_one_drive_search_term")
+    term = name or query
+    if not term or len(term) > 200:
+        raise RuntimeError("invalid_drive_search_term")
+    escaped = _drive_query_escape(term)
+    folder_mime = "application/vnd.google-apps.folder"
+    if name:
+        drive_q = (
+            "name = '" + escaped + "' and trashed = false and mimeType != '" + folder_mime + "'"
+        )
+    else:
+        drive_q = (
+            "fullText contains '" + escaped + "' and trashed = false and mimeType != '" + folder_mime + "'"
+        )
+    fields = urllib.parse.quote(
+        "files(id,name,mimeType,modifiedTime,version,trashed,parents,webViewLink)",
+        safe=",()",
+    )
+    url = (
+        "https://www.googleapis.com/drive/v3/files?q="
+        + urllib.parse.quote(drive_q, safe="")
+        + "&pageSize=10&orderBy=modifiedTime%20desc&spaces=drive"
+        + "&supportsAllDrives=true&includeItemsFromAllDrives=true&fields="
+        + fields
+    )
+    data = await _drive_http("GET", url)
+    return list(data.get("files") or [])
+
+
 def _service_account_permissions(perms: list[dict]) -> list[dict]:
     out = []
     for item in perms:
@@ -715,6 +750,72 @@ async def github_bridge(request: Request) -> JSONResponse:
                     return JSONResponse({"ok": False, "error": "invalid_url"}, status_code=400)
                 src = await client.sources.add_url(nb_id, url)
                 result = {"notebook_id": nb_id, "source": to_jsonable(src)}
+
+
+            elif operation == "source_bind_drive":
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                file_id = str(args.get("file_id") or "").strip()
+                name = str(args.get("name") or "").strip()
+                query = str(args.get("query") or "").strip()
+                if sum(1 for value in (file_id, name, query) if value) != 1:
+                    return JSONResponse({"ok": False, "error": "provide_exactly_one_drive_selector"}, status_code=400)
+
+                selector = "file_id" if file_id else ("name" if name else "query")
+                if file_id:
+                    match = await _drive_metadata_user(file_id)
+                    if bool(match.get("trashed")):
+                        return JSONResponse({"ok": False, "error": "drive_file_trashed"}, status_code=409)
+                    if str(match.get("mimeType") or "") == "application/vnd.google-apps.folder":
+                        return JSONResponse({"ok": False, "error": "drive_folder_not_supported"}, status_code=400)
+                else:
+                    matches = await _drive_search_files(name=name, query=query)
+                    if not matches:
+                        return JSONResponse({"ok": False, "error": "drive_file_not_found"}, status_code=404)
+                    if len(matches) > 1:
+                        candidates = [
+                            {
+                                "id": item.get("id"),
+                                "name": item.get("name"),
+                                "mimeType": item.get("mimeType"),
+                                "modifiedTime": item.get("modifiedTime"),
+                            }
+                            for item in matches[:10]
+                        ]
+                        return JSONResponse(
+                            {"ok": False, "error": "drive_file_ambiguous", "count": len(matches), "candidates": candidates},
+                            status_code=409,
+                        )
+                    match = matches[0]
+                    file_id = str(match.get("id") or "").strip()
+
+                title = str(args.get("title") or match.get("name") or "").strip()
+                if not file_id or not title:
+                    return JSONResponse({"ok": False, "error": "drive_match_missing_id_or_title"}, status_code=502)
+
+                existing_items = await client.sources.list(nb_id)
+                for existing in existing_items:
+                    existing_json = to_jsonable(existing)
+                    if (
+                        isinstance(existing_json, dict)
+                        and str(existing_json.get("drive_document_id") or "").strip() == file_id
+                    ):
+                        result = {
+                            "notebook_id": nb_id,
+                            "selector": selector,
+                            "match": match,
+                            "already_bound": True,
+                            "source": existing_json,
+                        }
+                        break
+                else:
+                    src = await client.sources.add_drive(nb_id, file_id, title)
+                    result = {
+                        "notebook_id": nb_id,
+                        "selector": selector,
+                        "match": match,
+                        "already_bound": False,
+                        "source": to_jsonable(src),
+                    }
 
             elif operation == "source_add_drive":
                 nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
