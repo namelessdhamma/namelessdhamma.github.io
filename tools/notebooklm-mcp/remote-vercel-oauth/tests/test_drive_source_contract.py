@@ -2,6 +2,7 @@ from pathlib import Path
 import unittest
 
 
+# These contract tests intentionally inspect the production adapter surface.
 class DriveSourceContractTests(unittest.TestCase):
     def test_source_add_drive_requires_and_passes_title(self):
         app = (Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
