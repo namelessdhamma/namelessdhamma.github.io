@@ -1,4 +1,4 @@
-# direct-runtime-qualification: 2026-09-18.2
+# direct-runtime-qualified: 2026-09-18
 name: ND TikTok GitHub Direct
 
 on:
@@ -59,50 +59,13 @@ jobs:
           test -s tmp/tiktok-github-token-state.json
           node --check tmp/nd-tiktok-github-direct.mjs
 
-      - name: Direct TikTok qualification
+      - name: Direct TikTok read-only health check
         if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
-
           node tmp/nd-tiktok-github-direct.mjs tiktok_user '{}' > /tmp/direct-read.json
           jq -e '.ok == true and .route == "github-actions-direct" and .tool == "tiktok_user"' /tmp/direct-read.json >/dev/null
-
-          MEDIA_B64="$(tr -d '\r\n' < tmp/nd-tiktok-github-qualification.mp4.b64)"
-          WRITE_ARGS="$(jq -cn --arg media "$MEDIA_B64" '{media_base64:$media,mime_type:"video/mp4"}')"
-          node tmp/nd-tiktok-github-direct.mjs tiktok_upload_draft_base64 "$WRITE_ARGS" > /tmp/direct-write.json
-          jq -e '.ok == true and .result.upload_status == 201' /tmp/direct-write.json >/dev/null
-          PUBLISH_ID="$(jq -er '.result.publish_id' /tmp/direct-write.json)"
-
-          STATUS_ARGS="$(jq -cn --arg id "$PUBLISH_ID" '{publish_id:$id}')"
-          FINAL_STATUS=""
-          for attempt in 1 2 3 4 5 6 7 8; do
-            sleep 5
-            node tmp/nd-tiktok-github-direct.mjs tiktok_publish_status "$STATUS_ARGS" > /tmp/direct-status.json
-            FINAL_STATUS="$(jq -r '.result.data.status // ""' /tmp/direct-status.json)"
-            if [[ "$FINAL_STATUS" == "SEND_TO_USER_INBOX" ]]; then
-              break
-            fi
-            if [[ "$FINAL_STATUS" == "FAILED" ]]; then
-              jq -r '.result.data.fail_reason // "unknown_failure"' /tmp/direct-status.json >&2
-              exit 1
-            fi
-          done
-          test "$FINAL_STATUS" = "SEND_TO_USER_INBOX"
-
-          mkdir -p tmp
-          jq -n             --arg route "github-actions-direct"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --arg publish_id "$PUBLISH_ID"             --arg final_status "$FINAL_STATUS"             '{
-              qualified_at:(now|todateiso8601),
-              route:$route,
-              railway_in_data_path:false,
-              direct_api_host:"open.tiktokapis.com",
-              read:{tool:"tiktok_user",status:"PASS"},
-              write:{tool:"tiktok_upload_draft_base64",upload_status:201,publish_id:$publish_id,final_status:$final_status,public_post:false},
-              token_state:"AES-256-GCM ciphertext",
-              run_id:$run_id,
-              source_sha:$source_sha,
-              qualification:"PASS"
-            }' > tmp/tiktok-github-direct-qualification.json
 
       - name: Direct TikTok operation
         if: github.event_name == 'workflow_dispatch'
@@ -124,9 +87,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add tmp/tiktok-github-token-state.json
-          if [[ -f tmp/tiktok-github-direct-qualification.json ]]; then
-            git add tmp/tiktok-github-direct-qualification.json
-          fi
 
           if git diff --cached --quiet; then
             exit 0
