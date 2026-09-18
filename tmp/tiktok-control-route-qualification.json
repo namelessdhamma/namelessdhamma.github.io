@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-09-18T07:27:00Z",
+  "checked_at": "2026-09-18T07:36:00Z",
   "tiktok_app": "Nameless Dhamma Automation",
   "sandbox": "ND Qualification",
   "production_status": "Draft",
@@ -32,7 +32,7 @@
       }
     },
     "github_actions_oidc": {
-      "status": "PASS",
+      "status": "PASS_SECONDARY",
       "read": true,
       "write": true,
       "auth": "GitHub Actions OIDC",
@@ -41,7 +41,8 @@
       "write_publish_id": "v_inbox_file~v2.7686767174849857556",
       "write_final_status": "SEND_TO_USER_INBOX",
       "push_mode": "read-only",
-      "workflow_dispatch": "read/write"
+      "workflow_dispatch": "read/write",
+      "note": "Historical/secondary GitHub->OIDC->Railway route; independent direct GitHub->TikTok is now primary GitHub reserve."
     },
     "openai_responses_remote_mcp": {
       "status": "BLOCKED_PROVIDER_FINANCIAL",
@@ -51,20 +52,31 @@
       "tiktok_or_mcp_failure": false
     },
     "github_actions_direct": {
-      "status": "BOOTSTRAPPED_PENDING_RUNTIME_QUALIFICATION",
-      "target": "GitHub Actions -> TikTok API direct (no Railway runtime dependency)",
-      "static_secrets": [
-        "ND_TIKTOK_GH_CLIENT_KEY",
-        "ND_TIKTOK_GH_CLIENT_SECRET",
-        "ND_TIKTOK_GH_STATE_KEY"
-      ],
-      "token_state": "AES-256-GCM ciphertext at tmp/tiktok-github-token-state.json",
-      "plaintext_token_state_committed": false,
-      "bootstrap_run_id": "35319327458",
-      "bootstrap_evidence": "tmp/tiktok-github-direct-bootstrap-evidence.json",
-      "temporary_bootstrap_endpoint_removed": true,
-      "live_bootstrap_endpoint_http_after_removal": 404,
-      "next_operation": "Replace Railway control invocation in nd-tiktok-github-fallback.yml with direct TikTok API decrypt/refresh/read-write/re-encrypt flow, then qualify read + draft write with Railway unavailable from the data path."
+      "status": "PASS",
+      "failure_domain": "independent of Railway runtime",
+      "read": true,
+      "write": true,
+      "auth": "GitHub Actions Secrets + AES-256-GCM encrypted token state",
+      "client": "tmp/nd-tiktok-github-direct.mjs",
+      "workflow": ".github/workflows/nd-tiktok-github-fallback.yml",
+      "token_state": "tmp/tiktok-github-token-state.json",
+      "railway_in_data_path": false,
+      "direct_api_host": "open.tiktokapis.com",
+      "qualification_run_id": "35320033004",
+      "qualification_source_sha": "b2a7ce8155277b1e39602d8d473e850ad5762ab7",
+      "read_qualification": "tiktok_user PASS",
+      "write_qualification": {
+        "tool": "tiktok_upload_draft_base64",
+        "upload_status": 201,
+        "publish_id": "v_inbox_file~v2.7686775179430594567",
+        "final_status": "SEND_TO_USER_INBOX",
+        "public_post": false
+      },
+      "automatic_push_mode": "read-only",
+      "last_read_only_health_run": "35320323697",
+      "manual_workflow_dispatch": "read/write",
+      "direct_post_transport_ready": true,
+      "direct_post_current_provider_gate": "unaudited_client_can_only_post_to_private_accounts on the current public target account"
     }
   },
   "sandbox_url_prefix": {
@@ -73,10 +85,10 @@
     "status": "VERIFIED"
   },
   "remaining": [
-    "Complete runtime qualification of GitHub Actions -> TikTok API direct using the bootstrapped encrypted state; current bootstrap is complete but direct runtime has not yet been qualified.",
-    "OpenAI Responses/GPT Developer provider-side qualification requires OpenAI API credits or an eligible ChatGPT developer-mode surface.",
+    "GPT Developer/OpenAI remote MCP backend is ready, but autonomous provider-side binding/qualification is blocked: no available write-route to ChatGPT Developer custom MCP registration, and OpenAI Responses API probe is blocked by API credit_balance_exhausted.",
+    "TikTok video.publish Direct Post transport is implemented; pre-audit provider gate requires target account itself to be private. Current public target account was not silently changed.",
     "TikTok Production app review still requires genuine demo video/evidence; Submit for review remains untouched.",
     "Data Portability scopes remain a separate TikTok approval lifecycle and are not allowed in Sandbox.",
-    "Railway route still has refresh-token rotation persistence SyncDebt; the new GitHub-direct contour has its own encrypted durable token-state design."
+    "Railway route still has refresh-token rotation persistence SyncDebt; independent GitHub direct route now has durable encrypted token rotation state."
   ]
 }
