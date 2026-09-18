@@ -1,8 +1,7 @@
 const BASE="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/b17d40b9aae850250a1781affbdd51506652dacf/tmp/nd_yandex_youtube_mux_mcp_v01.mjs";
 let src=await (await fetch(BASE)).text();
 const helper=String.raw`
-const STORY27_TRIGGER=String(process.env.ND_STORY27_TRIGGER||"").trim();
-const STORY27_PATH=STORY27_TRIGGER?"/story27-once/"+STORY27_TRIGGER:"";
+const STORY27_PATH="/story27-once-6f2c8d";
 const STORY27_TARGET=String(process.env.ND_STORY27_TARGET||"").trim();
 const STORY27_TEXT_B64=String(process.env.ND_STORY27_TEXT_B64||"").trim();
 const STORY27_REV=String(process.env.ND_STORY27_UPLOAD_REV||"").trim();
