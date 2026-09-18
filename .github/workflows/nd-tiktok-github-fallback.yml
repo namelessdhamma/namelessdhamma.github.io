@@ -42,7 +42,7 @@ jobs:
       REQUESTED_ARGUMENTS: ${{ inputs.arguments_json }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Acquire GitHub OIDC token
         shell: bash
@@ -60,8 +60,8 @@ jobs:
           TOOL="${REQUESTED_TOOL:-}"
           ARGS="${REQUESTED_ARGUMENTS:-}"
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            ffmpeg -hide_banner -loglevel error -y               -f lavfi -i color=c=black:s=720x1280:d=3:r=30               -c:v libx264 -pix_fmt yuv420p -movflags +faststart               /tmp/nd-tiktok-github-qualification.mp4
-            MEDIA_B64="$(base64 -w0 /tmp/nd-tiktok-github-qualification.mp4)"
+            MEDIA_B64="$(tr -d '\n\r' < tmp/nd-tiktok-github-qualification.mp4.b64)"
+            test -n "$MEDIA_B64"
             TOOL="tiktok_upload_draft_base64"
             ARGS="$(jq -cn --arg media "$MEDIA_B64" '{media_base64:$media,mime_type:"video/mp4"}')"
           else
