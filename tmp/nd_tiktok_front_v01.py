@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import json
@@ -303,7 +304,9 @@ def mcp_tools():
         {"name":"tiktok_publish_status","description":"Read Content Posting processing status for a publish_id.","inputSchema":{"type":"object","properties":{"publish_id":{"type":"string"}},"required":["publish_id"],"additionalProperties":False}},
         {"name":"tiktok_webhook_events","description":"Read the most recent verified TikTok webhook events accepted by the ND gateway.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
         {"name":"tiktok_upload_draft_url","description":"Download an MP4/WebM/MOV from an approved Nameless Dhamma source URL and upload it to TikTok as a user-reviewable draft. Does not publish publicly.","inputSchema":{"type":"object","properties":{"video_url":{"type":"string"}},"required":["video_url"],"additionalProperties":False}},
+        {"name":"tiktok_upload_draft_base64","description":"Upload a small base64-encoded MP4/WebM/MOV to TikTok as a user-reviewable draft. Intended for control-plane qualification or small media; does not publish publicly.","inputSchema":{"type":"object","properties":{"media_base64":{"type":"string"},"mime_type":{"type":"string","enum":["video/mp4","video/quicktime","video/webm"]}},"required":["media_base64","mime_type"],"additionalProperties":False}},
         {"name":"tiktok_direct_post_video_url","description":"Download an approved Nameless Dhamma video URL and Direct Post it to the authorized TikTok account. Defaults to SELF_ONLY; set privacy_level explicitly for broader visibility.","inputSchema":{"type":"object","properties":{"video_url":{"type":"string"},"title":{"type":"string"},"privacy_level":{"type":"string","enum":["SELF_ONLY","MUTUAL_FOLLOW_FRIENDS","PUBLIC_TO_EVERYONE"]},"disable_duet":{"type":"boolean"},"disable_comment":{"type":"boolean"},"disable_stitch":{"type":"boolean"}},"required":["video_url"],"additionalProperties":False}},
+        {"name":"tiktok_direct_post_video_base64","description":"Direct Post a small base64-encoded MP4/WebM/MOV to the authorized TikTok account. Defaults to SELF_ONLY; broader visibility must be explicitly requested.","inputSchema":{"type":"object","properties":{"media_base64":{"type":"string"},"mime_type":{"type":"string","enum":["video/mp4","video/quicktime","video/webm"]},"title":{"type":"string"},"privacy_level":{"type":"string","enum":["SELF_ONLY","MUTUAL_FOLLOW_FRIENDS","PUBLIC_TO_EVERYONE"]},"disable_duet":{"type":"boolean"},"disable_comment":{"type":"boolean"},"disable_stitch":{"type":"boolean"}},"required":["media_base64","mime_type"],"additionalProperties":False}},
         {"name":"tiktok_publish_photos","description":"Publish or upload a TikTok photo post using HTTPS images hosted under the verified namelessdhamma.org prefix.","inputSchema":{"type":"object","properties":{"photo_images":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":35},"post_mode":{"type":"string","enum":["MEDIA_UPLOAD","DIRECT_POST"]},"title":{"type":"string"},"description":{"type":"string"},"privacy_level":{"type":"string","enum":["SELF_ONLY","MUTUAL_FOLLOW_FRIENDS","PUBLIC_TO_EVERYONE"]},"disable_comment":{"type":"boolean"},"auto_add_music":{"type":"boolean"},"brand_content_toggle":{"type":"boolean"},"brand_organic_toggle":{"type":"boolean"},"is_aigc":{"type":"boolean"},"photo_cover_index":{"type":"integer","minimum":0}},"required":["photo_images"],"additionalProperties":False}}
     ]
 
@@ -369,11 +372,40 @@ def mcp_call(name,a):
         if ctype=="application/octet-stream":
             ctype="video/mp4"
         return mcp_local("/tiktok/upload","POST",body,ctype)
+    if name=="tiktok_upload_draft_base64":
+        ctype=str(a.get("mime_type") or "").strip().lower()
+        if ctype not in ("video/mp4","video/quicktime","video/webm"):
+            raise RuntimeError("unsupported_video_type")
+        try:
+            body=base64.b64decode(str(a.get("media_base64") or ""),validate=True)
+        except Exception:
+            raise RuntimeError("invalid_media_base64")
+        if not body or len(body)>8*1024*1024:
+            raise RuntimeError("base64_media_size_invalid")
+        return mcp_local("/tiktok/upload","POST",body,ctype)
     if name=="tiktok_direct_post_video_url":
         body,ctype=mcp_download_media(a.get("video_url"))
         if ctype not in ("video/mp4","video/quicktime","video/webm","application/octet-stream"):
             raise RuntimeError("unsupported_video_type:"+ctype)
         if ctype=="application/octet-stream": ctype="video/mp4"
+        qv={
+            "title":str(a.get("title") or ""),
+            "privacy_level":str(a.get("privacy_level") or "SELF_ONLY"),
+            "disable_duet":"true" if bool(a.get("disable_duet",False)) else "false",
+            "disable_comment":"true" if bool(a.get("disable_comment",False)) else "false",
+            "disable_stitch":"true" if bool(a.get("disable_stitch",False)) else "false",
+        }
+        return mcp_local("/tiktok/direct/video?"+urllib.parse.urlencode(qv),"POST",body,ctype)
+    if name=="tiktok_direct_post_video_base64":
+        ctype=str(a.get("mime_type") or "").strip().lower()
+        if ctype not in ("video/mp4","video/quicktime","video/webm"):
+            raise RuntimeError("unsupported_video_type")
+        try:
+            body=base64.b64decode(str(a.get("media_base64") or ""),validate=True)
+        except Exception:
+            raise RuntimeError("invalid_media_base64")
+        if not body or len(body)>8*1024*1024:
+            raise RuntimeError("base64_media_size_invalid")
         qv={
             "title":str(a.get("title") or ""),
             "privacy_level":str(a.get("privacy_level") or "SELF_ONLY"),
@@ -432,7 +464,7 @@ class Handler(BaseHTTPRequestHandler):
     def handle_tiktok_mcp(self):
         try:
             n=int(self.headers.get("Content-Length","0") or "0")
-            if n<0 or n>1048576: raise RuntimeError("request_too_large")
+            if n<0 or n>12*1024*1024: raise RuntimeError("request_too_large")
             msg=json.loads(self.rfile.read(n).decode("utf-8") or "{}")
             if not isinstance(msg,dict): raise RuntimeError("invalid_jsonrpc")
         except Exception as e:
@@ -475,7 +507,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             claims=verify_github_oidc(self.headers.get("Authorization",""))
             n=int(self.headers.get("Content-Length","0") or "0")
-            if n<=0 or n>1048576:
+            if n<=0 or n>12*1024*1024:
                 raise RuntimeError("invalid_body_size")
             body=json.loads(self.rfile.read(n).decode("utf-8","replace"))
             if not isinstance(body,dict):
