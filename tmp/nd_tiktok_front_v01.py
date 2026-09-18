@@ -22,6 +22,8 @@ ACCESS_TOKEN_ENV = os.environ.get("ND_TIKTOK_ACCESS_TOKEN", "").strip()
 REFRESH_TOKEN_ENV = os.environ.get("ND_TIKTOK_REFRESH_TOKEN", "").strip()
 OPEN_ID_ENV = os.environ.get("ND_TIKTOK_OPEN_ID", "").strip()
 SCOPE_ENV = os.environ.get("ND_TIKTOK_SCOPE", "").strip()
+OAUTH_SCOPES = "user.info.basic,user.info.profile,user.info.stats,video.list,video.upload,video.publish"
+WEBHOOK_LOG_PATH = "/tmp/nd_tiktok_webhooks.jsonl"
 
 TOKEN_PATH = "/tmp/nd_tiktok_token.json"
 UPSTREAM = "https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/aa37a2083e1abf56768e6cb59e4bd583122ae3b6/tmp/nd_tldraw_mcp_front_v2_resources.py"
@@ -174,7 +176,7 @@ def authorized_setup(headers, query):
     return hmac.compare_digest(str(supplied), SETUP_TOKEN)
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ND-TikTok-Front/1.0"
+    server_version = "ND-TikTok-Front/1.1"
 
     def log_message(self, *args):
         pass
@@ -222,8 +224,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(200, {
             "ok": True,
             "service": "nd-tiktok-front",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "configured": bool(CLIENT_KEY and CLIENT_SECRET and REDIRECT_URI),
+            "requested_scopes": OAUTH_SCOPES,
             "setup_protected": bool(SETUP_TOKEN),
             "authorized": bool(tok.get("access_token")),
             "scope": tok.get("scope") or "",
@@ -237,7 +240,7 @@ class Handler(BaseHTTPRequestHandler):
         state = make_state()
         params = {
             "client_key": CLIENT_KEY,
-            "scope": "user.info.basic,video.upload",
+            "scope": OAUTH_SCOPES,
             "response_type": "code",
             "redirect_uri": REDIRECT_URI,
             "state": state,
@@ -308,8 +311,258 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json(401, {"ok": False, "error": clean_error(e)})
             return
-        url = "https://open.tiktokapis.com/v2/user/info/?fields=open_id,avatar_url,display_name"
+        url = "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,avatar_large_url,display_name,username,bio_description,profile_deep_link,is_verified,follower_count,following_count,likes_count,video_count"
         status, obj = api_json(url, "GET", token=tok["access_token"])
+        self.send_json(status, obj)
+
+    def video_list(self, query):
+        if not authorized_setup(self.headers, query):
+            self.send_json(403, {"ok": False, "error": "forbidden"})
+            return
+        try:
+            tok = get_token()
+        except Exception as e:
+            self.send_json(401, {"ok": False, "error": clean_error(e)})
+            return
+        try:
+            max_count = max(1, min(20, int((query.get("max_count") or ["10"])[0])))
+        except Exception:
+            max_count = 10
+        body = {"max_count": max_count}
+        cursor = (query.get("cursor") or [""])[0]
+        if cursor:
+            try:
+                body["cursor"] = int(cursor)
+            except Exception:
+                pass
+        fields = "id,title,video_description,duration,cover_image_url,embed_link,create_time"
+        status, obj = api_json(
+            "https://open.tiktokapis.com/v2/video/list/?fields=" + urllib.parse.quote(fields, safe=","),
+            "POST",
+            body,
+            tok["access_token"],
+        )
+        self.send_json(status, obj)
+
+    def creator_info(self, query):
+        if not authorized_setup(self.headers, query):
+            self.send_json(403, {"ok": False, "error": "forbidden"})
+            return
+        try:
+            tok = get_token()
+        except Exception as e:
+            self.send_json(401, {"ok": False, "error": clean_error(e)})
+            return
+        status, obj = api_json(
+            "https://open.tiktokapis.com/v2/post/publish/creator_info/query/",
+            "POST",
+            {},
+            tok["access_token"],
+        )
+        self.send_json(status, obj)
+
+    def webhook_receive(self):
+        try:
+            n = int(self.headers.get("Content-Length", "0") or "0")
+        except Exception:
+            n = 0
+        if n <= 0 or n > 1024 * 1024:
+            self.send_json(400, {"ok": False, "error": "invalid_body_size"})
+            return
+        raw = self.rfile.read(n)
+        sig_header = self.headers.get("TikTok-Signature", "") or self.headers.get("Tiktok-Signature", "")
+        parts = {}
+        for item in sig_header.split(","):
+            if "=" in item:
+                k, v = item.split("=", 1)
+                parts[k.strip()] = v.strip()
+        ts = parts.get("t", "")
+        supplied = parts.get("s", "")
+        valid = False
+        try:
+            if ts and supplied and abs(int(time.time()) - int(ts)) <= 300:
+                signed = ts.encode("utf-8") + b"." + raw
+                want = hmac.new(CLIENT_SECRET.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+                valid = hmac.compare_digest(want, supplied)
+        except Exception:
+            valid = False
+        if not valid:
+            self.send_json(401, {"ok": False, "error": "invalid_webhook_signature"})
+            return
+        try:
+            obj = json.loads(raw.decode("utf-8", "replace"))
+        except Exception:
+            self.send_json(400, {"ok": False, "error": "invalid_json"})
+            return
+        event_id = hashlib.sha256(raw).hexdigest()
+        rec = {
+            "received_at": int(time.time()),
+            "event_id": event_id,
+            "client_key": obj.get("client_key"),
+            "event": obj.get("event"),
+            "create_time": obj.get("create_time"),
+            "user_openid": obj.get("user_openid"),
+            "content": obj.get("content"),
+        }
+        try:
+            with open(WEBHOOK_LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        self.send_json(200, {"ok": True})
+
+    def webhook_status(self, query):
+        if not authorized_setup(self.headers, query):
+            self.send_json(403, {"ok": False, "error": "forbidden"})
+            return
+        rows = []
+        try:
+            with open(WEBHOOK_LOG_PATH, "r", encoding="utf-8") as f:
+                rows = [json.loads(x) for x in f.read().splitlines()[-20:] if x.strip()]
+        except Exception:
+            rows = []
+        self.send_json(200, {"ok": True, "events": rows})
+
+    def direct_video(self, query):
+        if not authorized_setup(self.headers, query):
+            self.send_json(403, {"ok": False, "error": "forbidden"})
+            return
+        try:
+            n = int(self.headers.get("Content-Length", "0") or "0")
+        except Exception:
+            n = 0
+        if n <= 0 or n > 70 * 1024 * 1024:
+            self.send_json(400, {"ok": False, "error": "invalid_video_size", "max_bytes": 70 * 1024 * 1024})
+            return
+        ctype = (self.headers.get("Content-Type") or "video/mp4").split(";", 1)[0].strip().lower()
+        if ctype not in ("video/mp4", "video/quicktime", "video/webm"):
+            self.send_json(415, {"ok": False, "error": "unsupported_video_type"})
+            return
+        body = self.rfile.read(n)
+        if len(body) != n:
+            self.send_json(400, {"ok": False, "error": "short_video_body"})
+            return
+        try:
+            tok = get_token()
+        except Exception as e:
+            self.send_json(401, {"ok": False, "error": clean_error(e)})
+            return
+        privacy = (query.get("privacy_level") or ["SELF_ONLY"])[0]
+        title = (query.get("title") or [""])[0][:2200]
+        post_info = {
+            "privacy_level": privacy,
+            "title": title,
+            "disable_duet": (query.get("disable_duet") or ["false"])[0].lower() == "true",
+            "disable_comment": (query.get("disable_comment") or ["false"])[0].lower() == "true",
+            "disable_stitch": (query.get("disable_stitch") or ["false"])[0].lower() == "true",
+        }
+        init_body = {
+            "post_info": post_info,
+            "source_info": {
+                "source": "FILE_UPLOAD",
+                "video_size": n,
+                "chunk_size": n,
+                "total_chunk_count": 1,
+            },
+        }
+        status, obj = api_json(
+            "https://open.tiktokapis.com/v2/post/publish/video/init/",
+            "POST",
+            init_body,
+            tok["access_token"],
+        )
+        if status < 200 or status >= 300 or ((obj.get("error") or {}).get("code") not in (None, "", "ok")):
+            self.send_json(status, {"ok": False, "stage": "init", "response": obj})
+            return
+        data = obj.get("data") or {}
+        upload_url = str(data.get("upload_url") or "")
+        publish_id = str(data.get("publish_id") or "")
+        if not upload_url:
+            self.send_json(502, {"ok": False, "stage": "init", "error": "upload_url_missing", "response": obj})
+            return
+        req = urllib.request.Request(
+            upload_url,
+            data=body,
+            headers={
+                "Content-Type": ctype,
+                "Content-Length": str(n),
+                "Content-Range": "bytes 0-%d/%d" % (n - 1, n),
+                "User-Agent": "Nameless-Dhamma-TikTok/1.1",
+            },
+            method="PUT",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                upload_status = r.status
+                r.read()
+        except urllib.error.HTTPError as e:
+            raw_err = e.read().decode("utf-8", "replace")
+            self.send_json(e.code, {"ok": False, "stage": "upload", "error": clean_error(raw_err or e.reason), "publish_id": publish_id})
+            return
+        self.send_json(200, {"ok": True, "publish_id": publish_id, "upload_status": upload_status})
+
+    def photo_publish(self, query):
+        if not authorized_setup(self.headers, query):
+            self.send_json(403, {"ok": False, "error": "forbidden"})
+            return
+        try:
+            n = int(self.headers.get("Content-Length", "0") or "0")
+        except Exception:
+            n = 0
+        if n <= 0 or n > 1024 * 1024:
+            self.send_json(400, {"ok": False, "error": "invalid_body_size"})
+            return
+        try:
+            payload = json.loads(self.rfile.read(n).decode("utf-8", "replace"))
+        except Exception:
+            self.send_json(400, {"ok": False, "error": "invalid_json"})
+            return
+        images = payload.get("photo_images") or []
+        if not isinstance(images, list) or not images or len(images) > 35:
+            self.send_json(400, {"ok": False, "error": "photo_images_required"})
+            return
+        for u in images:
+            if not isinstance(u, str) or not u.startswith("https://namelessdhamma.org/"):
+                self.send_json(400, {"ok": False, "error": "photo_url_must_use_verified_nd_prefix"})
+                return
+        mode = str(payload.get("post_mode") or "MEDIA_UPLOAD").upper()
+        if mode not in ("MEDIA_UPLOAD", "DIRECT_POST"):
+            self.send_json(400, {"ok": False, "error": "invalid_post_mode"})
+            return
+        try:
+            tok = get_token()
+        except Exception as e:
+            self.send_json(401, {"ok": False, "error": clean_error(e)})
+            return
+        post_info = {
+            "title": str(payload.get("title") or "")[:90],
+            "description": str(payload.get("description") or "")[:4000],
+        }
+        if mode == "DIRECT_POST":
+            post_info.update({
+                "privacy_level": str(payload.get("privacy_level") or "SELF_ONLY"),
+                "disable_comment": bool(payload.get("disable_comment", False)),
+                "auto_add_music": bool(payload.get("auto_add_music", False)),
+                "brand_content_toggle": bool(payload.get("brand_content_toggle", False)),
+                "brand_organic_toggle": bool(payload.get("brand_organic_toggle", False)),
+            })
+        body = {
+            "media_type": "PHOTO",
+            "post_mode": mode,
+            "post_info": post_info,
+            "source_info": {
+                "source": "PULL_FROM_URL",
+                "photo_images": images,
+                "photo_cover_index": int(payload.get("photo_cover_index") or 0),
+            },
+            "is_aigc": bool(payload.get("is_aigc", False)),
+        }
+        status, obj = api_json(
+            "https://open.tiktokapis.com/v2/post/publish/content/init/",
+            "POST",
+            body,
+            tok["access_token"],
+        )
         self.send_json(status, obj)
 
     def upload_video(self, query):
@@ -448,14 +701,26 @@ class Handler(BaseHTTPRequestHandler):
             return self.token_export(query)
         if path == "/tiktok/user":
             return self.user_info(query)
+        if path == "/tiktok/videos":
+            return self.video_list(query)
+        if path == "/tiktok/creator":
+            return self.creator_info(query)
+        if path == "/tiktok/webhooks/status":
+            return self.webhook_status(query)
         if path == "/tiktok/upload/status":
             return self.upload_status(query)
         return self.forward()
 
     def do_POST(self):
         path, query = self.parse()
+        if path == "/tiktok/webhooks":
+            return self.webhook_receive()
         if path == "/tiktok/upload":
             return self.upload_video(query)
+        if path == "/tiktok/direct/video":
+            return self.direct_video(query)
+        if path == "/tiktok/photo":
+            return self.photo_publish(query)
         return self.forward()
 
     def do_PUT(self):
@@ -467,7 +732,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         return self.forward()
 
-print("ND_TIKTOK_FRONT_V1_READY " + json.dumps({
+print("ND_TIKTOK_FRONT_V1_1_READY " + json.dumps({
     "port": PORT,
     "inner_port": INNER_PORT,
     "configured": bool(CLIENT_KEY and CLIENT_SECRET and REDIRECT_URI),
