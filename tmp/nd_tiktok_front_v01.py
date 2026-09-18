@@ -23,6 +23,7 @@ SANDBOX_CLIENT_SECRET = os.environ.get("ND_TIKTOK_SANDBOX_CLIENT_SECRET", "").st
 SANDBOX_REDIRECT_URI = os.environ.get("ND_TIKTOK_SANDBOX_REDIRECT_URI", "").strip() or REDIRECT_URI
 SETUP_TOKEN = os.environ.get("ND_TIKTOK_SETUP_TOKEN", "").strip()
 MCP_PATH_TOKEN = os.environ.get("ND_TIKTOK_MCP_PATH_TOKEN", "").strip()
+DEMO_TOKEN = os.environ.get("ND_TIKTOK_DEMO_TOKEN", "").strip()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "").strip() or "gpt-5.6-luna"
 ACCESS_TOKEN_ENV = os.environ.get("ND_TIKTOK_ACCESS_TOKEN", "").strip()
@@ -49,7 +50,7 @@ INNER = "http://127.0.0.1:%d" % INNER_PORT
 
 def clean_error(value):
     text = str(value)
-    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, MCP_PATH_TOKEN, OPENAI_API_KEY, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
+    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, MCP_PATH_TOKEN, DEMO_TOKEN, OPENAI_API_KEY, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
         if secret:
             text = text.replace(secret, "[REDACTED]")
     return text[:2000]
@@ -596,6 +597,53 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json(403,{"ok":False,"error":clean_error(e)})
 
+    def demo_allowed(self, query):
+        if not DEMO_TOKEN:
+            return False
+        supplied=(query.get("token") or [""])[0]
+        return bool(supplied) and hmac.compare_digest(str(supplied), DEMO_TOKEN)
+
+    def demo_origin_headers(self):
+        origin=self.headers.get("Origin","")
+        allowed={"https://namelessdhamma.org","https://www.namelessdhamma.org"}
+        if origin in allowed:
+            return {
+                "Access-Control-Allow-Origin":origin,
+                "Vary":"Origin",
+                "Access-Control-Allow-Methods":"GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers":"Content-Type",
+                "Access-Control-Max-Age":"600",
+            }
+        return {}
+
+    def demo_json(self, status, obj):
+        raw=json.dumps(obj,ensure_ascii=False).encode("utf-8")
+        self.send_bytes(status,raw,"application/json; charset=utf-8",self.demo_origin_headers())
+
+    def demo_control(self, action, query):
+        if not self.demo_allowed(query):
+            self.demo_json(403,{"ok":False,"error":"forbidden"})
+            return
+        try:
+            if action=="status":
+                obj=mcp_call("tiktok_status",{})
+            elif action=="profile":
+                obj=mcp_call("tiktok_user",{})
+            elif action=="videos":
+                obj=mcp_call("tiktok_list_videos",{"max_count":5})
+            elif action=="draft":
+                u="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/tmp/nd-tiktok-github-qualification.mp4.b64"
+                req=urllib.request.Request(u,headers={"User-Agent":"ND-TikTok-Demo/1.0"})
+                with urllib.request.urlopen(req,timeout=30) as r:
+                    media=r.read().decode("ascii","ignore").strip()
+                obj=mcp_call("tiktok_upload_draft_base64",{"media_base64":media,"mime_type":"video/mp4"})
+            else:
+                self.demo_json(404,{"ok":False,"error":"unknown_demo_action"})
+                return
+            self.demo_json(200,{"ok":True,"action":action,"result":obj})
+        except Exception as e:
+            self.demo_json(502,{"ok":False,"action":action,"error":clean_error(e)})
+
     def tiktok_health(self):
         tok = load_token_raw()
         self.send_json(200, {
@@ -606,6 +654,7 @@ class Handler(BaseHTTPRequestHandler):
             "requested_scopes": OAUTH_SCOPES,
             "setup_protected": bool(SETUP_TOKEN),
             "mcp_configured": bool(MCP_PATH_TOKEN),
+            "demo_configured": bool(DEMO_TOKEN),
             "github_oidc_fallback": True,
             "openai_remote_mcp_probe": bool(OPENAI_API_KEY and MCP_PATH_TOKEN),
             "sandbox_configured": bool(SANDBOX_CLIENT_KEY and SANDBOX_CLIENT_SECRET and SANDBOX_REDIRECT_URI),
@@ -1102,6 +1151,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path, query = self.parse()
+        if path.startswith("/tiktok/demo/"):
+            return self.demo_control(path.rsplit("/",1)[-1],query)
         if path == "/tiktok/health":
             return self.tiktok_health()
         if path == "/tiktok/oauth/start":
@@ -1130,6 +1181,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.is_tiktok_mcp():
             return self.handle_tiktok_mcp()
         path, query = self.parse()
+        if path.startswith("/tiktok/demo/"):
+            return self.demo_control(path.rsplit("/",1)[-1],query)
         if path == "/tiktok/openai/mcp-probe":
             return self.openai_mcp_probe(query)
         if path == "/tiktok/github/control":
@@ -1143,6 +1196,19 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/tiktok/photo":
             return self.photo_publish(query)
         return self.forward()
+
+    def do_OPTIONS(self):
+        path, query = self.parse()
+        if path.startswith("/tiktok/demo/"):
+            self.send_response(204)
+            for k,v in self.demo_origin_headers().items():
+                self.send_header(k,v)
+            self.send_header("Content-Length","0")
+            self.end_headers()
+            return
+        self.send_response(204)
+        self.send_header("Content-Length","0")
+        self.end_headers()
 
     def do_PUT(self):
         return self.forward()
@@ -1159,6 +1225,7 @@ print("ND_TIKTOK_FRONT_V1_2_READY " + json.dumps({
     "configured": bool(CLIENT_KEY and CLIENT_SECRET and REDIRECT_URI),
     "setup_protected": bool(SETUP_TOKEN),
     "mcp_configured": bool(MCP_PATH_TOKEN),
+    "demo_configured": bool(DEMO_TOKEN),
 }, ensure_ascii=False), flush=True)
 
 ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
