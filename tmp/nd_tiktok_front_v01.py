@@ -17,6 +17,9 @@ INNER_PORT = int(os.environ.get("ND_TIKTOK_INNER_PORT", "3999"))
 CLIENT_KEY = os.environ.get("ND_TIKTOK_CLIENT_KEY", "").strip()
 CLIENT_SECRET = os.environ.get("ND_TIKTOK_CLIENT_SECRET", "").strip()
 REDIRECT_URI = os.environ.get("ND_TIKTOK_REDIRECT_URI", "").strip()
+SANDBOX_CLIENT_KEY = os.environ.get("ND_TIKTOK_SANDBOX_CLIENT_KEY", "").strip()
+SANDBOX_CLIENT_SECRET = os.environ.get("ND_TIKTOK_SANDBOX_CLIENT_SECRET", "").strip()
+SANDBOX_REDIRECT_URI = os.environ.get("ND_TIKTOK_SANDBOX_REDIRECT_URI", "").strip() or REDIRECT_URI
 SETUP_TOKEN = os.environ.get("ND_TIKTOK_SETUP_TOKEN", "").strip()
 ACCESS_TOKEN_ENV = os.environ.get("ND_TIKTOK_ACCESS_TOKEN", "").strip()
 REFRESH_TOKEN_ENV = os.environ.get("ND_TIKTOK_REFRESH_TOKEN", "").strip()
@@ -37,7 +40,7 @@ INNER = "http://127.0.0.1:%d" % INNER_PORT
 
 def clean_error(value):
     text = str(value)
-    for secret in (CLIENT_SECRET, SETUP_TOKEN, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
+    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
         if secret:
             text = text.replace(secret, "[REDACTED]")
     return text[:2000]
@@ -144,6 +147,26 @@ def valid_state(state):
     except Exception:
         return False
 
+def make_sandbox_state():
+    if not SANDBOX_CLIENT_SECRET:
+        raise RuntimeError("tiktok_sandbox_client_secret_missing")
+    ts_s = str(int(time.time()))
+    nonce = secrets.token_urlsafe(24)
+    payload = "sandbox." + ts_s + "." + nonce
+    sig = hmac.new(SANDBOX_CLIENT_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return payload + "." + sig
+
+def valid_sandbox_state(state):
+    try:
+        mode, ts_s, nonce, sig = state.split(".", 3)
+        if mode != "sandbox" or abs(int(time.time()) - int(ts_s)) > 900:
+            return False
+        payload = mode + "." + ts_s + "." + nonce
+        want = hmac.new(SANDBOX_CLIENT_SECRET.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(sig, want)
+    except Exception:
+        return False
+
 def api_json(url, method="GET", body=None, token=None):
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
     headers = {
@@ -228,6 +251,7 @@ class Handler(BaseHTTPRequestHandler):
             "configured": bool(CLIENT_KEY and CLIENT_SECRET and REDIRECT_URI),
             "requested_scopes": OAUTH_SCOPES,
             "setup_protected": bool(SETUP_TOKEN),
+            "sandbox_configured": bool(SANDBOX_CLIENT_KEY and SANDBOX_CLIENT_SECRET and SANDBOX_REDIRECT_URI),
             "authorized": bool(tok.get("access_token")),
             "scope": tok.get("scope") or "",
             "open_id_present": bool(tok.get("open_id")),
@@ -249,6 +273,22 @@ class Handler(BaseHTTPRequestHandler):
         cookie = "nd_tiktok_oauth_state=%s; Max-Age=900; Path=/tiktok/oauth/; Secure; HttpOnly; SameSite=Lax" % urllib.parse.quote(state, safe="")
         self.redirect(url, cookie)
 
+    def sandbox_oauth_start(self):
+        if not (SANDBOX_CLIENT_KEY and SANDBOX_CLIENT_SECRET and SANDBOX_REDIRECT_URI):
+            self.send_json(503, {"ok": False, "error": "tiktok_sandbox_not_configured"})
+            return
+        state = make_sandbox_state()
+        params = {
+            "client_key": SANDBOX_CLIENT_KEY,
+            "scope": OAUTH_SCOPES,
+            "response_type": "code",
+            "redirect_uri": SANDBOX_REDIRECT_URI,
+            "state": state,
+        }
+        url = "https://www.tiktok.com/v2/auth/authorize/?" + urllib.parse.urlencode(params)
+        cookie = "nd_tiktok_oauth_state=%s; Max-Age=900; Path=/tiktok/oauth/; Secure; HttpOnly; SameSite=Lax" % urllib.parse.quote(state, safe="")
+        self.redirect(url, cookie)
+
     def oauth_callback(self, query):
         if query.get("error"):
             self.send_html(400, "<h1>TikTok authorization failed</h1><p>%s</p>" % clean_error((query.get("error_description") or query.get("error") or [""])[0]))
@@ -259,17 +299,33 @@ class Handler(BaseHTTPRequestHandler):
         if not code:
             self.send_json(400, {"ok": False, "error": "code_missing"})
             return
-        if not state or not cookie_state or state != cookie_state or not valid_state(state):
+        if not state or not cookie_state or state != cookie_state:
             self.send_json(400, {"ok": False, "error": "state_invalid"})
             return
+        sandbox_mode = state.startswith("sandbox.")
+        if sandbox_mode:
+            if not valid_sandbox_state(state):
+                self.send_json(400, {"ok": False, "error": "state_invalid"})
+                return
+            exchange_key = SANDBOX_CLIENT_KEY
+            exchange_secret = SANDBOX_CLIENT_SECRET
+            exchange_redirect = SANDBOX_REDIRECT_URI
+        else:
+            if not valid_state(state):
+                self.send_json(400, {"ok": False, "error": "state_invalid"})
+                return
+            exchange_key = CLIENT_KEY
+            exchange_secret = CLIENT_SECRET
+            exchange_redirect = REDIRECT_URI
         try:
             tok = token_form({
-                "client_key": CLIENT_KEY,
-                "client_secret": CLIENT_SECRET,
+                "client_key": exchange_key,
+                "client_secret": exchange_secret,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": REDIRECT_URI,
+                "redirect_uri": exchange_redirect,
             })
+            tok["credential_mode"] = "sandbox" if sandbox_mode else "production"
             tok = save_token(tok)
         except Exception as e:
             self.send_json(502, {"ok": False, "error": clean_error(e)})
@@ -382,8 +438,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if ts and supplied and abs(int(time.time()) - int(ts)) <= 300:
                 signed = ts.encode("utf-8") + b"." + raw
-                want = hmac.new(CLIENT_SECRET.encode("utf-8"), signed, hashlib.sha256).hexdigest()
-                valid = hmac.compare_digest(want, supplied)
+                candidates = [x for x in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET) if x]
+                valid = any(hmac.compare_digest(hmac.new(sec.encode("utf-8"), signed, hashlib.sha256).hexdigest(), supplied) for sec in candidates)
         except Exception:
             valid = False
         if not valid:
@@ -693,6 +749,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.tiktok_health()
         if path == "/tiktok/oauth/start":
             return self.oauth_start()
+        if path == "/tiktok/oauth/sandbox/start":
+            return self.sandbox_oauth_start()
         if path == "/tiktok/oauth/callback":
             return self.oauth_callback(query)
         if path == "/tiktok/oauth/status":
