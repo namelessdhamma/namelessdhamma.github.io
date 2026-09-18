@@ -1,25 +1,20 @@
 {
-  "qualified_at": "2026-09-18T06:54:14Z",
+  "qualified_at": "2026-09-18T07:01:54Z",
   "route": "github-actions-oidc",
   "workflow": "ND TikTok GitHub Fallback",
-  "run_id": "35316916891",
+  "run_id": "35317502414",
   "run_attempt": "1",
-  "source_sha": "6ae988789923bc5635cf1f9e8ab98fc48b445270",
+  "source_sha": "f05df701fc03e9fbaa619eb3fa889bf85f30d057",
   "response": {
     "ok": true,
     "route": "github-actions-oidc",
-    "tool": "tiktok_publish_photos",
+    "tool": "tiktok_upload_draft_base64",
     "result": {
-      "data": {
-        "publish_id": "p_inbox_url~v2.7686764749837092871"
-      },
-      "error": {
-        "code": "ok",
-        "message": "",
-        "log_id": "20260918145414A4ECCB2334F4A746C476"
-      }
+      "ok": true,
+      "publish_id": "v_inbox_file~v2.7686766889654241301",
+      "upload_status": 201
     },
-    "run_id": "35316916891",
+    "run_id": "35317502414",
     "run_attempt": "1"
   }
 }
