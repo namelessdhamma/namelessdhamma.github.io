@@ -59,11 +59,16 @@ jobs:
           set -euo pipefail
           TOOL="${REQUESTED_TOOL:-}"
           ARGS="${REQUESTED_ARGUMENTS:-}"
-          if [[ -z "$TOOL" ]]; then
-            TOOL="tiktok_user"
-          fi
-          if [[ -z "$ARGS" ]]; then
-            ARGS='{}'
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            TOOL="tiktok_publish_photos"
+            ARGS='{"photo_images":["https://namelessdhamma.org/og-image.png"],"post_mode":"MEDIA_UPLOAD","title":"ND GitHub fallback qualification","description":"Non-public Sandbox qualification draft."}'
+          else
+            if [[ -z "$TOOL" ]]; then
+              TOOL="tiktok_user"
+            fi
+            if [[ -z "$ARGS" ]]; then
+              ARGS='{}'
+            fi
           fi
 
           printf '%s' "$ARGS" | jq -e 'type == "object"' >/dev/null
