@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nameless Dhamma — TikTok Integration Demo</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#050505;color:#eee;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.5}
+main{max-width:980px;margin:0 auto;padding:48px 24px 80px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:34px}.dot{width:30px;height:30px;border:1px solid #aaa;border-radius:50%;box-shadow:inset 0 0 0 9px #111}.muted{color:#aaa}h1{font-size:34px;margin:0 0 8px}h2{font-size:20px;margin:30px 0 12px}
+.card{background:#101010;border:1px solid #2b2b2b;border-radius:14px;padding:20px;margin:14px 0}.actions{display:flex;flex-wrap:wrap;gap:10px}
+button,a.button{appearance:none;border:1px solid #555;background:#171717;color:#fff;border-radius:9px;padding:11px 16px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block}
+button:hover,a.button:hover{background:#232323}.primary{border-color:#ddd!important;background:#eee!important;color:#111!important}.ok{color:#a7f3d0}.warn{color:#facc15}
+pre{white-space:pre-wrap;word-break:break-word;background:#070707;border:1px solid #252525;border-radius:10px;padding:14px;min-height:58px;max-height:300px;overflow:auto}
+.scope{display:inline-block;border:1px solid #333;border-radius:999px;padding:5px 9px;margin:3px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:760px){.grid{grid-template-columns:1fr}}
+footer{margin-top:36px;color:#888;font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><div class="dot"></div><div><strong>Nameless Dhamma</strong><div class="muted">TikTok Sandbox Integration Demo</div></div></div>
+  <h1>End-to-end TikTok integration</h1>
+  <p class="muted">This review page demonstrates the real Sandbox flow used by Nameless Dhamma: Login Kit authorization, profile/statistics access, public video listing, and Content Posting API draft upload.</p>
+
+  <div class="card">
+    <h2 style="margin-top:0">1. Login Kit / authorization</h2>
+    <div class="actions">
+      <a class="button primary" target="_blank" rel="noopener" href="https://nd-qstash-control-v2-production.up.railway.app/tiktok/oauth/sandbox/start">Connect with TikTok</a>
+      <button data-action="status">Check authorization</button>
+    </div>
+    <pre id="status">Ready.</pre>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2 style="margin-top:0">2. Profile & statistics</h2>
+      <button data-action="profile">Load profile and stats</button>
+      <pre id="profile">Not loaded yet.</pre>
+    </div>
+    <div class="card">
+      <h2 style="margin-top:0">3. Display / video.list</h2>
+      <button data-action="videos">Load recent public videos</button>
+      <pre id="videos">Not loaded yet.</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">4. Content Posting API</h2>
+    <p class="muted">Uploads a small qualification clip to the authorized Sandbox account as a <strong>draft only</strong>. It is not publicly posted.</p>
+    <button data-action="draft">Upload Sandbox draft</button>
+    <pre id="draft">No draft uploaded in this session.</pre>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Granted scopes</h2>
+    <span class="scope">user.info.basic</span>
+    <span class="scope">user.info.profile</span>
+    <span class="scope">user.info.stats</span>
+    <span class="scope">video.list</span>
+    <span class="scope">video.upload</span>
+    <span class="scope">video.publish</span>
+    <p class="muted"><strong>Direct Post / video.publish:</strong> configured and authorized. Before app audit, TikTok restricts unaudited clients to Direct Post only to private target accounts. This public Sandbox target account is therefore demonstrated with draft upload instead of a public post.</p>
+  </div>
+
+  <footer>Review-only demonstration surface. Website domain: namelessdhamma.org</footer>
+</main>
+<script>
+const API='https://nd-qstash-control-v2-production.up.railway.app/tiktok/demo/';
+const u=new URL(location.href);
+if(u.searchParams.get('demo')){
+  sessionStorage.setItem('ndTikTokDemoToken',u.searchParams.get('demo'));
+  u.searchParams.delete('demo');
+  history.replaceState({},'',u.pathname+(u.search||'')+u.hash);
+}
+const token=()=>sessionStorage.getItem('ndTikTokDemoToken')||'';
+function clean(obj){
+  if(obj?.result?.data){
+    const d=obj.result.data;
+    if(d.videos) return {videos:d.videos.map(v=>({id:v.id,title:v.title||v.video_description||'',duration:v.duration,create_time:v.create_time})),has_more:d.has_more,cursor:d.cursor};
+    if(d.user) return {user:{display_name:d.user.display_name,username:d.user.username,is_verified:d.user.is_verified,follower_count:d.user.follower_count,following_count:d.user.following_count,likes_count:d.user.likes_count,video_count:d.user.video_count,profile_deep_link:d.user.profile_deep_link}};
+  }
+  if(obj?.result?.scope) return {authorized:obj.result.authorized,scope:obj.result.scope,credential_mode:obj.result.credential_mode||'sandbox'};
+  if(obj?.result?.publish_id) return {draft_created:true,publish_id:obj.result.publish_id,upload_status:obj.result.upload_status,public_post:false};
+  return obj;
+}
+async function run(action){
+  const el=document.getElementById(action);
+  const t=token();
+  if(!t){el.textContent='Demo session token is missing.';return;}
+  el.textContent='Working…';
+  try{
+    const r=await fetch(API+action+'?token='+encodeURIComponent(t),{method:action==='draft'?'POST':'GET'});
+    const j=await r.json();
+    if(!r.ok||j.ok===false) throw new Error(j.error||'Request failed');
+    el.textContent=JSON.stringify(clean(j),null,2);
+  }catch(e){el.textContent='Error: '+e.message;}
+}
+document.querySelectorAll('button[data-action]').forEach(b=>b.addEventListener('click',()=>run(b.dataset.action)));
+</script>
+</body>
+</html>
