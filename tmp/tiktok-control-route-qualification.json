@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-09-18T07:10:00Z",
+  "checked_at": "2026-09-18T07:27:00Z",
   "tiktok_app": "Nameless Dhamma Automation",
   "sandbox": "ND Qualification",
   "production_status": "Draft",
@@ -49,6 +49,22 @@
       "mcp_backend_qualified": true,
       "blocker": "OpenAI API returned HTTP 429 insufficient_quota / credit_balance_exhausted",
       "tiktok_or_mcp_failure": false
+    },
+    "github_actions_direct": {
+      "status": "BOOTSTRAPPED_PENDING_RUNTIME_QUALIFICATION",
+      "target": "GitHub Actions -> TikTok API direct (no Railway runtime dependency)",
+      "static_secrets": [
+        "ND_TIKTOK_GH_CLIENT_KEY",
+        "ND_TIKTOK_GH_CLIENT_SECRET",
+        "ND_TIKTOK_GH_STATE_KEY"
+      ],
+      "token_state": "AES-256-GCM ciphertext at tmp/tiktok-github-token-state.json",
+      "plaintext_token_state_committed": false,
+      "bootstrap_run_id": "35319327458",
+      "bootstrap_evidence": "tmp/tiktok-github-direct-bootstrap-evidence.json",
+      "temporary_bootstrap_endpoint_removed": true,
+      "live_bootstrap_endpoint_http_after_removal": 404,
+      "next_operation": "Replace Railway control invocation in nd-tiktok-github-fallback.yml with direct TikTok API decrypt/refresh/read-write/re-encrypt flow, then qualify read + draft write with Railway unavailable from the data path."
     }
   },
   "sandbox_url_prefix": {
@@ -57,9 +73,10 @@
     "status": "VERIFIED"
   },
   "remaining": [
+    "Complete runtime qualification of GitHub Actions -> TikTok API direct using the bootstrapped encrypted state; current bootstrap is complete but direct runtime has not yet been qualified.",
     "OpenAI Responses/GPT Developer provider-side qualification requires OpenAI API credits or an eligible ChatGPT developer-mode surface.",
     "TikTok Production app review still requires genuine demo video/evidence; Submit for review remains untouched.",
     "Data Portability scopes remain a separate TikTok approval lifecycle and are not allowed in Sandbox.",
-    "Rotated refresh-token durability across future redeploys remains SyncDebt unless a persistent store is approved."
+    "Railway route still has refresh-token rotation persistence SyncDebt; the new GitHub-direct contour has its own encrypted durable token-state design."
   ]
 }
