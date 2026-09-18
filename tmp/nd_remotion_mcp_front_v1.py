@@ -16,8 +16,8 @@ PATH_TOKEN=os.environ.get("ND_REMOTION_MCP_PATH_TOKEN","").strip()
 GITHUB_PAT=os.environ.get("ND_GITHUB_PAT","").strip()
 REPO=os.environ.get("ND_REMOTION_GITHUB_REPO","namelessdhamma/nameless-dhamma-vault").strip()
 BRANCH=os.environ.get("ND_REMOTION_GITHUB_BRANCH","main").strip()
-CURRENT="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/2701b7887aec4524b81dd827cce3695795de3aff/tmp/nd_tiktok_front_v01.py"
-INNER_PATH="/tmp/nd_existing_gateway_remotion_inner.py"
+CURRENT="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/5aa9018a4e36cdb62ed7abf5090a5db9b5dd83ee/tmp/nd_runtime_retirement_entry_v5.py"
+INNER_PATH="/tmp/nd_current_production_entry_remotion_inner.py"
 
 urllib.request.urlretrieve(CURRENT,INNER_PATH)
 env=dict(os.environ)
