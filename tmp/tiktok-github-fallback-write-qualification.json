@@ -1,0 +1,16 @@
+{
+  "qualified_at": "2026-09-18T07:03:45Z",
+  "route": "github-actions-oidc",
+  "capability": "tiktok-write-draft",
+  "workflow_run_id": "35317609805",
+  "workflow_source_sha": "f1dc343f0cd9f9a650265a808e3655fef1f297a6",
+  "tool": "tiktok_upload_draft_base64",
+  "upload_status": 201,
+  "publish_id": "v_inbox_file~v2.7686767174849857556",
+  "final_status": "SEND_TO_USER_INBOX",
+  "public_post": false,
+  "fixture": "tmp/nd-tiktok-github-qualification.mp4.b64",
+  "fixture_resolution": "720x1280",
+  "auth": "GitHub Actions OIDC",
+  "qualification": "PASS"
+}
