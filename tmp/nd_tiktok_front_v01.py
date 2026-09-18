@@ -632,7 +632,10 @@ class Handler(BaseHTTPRequestHandler):
             elif action=="videos":
                 obj=mcp_call("tiktok_list_videos",{"max_count":5})
             elif action=="draft":
-                obj=mcp_call("tiktok_publish_status",{"publish_id":"v_inbox_file~v2.7686775179430594567"})
+                pid="v_inbox_file~v2.7686775179430594567"
+                st=mcp_call("tiktok_publish_status",{"publish_id":pid})
+                data=st.get("data") if isinstance(st,dict) else {}
+                obj={"publish_id":pid,"status":(data or {}).get("status"),"fail_reason":(data or {}).get("fail_reason"),"public_post":False}
             else:
                 self.demo_json(404,{"ok":False,"error":"unknown_demo_action"})
                 return
