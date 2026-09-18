@@ -23,6 +23,8 @@ SANDBOX_CLIENT_SECRET = os.environ.get("ND_TIKTOK_SANDBOX_CLIENT_SECRET", "").st
 SANDBOX_REDIRECT_URI = os.environ.get("ND_TIKTOK_SANDBOX_REDIRECT_URI", "").strip() or REDIRECT_URI
 SETUP_TOKEN = os.environ.get("ND_TIKTOK_SETUP_TOKEN", "").strip()
 MCP_PATH_TOKEN = os.environ.get("ND_TIKTOK_MCP_PATH_TOKEN", "").strip()
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "").strip() or "gpt-5.6-luna"
 ACCESS_TOKEN_ENV = os.environ.get("ND_TIKTOK_ACCESS_TOKEN", "").strip()
 REFRESH_TOKEN_ENV = os.environ.get("ND_TIKTOK_REFRESH_TOKEN", "").strip()
 OPEN_ID_ENV = os.environ.get("ND_TIKTOK_OPEN_ID", "").strip()
@@ -47,7 +49,7 @@ INNER = "http://127.0.0.1:%d" % INNER_PORT
 
 def clean_error(value):
     text = str(value)
-    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, MCP_PATH_TOKEN, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
+    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, MCP_PATH_TOKEN, OPENAI_API_KEY, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
         if secret:
             text = text.replace(secret, "[REDACTED]")
     return text[:2000]
@@ -503,6 +505,78 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return ""
 
+    def openai_mcp_probe(self, query):
+        if not authorized_setup(self.headers, query):
+            self.send_json(403, {"ok": False, "error": "forbidden"})
+            return
+        if not (OPENAI_API_KEY and MCP_PATH_TOKEN):
+            self.send_json(503, {"ok": False, "error": "openai_or_mcp_not_configured"})
+            return
+        public_domain=(os.environ.get("RAILWAY_PUBLIC_DOMAIN","").strip() or "nd-qstash-control-v2-production.up.railway.app")
+        server_url="https://"+public_domain+"/nd/tiktok/mcp/"+MCP_PATH_TOKEN
+        payload={
+            "model":OPENAI_MODEL,
+            "input":"Use the nd_tiktok MCP server. Call tiktok_status exactly once. Then answer exactly OPENAI_TIKTOK_MCP_PASS if the tool reports authorized true.",
+            "tools":[{
+                "type":"mcp",
+                "server_label":"nd_tiktok",
+                "server_description":"Nameless Dhamma direct TikTok control MCP.",
+                "server_url":server_url,
+                "allowed_tools":["tiktok_status"],
+                "require_approval":"never"
+            }],
+            "max_output_tokens":128
+        }
+        req=urllib.request.Request(
+            "https://api.openai.com/v1/responses",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Authorization":"Bearer "+OPENAI_API_KEY,
+                "Content-Type":"application/json",
+                "User-Agent":"Nameless-Dhamma-TikTok-OpenAI-Probe/1.0"
+            },
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req,timeout=90) as r:
+                obj=json.loads(r.read().decode("utf-8","replace"))
+        except urllib.error.HTTPError as e:
+            raw=e.read().decode("utf-8","replace")
+            self.send_json(502,{"ok":False,"error":"openai_http_%s"%e.code,"detail":clean_error(raw)})
+            return
+        except Exception as e:
+            self.send_json(502,{"ok":False,"error":"openai_request_failed","detail":clean_error(e)})
+            return
+        types=[]
+        mcp_calls=[]
+        for item in (obj.get("output") or []):
+            if not isinstance(item,dict): continue
+            typ=str(item.get("type") or "")
+            types.append(typ)
+            if typ.startswith("mcp_"):
+                mcp_calls.append({
+                    "type":typ,
+                    "name":item.get("name"),
+                    "server_label":item.get("server_label"),
+                    "error":item.get("error")
+                })
+        text_out=""
+        for item in (obj.get("output") or []):
+            if not isinstance(item,dict) or item.get("type")!="message": continue
+            for c in (item.get("content") or []):
+                if isinstance(c,dict) and c.get("type")=="output_text":
+                    text_out+=str(c.get("text") or "")
+        self.send_json(200,{
+            "ok":True,
+            "provider":"openai-responses-remote-mcp",
+            "model":obj.get("model") or OPENAI_MODEL,
+            "response_id":obj.get("id"),
+            "output_types":types,
+            "mcp_items":mcp_calls,
+            "output_text":text_out[:500],
+            "pass":("OPENAI_TIKTOK_MCP_PASS" in text_out and any(x.get("type")=="mcp_call" for x in mcp_calls))
+        })
+
     def github_fallback_control(self):
         try:
             claims=verify_github_oidc(self.headers.get("Authorization",""))
@@ -533,6 +607,7 @@ class Handler(BaseHTTPRequestHandler):
             "setup_protected": bool(SETUP_TOKEN),
             "mcp_configured": bool(MCP_PATH_TOKEN),
             "github_oidc_fallback": True,
+            "openai_remote_mcp_probe": bool(OPENAI_API_KEY and MCP_PATH_TOKEN),
             "sandbox_configured": bool(SANDBOX_CLIENT_KEY and SANDBOX_CLIENT_SECRET and SANDBOX_REDIRECT_URI),
             "authorized": bool(tok.get("access_token")),
             "scope": tok.get("scope") or "",
@@ -1055,6 +1130,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.is_tiktok_mcp():
             return self.handle_tiktok_mcp()
         path, query = self.parse()
+        if path == "/tiktok/openai/mcp-probe":
+            return self.openai_mcp_probe(query)
         if path == "/tiktok/github/control":
             return self.github_fallback_control()
         if path == "/tiktok/webhooks":
