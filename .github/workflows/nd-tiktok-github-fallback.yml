@@ -1,4 +1,4 @@
-# direct-runtime-qualification: 2026-09-18.1
+# direct-runtime-qualification: 2026-09-18.2
 name: ND TikTok GitHub Direct
 
 on:
@@ -74,16 +74,20 @@ jobs:
           jq -e '.ok == true and .result.upload_status == 201' /tmp/direct-write.json >/dev/null
           PUBLISH_ID="$(jq -er '.result.publish_id' /tmp/direct-write.json)"
 
-          sleep 3
           STATUS_ARGS="$(jq -cn --arg id "$PUBLISH_ID" '{publish_id:$id}')"
-          node tmp/nd-tiktok-github-direct.mjs tiktok_publish_status "$STATUS_ARGS" > /tmp/direct-status.json
-          FINAL_STATUS="$(jq -r '.result.data.status // ""' /tmp/direct-status.json)"
-
-          if [[ "$FINAL_STATUS" != "SEND_TO_USER_INBOX" ]]; then
-            sleep 3
+          FINAL_STATUS=""
+          for attempt in 1 2 3 4 5 6 7 8; do
+            sleep 5
             node tmp/nd-tiktok-github-direct.mjs tiktok_publish_status "$STATUS_ARGS" > /tmp/direct-status.json
             FINAL_STATUS="$(jq -r '.result.data.status // ""' /tmp/direct-status.json)"
-          fi
+            if [[ "$FINAL_STATUS" == "SEND_TO_USER_INBOX" ]]; then
+              break
+            fi
+            if [[ "$FINAL_STATUS" == "FAILED" ]]; then
+              jq -r '.result.data.fail_reason // "unknown_failure"' /tmp/direct-status.json >&2
+              exit 1
+            fi
+          done
           test "$FINAL_STATUS" = "SEND_TO_USER_INBOX"
 
           mkdir -p tmp
