@@ -148,6 +148,28 @@ async function toolCall(state, name, a) {
     const upload_status=await uploadBinary(data.upload_url,buf,mime);
     return {ok:true,publish_id:data.publish_id,upload_status};
   }
+  if (name === 'tiktok_direct_post_video_base64') {
+    if (!a.media_base64) die('media_base64_required');
+    const mime=String(a.mime_type||'video/mp4');
+    if (!['video/mp4','video/quicktime','video/webm'].includes(mime)) die('unsupported_video_type');
+    const buf=Buffer.from(String(a.media_base64),'base64');
+    if (!buf.length || buf.length > 8*1024*1024) die('media_size_invalid');
+    const post_info={
+      privacy_level:String(a.privacy_level||'SELF_ONLY'),
+      title:String(a.title||'').slice(0,2200),
+      disable_duet:!!a.disable_duet,
+      disable_comment:!!a.disable_comment,
+      disable_stitch:!!a.disable_stitch
+    };
+    const init=await api(state,'https://open.tiktokapis.com/v2/post/publish/video/init/','POST',{
+      post_info,
+      source_info:{source:'FILE_UPLOAD',video_size:buf.length,chunk_size:buf.length,total_chunk_count:1}
+    });
+    const data=init.data||{};
+    if (!data.upload_url || !data.publish_id) die('direct_init_missing_fields');
+    const upload_status=await uploadBinary(data.upload_url,buf,mime);
+    return {ok:true,publish_id:data.publish_id,upload_status};
+  }
   if (name === 'tiktok_upload_draft_url' || name === 'tiktok_direct_post_video_url') {
     const u=String(a.video_url||'');
     const allowed=['https://namelessdhamma.org/','https://www.namelessdhamma.org/','https://raw.githubusercontent.com/namelessdhamma/'];
