@@ -70,5 +70,6 @@ async function once(){
   const gotSha=createHash("sha256").update(got).digest("hex");
   console.log("ND_STORY27_UPLOAD_RESULT",JSON.stringify({rev:REV,target:TARGET,before_md5:before.md5||null,after_md5:after.md5||null,before_size:before.size||null,after_size:after.size||null,local_sha256:sha,download_sha256:gotSha,valid_docx:got.slice(0,2).toString("ascii")==="PK"&&Object.values(checks).every(Boolean),checks,public_url:after.public_url||null}));
 }
-try{await once();}catch(e){console.error("ND_STORY27_UPLOAD_FAILED",String(e?.message||e).slice(0,1200));}
+console.log("ND_STORY27_BOOT",JSON.stringify({token:Boolean(TOKEN),target:TARGET,text_b64_len:TEXT_B64.length,rev:REV}));
+try{await once();}catch(e){console.log("ND_STORY27_UPLOAD_FAILED",String(e?.message||e).slice(0,1200));}
 const base=await (await fetch(BASE)).text(); await import("data:text/javascript;base64,"+Buffer.from(base).toString("base64"));
