@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import html
 import json
 import os
 import secrets
@@ -1157,6 +1158,17 @@ class Handler(BaseHTTPRequestHandler):
         path, query = self.parse()
         if path.startswith("/tiktok/demo/"):
             return self.demo_control(path.rsplit("/",1)[-1],query)
+        if path == "/tiktok/business/oauth/callback":
+            code=(query.get("auth_code") or query.get("code") or [""])[0]
+            err=(query.get("error") or [""])[0]
+            body="""<!doctype html><html><head><meta charset="utf-8"><title>TikTok Business OAuth</title></head>
+<body style="font-family:system-ui;background:#050505;color:#eee;padding:40px">
+<h1>TikTok for Business connected</h1>
+<p>OAuth callback endpoint is active.</p>
+<p>%s</p>
+</body></html>""" % ("Authorization response received." if code else ("OAuth error: "+html.escape(err) if err else "Ready for authorization."))
+            self.send_bytes(200,body.encode("utf-8"),"text/html; charset=utf-8")
+            return
         if path == "/tiktok/health":
             return self.tiktok_health()
         if path == "/tiktok/oauth/start":
