@@ -201,6 +201,9 @@ async function toolCall(state, name, a) {
 }
 
 const raw = decryptState();
-const state = await refreshToken(raw);
+const now = Math.floor(Date.now()/1000);
+const state = (raw.access_token && Number(raw.expires_at||0) > now + 120)
+  ? raw
+  : await refreshToken(raw);
 const result = await toolCall(state, TOOL, args());
 process.stdout.write(JSON.stringify({ok:true,route:'github-actions-direct',tool:TOOL,result}, null, 2) + '\n');
