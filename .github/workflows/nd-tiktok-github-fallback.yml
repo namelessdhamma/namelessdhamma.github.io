@@ -1,4 +1,4 @@
-# direct-bootstrap: 2026-09-18.3
+# direct-bootstrap: 2026-09-18.4
 name: ND TikTok GitHub Fallback
 
 on:
@@ -64,7 +64,13 @@ jobs:
           TMP_RESPONSE="$(mktemp)"
           HTTP_CODE="$(curl -sSL             -o "$TMP_RESPONSE"             -w '%{http_code}'             -H "Authorization: Bearer ${GH_OIDC_TOKEN}"             "$BOOTSTRAP_URL")"
           if [[ "$HTTP_CODE" != "200" ]]; then
-            printf 'bootstrap_http=%s error=%s\n' "$HTTP_CODE" "$(jq -r '.error // "unknown"' "$TMP_RESPONSE")"
+            mkdir -p tmp
+            jq -n               --arg http_code "$HTTP_CODE"               --arg error "$(jq -r '.error // "unknown"' "$TMP_RESPONSE")"               --arg run_id "$GITHUB_RUN_ID"               --arg source_sha "$GITHUB_SHA"               '{checked_at:(now|todateiso8601),http_code:$http_code,error:$error,run_id:$run_id,source_sha:$source_sha}'               > tmp/tiktok-github-bootstrap-error.json
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add tmp/tiktok-github-bootstrap-error.json
+            git commit -m "Record TikTok GitHub bootstrap error"
+            git push
             exit 22
           fi
           RESPONSE="$(cat "$TMP_RESPONSE")"
