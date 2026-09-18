@@ -110,11 +110,11 @@ def result(args):
     return {"ok":True,"state":"COMPLETE","request_id":rid,"result":parsed}
 
 def status():
-    code,obj=gh("")
+    code,obj=gh("contents")
     return {
         "ok":code==200,
         "service":"nd-remotion-railway-mcp-relay",
-        "version":"1.0.1",
+        "version":"1.0.2",
         "github_status":code,
         "repository":REPO,
         "branch":BRANCH,
@@ -126,7 +126,7 @@ def status():
     }
 
 def selftest():
-    repo_status,_=gh("")
+    repo_status,_=gh("contents")
     runs_status,runs_obj=gh("actions/workflows/nd-remotion-fallback.yml/runs?per_page=5")
     runs=[]
     if runs_status==200 and isinstance(runs_obj,dict):
@@ -221,7 +221,7 @@ class H(BaseHTTPRequestHandler):
             mid=msg.get("id")
             if method=="initialize":
                 p=msg.get("params") or {}
-                result_obj={"protocolVersion":p.get("protocolVersion") or "2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"nd-remotion-railway-mcp","version":"1.0.1"}}
+                result_obj={"protocolVersion":p.get("protocolVersion") or "2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"nd-remotion-railway-mcp","version":"1.0.2"}}
             elif method=="notifications/initialized":
                 self.send_response(204); self.send_header("Content-Length","0"); self.end_headers(); return
             elif method=="tools/list":
@@ -255,7 +255,7 @@ class H(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204); self.send_header("Content-Length","0"); self.end_headers()
 
-print("ND_REMOTION_RAILWAY_MCP_V1_0_1_READY "+json.dumps({
+print("ND_REMOTION_RAILWAY_MCP_V1_0_2_READY "+json.dumps({
     "port":PORT,
     "inner_port":INNER_PORT,
     "path_token_configured":bool(PATH_TOKEN),
