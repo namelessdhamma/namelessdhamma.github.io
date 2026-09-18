@@ -61,10 +61,8 @@ jobs:
           TOOL="${REQUESTED_TOOL:-}"
           ARGS="${REQUESTED_ARGUMENTS:-}"
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            MEDIA_B64="$(tr -d '\n\r' < tmp/nd-tiktok-github-qualification.mp4.b64)"
-            test -n "$MEDIA_B64"
-            TOOL="tiktok_upload_draft_base64"
-            ARGS="$(jq -cn --arg media "$MEDIA_B64" '{media_base64:$media,mime_type:"video/mp4"}')"
+            TOOL="tiktok_user"
+            ARGS='{}'
           else
             if [[ -z "$TOOL" ]]; then
               TOOL="tiktok_user"
