@@ -632,11 +632,7 @@ class Handler(BaseHTTPRequestHandler):
             elif action=="videos":
                 obj=mcp_call("tiktok_list_videos",{"max_count":5})
             elif action=="draft":
-                u="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/tmp/nd-tiktok-github-qualification.mp4.b64"
-                req=urllib.request.Request(u,headers={"User-Agent":"ND-TikTok-Demo/1.0"})
-                with urllib.request.urlopen(req,timeout=30) as r:
-                    media=r.read().decode("ascii","ignore").strip()
-                obj=mcp_call("tiktok_upload_draft_base64",{"media_base64":media,"mime_type":"video/mp4"})
+                obj=mcp_call("tiktok_publish_status",{"publish_id":"v_inbox_file~v2.7686775179430594567"})
             else:
                 self.demo_json(404,{"ok":False,"error":"unknown_demo_action"})
                 return
