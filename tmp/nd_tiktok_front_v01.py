@@ -511,7 +511,7 @@ class Handler(BaseHTTPRequestHandler):
             claims=verify_github_oidc(self.headers.get("Authorization",""))
             if str(claims.get("event_name") or "")!="push":
                 raise RuntimeError("bootstrap_requires_push_event")
-            tok=load_token()
+            tok=get_token()
             if not isinstance(tok,dict) or not tok.get("refresh_token"):
                 raise RuntimeError("token_state_missing")
             mode=str(tok.get("credential_mode") or CREDENTIAL_MODE_ENV or "").lower()
