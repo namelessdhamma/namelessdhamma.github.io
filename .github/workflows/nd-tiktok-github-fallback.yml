@@ -1,4 +1,4 @@
-# direct-bootstrap: 2026-09-18.2
+# direct-bootstrap: 2026-09-18.3
 name: ND TikTok GitHub Fallback
 
 on:
@@ -61,7 +61,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          RESPONSE="$(curl -fsSL             -H "Authorization: Bearer ${GH_OIDC_TOKEN}"             "$BOOTSTRAP_URL")"
+          TMP_RESPONSE="$(mktemp)"
+          HTTP_CODE="$(curl -sSL             -o "$TMP_RESPONSE"             -w '%{http_code}'             -H "Authorization: Bearer ${GH_OIDC_TOKEN}"             "$BOOTSTRAP_URL")"
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            printf 'bootstrap_http=%s error=%s\n' "$HTTP_CODE" "$(jq -r '.error // "unknown"' "$TMP_RESPONSE")"
+            exit 22
+          fi
+          RESPONSE="$(cat "$TMP_RESPONSE")"
           printf '%s' "$RESPONSE" | jq -e '.ok == true' >/dev/null
 
           GH_PAT="$(printf '%s' "$RESPONSE" | jq -er '.github_pat')"
