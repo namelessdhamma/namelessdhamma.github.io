@@ -636,6 +636,11 @@ class Handler(BaseHTTPRequestHandler):
                 st=mcp_call("tiktok_publish_status",{"publish_id":pid})
                 data=st.get("data") if isinstance(st,dict) else {}
                 obj={"publish_id":pid,"status":(data or {}).get("status"),"fail_reason":(data or {}).get("fail_reason"),"public_post":False}
+            elif action=="webhook":
+                wh=mcp_call("tiktok_webhook_events",{})
+                events=wh.get("events") if isinstance(wh,dict) else []
+                last=events[-1] if isinstance(events,list) and events else None
+                obj={"verified_signed_event":bool(last),"latest_event":last}
             else:
                 self.demo_json(404,{"ok":False,"error":"unknown_demo_action"})
                 return
