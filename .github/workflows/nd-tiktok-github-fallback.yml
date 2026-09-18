@@ -1,0 +1,101 @@
+name: ND TikTok GitHub Fallback
+
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: TikTok tool to invoke
+        required: true
+        type: choice
+        default: tiktok_status
+        options:
+          - tiktok_status
+          - tiktok_user
+          - tiktok_list_videos
+          - tiktok_creator_info
+          - tiktok_publish_status
+          - tiktok_webhook_events
+          - tiktok_upload_draft_url
+          - tiktok_direct_post_video_url
+          - tiktok_publish_photos
+      arguments_json:
+        description: JSON object with tool arguments
+        required: false
+        default: "{}"
+        type: string
+  push:
+    paths:
+      - ".github/workflows/nd-tiktok-github-fallback.yml"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  tiktok-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CONTROL_URL: https://nd-qstash-control-v2-production.up.railway.app/tiktok/github/control
+      OIDC_AUDIENCE: nd-tiktok-github-fallback
+      REQUESTED_TOOL: ${{ inputs.tool }}
+      REQUESTED_ARGUMENTS: ${{ inputs.arguments_json }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Acquire GitHub OIDC token
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOKEN_JSON="$(curl -fsSL             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${OIDC_AUDIENCE}")"
+          TOKEN="$(printf '%s' "$TOKEN_JSON" | jq -er '.value')"
+          printf 'GH_OIDC_TOKEN=%s\n' "$TOKEN" >> "$GITHUB_ENV"
+
+      - name: Invoke TikTok control plane
+        id: invoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOL="${REQUESTED_TOOL:-}"
+          ARGS="${REQUESTED_ARGUMENTS:-}"
+          if [[ -z "$TOOL" ]]; then
+            TOOL="tiktok_user"
+          fi
+          if [[ -z "$ARGS" ]]; then
+            ARGS='{}'
+          fi
+
+          printf '%s' "$ARGS" | jq -e 'type == "object"' >/dev/null
+          BODY="$(jq -cn --arg tool "$TOOL" --argjson arguments "$ARGS" '{tool:$tool,arguments:$arguments}')"
+
+          RESPONSE="$(curl -fsSL             -X POST "$CONTROL_URL"             -H "Authorization: Bearer ${GH_OIDC_TOKEN}"             -H "Content-Type: application/json"             --data "$BODY")"
+
+          printf '%s\n' "$RESPONSE" | jq .
+          printf '%s\n' "$RESPONSE" > /tmp/tiktok-response.json
+          jq -e '.ok == true' /tmp/tiktok-response.json >/dev/null
+
+      - name: Persist qualification evidence
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tmp
+          jq -n             --arg route "github-actions-oidc"             --arg workflow "$GITHUB_WORKFLOW"             --arg run_id "$GITHUB_RUN_ID"             --arg run_attempt "$GITHUB_RUN_ATTEMPT"             --arg sha "$GITHUB_SHA"             --slurpfile response /tmp/tiktok-response.json             '{
+              qualified_at: (now | todateiso8601),
+              route: $route,
+              workflow: $workflow,
+              run_id: $run_id,
+              run_attempt: $run_attempt,
+              source_sha: $sha,
+              response: $response[0]
+            }' > tmp/tiktok-github-fallback-qualification.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tmp/tiktok-github-fallback-qualification.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Qualify TikTok GitHub Actions fallback"
+          git push
