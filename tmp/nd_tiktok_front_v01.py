@@ -25,6 +25,7 @@ ACCESS_TOKEN_ENV = os.environ.get("ND_TIKTOK_ACCESS_TOKEN", "").strip()
 REFRESH_TOKEN_ENV = os.environ.get("ND_TIKTOK_REFRESH_TOKEN", "").strip()
 OPEN_ID_ENV = os.environ.get("ND_TIKTOK_OPEN_ID", "").strip()
 SCOPE_ENV = os.environ.get("ND_TIKTOK_SCOPE", "").strip()
+CREDENTIAL_MODE_ENV = os.environ.get("ND_TIKTOK_CREDENTIAL_MODE", "").strip().lower()
 OAUTH_SCOPES = "user.info.basic,user.info.profile,user.info.stats,video.list,video.upload,video.publish"
 WEBHOOK_LOG_PATH = "/tmp/nd_tiktok_webhooks.jsonl"
 
@@ -77,6 +78,7 @@ def load_token_raw():
             "refresh_token": REFRESH_TOKEN_ENV,
             "open_id": OPEN_ID_ENV,
             "scope": SCOPE_ENV,
+            "credential_mode": CREDENTIAL_MODE_ENV or "production",
             "expires_at": 0,
         }
     return {}
@@ -110,14 +112,25 @@ def refresh_access_token(tok):
     refresh = str(tok.get("refresh_token") or "").strip()
     if not refresh:
         return tok
+    mode = str(tok.get("credential_mode") or CREDENTIAL_MODE_ENV or "production").strip().lower()
+    if mode == "sandbox":
+        refresh_key = SANDBOX_CLIENT_KEY
+        refresh_secret = SANDBOX_CLIENT_SECRET
+    else:
+        refresh_key = CLIENT_KEY
+        refresh_secret = CLIENT_SECRET
+        mode = "production"
+    if not (refresh_key and refresh_secret):
+        raise RuntimeError("tiktok_refresh_credentials_missing:" + mode)
     obj = token_form({
-        "client_key": CLIENT_KEY,
-        "client_secret": CLIENT_SECRET,
+        "client_key": refresh_key,
+        "client_secret": refresh_secret,
         "grant_type": "refresh_token",
         "refresh_token": refresh,
     })
     if not obj.get("refresh_token"):
         obj["refresh_token"] = refresh
+    obj["credential_mode"] = mode
     return save_token(obj)
 
 def get_token():
