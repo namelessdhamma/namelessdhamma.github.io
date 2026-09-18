@@ -21,6 +21,7 @@ SANDBOX_CLIENT_KEY = os.environ.get("ND_TIKTOK_SANDBOX_CLIENT_KEY", "").strip()
 SANDBOX_CLIENT_SECRET = os.environ.get("ND_TIKTOK_SANDBOX_CLIENT_SECRET", "").strip()
 SANDBOX_REDIRECT_URI = os.environ.get("ND_TIKTOK_SANDBOX_REDIRECT_URI", "").strip() or REDIRECT_URI
 SETUP_TOKEN = os.environ.get("ND_TIKTOK_SETUP_TOKEN", "").strip()
+MCP_PATH_TOKEN = os.environ.get("ND_TIKTOK_MCP_PATH_TOKEN", "").strip()
 ACCESS_TOKEN_ENV = os.environ.get("ND_TIKTOK_ACCESS_TOKEN", "").strip()
 REFRESH_TOKEN_ENV = os.environ.get("ND_TIKTOK_REFRESH_TOKEN", "").strip()
 OPEN_ID_ENV = os.environ.get("ND_TIKTOK_OPEN_ID", "").strip()
@@ -41,7 +42,7 @@ INNER = "http://127.0.0.1:%d" % INNER_PORT
 
 def clean_error(value):
     text = str(value)
-    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
+    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, MCP_PATH_TOKEN, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
         if secret:
             text = text.replace(secret, "[REDACTED]")
     return text[:2000]
@@ -211,8 +212,103 @@ def authorized_setup(headers, query):
         supplied = (query.get("setup") or [""])[0]
     return hmac.compare_digest(str(supplied), SETUP_TOKEN)
 
+def mcp_tools():
+    return [
+        {"name":"tiktok_status","description":"Read Nameless Dhamma TikTok authorization/configuration status without returning secrets.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
+        {"name":"tiktok_user","description":"Read the authorized TikTok account profile and statistics using the granted user.info scopes.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
+        {"name":"tiktok_list_videos","description":"List public videos for the authorized TikTok account.","inputSchema":{"type":"object","properties":{"max_count":{"type":"integer","minimum":1,"maximum":20},"cursor":{"type":"integer"}},"additionalProperties":False}},
+        {"name":"tiktok_creator_info","description":"Read Content Posting creator capabilities including allowed privacy levels and maximum video duration.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
+        {"name":"tiktok_publish_status","description":"Read Content Posting processing status for a publish_id.","inputSchema":{"type":"object","properties":{"publish_id":{"type":"string"}},"required":["publish_id"],"additionalProperties":False}},
+        {"name":"tiktok_webhook_events","description":"Read the most recent verified TikTok webhook events accepted by the ND gateway.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
+        {"name":"tiktok_upload_draft_url","description":"Download an MP4/WebM/MOV from an approved Nameless Dhamma source URL and upload it to TikTok as a user-reviewable draft. Does not publish publicly.","inputSchema":{"type":"object","properties":{"video_url":{"type":"string"}},"required":["video_url"],"additionalProperties":False}},
+        {"name":"tiktok_direct_post_video_url","description":"Download an approved Nameless Dhamma video URL and Direct Post it to the authorized TikTok account. Defaults to SELF_ONLY; set privacy_level explicitly for broader visibility.","inputSchema":{"type":"object","properties":{"video_url":{"type":"string"},"title":{"type":"string"},"privacy_level":{"type":"string","enum":["SELF_ONLY","MUTUAL_FOLLOW_FRIENDS","PUBLIC_TO_EVERYONE"]},"disable_duet":{"type":"boolean"},"disable_comment":{"type":"boolean"},"disable_stitch":{"type":"boolean"}},"required":["video_url"],"additionalProperties":False}},
+        {"name":"tiktok_publish_photos","description":"Publish or upload a TikTok photo post using HTTPS images hosted under the verified namelessdhamma.org prefix.","inputSchema":{"type":"object","properties":{"photo_images":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":35},"post_mode":{"type":"string","enum":["MEDIA_UPLOAD","DIRECT_POST"]},"title":{"type":"string"},"description":{"type":"string"},"privacy_level":{"type":"string","enum":["SELF_ONLY","MUTUAL_FOLLOW_FRIENDS","PUBLIC_TO_EVERYONE"]},"disable_comment":{"type":"boolean"},"auto_add_music":{"type":"boolean"},"brand_content_toggle":{"type":"boolean"},"brand_organic_toggle":{"type":"boolean"},"is_aigc":{"type":"boolean"},"photo_cover_index":{"type":"integer","minimum":0}},"required":["photo_images"],"additionalProperties":False}}
+    ]
+
+def mcp_local(path, method="GET", raw=None, content_type="application/json"):
+    headers={"X-ND-TikTok-Setup-Token":SETUP_TOKEN,"User-Agent":"ND-TikTok-MCP/1.0"}
+    data=raw
+    if data is not None:
+        headers["Content-Type"]=content_type
+    req=urllib.request.Request("http://127.0.0.1:%d%s"%(PORT,path),data=data,headers=headers,method=method)
+    try:
+        with urllib.request.urlopen(req,timeout=180) as r:
+            b=r.read()
+            return json.loads(b.decode("utf-8","replace") or "{}") if b else {}
+    except urllib.error.HTTPError as e:
+        b=e.read().decode("utf-8","replace")
+        try:
+            obj=json.loads(b or "{}")
+        except Exception:
+            obj={"raw":clean_error(b or e.reason)}
+        raise RuntimeError("local_http_%s:%s"%(e.code,clean_error(obj)))
+
+def mcp_download_media(url, max_bytes=70*1024*1024):
+    u=str(url or "").strip()
+    allowed=("https://namelessdhamma.org/","https://www.namelessdhamma.org/","https://raw.githubusercontent.com/namelessdhamma/")
+    if not any(u.startswith(p) for p in allowed):
+        raise RuntimeError("media_url_not_in_approved_nd_sources")
+    req=urllib.request.Request(u,headers={"User-Agent":"ND-TikTok-MCP/1.0"})
+    with urllib.request.urlopen(req,timeout=120) as r:
+        ctype=(r.headers.get("Content-Type") or "application/octet-stream").split(";",1)[0].strip().lower()
+        total=0
+        chunks=[]
+        while True:
+            chunk=r.read(1024*1024)
+            if not chunk: break
+            total+=len(chunk)
+            if total>max_bytes: raise RuntimeError("media_too_large")
+            chunks.append(chunk)
+    return b"".join(chunks),ctype
+
+def mcp_call(name,a):
+    a=a or {}
+    if not isinstance(a,dict): raise RuntimeError("arguments_must_be_object")
+    if name=="tiktok_status":
+        return mcp_local("/tiktok/oauth/status")
+    if name=="tiktok_user":
+        return mcp_local("/tiktok/user")
+    if name=="tiktok_list_videos":
+        qv={"max_count":max(1,min(20,int(a.get("max_count") or 10)))}
+        if a.get("cursor") is not None: qv["cursor"]=int(a.get("cursor"))
+        return mcp_local("/tiktok/videos?"+urllib.parse.urlencode(qv))
+    if name=="tiktok_creator_info":
+        return mcp_local("/tiktok/creator")
+    if name=="tiktok_publish_status":
+        pid=str(a.get("publish_id") or "").strip()
+        if not pid: raise RuntimeError("publish_id_required")
+        return mcp_local("/tiktok/upload/status?"+urllib.parse.urlencode({"publish_id":pid}))
+    if name=="tiktok_webhook_events":
+        return mcp_local("/tiktok/webhooks/status")
+    if name=="tiktok_upload_draft_url":
+        body,ctype=mcp_download_media(a.get("video_url"))
+        if ctype not in ("video/mp4","video/quicktime","video/webm","application/octet-stream"):
+            raise RuntimeError("unsupported_video_type:"+ctype)
+        if ctype=="application/octet-stream":
+            ctype="video/mp4"
+        return mcp_local("/tiktok/upload","POST",body,ctype)
+    if name=="tiktok_direct_post_video_url":
+        body,ctype=mcp_download_media(a.get("video_url"))
+        if ctype not in ("video/mp4","video/quicktime","video/webm","application/octet-stream"):
+            raise RuntimeError("unsupported_video_type:"+ctype)
+        if ctype=="application/octet-stream": ctype="video/mp4"
+        qv={
+            "title":str(a.get("title") or ""),
+            "privacy_level":str(a.get("privacy_level") or "SELF_ONLY"),
+            "disable_duet":"true" if bool(a.get("disable_duet",False)) else "false",
+            "disable_comment":"true" if bool(a.get("disable_comment",False)) else "false",
+            "disable_stitch":"true" if bool(a.get("disable_stitch",False)) else "false",
+        }
+        return mcp_local("/tiktok/direct/video?"+urllib.parse.urlencode(qv),"POST",body,ctype)
+    if name=="tiktok_publish_photos":
+        payload=dict(a)
+        payload["post_mode"]=str(payload.get("post_mode") or "MEDIA_UPLOAD")
+        raw=json.dumps(payload,ensure_ascii=False).encode("utf-8")
+        return mcp_local("/tiktok/photo","POST",raw,"application/json")
+    raise RuntimeError("unknown_tiktok_tool")
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ND-TikTok-Front/1.1"
+    server_version = "ND-TikTok-Front/1.2"
 
     def log_message(self, *args):
         pass
@@ -247,6 +343,44 @@ class Handler(BaseHTTPRequestHandler):
         p = urllib.parse.urlsplit(self.path)
         return p.path, urllib.parse.parse_qs(p.query, keep_blank_values=True)
 
+    def is_tiktok_mcp(self):
+        expected=("/nd/tiktok/mcp/"+MCP_PATH_TOKEN) if MCP_PATH_TOKEN else ""
+        return bool(expected and urllib.parse.urlsplit(self.path).path==expected)
+
+    def handle_tiktok_mcp(self):
+        try:
+            n=int(self.headers.get("Content-Length","0") or "0")
+            if n<0 or n>1048576: raise RuntimeError("request_too_large")
+            msg=json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+            if not isinstance(msg,dict): raise RuntimeError("invalid_jsonrpc")
+        except Exception as e:
+            self.send_json(400,{"jsonrpc":"2.0","error":{"code":-32700,"message":clean_error(e)},"id":None})
+            return
+        mid=msg.get("id")
+        method=str(msg.get("method") or "")
+        if method=="notifications/initialized":
+            self.send_response(204); self.end_headers(); return
+        if method=="initialize":
+            self.send_json(200,{"jsonrpc":"2.0","id":mid,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"nd-tiktok-direct-mcp","version":"1.0.0"},"instructions":"Direct Nameless Dhamma TikTok MCP. Full qualified read/write surface for the authorized ND TikTok account. Public posting requires an explicit tool call with the desired privacy level; draft upload does not publish publicly."}})
+            return
+        if method=="ping":
+            self.send_json(200,{"jsonrpc":"2.0","id":mid,"result":{}})
+            return
+        if method=="tools/list":
+            self.send_json(200,{"jsonrpc":"2.0","id":mid,"result":{"tools":mcp_tools()}})
+            return
+        if method=="tools/call":
+            p=msg.get("params") or {}
+            try:
+                obj=mcp_call(str(p.get("name") or ""),p.get("arguments") or {})
+                err=False
+            except Exception as e:
+                obj={"ok":False,"error":clean_error(e)}
+                err=True
+            self.send_json(200,{"jsonrpc":"2.0","id":mid,"result":{"content":[{"type":"text","text":json.dumps(obj,ensure_ascii=False)}],"structuredContent":obj,"isError":err}})
+            return
+        self.send_json(200,{"jsonrpc":"2.0","id":mid,"error":{"code":-32601,"message":"Method not found"}})
+
     def cookie_value(self, name):
         c = cookies.SimpleCookie()
         try:
@@ -260,10 +394,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(200, {
             "ok": True,
             "service": "nd-tiktok-front",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "configured": bool(CLIENT_KEY and CLIENT_SECRET and REDIRECT_URI),
             "requested_scopes": OAUTH_SCOPES,
             "setup_protected": bool(SETUP_TOKEN),
+            "mcp_configured": bool(MCP_PATH_TOKEN),
             "sandbox_configured": bool(SANDBOX_CLIENT_KEY and SANDBOX_CLIENT_SECRET and SANDBOX_REDIRECT_URI),
             "authorized": bool(tok.get("access_token")),
             "scope": tok.get("scope") or "",
@@ -783,6 +918,8 @@ class Handler(BaseHTTPRequestHandler):
         return self.forward()
 
     def do_POST(self):
+        if self.is_tiktok_mcp():
+            return self.handle_tiktok_mcp()
         path, query = self.parse()
         if path == "/tiktok/webhooks":
             return self.webhook_receive()
@@ -803,11 +940,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         return self.forward()
 
-print("ND_TIKTOK_FRONT_V1_1_READY " + json.dumps({
+print("ND_TIKTOK_FRONT_V1_2_READY " + json.dumps({
     "port": PORT,
     "inner_port": INNER_PORT,
     "configured": bool(CLIENT_KEY and CLIENT_SECRET and REDIRECT_URI),
     "setup_protected": bool(SETUP_TOKEN),
+    "mcp_configured": bool(MCP_PATH_TOKEN),
 }, ensure_ascii=False), flush=True)
 
 ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
