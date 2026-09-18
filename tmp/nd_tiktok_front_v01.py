@@ -25,7 +25,6 @@ SETUP_TOKEN = os.environ.get("ND_TIKTOK_SETUP_TOKEN", "").strip()
 MCP_PATH_TOKEN = os.environ.get("ND_TIKTOK_MCP_PATH_TOKEN", "").strip()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "").strip() or "gpt-5.6-luna"
-GITHUB_PAT_BOOTSTRAP = os.environ.get("ND_GITHUB_PAT", "").strip()
 ACCESS_TOKEN_ENV = os.environ.get("ND_TIKTOK_ACCESS_TOKEN", "").strip()
 REFRESH_TOKEN_ENV = os.environ.get("ND_TIKTOK_REFRESH_TOKEN", "").strip()
 OPEN_ID_ENV = os.environ.get("ND_TIKTOK_OPEN_ID", "").strip()
@@ -50,7 +49,7 @@ INNER = "http://127.0.0.1:%d" % INNER_PORT
 
 def clean_error(value):
     text = str(value)
-    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, MCP_PATH_TOKEN, OPENAI_API_KEY, GITHUB_PAT_BOOTSTRAP, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
+    for secret in (CLIENT_SECRET, SANDBOX_CLIENT_SECRET, SETUP_TOKEN, MCP_PATH_TOKEN, OPENAI_API_KEY, ACCESS_TOKEN_ENV, REFRESH_TOKEN_ENV):
         if secret:
             text = text.replace(secret, "[REDACTED]")
     return text[:2000]
@@ -505,47 +504,6 @@ class Handler(BaseHTTPRequestHandler):
             return c[name].value if name in c else ""
         except Exception:
             return ""
-
-    def github_direct_bootstrap(self):
-        try:
-            claims=verify_github_oidc(self.headers.get("Authorization",""))
-            if str(claims.get("event_name") or "")!="push":
-                raise RuntimeError("bootstrap_requires_push_event")
-            tok=get_token()
-            if not isinstance(tok,dict) or not tok.get("refresh_token"):
-                raise RuntimeError("token_state_missing")
-            mode=str(tok.get("credential_mode") or CREDENTIAL_MODE_ENV or "").lower()
-            if mode=="sandbox":
-                ck=SANDBOX_CLIENT_KEY
-                cs=SANDBOX_CLIENT_SECRET
-            else:
-                ck=CLIENT_KEY
-                cs=CLIENT_SECRET
-            if not (GITHUB_PAT_BOOTSTRAP and ck and cs):
-                raise RuntimeError("bootstrap_credentials_missing")
-            state_key=secrets.token_urlsafe(48)
-            self.send_json(200,{
-                "ok":True,
-                "bootstrap_version":"2026-09-18.1",
-                "repository":GITHUB_FALLBACK_REPO,
-                "github_pat":GITHUB_PAT_BOOTSTRAP,
-                "client_key":ck,
-                "client_secret":cs,
-                "state_key":state_key,
-                "token_state":{
-                    "access_token":tok.get("access_token") or ACCESS_TOKEN_ENV,
-                    "refresh_token":tok.get("refresh_token") or REFRESH_TOKEN_ENV,
-                    "open_id":tok.get("open_id") or OPEN_ID_ENV,
-                    "scope":tok.get("scope") or SCOPE_ENV,
-                    "expires_at":tok.get("expires_at"),
-                    "refresh_expires_at":tok.get("refresh_expires_at"),
-                    "credential_mode":mode or "sandbox"
-                },
-                "run_id":claims.get("run_id"),
-                "run_attempt":claims.get("run_attempt")
-            })
-        except Exception as e:
-            self.send_json(403,{"ok":False,"error":clean_error(e)})
 
     def openai_mcp_probe(self, query):
         if not authorized_setup(self.headers, query):
@@ -1172,8 +1130,6 @@ class Handler(BaseHTTPRequestHandler):
         if self.is_tiktok_mcp():
             return self.handle_tiktok_mcp()
         path, query = self.parse()
-        if path == "/tiktok/github/direct-bootstrap":
-            return self.github_direct_bootstrap()
         if path == "/tiktok/openai/mcp-probe":
             return self.openai_mcp_probe(query)
         if path == "/tiktok/github/control":
