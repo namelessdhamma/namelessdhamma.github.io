@@ -1,39 +1,25 @@
 {
-  "qualified_at": "2026-09-18T06:48:25Z",
+  "qualified_at": "2026-09-18T06:54:14Z",
   "route": "github-actions-oidc",
   "workflow": "ND TikTok GitHub Fallback",
-  "run_id": "35316485041",
+  "run_id": "35316916891",
   "run_attempt": "1",
-  "source_sha": "21e6fdf0462d6a04836b0e19597181d8be11218d",
+  "source_sha": "6ae988789923bc5635cf1f9e8ab98fc48b445270",
   "response": {
     "ok": true,
     "route": "github-actions-oidc",
-    "tool": "tiktok_user",
+    "tool": "tiktok_publish_photos",
     "result": {
       "data": {
-        "user": {
-          "bio_description": "Возникшее — узнаётся; продолжающееся — не подкармливается; угасающее — не присваивается. @namelessdhamma",
-          "following_count": 3,
-          "is_verified": false,
-          "likes_count": 33,
-          "open_id": "-000vqr0rEmML6xMW7vj0FLcQgmYeh0pFuBH",
-          "avatar_large_url": "https://p16-common-sign.tiktokcdn.com/tos-alisg-avt-0068/920e39c93e446fa585e5474496b097e6~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=14579&refresh_token=b1fbffa9&x-expires=1789884000&x-signature=eR8QfIJowHfwVHa8%2B6tvN5NSJ%2BA%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=8aecc5ac&idc=my",
-          "avatar_url": "https://p19-common-sign.tiktokcdn.com/tos-alisg-avt-0068/920e39c93e446fa585e5474496b097e6~tplv-tiktokx-cropcenter:168:168.jpeg?dr=14577&refresh_token=a3de79f8&x-expires=1789884000&x-signature=kH6Ongmw1Ys3f%2FhhGdqNlOISXms%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=8aecc5ac&idc=my",
-          "display_name": "@namelessdhamma",
-          "follower_count": 5,
-          "profile_deep_link": "https://vm.tiktok.com/ZSqGV5S5h/",
-          "union_id": "62043d9e-262e-5da4-9180-2b0bdfab536a",
-          "username": "namelessdhamma",
-          "video_count": 10
-        }
+        "publish_id": "p_inbox_url~v2.7686764749837092871"
       },
       "error": {
         "code": "ok",
         "message": "",
-        "log_id": "2026091814482535737E4BB5AEEE5C81C4"
+        "log_id": "20260918145414A4ECCB2334F4A746C476"
       }
     },
-    "run_id": "35316485041",
+    "run_id": "35316916891",
     "run_attempt": "1"
   }
 }
