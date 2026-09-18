@@ -46,9 +46,9 @@ footer{margin-top:36px;color:#888;font-size:13px}
 
   <div class="card">
     <h2 style="margin-top:0">4. Content Posting API</h2>
-    <p class="muted">Uploads a small qualification clip to the authorized Sandbox account as a <strong>draft only</strong>. It is not publicly posted.</p>
-    <button data-action="draft">Upload Sandbox draft</button>
-    <pre id="draft">No draft uploaded in this session.</pre>
+    <p class="muted">Verifies a real Sandbox draft previously created through <strong>video.upload</strong>. The draft reached TikTok's user inbox and was never publicly posted.</p>
+    <button data-action="draft">Verify Sandbox draft</button>
+    <pre id="draft">Draft status not checked yet.</pre>
   </div>
 
   <div class="card">
@@ -80,7 +80,7 @@ function clean(obj){
     if(d.user) return {user:{display_name:d.user.display_name,username:d.user.username,is_verified:d.user.is_verified,follower_count:d.user.follower_count,following_count:d.user.following_count,likes_count:d.user.likes_count,video_count:d.user.video_count,profile_deep_link:d.user.profile_deep_link}};
   }
   if(obj?.result?.scope) return {authorized:obj.result.authorized,scope:obj.result.scope,credential_mode:obj.result.credential_mode||'sandbox'};
-  if(obj?.result?.publish_id) return {draft_created:true,publish_id:obj.result.publish_id,upload_status:obj.result.upload_status,public_post:false};
+  if(obj?.result?.publish_id) return {publish_id:obj.result.publish_id,status:obj.result.status,fail_reason:obj.result.fail_reason||null,public_post:false};
   return obj;
 }
 async function run(action){
