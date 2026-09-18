@@ -29,6 +29,10 @@ SCOPE_ENV = os.environ.get("ND_TIKTOK_SCOPE", "").strip()
 CREDENTIAL_MODE_ENV = os.environ.get("ND_TIKTOK_CREDENTIAL_MODE", "").strip().lower()
 OAUTH_SCOPES = "user.info.basic,user.info.profile,user.info.stats,video.list,video.upload,video.publish"
 WEBHOOK_LOG_PATH = "/tmp/nd_tiktok_webhooks.jsonl"
+GITHUB_OIDC_AUDIENCE = "nd-tiktok-github-fallback"
+GITHUB_FALLBACK_REPO = "namelessdhamma/namelessdhamma.github.io"
+GITHUB_FALLBACK_WORKFLOW = "namelessdhamma/namelessdhamma.github.io/.github/workflows/nd-tiktok-github-fallback.yml@"
+_GITHUB_JWKS_CACHE = {"expires":0,"keys":[]}
 
 TOKEN_PATH = "/tmp/nd_tiktok_token.json"
 UPSTREAM = "https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/aa37a2083e1abf56768e6cb59e4bd583122ae3b6/tmp/nd_tldraw_mcp_front_v2_resources.py"
@@ -212,6 +216,84 @@ def authorized_setup(headers, query):
         supplied = (query.get("setup") or [""])[0]
     return hmac.compare_digest(str(supplied), SETUP_TOKEN)
 
+def _b64url_decode(value):
+    s=str(value or "")
+    s += "="*((4-len(s)%4)%4)
+    import base64
+    return base64.urlsafe_b64decode(s.encode("ascii"))
+
+def _github_jwks():
+    now=int(time.time())
+    if _GITHUB_JWKS_CACHE.get("keys") and int(_GITHUB_JWKS_CACHE.get("expires") or 0)>now:
+        return _GITHUB_JWKS_CACHE["keys"]
+    cfg_req=urllib.request.Request("https://token.actions.githubusercontent.com/.well-known/openid-configuration",headers={"User-Agent":"ND-TikTok-GitHub-Fallback/1.0"})
+    with urllib.request.urlopen(cfg_req,timeout=20) as r:
+        cfg=json.loads(r.read().decode("utf-8","replace"))
+    jwks_uri=str(cfg.get("jwks_uri") or "")
+    if not jwks_uri.startswith("https://token.actions.githubusercontent.com/"):
+        raise RuntimeError("unexpected_github_jwks_uri")
+    with urllib.request.urlopen(urllib.request.Request(jwks_uri,headers={"User-Agent":"ND-TikTok-GitHub-Fallback/1.0"}),timeout=20) as r:
+        obj=json.loads(r.read().decode("utf-8","replace"))
+    keys=obj.get("keys") or []
+    _GITHUB_JWKS_CACHE["keys"]=keys
+    _GITHUB_JWKS_CACHE["expires"]=now+3600
+    return keys
+
+def verify_github_oidc(auth_header):
+    auth=str(auth_header or "")
+    if not auth.startswith("Bearer "):
+        raise RuntimeError("github_oidc_bearer_required")
+    tok=auth[7:].strip()
+    parts=tok.split(".")
+    if len(parts)!=3:
+        raise RuntimeError("github_oidc_invalid_jwt")
+    header=json.loads(_b64url_decode(parts[0]).decode("utf-8","replace"))
+    claims=json.loads(_b64url_decode(parts[1]).decode("utf-8","replace"))
+    if header.get("alg")!="RS256" or not header.get("kid"):
+        raise RuntimeError("github_oidc_alg_or_kid_invalid")
+    key=None
+    for k in _github_jwks():
+        if k.get("kid")==header.get("kid") and k.get("kty")=="RSA":
+            key=k; break
+    if not key:
+        _GITHUB_JWKS_CACHE["expires"]=0
+        for k in _github_jwks():
+            if k.get("kid")==header.get("kid") and k.get("kty")=="RSA":
+                key=k; break
+    if not key:
+        raise RuntimeError("github_oidc_key_not_found")
+    n=int.from_bytes(_b64url_decode(key.get("n")),"big")
+    e=int.from_bytes(_b64url_decode(key.get("e")),"big")
+    sig=int.from_bytes(_b64url_decode(parts[2]),"big")
+    klen=(n.bit_length()+7)//8
+    em=pow(sig,e,n).to_bytes(klen,"big")
+    digest=hashlib.sha256((parts[0]+"."+parts[1]).encode("ascii")).digest()
+    digest_info=bytes.fromhex("3031300d060960864801650304020105000420")+digest
+    if klen < len(digest_info)+11:
+        raise RuntimeError("github_oidc_rsa_key_too_small")
+    expected=b"\x00\x01"+b"\xff"*(klen-len(digest_info)-3)+b"\x00"+digest_info
+    if not hmac.compare_digest(em,expected):
+        raise RuntimeError("github_oidc_signature_invalid")
+    now=int(time.time())
+    if str(claims.get("iss") or "")!="https://token.actions.githubusercontent.com":
+        raise RuntimeError("github_oidc_issuer_invalid")
+    aud=claims.get("aud")
+    if isinstance(aud,list):
+        aud_ok=GITHUB_OIDC_AUDIENCE in aud
+    else:
+        aud_ok=str(aud or "")==GITHUB_OIDC_AUDIENCE
+    if not aud_ok:
+        raise RuntimeError("github_oidc_audience_invalid")
+    if int(claims.get("exp") or 0)<now-30 or int(claims.get("nbf") or 0)>now+30:
+        raise RuntimeError("github_oidc_time_invalid")
+    if str(claims.get("repository") or "")!=GITHUB_FALLBACK_REPO:
+        raise RuntimeError("github_oidc_repository_invalid")
+    if not str(claims.get("workflow_ref") or "").startswith(GITHUB_FALLBACK_WORKFLOW):
+        raise RuntimeError("github_oidc_workflow_invalid")
+    if str(claims.get("event_name") or "") not in ("workflow_dispatch","push"):
+        raise RuntimeError("github_oidc_event_invalid")
+    return claims
+
 def mcp_tools():
     return [
         {"name":"tiktok_status","description":"Read Nameless Dhamma TikTok authorization/configuration status without returning secrets.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
@@ -389,6 +471,25 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return ""
 
+    def github_fallback_control(self):
+        try:
+            claims=verify_github_oidc(self.headers.get("Authorization",""))
+            n=int(self.headers.get("Content-Length","0") or "0")
+            if n<=0 or n>1048576:
+                raise RuntimeError("invalid_body_size")
+            body=json.loads(self.rfile.read(n).decode("utf-8","replace"))
+            if not isinstance(body,dict):
+                raise RuntimeError("invalid_json")
+            tool=str(body.get("tool") or "")
+            args=body.get("arguments") or {}
+            allowed={x["name"] for x in mcp_tools()}
+            if tool not in allowed:
+                raise RuntimeError("tool_not_allowed")
+            obj=mcp_call(tool,args)
+            self.send_json(200,{"ok":True,"route":"github-actions-oidc","tool":tool,"result":obj,"run_id":claims.get("run_id"),"run_attempt":claims.get("run_attempt")})
+        except Exception as e:
+            self.send_json(403,{"ok":False,"error":clean_error(e)})
+
     def tiktok_health(self):
         tok = load_token_raw()
         self.send_json(200, {
@@ -399,6 +500,7 @@ class Handler(BaseHTTPRequestHandler):
             "requested_scopes": OAUTH_SCOPES,
             "setup_protected": bool(SETUP_TOKEN),
             "mcp_configured": bool(MCP_PATH_TOKEN),
+            "github_oidc_fallback": True,
             "sandbox_configured": bool(SANDBOX_CLIENT_KEY and SANDBOX_CLIENT_SECRET and SANDBOX_REDIRECT_URI),
             "authorized": bool(tok.get("access_token")),
             "scope": tok.get("scope") or "",
@@ -921,6 +1023,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.is_tiktok_mcp():
             return self.handle_tiktok_mcp()
         path, query = self.parse()
+        if path == "/tiktok/github/control":
+            return self.github_fallback_control()
         if path == "/tiktok/webhooks":
             return self.webhook_receive()
         if path == "/tiktok/upload":
