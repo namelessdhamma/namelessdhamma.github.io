@@ -1,0 +1,21 @@
+{
+  "qualified_at": "2026-09-18T07:34:19Z",
+  "route": "github-actions-direct",
+  "railway_in_data_path": false,
+  "direct_api_host": "open.tiktokapis.com",
+  "read": {
+    "tool": "tiktok_user",
+    "status": "PASS"
+  },
+  "write": {
+    "tool": "tiktok_upload_draft_base64",
+    "upload_status": 201,
+    "publish_id": "v_inbox_file~v2.7686775179430594567",
+    "final_status": "SEND_TO_USER_INBOX",
+    "public_post": false
+  },
+  "token_state": "AES-256-GCM ciphertext",
+  "run_id": "35320033004",
+  "source_sha": "b2a7ce8155277b1e39602d8d473e850ad5762ab7",
+  "qualification": "PASS"
+}
