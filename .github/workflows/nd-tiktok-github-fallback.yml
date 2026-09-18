@@ -1,4 +1,4 @@
-# qualification-fixture: b6ce634bfc2206cc5f861fd8aa10f4c149df0592
+# direct-bootstrap: 2026-09-18.1
 name: ND TikTok GitHub Fallback
 
 on:
@@ -37,6 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
+      REPO: namelessdhamma/namelessdhamma.github.io
+      BOOTSTRAP_URL: https://nd-qstash-control-v2-production.up.railway.app/tiktok/github/direct-bootstrap
       CONTROL_URL: https://nd-qstash-control-v2-production.up.railway.app/tiktok/github/control
       OIDC_AUDIENCE: nd-tiktok-github-fallback
       REQUESTED_TOOL: ${{ inputs.tool }}
@@ -51,57 +53,80 @@ jobs:
           set -euo pipefail
           TOKEN_JSON="$(curl -fsSL             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${OIDC_AUDIENCE}")"
           TOKEN="$(printf '%s' "$TOKEN_JSON" | jq -er '.value')"
+          echo "::add-mask::$TOKEN"
           printf 'GH_OIDC_TOKEN=%s\n' "$TOKEN" >> "$GITHUB_ENV"
 
-      - name: Invoke TikTok control plane
-        id: invoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          TOOL="${REQUESTED_TOOL:-}"
-          ARGS="${REQUESTED_ARGUMENTS:-}"
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            TOOL="tiktok_user"
-            ARGS='{}'
-          else
-            if [[ -z "$TOOL" ]]; then
-              TOOL="tiktok_user"
-            fi
-            if [[ -z "$ARGS" ]]; then
-              ARGS='{}'
-            fi
-          fi
-
-          printf '%s' "$ARGS" | jq -e 'type == "object"' >/dev/null
-          BODY="$(jq -cn --arg tool "$TOOL" --argjson arguments "$ARGS" '{tool:$tool,arguments:$arguments}')"
-
-          RESPONSE="$(curl -fsSL             -X POST "$CONTROL_URL"             -H "Authorization: Bearer ${GH_OIDC_TOKEN}"             -H "Content-Type: application/json"             --data "$BODY")"
-
-          printf '%s\n' "$RESPONSE" | jq .
-          printf '%s\n' "$RESPONSE" > /tmp/tiktok-response.json
-          jq -e '.ok == true' /tmp/tiktok-response.json >/dev/null
-
-      - name: Persist qualification evidence
+      - name: Bootstrap independent GitHub TikTok credentials
         if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
+          RESPONSE="$(curl -fsSL             -H "Authorization: Bearer ${GH_OIDC_TOKEN}"             "$BOOTSTRAP_URL")"
+          printf '%s' "$RESPONSE" | jq -e '.ok == true' >/dev/null
+
+          GH_PAT="$(printf '%s' "$RESPONSE" | jq -er '.github_pat')"
+          CLIENT_KEY="$(printf '%s' "$RESPONSE" | jq -er '.client_key')"
+          CLIENT_SECRET="$(printf '%s' "$RESPONSE" | jq -er '.client_secret')"
+          STATE_KEY="$(printf '%s' "$RESPONSE" | jq -er '.state_key')"
+          TOKEN_STATE="$(printf '%s' "$RESPONSE" | jq -cer '.token_state')"
+
+          for value in "$GH_PAT" "$CLIENT_KEY" "$CLIENT_SECRET" "$STATE_KEY" "$TOKEN_STATE"; do
+            echo "::add-mask::$value"
+          done
+
+          printf '%s' "$CLIENT_KEY" | GH_TOKEN="$GH_PAT" gh secret set ND_TIKTOK_GH_CLIENT_KEY --repo "$REPO"
+          printf '%s' "$CLIENT_SECRET" | GH_TOKEN="$GH_PAT" gh secret set ND_TIKTOK_GH_CLIENT_SECRET --repo "$REPO"
+          printf '%s' "$STATE_KEY" | GH_TOKEN="$GH_PAT" gh secret set ND_TIKTOK_GH_STATE_KEY --repo "$REPO"
+
+          export STATE_KEY TOKEN_STATE
           mkdir -p tmp
-          jq -n             --arg route "github-actions-oidc"             --arg workflow "$GITHUB_WORKFLOW"             --arg run_id "$GITHUB_RUN_ID"             --arg run_attempt "$GITHUB_RUN_ATTEMPT"             --arg sha "$GITHUB_SHA"             --slurpfile response /tmp/tiktok-response.json             '{
-              qualified_at: (now | todateiso8601),
-              route: $route,
-              workflow: $workflow,
-              run_id: $run_id,
-              run_attempt: $run_attempt,
-              source_sha: $sha,
-              response: $response[0]
-            }' > tmp/tiktok-github-fallback-qualification.json
+          node <<'NODE'
+          const fs=require('fs');
+          const crypto=require('crypto');
+          const key=crypto.createHash('sha256').update(process.env.STATE_KEY,'utf8').digest();
+          const iv=crypto.randomBytes(12);
+          const cipher=crypto.createCipheriv('aes-256-gcm',key,iv);
+          const plaintext=Buffer.from(process.env.TOKEN_STATE,'utf8');
+          const ciphertext=Buffer.concat([cipher.update(plaintext),cipher.final()]);
+          const tag=cipher.getAuthTag();
+          const envelope={
+            version:1,
+            algorithm:'AES-256-GCM',
+            iv:iv.toString('base64'),
+            tag:tag.toString('base64'),
+            ciphertext:ciphertext.toString('base64'),
+            updated_at:new Date().toISOString()
+          };
+          fs.writeFileSync('tmp/tiktok-github-token-state.json',JSON.stringify(envelope,null,2)+'\n');
+          NODE
+
+          SECRET_NAMES="$(GH_TOKEN="$GH_PAT" gh secret list --repo "$REPO" --json name --jq 'map(.name) | map(select(startswith("ND_TIKTOK_GH_"))) | sort')"
+          jq -n             --arg route "github-actions-direct-bootstrap"             --arg run_id "$GITHUB_RUN_ID"             --arg source_sha "$GITHUB_SHA"             --argjson secret_names "$SECRET_NAMES"             '{
+              qualified_at:(now|todateiso8601),
+              route:$route,
+              run_id:$run_id,
+              source_sha:$source_sha,
+              static_secrets:$secret_names,
+              encrypted_state:"tmp/tiktok-github-token-state.json",
+              plaintext_token_state_committed:false,
+              status:"BOOTSTRAPPED"
+            }' > tmp/tiktok-github-direct-bootstrap-evidence.json
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tmp/tiktok-github-fallback-qualification.json
-          if git diff --cached --quiet; then
-            exit 0
-          fi
-          git commit -m "Qualify TikTok GitHub Actions fallback"
+          git add tmp/tiktok-github-token-state.json tmp/tiktok-github-direct-bootstrap-evidence.json
+          git commit -m "Bootstrap independent TikTok GitHub token state"
           git push
+
+      - name: Existing fallback control
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOL="${REQUESTED_TOOL:-tiktok_user}"
+          ARGS="${REQUESTED_ARGUMENTS:-{}}"
+          printf '%s' "$ARGS" | jq -e 'type == "object"' >/dev/null
+          BODY="$(jq -cn --arg tool "$TOOL" --argjson arguments "$ARGS" '{tool:$tool,arguments:$arguments}')"
+          RESPONSE="$(curl -fsSL             -X POST "$CONTROL_URL"             -H "Authorization: Bearer ${GH_OIDC_TOKEN}"             -H "Content-Type: application/json"             --data "$BODY")"
+          printf '%s\n' "$RESPONSE" | jq .
+          printf '%s' "$RESPONSE" | jq -e '.ok == true' >/dev/null
