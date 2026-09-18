@@ -114,7 +114,7 @@ def status():
     return {
         "ok":code==200,
         "service":"nd-remotion-railway-mcp-relay",
-        "version":"1.0.0",
+        "version":"1.0.1",
         "github_status":code,
         "repository":REPO,
         "branch":BRANCH,
@@ -125,13 +125,47 @@ def status():
         "failure_domain_note":"Railway endpoint remains callable independently, but submitted renders depend on GitHub availability.",
     }
 
+def selftest():
+    repo_status,_=gh("")
+    runs_status,runs_obj=gh("actions/workflows/nd-remotion-fallback.yml/runs?per_page=5")
+    runs=[]
+    if runs_status==200 and isinstance(runs_obj,dict):
+        for row in (runs_obj.get("workflow_runs") or [])[:5]:
+            runs.append({
+                "id":row.get("id"),
+                "event":row.get("event"),
+                "status":row.get("status"),
+                "conclusion":row.get("conclusion"),
+                "head_sha":row.get("head_sha"),
+                "created_at":row.get("created_at"),
+                "updated_at":row.get("updated_at"),
+            })
+    return {
+        "ok":repo_status==200 and runs_status==200,
+        "service":"nd-remotion-railway-mcp-relay",
+        "version":"1.0.1",
+        "mcp_surface":{
+            "serverInfo":{"name":"nd-remotion-railway-mcp","version":"1.0.1"},
+            "tools":[t["name"] for t in TOOLS],
+            "tools_count":len(TOOLS),
+        },
+        "github_actions":{
+            "status":runs_status,
+            "workflow":"nd-remotion-fallback.yml",
+            "runs":runs,
+        },
+        "secrets_exposed":False,
+    }
+
 TOOLS=[
+    {"name":"remotion_selftest","description":"Run a non-mutating self-test of the Railway Remotion MCP control surface and inspect recent GitHub Actions fallback runs without exposing credentials.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
     {"name":"remotion_status","description":"Check the ND Remotion fallback MCP control route and GitHub worker reachability. Does not render.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
     {"name":"remotion_submit","description":"Submit one bounded sequence of operational Remotion MCP tool calls to the GitHub Actions render worker. Returns request_id immediately; poll remotion_result.","inputSchema":{"type":"object","properties":{"request_id":{"type":"string"},"purpose":{"type":"string"},"calls":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"tool":{"type":"string"},"arguments":{"type":"object"},"timeout_ms":{"type":"integer","minimum":1000,"maximum":1200000}},"required":["tool"],"additionalProperties":False}}},"required":["calls"],"additionalProperties":False}},
     {"name":"remotion_result","description":"Read the durable result of a previously submitted ND Remotion GitHub Actions job.","inputSchema":{"type":"object","properties":{"request_id":{"type":"string"}},"required":["request_id"],"additionalProperties":False}},
 ]
 
 def tool_call(name,args):
+    if name=="remotion_selftest": return selftest()
     if name=="remotion_status": return status()
     if name=="remotion_submit": return submit(args or {})
     if name=="remotion_result": return result(args or {})
@@ -187,7 +221,7 @@ class H(BaseHTTPRequestHandler):
             mid=msg.get("id")
             if method=="initialize":
                 p=msg.get("params") or {}
-                result_obj={"protocolVersion":p.get("protocolVersion") or "2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"nd-remotion-railway-mcp","version":"1.0.0"}}
+                result_obj={"protocolVersion":p.get("protocolVersion") or "2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"nd-remotion-railway-mcp","version":"1.0.1"}}
             elif method=="notifications/initialized":
                 self.send_response(204); self.send_header("Content-Length","0"); self.end_headers(); return
             elif method=="tools/list":
@@ -207,6 +241,10 @@ class H(BaseHTTPRequestHandler):
             try: self.send_json(200,status())
             except Exception as e: self.send_json(503,{"ok":False,"error":clean(e)})
             return
+        if path=="/remotion/selftest":
+            try: self.send_json(200,selftest())
+            except Exception as e: self.send_json(503,{"ok":False,"error":clean(e)})
+            return
         return self.forward()
     def do_POST(self):
         if self.is_mcp(): return self.handle_mcp()
@@ -217,7 +255,7 @@ class H(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(204); self.send_header("Content-Length","0"); self.end_headers()
 
-print("ND_REMOTION_RAILWAY_MCP_V1_READY "+json.dumps({
+print("ND_REMOTION_RAILWAY_MCP_V1_0_1_READY "+json.dumps({
     "port":PORT,
     "inner_port":INNER_PORT,
     "path_token_configured":bool(PATH_TOKEN),
