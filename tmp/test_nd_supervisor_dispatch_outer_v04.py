@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -41,7 +42,7 @@ SUPERVISOR = {
     "authority_evidence": {
         "registry_hash": "r" * 64,
         "artifact_id": "artifact",
-        "artifact_hash": "a" * 64,
+        "artifact_hash": hashlib.sha256("Act as canonical True Research.".encode("utf-8")).hexdigest(),
         "exact_status": "CANONICAL — ACTIVE",
     },
 }
@@ -186,6 +187,18 @@ class OuterAdapterTests(unittest.TestCase):
                 ledger=self.ledger,
                 provider=self.provider,
             )
+
+    def test_prompt_hash_mismatch_fails_closed(self):
+        bad = dict(SUPERVISOR)
+        bad["prompt_text"] = "tampered prompt"
+        with self.assertRaises(RuntimeError):
+            outer.supervisor_tool_call(
+                "supervisor_submit",
+                {"assignment": ASSIGNMENT, "supervisor": bad},
+                ledger=self.ledger,
+                provider=self.provider,
+            )
+        self.assertEqual(self.provider.submit_calls, 0)
 
     def test_github_receipt_ledger_create_read_update_with_cas(self):
         transport = FakeGitHubTransport()
