@@ -509,6 +509,18 @@ class H(BaseHTTPRequestHandler):
             self.send_json(502,{"ok":False,"error":"inner_forward_failed","detail":clean(e)})
     def do_GET(self):
         path=self.path.split("?",1)[0]
+        if path=="/vedismm/qualify/kernel-existing-session":
+            if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
+            try:
+                kcode,kobj=kernel_json("/browsers/dv60zcfuv6n5m8dfulkjb6hn")
+                safe={"http":kcode,"active":kcode==200}
+                if kcode==200 and isinstance(kobj,dict):
+                    safe.update({"session_id":kobj.get("session_id"),"headless":kobj.get("headless"),"stealth":kobj.get("stealth"),"deleted_at":kobj.get("deleted_at"),"profile":kobj.get("profile"),"timeout_seconds":kobj.get("timeout_seconds")})
+                else:
+                    safe["detail"]=clean(kobj)
+                return self.send_json(200,safe)
+            except Exception as e:
+                return self.send_json(500,{"ok":False,"error":clean(e)})
         if path=="/vedismm/qualify/kernel-inspect-wall70":
             if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
             try:
