@@ -446,7 +446,7 @@ def make_sync_provider(
             provider_name="openrouter_research_free",
             api_key=key,
             endpoint="https://openrouter.ai/api/v1/chat/completions",
-            model="openai/gpt-oss-120b:free",
+            model="nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
             broker_token=broker_token,
         )
 
