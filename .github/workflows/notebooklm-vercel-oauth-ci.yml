@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - notebooklm-remote-mcp
+      - agent-lm-t3-campaign-workspace
     paths:
       - 'tools/notebooklm-mcp/remote-vercel-oauth/**'
       - '.github/workflows/notebooklm-vercel-oauth-ci.yml'
