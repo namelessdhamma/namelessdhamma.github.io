@@ -154,6 +154,231 @@ class OpenAICompatibleSyncProvider:
         raise ProviderError(self.provider_name + "_sync_provider_has_no_cancel")
 
 
+class LocalBrokerToolLoopProvider:
+    """
+    Bounded OpenAI-compatible tool loop that exposes only existing ND read-only
+    broker tools to the supervisor model. No side-effect tools are admitted.
+    """
+
+    def __init__(
+        self,
+        *,
+        provider_name: str,
+        api_key: str,
+        endpoint: str,
+        model: str,
+        broker_token: str,
+        broker_url: str = "http://127.0.0.1:3302/invoke",
+        max_tool_rounds: int = 8,
+        timeout: int = 180,
+    ):
+        self.provider_name = provider_name
+        self.api_key = (api_key or "").strip()
+        self.endpoint = endpoint
+        self.model = model.strip()
+        self.broker_token = (broker_token or "").strip()
+        self.broker_url = broker_url
+        self.max_tool_rounds = max(1, min(int(max_tool_rounds), 12))
+        self.timeout = timeout
+        if not self.api_key:
+            raise ProviderError(provider_name + "_api_key_missing")
+        if not self.broker_token:
+            raise ProviderError("nd_readonly_broker_token_missing")
+
+    @staticmethod
+    def tool_schema() -> list[Dict[str, Any]]:
+        return [{
+            "type": "function",
+            "function": {
+                "name": "web_current",
+                "description": (
+                    "Search/retrieve current public web evidence using the existing "
+                    "ND read-only broker. Use concise targeted queries and preserve "
+                    "source provenance returned by the broker."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "minLength": 1, "maxLength": 9000}
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+            },
+        }]
+
+    def _post_json(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        headers: Dict[str, str],
+        *,
+        secrets: list[str],
+    ) -> Dict[str, Any]:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                raw = response.read().decode("utf-8", "replace")
+                return json.loads(raw or "{}")
+        except urllib.error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", "replace")
+            raise ProviderError(
+                f"http_{exc.code}:" + _clean_error(raw, secrets)
+            ) from exc
+        except Exception as exc:
+            raise ProviderError(
+                "tool_loop_request_failed:" + _clean_error(exc, secrets)
+            ) from exc
+
+    def _broker_call(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        if name != "web_current":
+            raise ProviderError("broker_tool_denied:" + name)
+        query = str(args.get("query") or "").strip()
+        if not query:
+            raise ProviderError("web_current_query_required")
+        obj = self._post_json(
+            self.broker_url,
+            {"tool": "web_current", "query": query},
+            {
+                "Authorization": "Bearer " + self.broker_token,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "ND-Supervisor-Dispatch-ToolLoop/0.1",
+            },
+            secrets=[self.broker_token],
+        )
+        if not isinstance(obj, dict) or "result" not in obj:
+            raise ProviderError("invalid_nd_broker_response")
+        return {
+            "ok": True,
+            "tool": name,
+            "result": obj.get("result"),
+            "mutations": False,
+        }
+
+    def submit(
+        self,
+        assignment: AssignmentEnvelope,
+        supervisor: SupervisorResolution,
+        dispatch_key: str,
+    ) -> Dict[str, Any]:
+        messages: list[Dict[str, Any]] = [
+            {"role": "system", "content": supervisor.prompt_text},
+            {"role": "user", "content": build_supervisor_input(assignment, supervisor)},
+        ]
+        tools = self.tool_schema()
+        total_usage: Dict[str, int] = {}
+        tool_events: list[Dict[str, Any]] = []
+        last_data: Dict[str, Any] = {}
+        started = time.time()
+
+        for round_index in range(self.max_tool_rounds + 1):
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "tools": tools,
+                "tool_choice": "auto",
+                "temperature": 0,
+                "max_tokens": min(supervisor.max_output_tokens, 16000),
+            }
+            data = self._post_json(
+                self.endpoint,
+                payload,
+                {
+                    "Authorization": "Bearer " + self.api_key,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://namelessdhamma.org",
+                    "X-Title": "ND True Research",
+                    "User-Agent": "ND-Supervisor-Dispatch-ToolLoop/0.1",
+                },
+                secrets=[self.api_key],
+            )
+            last_data = data
+            usage = data.get("usage") or {}
+            for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                if isinstance(usage.get(key), int):
+                    total_usage[key] = total_usage.get(key, 0) + usage[key]
+
+            choice = (data.get("choices") or [{}])[0]
+            message = choice.get("message") or {}
+            tool_calls = message.get("tool_calls") or []
+            if not tool_calls:
+                content = message.get("content")
+                if isinstance(content, list):
+                    content = "\n".join(
+                        str(item.get("text") or "")
+                        for item in content
+                        if isinstance(item, dict)
+                    )
+                text = str(content or "").strip()
+                response_id = str(data.get("id") or "").strip() or (
+                    self.provider_name + "_" + assignment.assignment_id
+                )
+                return {
+                    "id": response_id,
+                    "status": "completed" if text else "incomplete",
+                    "model": data.get("model") or self.model,
+                    "output": [{
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": text}],
+                    }] if text else [],
+                    "provider": self.provider_name,
+                    "provider_latency_ms": int((time.time() - started) * 1000),
+                    "provider_usage": total_usage or data.get("usage"),
+                    "provider_finish_reason": choice.get("finish_reason"),
+                    "provider_raw_id": data.get("id"),
+                    "tool_events": tool_events,
+                    "tool_rounds": round_index,
+                    "metadata": {
+                        "nd_dispatch_key": dispatch_key,
+                        "nd_assignment_id": assignment.assignment_id,
+                        "nd_correlation_id": assignment.correlation_id,
+                        "nd_supervisor_id": supervisor.supervisor_id,
+                        "nd_supervisor_version": supervisor.canonical_version,
+                    },
+                }
+
+            if round_index >= self.max_tool_rounds:
+                raise ProviderError("tool_round_limit_exceeded")
+
+            assistant_message = {
+                "role": "assistant",
+                "content": message.get("content"),
+                "tool_calls": tool_calls,
+            }
+            messages.append(assistant_message)
+
+            for tc in tool_calls:
+                tc_id = str(tc.get("id") or "")
+                fn = tc.get("function") or {}
+                name = str(fn.get("name") or "")
+                raw_args = fn.get("arguments") or "{}"
+                try:
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args)
+                except Exception as exc:
+                    raise ProviderError("tool_arguments_invalid_json:" + str(exc)) from exc
+                result = self._broker_call(name, args)
+                tool_events.append({
+                    "tool_call_id": tc_id,
+                    "name": name,
+                    "query": str(args.get("query") or "")[:9000],
+                    "mutations": False,
+                })
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "name": name,
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+
+        raise ProviderError("tool_loop_exhausted")
+
+
 def configured_provider_names() -> list[str]:
     names = []
     if (os.environ.get("OPENAI_API_KEY") or "").strip():
@@ -167,6 +392,7 @@ def configured_provider_names() -> list[str]:
         or (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     ):
         names.append("openrouter")
+        names.append("openrouter_research_free")
     return names
 
 
@@ -209,6 +435,21 @@ def make_sync_provider(
             built_in_tools=[{"type": "browser_search"}],
         )
 
+    if provider_name == "openrouter_research_free":
+        key = (
+            os.environ.get("OpenRouter")
+            or os.environ.get("OPENROUTER_API_KEY")
+            or ""
+        ).strip()
+        broker_token = (os.environ.get("QSTASH_TOKEN") or "").strip()
+        return LocalBrokerToolLoopProvider(
+            provider_name="openrouter_research_free",
+            api_key=key,
+            endpoint="https://openrouter.ai/api/v1/chat/completions",
+            model="openai/gpt-oss-120b:free",
+            broker_token=broker_token,
+        )
+
     if provider_name == "openrouter":
         key = (
             os.environ.get("OpenRouter")
@@ -238,7 +479,7 @@ def auto_provider_order(*, purpose: str = "general") -> list[str]:
     configured = set(configured_provider_names())
     order = []
     if purpose.strip().lower() == "research":
-        for name in ("groq_web", "groq", "openrouter"):
+        for name in ("openrouter_research_free", "groq_web", "groq", "openrouter"):
             if name in configured:
                 order.append(name)
     else:
@@ -250,6 +491,7 @@ def auto_provider_order(*, purpose: str = "general") -> list[str]:
 
 __all__ = [
     "OpenAICompatibleSyncProvider",
+    "LocalBrokerToolLoopProvider",
     "configured_provider_names",
     "make_sync_provider",
     "auto_provider_order",
