@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,6 +9,7 @@ MODULE_PATH = Path(__file__).with_name("nd_supervisor_dispatch_v01.py")
 spec = importlib.util.spec_from_file_location("nd_dispatch", MODULE_PATH)
 nd = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
+sys.modules[spec.name] = nd
 spec.loader.exec_module(nd)
 
 
