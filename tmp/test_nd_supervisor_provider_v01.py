@@ -153,6 +153,7 @@ class ProviderTests(unittest.TestCase):
         env = {
             "GROQ_API_KEY": "g",
             "OpenRouter": "o",
+            "QSTASH_TOKEN": "broker",
         }
         with mock.patch.dict(os.environ, env, clear=True):
             self.assertEqual(
