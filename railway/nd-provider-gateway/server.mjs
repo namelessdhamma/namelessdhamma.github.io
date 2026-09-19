@@ -18,6 +18,7 @@ let googleTokenCache={token:'',exp:0};
 const ADOPTION_READ_REGISTRY_ID=String(process.env.ND_ADOPTION_READ_REGISTRY_ID||'').trim();
 const ADOPTION_READ_STATEHEAD_ID=String(process.env.ND_ADOPTION_READ_STATEHEAD_ID||'').trim();
 const ADOPTION_READ_BUNDLE_ID=String(process.env.ND_ADOPTION_READ_BUNDLE_ID||'').trim();
+const ADOPTION_READ_EXTRA_IDS=String(process.env.ND_ADOPTION_READ_EXTRA_IDS||'').trim();
 const ADOPTION_READ_REV=String(process.env.ND_ADOPTION_READ_REV||'').trim();
 
 
@@ -137,6 +138,22 @@ async function runAdoptionReadProbe(){
       logChunks('bundle',bundle.text,{sha256:bundle.sha256,bytes:bundle.bytes,meta:bundle.meta});
       results.bundle='ok';
     }catch(e){results.bundle=cleanErr(e);console.error('ND_ADOPTION_READ_ITEM',JSON.stringify({rev:ADOPTION_READ_REV,kind:'bundle',ok:false,error:cleanErr(e)}));}
+  }
+  if(ADOPTION_READ_EXTRA_IDS){
+    for(const pair of ADOPTION_READ_EXTRA_IDS.split(';').map(x=>x.trim()).filter(Boolean)){
+      const eq=pair.indexOf('=');
+      if(eq<1)continue;
+      const label=pair.slice(0,eq).replace(/[^a-zA-Z0-9_.-]/g,'_');
+      const id=pair.slice(eq+1).trim();
+      try{
+        const extra=await driveReadText(id);
+        logChunks('extra:'+label,extra.text,{sha256:extra.sha256,bytes:extra.bytes,meta:extra.meta});
+        results['extra:'+label]='ok';
+      }catch(e){
+        results['extra:'+label]=cleanErr(e);
+        console.error('ND_ADOPTION_READ_ITEM',JSON.stringify({rev:ADOPTION_READ_REV,kind:'extra:'+label,ok:false,error:cleanErr(e)}));
+      }
+    }
   }
   if(ADOPTION_READ_STATEHEAD_ID){
     try{
