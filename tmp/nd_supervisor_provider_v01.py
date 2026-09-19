@@ -525,14 +525,16 @@ def configured_provider_names() -> list[str]:
         names.append("groq")
     if (os.environ.get("GROQ_API_KEY") or "").strip():
         names.append("groq_web")
-    if (
+    openrouter_configured = bool(
         (os.environ.get("OpenRouter") or "").strip()
         or (os.environ.get("OPENROUTER_API_KEY") or "").strip()
-    ):
+    )
+    if openrouter_configured:
         names.append("openrouter")
+        if (os.environ.get("QSTASH_TOKEN") or "").strip():
+            names.append("openrouter_research_free")
     if (os.environ.get("MISTRAL_API_KEY") or "").strip():
         names.append("mistral")
-        names.append("openrouter_research_free")
     return names
 
 
