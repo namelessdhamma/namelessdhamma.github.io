@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
+from unittest import mock
 
 TMP = Path(__file__).parent
 sys.path.insert(0, str(TMP))
@@ -334,6 +335,74 @@ class ProxyIntegrationTests(unittest.TestCase):
             data = json.loads(response.read().decode())
         self.assertEqual(data["result"]["serverInfo"]["name"], "nd-supervisor-dispatch")
         self.assertEqual(data["result"]["protocolVersion"], "2025-06-18")
+
+
+class _PromptResponse:
+    def __init__(self, raw, url):
+        self.raw = raw
+        self.url = url
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        return False
+    def read(self, n=-1):
+        return self.raw if n < 0 else self.raw[:n]
+    def geturl(self):
+        return self.url
+
+
+class PromptHydrationTests(unittest.TestCase):
+    def test_signed_prompt_url_hydrates_exact_bytes_and_strips_url(self):
+        raw = b"\xef\xbb\xbfcanonical prompt\r\nline2\r\n"
+        h = __import__("hashlib").sha256(raw).hexdigest()
+        supervisor = {
+            "supervisor_id": "True Research",
+            "canonical_version": "1.3.0",
+            "prompt_source": "registry",
+            "prompt_url": "https://files.oaiusercontent.com/x/raw?sig=redacted",
+            "model": "logical",
+            "tool_profile": [],
+            "authority_evidence": {
+                "artifact_id": "drive-id",
+                "artifact_hash": h,
+                "registry_hash": "r" * 64,
+                "exact_status": "CANONICAL — ACTIVE",
+            },
+        }
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_PromptResponse(raw, "https://files.oaiusercontent.com/x/raw?sig=redacted"),
+        ):
+            out = outer.hydrate_prompt_from_url(supervisor)
+        self.assertNotIn("prompt_url", out)
+        self.assertEqual(out["prompt_text"].encode("utf-8"), raw)
+        self.assertEqual(out["prompt_transport"]["artifact_hash"], h)
+
+    def test_prompt_url_hash_mismatch_fails_closed(self):
+        raw = b"canonical"
+        supervisor = {
+            "prompt_url": "https://files.oaiusercontent.com/x/raw",
+            "authority_evidence": {
+                "artifact_id": "drive-id",
+                "artifact_hash": "0" * 64,
+            },
+        }
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_PromptResponse(raw, "https://files.oaiusercontent.com/x/raw"),
+        ):
+            with self.assertRaises(RuntimeError):
+                outer.hydrate_prompt_from_url(supervisor)
+
+    def test_prompt_url_unapproved_host_fails_before_network(self):
+        supervisor = {
+            "prompt_url": "https://example.com/prompt",
+            "authority_evidence": {"artifact_hash": "0" * 64},
+        }
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            with self.assertRaises(RuntimeError):
+                outer.hydrate_prompt_from_url(supervisor)
+        urlopen.assert_not_called()
 
 
 if __name__ == "__main__":
