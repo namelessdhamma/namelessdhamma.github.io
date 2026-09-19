@@ -3,8 +3,11 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 import json
 import os
+import re
+import html as html_lib
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from nd_supervisor_dispatch_v01 import (
@@ -235,31 +238,166 @@ class LocalBrokerToolLoopProvider:
                 "tool_loop_request_failed:" + _clean_error(exc, secrets)
             ) from exc
 
+    @staticmethod
+    def _safe_public_http_url(url: str) -> bool:
+        try:
+            p = urllib.parse.urlparse(url)
+        except Exception:
+            return False
+        if p.scheme not in ("http", "https") or not p.netloc:
+            return False
+        host = (p.hostname or "").lower()
+        if (
+            host in {"localhost", "127.0.0.1", "::1"}
+            or host.startswith("10.")
+            or host.startswith("192.168.")
+            or host.startswith("169.254.")
+            or host.endswith(".local")
+        ):
+            return False
+        if host.startswith("172."):
+            try:
+                second = int(host.split(".")[1])
+                if 16 <= second <= 31:
+                    return False
+            except Exception:
+                pass
+        return True
+
+    def _fetch_page_excerpt(self, url: str) -> str:
+        if not self._safe_public_http_url(url):
+            return ""
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; ND-Research/1.0)",
+                "Accept": "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.2",
+            },
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=12) as response:
+                raw = response.read(140000).decode("utf-8", "replace")
+        except Exception:
+            return ""
+        raw = re.sub(r"(?is)<(script|style|noscript|svg)[^>]*>.*?</\1>", " ", raw)
+        raw = re.sub(r"(?is)<!--.*?-->", " ", raw)
+        text = re.sub(r"(?s)<[^>]+>", " ", raw)
+        text = html_lib.unescape(text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:7000]
+
+    def _bing_html_fallback(self, query: str) -> Dict[str, Any]:
+        search_url = (
+            "https://www.bing.com/search?q="
+            + urllib.parse.quote(query)
+            + "&count=10&setlang=en-US"
+        )
+        req = urllib.request.Request(
+            search_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; ND-Research/1.0)",
+                "Accept": "text/html,application/xhtml+xml",
+            },
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=20) as response:
+                body = response.read(900000).decode("utf-8", "replace")
+        except Exception as exc:
+            raise ProviderError("bing_html_search_failed:" + str(exc)) from exc
+
+        results = []
+        blocks = re.findall(
+            r'(?is)<li[^>]+class=["\'][^"\']*b_algo[^"\']*["\'][^>]*>(.*?)</li>',
+            body,
+        )
+        for block in blocks:
+            m = re.search(
+                r'(?is)<h2[^>]*>\s*<a[^>]+href=["\'](https?://[^"\']+)["\'][^>]*>(.*?)</a>',
+                block,
+            )
+            if not m:
+                continue
+            url = html_lib.unescape(m.group(1))
+            if not self._safe_public_http_url(url):
+                continue
+            title = re.sub(r"(?s)<[^>]+>", " ", m.group(2))
+            title = re.sub(r"\s+", " ", html_lib.unescape(title)).strip()
+            sm = re.search(
+                r'(?is)<(?:p|div)[^>]+class=["\'][^"\']*(?:b_lineclamp\d*|b_caption)[^"\']*["\'][^>]*>(.*?)</(?:p|div)>',
+                block,
+            )
+            snippet = ""
+            if sm:
+                snippet = re.sub(r"(?s)<[^>]+>", " ", sm.group(1))
+                snippet = re.sub(r"\s+", " ", html_lib.unescape(snippet)).strip()
+            if not any(r.get("url") == url for r in results):
+                results.append({"title": title[:500], "url": url, "snippet": snippet[:1800]})
+            if len(results) >= 8:
+                break
+
+        if not results:
+            raise ProviderError("bing_html_search_returned_no_results")
+
+        # Fetch a few public result pages to strengthen evidence beyond snippets.
+        for row in results[:3]:
+            excerpt = self._fetch_page_excerpt(row["url"])
+            if excerpt:
+                row["page_excerpt"] = excerpt
+
+        return {
+            "brief": "Direct Bing HTML fallback used because the primary ND web broker was unavailable.",
+            "source_urls": [r["url"] for r in results],
+            "results": results,
+            "verified_search": True,
+            "backend": "bing_html",
+            "query": query,
+            "mutations": False,
+        }
+
     def _broker_call(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         if name != "web_current":
             raise ProviderError("broker_tool_denied:" + name)
         query = str(args.get("query") or "").strip()
         if not query:
             raise ProviderError("web_current_query_required")
-        obj = self._post_json(
-            self.broker_url,
-            {"tool": "web_current", "query": query},
-            {
-                "Authorization": "Bearer " + self.broker_token,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "ND-Supervisor-Dispatch-ToolLoop/0.1",
-            },
-            secrets=[self.broker_token],
-        )
-        if not isinstance(obj, dict) or "result" not in obj:
-            raise ProviderError("invalid_nd_broker_response")
-        return {
-            "ok": True,
-            "tool": name,
-            "result": obj.get("result"),
-            "mutations": False,
-        }
+        try:
+            obj = self._post_json(
+                self.broker_url,
+                {"tool": "web_current", "query": query},
+                {
+                    "Authorization": "Bearer " + self.broker_token,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "User-Agent": "ND-Supervisor-Dispatch-ToolLoop/0.2",
+                },
+                secrets=[self.broker_token],
+            )
+            if not isinstance(obj, dict) or "result" not in obj:
+                raise ProviderError("invalid_nd_broker_response")
+            result = obj.get("result")
+            if not isinstance(result, dict):
+                raise ProviderError("invalid_nd_broker_result")
+            return {
+                "ok": True,
+                "tool": name,
+                "result": result,
+                "route": "nd_broker",
+                "mutations": False,
+            }
+        except Exception as primary_exc:
+            fallback = self._bing_html_fallback(query)
+            fallback["primary_route_error"] = _clean_error(
+                primary_exc, [self.broker_token]
+            )
+            return {
+                "ok": True,
+                "tool": name,
+                "result": fallback,
+                "route": "bing_html_fallback",
+                "mutations": False,
+            }
 
     def submit(
         self,
