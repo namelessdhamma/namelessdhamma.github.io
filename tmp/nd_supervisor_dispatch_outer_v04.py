@@ -231,6 +231,71 @@ def _allowed_prompt_host(host: str) -> bool:
     return any(host.endswith(suffix) for suffix in ALLOWED_PROMPT_HOST_SUFFIXES)
 
 
+def hydrate_prompt_from_github_cache(supervisor: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load a non-authoritative execution cache from private GitHub and verify exact
+    bytes against current authority_evidence.artifact_hash. Cache never confers authority.
+    """
+    out = dict(supervisor)
+    cache = out.pop("prompt_cache", None)
+    if not cache:
+        return out
+    if not isinstance(cache, dict):
+        raise RuntimeError("prompt_cache_must_be_object")
+    repo = str(cache.get("repo") or LEDGER_REPO).strip()
+    path = str(cache.get("path") or "").strip().lstrip("/")
+    ref = str(cache.get("ref") or "main").strip()
+    if not repo or not path or not ref:
+        raise RuntimeError("prompt_cache_binding_incomplete")
+    if not GITHUB_PAT:
+        raise RuntimeError("github_pat_missing_for_prompt_cache")
+    url = (
+        "https://api.github.com/repos/" + repo + "/contents/"
+        + urllib.parse.quote(path, safe="/")
+        + "?ref=" + urllib.parse.quote(ref, safe="")
+    )
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": "Bearer " + GITHUB_PAT,
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "ND-Supervisor-Dispatch/0.7",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=45) as response:
+        obj = json.loads(response.read().decode("utf-8", "replace") or "{}")
+    encoded = str(obj.get("content") or "").replace("\n", "")
+    if not encoded:
+        raise RuntimeError("prompt_cache_content_missing")
+    raw = base64.b64decode(encoded)
+    if len(raw) > MAX_PROMPT_BYTES:
+        raise RuntimeError("prompt_artifact_too_large")
+    authority = out.get("authority_evidence")
+    if not isinstance(authority, dict):
+        raise RuntimeError("authority_evidence_required")
+    expected = str(authority.get("artifact_hash") or "").strip()
+    actual = hashlib.sha256(raw).hexdigest()
+    if not expected or actual != expected:
+        raise RuntimeError("prompt_cache_artifact_hash_mismatch")
+    try:
+        out["prompt_text"] = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("prompt_artifact_not_utf8") from exc
+    out["prompt_transport"] = {
+        "kind": "github_execution_cache",
+        "repo": repo,
+        "path": path,
+        "ref": ref,
+        "artifact_id": authority.get("artifact_id"),
+        "artifact_hash": expected,
+        "bytes": len(raw),
+        "cache_authoritative": False,
+    }
+    return out
+
+
 def hydrate_prompt_from_url(supervisor: Dict[str, Any]) -> Dict[str, Any]:
     """
     Resolve exact canonical prompt bytes from a short-lived approved HTTPS file URL.
@@ -313,6 +378,7 @@ def supervisor_tool_call(
         supervisor = args.get("supervisor")
         if not isinstance(assignment, dict) or not isinstance(supervisor, dict):
             raise RuntimeError("assignment_and_supervisor_required")
+        supervisor = hydrate_prompt_from_github_cache(supervisor)
         supervisor = hydrate_prompt_from_url(supervisor)
         authority = supervisor.get("authority_evidence")
         if not isinstance(authority, dict):
