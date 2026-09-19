@@ -19,7 +19,7 @@ function yandexTools(){return [
 {name:'yandex_status',description:'Verify direct Yandex Disk API access.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:RO},
 {name:'yandex_list',description:'List files and folders in a Yandex Disk directory.',inputSchema:{type:'object',properties:{path:{type:'string',default:'disk:/'},limit:{type:'integer',minimum:1,maximum:100,default:50},offset:{type:'integer',minimum:0,default:0}},additionalProperties:false},annotations:RO},
 {name:'yandex_stat',description:'Read metadata for one Yandex Disk resource.',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path'],additionalProperties:false},annotations:RO},
-{name:'yandex_read_text',description:'Read a text-like Yandex Disk file.',inputSchema:{type:'object',properties:{path:{type:'string'},max_chars:{type:'integer',minimum:1,maximum:100000,default:30000}},required:['path'],additionalProperties:false},annotations:RO},
+{name:'yandex_read_text',description:'Read a text-like Yandex Disk file. DOCX files are decoded from OOXML and returned as extracted UTF-8 text.',inputSchema:{type:'object',properties:{path:{type:'string'},max_chars:{type:'integer',minimum:1,maximum:100000,default:30000}},required:['path'],additionalProperties:false},annotations:RO},
 {name:'yandex_get_download_url',description:'Return a temporary direct download URL for a Yandex Disk file.',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path'],additionalProperties:false},annotations:RO},
 {name:'yandex_write_text',description:'Create or replace a UTF-8 text file.',inputSchema:{type:'object',properties:{path:{type:'string'},text:{type:'string',maxLength:1000000},overwrite:{type:'boolean',default:true}},required:['path','text'],additionalProperties:false},annotations:WR},
 {name:'yandex_write_base64',description:'Create or replace a binary file from base64 content.',inputSchema:{type:'object',properties:{path:{type:'string'},base64:{type:'string',maxLength:30000000},content_type:{type:'string',default:'application/octet-stream'},overwrite:{type:'boolean',default:true}},required:['path','base64'],additionalProperties:false},annotations:WR},
@@ -49,6 +49,37 @@ function safeZipName(name){
   const parts=s.split('/').filter(Boolean);
   if(parts.some(x=>x==='.'||x==='..'))throw new Error('unsafe zip path');
   return parts.join('/');
+}
+function decodeXmlText(s){
+  return String(s||'')
+    .replace(/&#x([0-9a-fA-F]+);/g,(_,h)=>String.fromCodePoint(parseInt(h,16)))
+    .replace(/&#([0-9]+);/g,(_,d)=>String.fromCodePoint(parseInt(d,10)))
+    .replace(/&lt;/g,'<')
+    .replace(/&gt;/g,'>')
+    .replace(/&quot;/g,'"')
+    .replace(/&apos;/g,"'")
+    .replace(/&amp;/g,'&');
+}
+function docxTextFromBuffer(buf){
+  const entries=unpackZip(buf,5000,100000000);
+  const doc=entries.find(e=>e&&!e.isDir&&e.name==='word/document.xml');
+  if(!doc||!doc.data)throw new Error('DOCX word/document.xml missing');
+  const xml=doc.data.toString('utf8');
+  const out=[];
+  const re=/<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\b[^>]*\/>|<w:br\b[^>]*\/>|<\/w:p>|<\/w:tc>|<\/w:tr>/g;
+  let m;
+  while((m=re.exec(xml))){
+    const token=m[0];
+    if(m[1]!==undefined)out.push(decodeXmlText(m[1]));
+    else if(/^<w:tab\b/.test(token))out.push('\t');
+    else if(/^<w:br\b/.test(token))out.push('\n');
+    else if(token==='</w:tc>')out.push('\t');
+    else out.push('\n');
+  }
+  return out.join('')
+    .replace(/[ \t]+\n/g,'\n')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
 }
 function unpackZip(buf,maxEntries,maxBytes){
   if(!Buffer.isBuffer(buf))buf=Buffer.from(buf);
@@ -99,7 +130,7 @@ if(name==='yandex_status'){const d=await api('/');return {ok:true,transport:'DIR
 if(name==='yandex_list'){const path=String(a.path||'disk:/');const d=await api('/resources',{path,limit:Math.max(1,Math.min(Number(a.limit||50),100)),offset:Math.max(0,Number(a.offset||0))});const e=d._embedded||{};return {ok:true,path,total:e.total,items:(e.items||[]).map(x=>({name:x.name,path:x.path,type:x.type,size:x.size,modified:x.modified,mime_type:x.mime_type}))};}
 if(name==='yandex_stat'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources',{path,limit:1});return {ok:true,resource:{name:d.name,path:d.path,type:d.type,size:d.size,created:d.created,modified:d.modified,mime_type:d.mime_type,md5:d.md5,sha256:d.sha256,public_url:d.public_url}};}
 if(name==='yandex_get_download_url'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/download',{path});if(!d.href)throw new Error('download href missing');return {ok:true,path,href:d.href,temporary:true};}
-if(name==='yandex_read_text'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/download',{path});if(!d.href)throw new Error('download href missing');const r=await fetch(d.href);if(!r.ok)throw new Error('download HTTP '+r.status);let text=Buffer.from(await r.arrayBuffer()).toString('utf8');const max=Math.max(1,Math.min(Number(a.max_chars||30000),100000));let truncated=false;if(text.length>max){text=text.slice(0,max);truncated=true;}return {ok:true,path,text,truncated};}
+if(name==='yandex_read_text'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/download',{path});if(!d.href)throw new Error('download href missing');const r=await fetch(d.href);if(!r.ok)throw new Error('download HTTP '+r.status);const body=Buffer.from(await r.arrayBuffer());let text,format='utf8';if(/\.docx$/i.test(path)){text=docxTextFromBuffer(body);format='docx-ooxml';}else{text=body.toString('utf8');}const max=Math.max(1,Math.min(Number(a.max_chars||30000),100000));let truncated=false;if(text.length>max){text=text.slice(0,max);truncated=true;}return {ok:true,path,text,truncated,format,bytes:body.length};}
 if(name==='yandex_write_text'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/upload',{path,overwrite:a.overwrite===false?'false':'true'});if(!d.href)throw new Error('upload href missing');const body=Buffer.from(String(a.text??''),'utf8');const r=await fetch(d.href,{method:'PUT',headers:{'Content-Type':'text/plain; charset=utf-8'},body});if(!r.ok)throw new Error('upload HTTP '+r.status);return {ok:true,path,bytes:body.length};}
 if(name==='yandex_write_base64'){const path=String(a.path||'');if(!path)throw new Error('path required');const body=Buffer.from(String(a.base64||''),'base64');if(body.length>22500000)throw new Error('binary payload too large');await ensureParentDirs(path);return await uploadBuffer(path,body,a.overwrite!==false,String(a.content_type||'application/octet-stream'));}
 if(name==='yandex_import_zip_base64'){const root=String(a.root_path||'disk:/').replace(/\/+$/,'');const zip=Buffer.from(String(a.zip_base64||''),'base64');if(zip.length>22500000)throw new Error('zip payload too large');const entries=unpackZip(zip,Math.max(1,Math.min(Number(a.max_entries||200),500)),Math.max(1,Math.min(Number(a.max_uncompressed_bytes||100000000),200000000)));await ensureDir(root);const uploaded=[];for(const e of entries){const dest=root+'/'+e.name;if(e.isDir){await ensureDir(dest);continue;}await ensureParentDirs(dest);await uploadBuffer(dest,e.data,a.overwrite!==false,'application/octet-stream');uploaded.push({path:dest,bytes:e.size});}return {ok:true,root_path:root,zip_bytes:zip.length,entries:entries.length,files_uploaded:uploaded.length,uploaded};}
@@ -379,4 +410,3 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
 }));
 muxServer.listen(PORT,'0.0.0.0');
 setTimeout(runYoutubeQualification,2000);
-
