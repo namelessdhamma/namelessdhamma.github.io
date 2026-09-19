@@ -151,6 +151,19 @@ def submit_dispatch(
     # A persisted provider response id is the durable replay boundary.
     # Never create another provider response for the same dispatch key.
     if prior and prior.get("provider_response_id"):
+        if (
+            prior.get("state") == "ATTEMPTED"
+            and prior.get("provider_status") in TERMINAL_PROVIDER_STATUSES
+            and isinstance(prior.get("provider_response"), dict)
+        ):
+            repaired = refresh_dispatch(
+                key,
+                ledger_path=ledger_path,
+                ledger=ledger,
+                provider=provider,
+                provider_response=prior["provider_response"],
+            )
+            return {**repaired, "replayed": True, "recovered_terminal_submit": True}
         return {**prior, "replayed": True}
 
     # If the previous attempt died before returning a provider id, do not blindly
@@ -204,6 +217,11 @@ def submit_dispatch(
         "provider_status": provider_status,
         "submitted_at": int(time.time()),
     }
+    # Persist a terminal synchronous provider payload before any lifecycle
+    # transition. This closes the crash window between provider return and
+    # refresh/verification while preserving no-duplicate execution.
+    if provider_status in TERMINAL_PROVIDER_STATUSES:
+        saved["provider_response"] = response
     ledger.put(key, saved)
 
     # Some provider calls may already complete before submit returns.
