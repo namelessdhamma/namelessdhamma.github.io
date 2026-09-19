@@ -17,6 +17,9 @@ PASSWORD=os.environ.get("ND_VEDISMM_PASSWORD","")
 PROBE_TOKEN=os.environ.get("ND_VEDISMM_PROBE_TOKEN","").strip()
 VK_TOKEN=os.environ.get("VK_GROUP_TOKEN","").strip()
 VK_VERSION=os.environ.get("VK_API_VERSION","5.199").strip() or "5.199"
+KERNEL_API_KEY=os.environ.get("KERNEL_API_KEY","").strip()
+KERNEL_PROFILE_ID="sfp8woklsl9yl609k1nwbird"
+KERNEL_BASE="https://api.onkernel.com"
 ACCOUNT_ID=160
 TARGET_GROUP_ID="228330620"
 SAMPLE_URL="https://filesamples.com/samples/video/mp4/sample_640x360.mp4"
@@ -30,7 +33,7 @@ child_env["PORT"]=str(INNER_PORT)
 child=subprocess.Popen([sys.executable,"-u",UPSTREAM_PATH],env=child_env)
 INNER="http://127.0.0.1:%d"%INNER_PORT
 
-SECRETS=[EMAIL,PASSWORD,PROBE_TOKEN,VK_TOKEN]
+SECRETS=[EMAIL,PASSWORD,PROBE_TOKEN,VK_TOKEN,KERNEL_API_KEY]
 def clean(v):
     s=str(v)
     for sec in SECRETS:
@@ -352,6 +355,50 @@ def run_live_probe():
         "secrets_exposed":False,
     }
 
+def kernel_json(path,method="GET",body=None):
+    data=None if body is None else json.dumps(body,ensure_ascii=False).encode("utf-8")
+    headers={"Authorization":"Bearer "+KERNEL_API_KEY,"Accept":"application/json","User-Agent":"ND-Kernel-Cleanup/0.1"}
+    if data is not None: headers["Content-Type"]="application/json; charset=utf-8"
+    req=urllib.request.Request(KERNEL_BASE+path,data=data,headers=headers,method=method)
+    try:
+        with urllib.request.urlopen(req,timeout=90) as r:
+            raw=r.read().decode("utf-8","replace")
+            return r.status,(json.loads(raw or "{}") if raw else {})
+    except urllib.error.HTTPError as e:
+        raw=e.read().decode("utf-8","replace")
+        try: obj=json.loads(raw or "{}")
+        except Exception: obj={"raw":clean(raw)}
+        return e.code,obj
+
+def kernel_delete_session(session_id):
+    if not session_id: return None
+    code,obj=kernel_json("/browsers/"+urllib.parse.quote(session_id,safe=""),"DELETE")
+    return code
+
+def run_kernel_inspect():
+    if not KERNEL_API_KEY:
+        return 503,{"ok":False,"stage":"kernel_config"}
+    ccode,cobj=kernel_json("/browsers","POST",{
+        "profile":{"id":KERNEL_PROFILE_ID,"save_changes":False},
+        "stealth":True,
+        "headless":True,
+        "timeout_seconds":120,
+        "start_url":"https://m.vk.com/wall-228330620_70"
+    })
+    if ccode!=201:
+        return 502,{"ok":False,"stage":"kernel_browser_create","http":ccode,"detail":clean(cobj)}
+    sid=str(cobj.get("session_id") or "").strip()
+    if not sid:
+        return 502,{"ok":False,"stage":"kernel_browser_create","error":"session_id_missing"}
+    try:
+        code = """await page.goto('https://m.vk.com/wall-228330620_70', {waitUntil: 'domcontentloaded'}); await page.waitForTimeout(2500); const body=(await page.locator('body').innerText()).slice(0,5000); const links=await page.locator('a').evaluateAll(as=>as.map(a=>({text:(a.innerText||'').trim(),href:a.getAttribute('href')||'',title:a.getAttribute('title')||''})).filter(x=>/удал|delete|действ|action|edit|редакт/i.test((x.text+' '+x.title+' '+x.href))).slice(0,30)); const buttons=await page.locator('button').evaluateAll(bs=>bs.map(b=>({text:(b.innerText||'').trim(),aria:b.getAttribute('aria-label')||'',title:b.getAttribute('title')||''})).filter(x=>/удал|delete|действ|action|more|ещ/i.test((x.text+' '+x.aria+' '+x.title))).slice(0,30)); return {url:page.url(),title:await page.title(),body,links,buttons};"""
+        ecode,eobj=kernel_json("/browsers/"+urllib.parse.quote(sid,safe="")+"/playwright/execute","POST",{"code":code,"timeout_sec":30})
+        if ecode!=200:
+            return 502,{"ok":False,"stage":"kernel_execute","http":ecode,"detail":clean(eobj)}
+        return 200,{"ok":True,"stage":"kernel_inspect","session_authenticated":("login" not in str((eobj.get("result") or {}).get("url") or "").lower()),"result":eobj.get("result"),"secrets_exposed":False}
+    finally:
+        kernel_delete_session(sid)
+
 def run_preflight_probe():
     if not (EMAIL and PASSWORD and PROBE_TOKEN):
         return 503,{"ok":False,"stage":"config"}
@@ -462,6 +509,14 @@ class H(BaseHTTPRequestHandler):
             self.send_json(502,{"ok":False,"error":"inner_forward_failed","detail":clean(e)})
     def do_GET(self):
         path=self.path.split("?",1)[0]
+        if path=="/vedismm/qualify/kernel-inspect-wall70":
+            if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
+            try:
+                code,obj=run_kernel_inspect()
+                print("ND_KERNEL_WALL70_INSPECT "+json.dumps({"http":code,"result":obj},ensure_ascii=False),flush=True)
+                return self.send_json(code,obj)
+            except Exception as e:
+                return self.send_json(500,{"ok":False,"stage":"exception","error":clean(e)})
         if path=="/vedismm/qualify/cleanup-wall70":
             if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
             try:
