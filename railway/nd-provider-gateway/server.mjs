@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
+import { createHash, createSign } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
 const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v3-20260916';
 const ND_YANDEX_MUX_CODE_REV='yandex-delete-v3-20260919';
@@ -8,6 +9,113 @@ const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 const ROUTE=String(process.env.ND_YANDEX_MCP_ROUTE_TOKEN||'').trim();
 const YANDEX_MCP_PATH=ROUTE?'/yandex/mcp/'+ROUTE:'';
 const API='https://cloud-api.yandex.net/v1/disk';
+const GOOGLE_CLIENT_EMAIL=String(process.env.ND_GOOGLE_CLIENT_EMAIL||'').trim();
+const GOOGLE_PRIVATE_KEY_B64=String(process.env.ND_GOOGLE_PRIVATE_KEY_B64||'').trim();
+const GOOGLE_STATEHEAD_ID=String(process.env.ND_GOOGLE_STATEHEAD_ID||'').trim();
+const ADOPTION_ROUTE_TOKEN=String(process.env.ND_ADOPTION_ROUTE_TOKEN||'').trim();
+const ADOPTION_PATH=ADOPTION_ROUTE_TOKEN?'/nd/adoption/'+ADOPTION_ROUTE_TOKEN:'';
+let googleTokenCache={token:'',exp:0};
+
+function sha256Text(text){return createHash('sha256').update(Buffer.from(String(text),'utf8')).digest('hex');}
+function b64url(input){return Buffer.from(input).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');}
+function googlePrivateKey(){
+  if(!GOOGLE_PRIVATE_KEY_B64)throw new Error('ND_GOOGLE_PRIVATE_KEY_B64 missing');
+  return Buffer.from(GOOGLE_PRIVATE_KEY_B64,'base64').toString('utf8');
+}
+async function googleAccessToken(){
+  const now=Math.floor(Date.now()/1000);
+  if(googleTokenCache.token && googleTokenCache.exp>now+60)return googleTokenCache.token;
+  if(!GOOGLE_CLIENT_EMAIL)throw new Error('ND_GOOGLE_CLIENT_EMAIL missing');
+  const header=b64url(JSON.stringify({alg:'RS256',typ:'JWT'}));
+  const payload=b64url(JSON.stringify({
+    iss:GOOGLE_CLIENT_EMAIL,
+    scope:'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents',
+    aud:'https://oauth2.googleapis.com/token',
+    iat:now,
+    exp:now+3600
+  }));
+  const unsigned=header+'.'+payload;
+  const signer=createSign('RSA-SHA256'); signer.update(unsigned); signer.end();
+  const assertion=unsigned+'.'+b64url(signer.sign(googlePrivateKey()));
+  const body=new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion});
+  const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
+  const t=await r.text(); if(!r.ok)throw new Error('google_token_http_'+r.status+':'+t.slice(0,500));
+  const o=JSON.parse(t); if(!o.access_token)throw new Error('google_access_token_missing');
+  googleTokenCache={token:o.access_token,exp:now+Number(o.expires_in||3600)};
+  return googleTokenCache.token;
+}
+async function googleFetch(url,init={}){
+  const token=await googleAccessToken();
+  const headers={...(init.headers||{}),authorization:'Bearer '+token};
+  const r=await fetch(url,{...init,headers});
+  const buf=Buffer.from(await r.arrayBuffer());
+  if(!r.ok)throw new Error('google_http_'+r.status+':'+buf.toString('utf8').slice(0,1000));
+  return {r,buf};
+}
+async function driveReadText(id){
+  const m=await googleFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'?fields=id,name,mimeType,parents,md5Checksum,size,modifiedTime,version');
+  const meta=JSON.parse(m.buf.toString('utf8'));
+  const d=await googleFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'?alt=media');
+  const text=d.buf.toString('utf8');
+  return {meta,text,sha256:sha256Text(text),bytes:d.buf.length};
+}
+async function driveCreateText({name,mimeType='text/plain',parentId,text}){
+  if(!name||!parentId)throw new Error('name and parentId required');
+  const token=await googleAccessToken();
+  const boundary='nd-adoption-'+Date.now().toString(16);
+  const meta={name,mimeType,parents:[parentId]};
+  const head=Buffer.from('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: '+mimeType+'\r\n\r\n');
+  const body=Buffer.from(String(text),'utf8');
+  const tail=Buffer.from('\r\n--'+boundary+'--\r\n');
+  const payload=Buffer.concat([head,body,tail]);
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,parents,md5Checksum,size,version',{
+    method:'POST',
+    headers:{authorization:'Bearer '+token,'content-type':'multipart/related; boundary='+boundary,'content-length':String(payload.length)},
+    body:payload
+  });
+  const out=await r.text(); if(!r.ok)throw new Error('drive_create_http_'+r.status+':'+out.slice(0,900));
+  return {...JSON.parse(out),sha256:sha256Text(text),bytes:body.length};
+}
+function docText(doc){
+  const out=[];
+  for(const el of (doc.body?.content||[])){
+    const p=el.paragraph; if(!p)continue;
+    for(const e of (p.elements||[])) if(e.textRun?.content) out.push(e.textRun.content);
+  }
+  return out.join('');
+}
+async function docsRead(id){
+  const g=await googleFetch('https://docs.googleapis.com/v1/documents/'+encodeURIComponent(id));
+  const doc=JSON.parse(g.buf.toString('utf8'));
+  return {documentId:doc.documentId,title:doc.title,revisionId:doc.revisionId,text:docText(doc)};
+}
+async function docsReplaceCas({documentId,text,requiredRevisionId}){
+  if(!documentId||!requiredRevisionId)throw new Error('documentId and requiredRevisionId required');
+  const before=await docsRead(documentId);
+  if(before.revisionId!==requiredRevisionId)throw new Error('revision_mismatch');
+  const end=Math.max(1,1+before.text.length);
+  const requests=[];
+  if(before.text.length>1)requests.push({deleteContentRange:{range:{startIndex:1,endIndex:end}}});
+  else if(before.text.length===1)requests.push({deleteContentRange:{range:{startIndex:1,endIndex:2}}});
+  requests.push({insertText:{location:{index:1},text:String(text)}});
+  const g=await googleFetch('https://docs.googleapis.com/v1/documents/'+encodeURIComponent(documentId)+':batchUpdate',{
+    method:'POST',
+    headers:{'content-type':'application/json; charset=utf-8'},
+    body:JSON.stringify({requests,writeControl:{requiredRevisionId}})
+  });
+  const response=JSON.parse(g.buf.toString('utf8')||'{}');
+  const after=await docsRead(documentId);
+  return {response,after,sha256:sha256Text(after.text)};
+}
+async function adoptionDispatch(a={}){
+  const op=String(a.op||'');
+  if(op==='status')return {ok:true,google_configured:Boolean(GOOGLE_CLIENT_EMAIL&&GOOGLE_PRIVATE_KEY_B64),statehead_id:GOOGLE_STATEHEAD_ID||null};
+  if(op==='drive_read_text')return {ok:true,...await driveReadText(String(a.file_id||''))};
+  if(op==='drive_create_text')return {ok:true,file:await driveCreateText({name:String(a.name||''),mimeType:String(a.mime_type||'text/plain'),parentId:String(a.parent_id||''),text:String(a.text??'')})};
+  if(op==='docs_read')return {ok:true,...await docsRead(String(a.document_id||GOOGLE_STATEHEAD_ID||''))};
+  if(op==='docs_replace_cas')return {ok:true,...await docsReplaceCas({documentId:String(a.document_id||GOOGLE_STATEHEAD_ID||''),text:String(a.text??''),requiredRevisionId:String(a.required_revision_id||'')})};
+  throw new Error('unknown_adoption_op');
+}
 function clean(e){let s=String((e&&e.message)||e||'');for(const x of [TOKEN,ROUTE])if(x)s=s.split(x).join('[REDACTED]');return s.slice(0,1200);}
 function result(id,r){return {jsonrpc:'2.0',id,result:r};}
 function error(id,c,m){return {jsonrpc:'2.0',id,error:{code:c,message:m}};}
@@ -339,6 +447,19 @@ const muxServer=http.createServer(async(req,res)=>{
       const raw=Buffer.from(JSON.stringify(body));
       res.writeHead(200,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
       res.end(raw);return;
+    }
+
+    if(ADOPTION_PATH && path===ADOPTION_PATH){
+      if(req.method==='GET') return j(res,200,{ok:true,service:'nd-adoption-drive-guard',methods:['POST']});
+      if(req.method!=='POST'){res.writeHead(405,{Allow:'POST','content-length':'0'});res.end();return;}
+      try{
+        const raw=await readBody(req);
+        const input=JSON.parse(raw||'{}');
+        const out=await adoptionDispatch(input);
+        return j(res,200,out);
+      }catch(e){
+        return j(res,500,{ok:false,error:cleanErr(e)});
+      }
     }
 
     if(path==='/youtube/health'){
