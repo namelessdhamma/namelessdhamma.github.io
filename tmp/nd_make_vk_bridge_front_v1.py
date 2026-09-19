@@ -12,7 +12,8 @@ PORT=int(os.environ.get("PORT","3000"))
 INNER_PORT=int(os.environ.get("ND_MAKE_VK_INNER_PORT","3992"))
 BRIDGE_TOKEN=os.environ.get("ND_MAKE_VK_BRIDGE_TOKEN","").strip()
 MCP_PATH_TOKEN=os.environ.get("ND_MAKE_VK_MCP_PATH_TOKEN","").strip()
-MAKE_WEBHOOK=os.environ.get("ND_MAKE_VK_WEBHOOK_URL","").strip()\nQUALIFY_NONCE=os.environ.get("ND_MAKE_VK_QUALIFY_NONCE","").strip()
+MAKE_WEBHOOK=os.environ.get("ND_MAKE_VK_WEBHOOK_URL","").strip()
+QUALIFY_NONCE=os.environ.get("ND_MAKE_VK_QUALIFY_NONCE","").strip()
 CURRENT_FRONT="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/1a7f53b5f351942838c6ea2e14280308529cefd5/tmp/nd_remotion_mcp_front_v1.py"
 INNER_PATH="/tmp/nd_make_vk_inner_front.py"
 
