@@ -178,6 +178,21 @@ class H(BaseHTTPRequestHandler):
             self.send_json(502,{"ok":False,"error":"inner_forward_failed","detail":clean(e)})
     def do_GET(self):
         path=self.path.split("?",1)[0]
+        if path=="/vk/qualify/shortvideo-create":
+            if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
+            try:
+                code,obj=vk_method("shortVideo.create",{"group_id":228330620,"file_size":1024,"wallpost":0,"description":"ND qualification probe"})
+                safe={"http":code}
+                if isinstance(obj,dict) and obj.get("error"):
+                    err=obj.get("error") or {}
+                    safe.update({"ok":False,"error_code":err.get("error_code"),"error_msg":err.get("error_msg")})
+                else:
+                    resp=(obj or {}).get("response") if isinstance(obj,dict) else None
+                    safe.update({"ok":True,"owner_id":(resp or {}).get("owner_id") if isinstance(resp,dict) else None,"video_id":(resp or {}).get("video_id") if isinstance(resp,dict) else None,"upload_url_present":bool((resp or {}).get("upload_url")) if isinstance(resp,dict) else False})
+                print("ND_VK_SHORTVIDEO_CREATE "+json.dumps(safe,ensure_ascii=False),flush=True)
+                return self.send_json(200,safe)
+            except Exception as e:
+                return self.send_json(500,{"ok":False,"stage":"exception","error":clean(e)})
         if path=="/vk/qualify/shortvideo-read":
             if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
             try:
