@@ -656,6 +656,65 @@ async def doctor_ask(request: Request) -> JSONResponse:
         )
 
 
+def _normalize_source_ids(raw: object) -> list[str] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise RuntimeError("source_ids_must_be_list")
+    source_ids: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        source_id = str(item or "").strip()
+        if not source_id:
+            raise RuntimeError("source_ids_contains_empty")
+        if source_id not in seen:
+            source_ids.append(source_id)
+            seen.add(source_id)
+    if not source_ids:
+        raise RuntimeError("source_ids_empty")
+    return source_ids
+
+
+async def _validate_source_ids(client, notebook_id: str, source_ids: list[str] | None) -> None:
+    if source_ids is None:
+        return
+    items = await client.sources.list(notebook_id)
+    known_ids: set[str] = set()
+    for item in items:
+        payload = to_jsonable(item)
+        if isinstance(payload, dict):
+            source_id = str(payload.get("id") or "").strip()
+            if source_id:
+                known_ids.add(source_id)
+    missing = [source_id for source_id in source_ids if source_id not in known_ids]
+    if missing:
+        raise RuntimeError("unknown_source_ids:" + ",".join(missing))
+
+
+def _out_of_scope_citations(answer_payload: object, source_ids: list[str] | None) -> list[str]:
+    if source_ids is None or not isinstance(answer_payload, dict):
+        return []
+    allowed = set(source_ids)
+    outside: set[str] = set()
+    references = answer_payload.get("references") or []
+    if isinstance(references, list):
+        for reference in references:
+            if not isinstance(reference, dict):
+                continue
+            source_id = str(reference.get("source_id") or "").strip()
+            if source_id and source_id not in allowed:
+                outside.add(source_id)
+    return sorted(outside)
+
+
+async def _reset_current_chat(client, notebook_id: str) -> str | None:
+    conversation_id = await client.chat.get_conversation_id(notebook_id)
+    if conversation_id is None:
+        return None
+    await client.chat.delete_conversation(notebook_id, conversation_id)
+    return conversation_id
+
+
 
 async def github_bridge(request: Request) -> JSONResponse:
     claims = _verify_github_oidc(request)
@@ -711,8 +770,84 @@ async def github_bridge(request: Request) -> JSONResponse:
                 question = str(args.get("question") or "").strip()
                 if not question or len(question) > 8000:
                     return JSONResponse({"ok": False, "error": "invalid_question"}, status_code=400)
-                answer = await client.chat.ask(nb_id, question)
-                result = {"notebook_id": nb_id, "answer": to_jsonable(answer)}
+                source_ids = _normalize_source_ids(args.get("source_ids"))
+                await _validate_source_ids(client, nb_id, source_ids)
+                conversation_id = str(args.get("conversation_id") or "").strip() or None
+                answer = await client.chat.ask(
+                    nb_id,
+                    question,
+                    source_ids=source_ids,
+                    conversation_id=conversation_id,
+                )
+                answer_payload = to_jsonable(answer)
+                outside = _out_of_scope_citations(answer_payload, source_ids)
+                if outside:
+                    return JSONResponse(
+                        {
+                            "ok": False,
+                            "error": "chat_scope_violation",
+                            "out_of_scope_source_ids": outside,
+                        },
+                        status_code=409,
+                    )
+                result = {
+                    "notebook_id": nb_id,
+                    "source_ids": source_ids,
+                    "answer": answer_payload,
+                }
+
+            elif operation == "chat_reset":
+                if args.get("confirm") is not True:
+                    return JSONResponse({"ok": False, "error": "confirm_required"}, status_code=400)
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                deleted_conversation_id = await _reset_current_chat(client, nb_id)
+                result = {
+                    "notebook_id": nb_id,
+                    "deleted_conversation_id": deleted_conversation_id,
+                    "fresh_next_ask": True,
+                }
+
+            elif operation == "chat_ask_fresh":
+                if args.get("confirm_reset") is not True:
+                    return JSONResponse({"ok": False, "error": "confirm_reset_required"}, status_code=400)
+                nb_id = await resolve_notebook(client, str(args.get("notebook") or ""))
+                question = str(args.get("question") or "").strip()
+                if not question or len(question) > 8000:
+                    return JSONResponse({"ok": False, "error": "invalid_question"}, status_code=400)
+                source_ids = _normalize_source_ids(args.get("source_ids"))
+                if source_ids is None:
+                    return JSONResponse({"ok": False, "error": "source_ids_required"}, status_code=400)
+                await _validate_source_ids(client, nb_id, source_ids)
+                deleted_conversation_id = await _reset_current_chat(client, nb_id)
+                answer = await client.chat.ask(
+                    nb_id,
+                    question,
+                    source_ids=source_ids,
+                    conversation_id=None,
+                )
+                answer_payload = to_jsonable(answer)
+                outside = _out_of_scope_citations(answer_payload, source_ids)
+                if outside:
+                    return JSONResponse(
+                        {
+                            "ok": False,
+                            "error": "chat_scope_violation",
+                            "out_of_scope_source_ids": outside,
+                        },
+                        status_code=409,
+                    )
+                if isinstance(answer_payload, dict) and bool(answer_payload.get("is_follow_up")):
+                    return JSONResponse(
+                        {"ok": False, "error": "fresh_conversation_not_established"},
+                        status_code=409,
+                    )
+                result = {
+                    "notebook_id": nb_id,
+                    "source_ids": source_ids,
+                    "deleted_conversation_id": deleted_conversation_id,
+                    "fresh_conversation": True,
+                    "answer": answer_payload,
+                }
 
             elif operation == "notebook_create":
                 title = str(args.get("title") or "").strip()
