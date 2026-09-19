@@ -224,6 +224,23 @@ class H(BaseHTTPRequestHandler):
         if path=="/make/vk/health":
             self.send_json(200 if health()["ok"] else 503,health())
             return
+        if path=="/make/vk/qualify":
+            if not QUALIFY_NONCE:
+                return self.send_json(404,{"ok":False,"error":"qualification_disabled"})
+            q=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            nonce=str((q.get("nonce") or [""])[0])
+            if not nonce or not hmac.compare_digest(nonce,QUALIFY_NONCE):
+                return self.send_json(403,{"ok":False,"error":"forbidden"})
+            try:
+                out=make_upload({
+                    "group_id":228330620,
+                    "title":"ND Railway Make bridge qualification — temporary",
+                    "description":"Temporary Railway -> Make -> VK qualification. Delete after verification.",
+                    "file_url":"https://filesamples.com/samples/video/mp4/sample_640x360.mp4",
+                })
+                return self.send_json(200 if out.get("ok") else 502,out)
+            except Exception as e:
+                return self.send_json(500,{"ok":False,"error":redact(e)})
         return self.forward()
 
     def do_POST(self):
