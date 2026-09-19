@@ -202,7 +202,13 @@ class H(BaseHTTPRequestHandler):
             self.wfile.write(raw)
     def authorized(self):
         supplied = self.headers.get("X-ND-VediSMM-Probe-Token", "")
-        return bool(PROBE_TOKEN and supplied and hmac.compare_digest(supplied, PROBE_TOKEN))
+        if not supplied:
+            try:
+                qs = urllib.parse.urlsplit(self.path).query
+                supplied = (urllib.parse.parse_qs(qs).get("token") or [""])[0]
+            except Exception:
+                supplied = ""
+        return bool(PROBE_TOKEN and supplied and hmac.compare_digest(str(supplied), PROBE_TOKEN))
     def forward(self):
         try:
             n = int(self.headers.get("Content-Length", "0") or 0)
@@ -244,7 +250,16 @@ class H(BaseHTTPRequestHandler):
                 return self.send_json(500, {"ok": False, "stage": "exception", "error": clean(e)})
         return self.forward()
     def do_GET(self):
-        if self.path.split("?",1)[0] == "/vedismm/qualify/health":
+        path = self.path.split("?",1)[0]
+        if path == "/vedismm/qualify/connect":
+            if not self.authorized():
+                return self.send_json(403, {"ok": False, "error": "forbidden"})
+            try:
+                code, obj = qualify_connect()
+                return self.send_json(code, obj)
+            except Exception as e:
+                return self.send_json(500, {"ok": False, "stage": "exception", "error": clean(e)})
+        if path == "/vedismm/qualify/health":
             return self.send_json(200, {
                 "ok": True,
                 "service": "nd-vedismm-probe-front",
