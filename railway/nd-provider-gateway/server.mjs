@@ -15,6 +15,10 @@ const GOOGLE_STATEHEAD_ID=String(process.env.ND_GOOGLE_STATEHEAD_ID||'').trim();
 const ADOPTION_ROUTE_TOKEN=String(process.env.ND_ADOPTION_ROUTE_TOKEN||'').trim();
 const ADOPTION_PATH=ADOPTION_ROUTE_TOKEN?'/nd/adoption/'+ADOPTION_ROUTE_TOKEN:'';
 let googleTokenCache={token:'',exp:0};
+const ADOPTION_READ_REGISTRY_ID=String(process.env.ND_ADOPTION_READ_REGISTRY_ID||'').trim();
+const ADOPTION_READ_STATEHEAD_ID=String(process.env.ND_ADOPTION_READ_STATEHEAD_ID||'').trim();
+const ADOPTION_READ_REV=String(process.env.ND_ADOPTION_READ_REV||'').trim();
+
 
 function sha256Text(text){return createHash('sha256').update(Buffer.from(String(text),'utf8')).digest('hex');}
 function b64url(input){return Buffer.from(input).toString('base64').replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');}
@@ -107,6 +111,28 @@ async function docsReplaceCas({documentId,text,requiredRevisionId}){
   const after=await docsRead(documentId);
   return {response,after,sha256:sha256Text(after.text)};
 }
+async function runAdoptionReadProbe(){
+  if(!ADOPTION_READ_REV||!ADOPTION_READ_REGISTRY_ID||!ADOPTION_READ_STATEHEAD_ID)return;
+  const logChunks=(kind,text,meta={})=>{
+    const b64=Buffer.from(String(text),'utf8').toString('base64');
+    const chunkSize=6000;
+    const total=Math.max(1,Math.ceil(b64.length/chunkSize));
+    console.log('ND_ADOPTION_READ_META',JSON.stringify({rev:ADOPTION_READ_REV,kind,total,...meta}));
+    for(let i=0;i<total;i++){
+      console.log('ND_ADOPTION_READ_CHUNK',JSON.stringify({rev:ADOPTION_READ_REV,kind,index:i,total,data:b64.slice(i*chunkSize,(i+1)*chunkSize)}));
+    }
+  };
+  try{
+    const registry=await driveReadText(ADOPTION_READ_REGISTRY_ID);
+    logChunks('registry',registry.text,{sha256:registry.sha256,bytes:registry.bytes,meta:registry.meta});
+    const head=await docsRead(ADOPTION_READ_STATEHEAD_ID);
+    logChunks('statehead',head.text,{documentId:head.documentId,title:head.title,revisionId:head.revisionId,sha256:sha256Text(head.text),chars:head.text.length});
+    console.log('ND_ADOPTION_READ_DONE',JSON.stringify({rev:ADOPTION_READ_REV,ok:true}));
+  }catch(e){
+    console.error('ND_ADOPTION_READ_DONE',JSON.stringify({rev:ADOPTION_READ_REV,ok:false,error:cleanErr(e)}));
+  }
+}
+
 async function adoptionDispatch(a={}){
   const op=String(a.op||'');
   if(op==='status')return {ok:true,google_configured:Boolean(GOOGLE_CLIENT_EMAIL&&GOOGLE_PRIVATE_KEY_B64),statehead_id:GOOGLE_STATEHEAD_ID||null};
@@ -542,3 +568,4 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
 }));
 muxServer.listen(PORT,'0.0.0.0');
 setTimeout(runYoutubeQualification,2000);
+setTimeout(runAdoptionReadProbe,3000);
