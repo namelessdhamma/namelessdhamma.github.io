@@ -245,6 +245,7 @@ class H(BaseHTTPRequestHandler):
                 return self.send_json(403, {"ok": False, "error": "forbidden"})
             try:
                 code, obj = qualify_connect()
+                print("ND_VEDISMM_PROBE_RESULT " + json.dumps({"http": code, "result": obj}, ensure_ascii=False), flush=True)
                 return self.send_json(code, obj)
             except Exception as e:
                 return self.send_json(500, {"ok": False, "stage": "exception", "error": clean(e)})
@@ -256,6 +257,7 @@ class H(BaseHTTPRequestHandler):
                 return self.send_json(403, {"ok": False, "error": "forbidden"})
             try:
                 code, obj = qualify_connect()
+                print("ND_VEDISMM_PROBE_RESULT " + json.dumps({"http": code, "result": obj}, ensure_ascii=False), flush=True)
                 return self.send_json(code, obj)
             except Exception as e:
                 return self.send_json(500, {"ok": False, "stage": "exception", "error": clean(e)})
