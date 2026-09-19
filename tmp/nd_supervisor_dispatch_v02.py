@@ -123,11 +123,20 @@ def _base_record(a: AssignmentEnvelope, s: SupervisorResolution, key: str) -> Di
     }
 
 
+def _coerce_ledger(*, ledger_path: str | Path | None = None, ledger: Optional[Any] = None):
+    if ledger is not None:
+        return ledger
+    if ledger_path is None:
+        raise DispatchError("ledger_or_ledger_path_required")
+    return JsonLedger(ledger_path)
+
+
 def submit_dispatch(
     assignment_raw: Dict[str, Any],
     supervisor_raw: Dict[str, Any],
     *,
-    ledger_path: str | Path,
+    ledger_path: str | Path | None = None,
+    ledger: Optional[Any] = None,
     provider: Optional[Any] = None,
     dispatch_key: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -136,7 +145,7 @@ def submit_dispatch(
     validate_dispatch(assignment, supervisor)
 
     key = dispatch_key or default_dispatch_key(assignment, supervisor)
-    ledger = JsonLedger(ledger_path)
+    ledger = _coerce_ledger(ledger_path=ledger_path, ledger=ledger)
     prior = ledger.get(key)
 
     # A persisted provider response id is the durable replay boundary.
@@ -207,11 +216,12 @@ def submit_dispatch(
 def refresh_dispatch(
     dispatch_key: str,
     *,
-    ledger_path: str | Path,
+    ledger_path: str | Path | None = None,
+    ledger: Optional[Any] = None,
     provider: Optional[Any] = None,
     provider_response: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    ledger = JsonLedger(ledger_path)
+    ledger = _coerce_ledger(ledger_path=ledger_path, ledger=ledger)
     prior = ledger.get(dispatch_key)
     if not prior:
         raise DispatchError("dispatch_not_found")
@@ -267,10 +277,11 @@ def refresh_dispatch(
 def cancel_dispatch(
     dispatch_key: str,
     *,
-    ledger_path: str | Path,
+    ledger_path: str | Path | None = None,
+    ledger: Optional[Any] = None,
     provider: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    ledger = JsonLedger(ledger_path)
+    ledger = _coerce_ledger(ledger_path=ledger_path, ledger=ledger)
     prior = ledger.get(dispatch_key)
     if not prior:
         raise DispatchError("dispatch_not_found")
