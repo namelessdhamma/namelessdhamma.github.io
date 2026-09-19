@@ -253,5 +253,40 @@ class ProviderTests(unittest.TestCase):
             provider._broker_call("dangerous_write", {"query": "x"})
 
 
+    def test_broker_failure_uses_bing_html_fallback(self):
+        provider = p.LocalBrokerToolLoopProvider(
+            provider_name="openrouter_research_free",
+            api_key="or-secret",
+            endpoint="https://openrouter.invalid",
+            model="nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
+            broker_token="broker-secret",
+        )
+        def fail_primary(*args, **kwargs):
+            raise d1.ProviderError("groq_429")
+        provider._post_json = fail_primary
+        provider._bing_html_fallback = lambda query: {
+            "brief": "fallback",
+            "source_urls": ["https://example.com"],
+            "results": [{"title": "Example", "url": "https://example.com", "snippet": "s"}],
+            "verified_search": True,
+            "backend": "bing_html",
+            "query": query,
+            "mutations": False,
+        }
+        out = provider._broker_call("web_current", {"query": "agent systems"})
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["route"], "bing_html_fallback")
+        self.assertEqual(out["result"]["backend"], "bing_html")
+        self.assertIn("groq_429", out["result"]["primary_route_error"])
+        self.assertFalse(out["mutations"])
+
+    def test_public_url_guard_blocks_private_targets(self):
+        self.assertFalse(p.LocalBrokerToolLoopProvider._safe_public_http_url("http://127.0.0.1/x"))
+        self.assertFalse(p.LocalBrokerToolLoopProvider._safe_public_http_url("http://10.0.0.1/x"))
+        self.assertFalse(p.LocalBrokerToolLoopProvider._safe_public_http_url("http://192.168.1.1/x"))
+        self.assertFalse(p.LocalBrokerToolLoopProvider._safe_public_http_url("http://172.16.0.1/x"))
+        self.assertTrue(p.LocalBrokerToolLoopProvider._safe_public_http_url("https://example.com/x"))
+
+
 if __name__ == "__main__":
     unittest.main()
