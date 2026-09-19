@@ -20,6 +20,7 @@ PROBE_TOKEN = os.environ.get("ND_VEDISMM_PROBE_TOKEN", "").strip()
 TARGET_GROUP_ID = "228330620"
 TARGET_SCREEN = "namelessdhamma"
 SESSION_PATH = "/tmp/nd_vedismm_session.json"
+PAT_PATH = "/tmp/nd_vedismm_pat.txt"
 
 UPSTREAM = "https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/1a7f53b5f351942838c6ea2e14280308529cefd5/tmp/nd_remotion_mcp_front_v1.py"
 UPSTREAM_PATH = "/tmp/nd_existing_gateway_vedismm_inner.py"
@@ -84,6 +85,13 @@ def load_session():
         return {}
 
 def get_access_token():
+    try:
+        with open(PAT_PATH, "r", encoding="utf-8") as fh:
+            pat = fh.read().strip()
+        if pat:
+            return 200, pat, "pat", None
+    except Exception:
+        pass
     now = int(time.time())
     sess = load_session()
     access = str(sess.get("access_token") or "").strip()
@@ -291,7 +299,26 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json(502, {"ok": False, "error": "inner_forward_failed", "detail": clean(e)})
     def do_POST(self):
-        if self.path.split("?",1)[0] == "/vedismm/qualify/connect":
+        path = self.path.split("?",1)[0]
+        if path == "/vedismm/qualify/ingest":
+            if not self.authorized():
+                return self.send_json(403, {"ok": False, "error": "forbidden"})
+            n = int(self.headers.get("Content-Length", "0") or 0)
+            if n <= 0 or n > 10000:
+                return self.send_json(400, {"ok": False, "error": "invalid_body_size"})
+            raw = self.rfile.read(n).decode("utf-8", "replace")
+            form = urllib.parse.parse_qs(raw, keep_blank_values=True)
+            pat = (form.get("pat") or [""])[0].strip()
+            if len(pat) < 16 or len(pat) > 4096:
+                return self.send_json(400, {"ok": False, "error": "invalid_pat"})
+            with open(PAT_PATH, "w", encoding="utf-8") as fh:
+                fh.write(pat)
+            try:
+                os.chmod(PAT_PATH, 0o600)
+            except Exception:
+                pass
+            return self.send_json(200, {"ok": True, "stored": True, "chars": len(pat), "secrets_exposed": False})
+        if path == "/vedismm/qualify/connect":
             if not self.authorized():
                 return self.send_json(403, {"ok": False, "error": "forbidden"})
             try:
@@ -312,6 +339,23 @@ class H(BaseHTTPRequestHandler):
                 return self.send_json(code, obj)
             except Exception as e:
                 return self.send_json(500, {"ok": False, "stage": "exception", "error": clean(e)})
+        if path == "/vedismm/qualify/ingest":
+            if not self.authorized():
+                return self.send_json(403, {"ok": False, "error": "forbidden"})
+            body = """<!doctype html><html><head><meta charset="utf-8"><title>ND VediSMM PAT ingest</title></head>
+<body><h1>ND VediSMM PAT ingest</h1>
+<form method="post" action="/vedismm/qualify/ingest?token=%s">
+<input type="password" name="pat" autocomplete="off" />
+<button type="submit">Store</button>
+</form></body></html>""" % urllib.parse.quote(PROBE_TOKEN, safe="")
+            raw = body.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type","text/html; charset=utf-8")
+            self.send_header("Cache-Control","no-store")
+            self.send_header("Content-Length",str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
         if path == "/vedismm/qualify/health":
             return self.send_json(200, {
                 "ok": True,
