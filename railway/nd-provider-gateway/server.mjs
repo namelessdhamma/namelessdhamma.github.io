@@ -17,6 +17,7 @@ const ADOPTION_PATH=ADOPTION_ROUTE_TOKEN?'/nd/adoption/'+ADOPTION_ROUTE_TOKEN:''
 let googleTokenCache={token:'',exp:0};
 const ADOPTION_READ_REGISTRY_ID=String(process.env.ND_ADOPTION_READ_REGISTRY_ID||'').trim();
 const ADOPTION_READ_STATEHEAD_ID=String(process.env.ND_ADOPTION_READ_STATEHEAD_ID||'').trim();
+const ADOPTION_READ_BUNDLE_ID=String(process.env.ND_ADOPTION_READ_BUNDLE_ID||'').trim();
 const ADOPTION_READ_REV=String(process.env.ND_ADOPTION_READ_REV||'').trim();
 
 
@@ -112,7 +113,7 @@ async function docsReplaceCas({documentId,text,requiredRevisionId}){
   return {response,after,sha256:sha256Text(after.text)};
 }
 async function runAdoptionReadProbe(){
-  if(!ADOPTION_READ_REV||!ADOPTION_READ_REGISTRY_ID||!ADOPTION_READ_STATEHEAD_ID)return;
+  if(!ADOPTION_READ_REV)return;
   const logChunks=(kind,text,meta={})=>{
     const b64=Buffer.from(String(text),'utf8').toString('base64');
     const chunkSize=6000;
@@ -122,15 +123,29 @@ async function runAdoptionReadProbe(){
       console.log('ND_ADOPTION_READ_CHUNK',JSON.stringify({rev:ADOPTION_READ_REV,kind,index:i,total,data:b64.slice(i*chunkSize,(i+1)*chunkSize)}));
     }
   };
-  try{
-    const registry=await driveReadText(ADOPTION_READ_REGISTRY_ID);
-    logChunks('registry',registry.text,{sha256:registry.sha256,bytes:registry.bytes,meta:registry.meta});
-    const head=await docsRead(ADOPTION_READ_STATEHEAD_ID);
-    logChunks('statehead',head.text,{documentId:head.documentId,title:head.title,revisionId:head.revisionId,sha256:sha256Text(head.text),chars:head.text.length});
-    console.log('ND_ADOPTION_READ_DONE',JSON.stringify({rev:ADOPTION_READ_REV,ok:true}));
-  }catch(e){
-    console.error('ND_ADOPTION_READ_DONE',JSON.stringify({rev:ADOPTION_READ_REV,ok:false,error:cleanErr(e)}));
+  const results={};
+  if(ADOPTION_READ_REGISTRY_ID){
+    try{
+      const registry=await driveReadText(ADOPTION_READ_REGISTRY_ID);
+      logChunks('registry',registry.text,{sha256:registry.sha256,bytes:registry.bytes,meta:registry.meta});
+      results.registry='ok';
+    }catch(e){results.registry=cleanErr(e);console.error('ND_ADOPTION_READ_ITEM',JSON.stringify({rev:ADOPTION_READ_REV,kind:'registry',ok:false,error:cleanErr(e)}));}
   }
+  if(ADOPTION_READ_BUNDLE_ID){
+    try{
+      const bundle=await driveReadText(ADOPTION_READ_BUNDLE_ID);
+      logChunks('bundle',bundle.text,{sha256:bundle.sha256,bytes:bundle.bytes,meta:bundle.meta});
+      results.bundle='ok';
+    }catch(e){results.bundle=cleanErr(e);console.error('ND_ADOPTION_READ_ITEM',JSON.stringify({rev:ADOPTION_READ_REV,kind:'bundle',ok:false,error:cleanErr(e)}));}
+  }
+  if(ADOPTION_READ_STATEHEAD_ID){
+    try{
+      const head=await docsRead(ADOPTION_READ_STATEHEAD_ID);
+      logChunks('statehead',head.text,{documentId:head.documentId,title:head.title,revisionId:head.revisionId,sha256:sha256Text(head.text),chars:head.text.length});
+      results.statehead='ok';
+    }catch(e){results.statehead=cleanErr(e);console.error('ND_ADOPTION_READ_ITEM',JSON.stringify({rev:ADOPTION_READ_REV,kind:'statehead',ok:false,error:cleanErr(e)}));}
+  }
+  console.log('ND_ADOPTION_READ_DONE',JSON.stringify({rev:ADOPTION_READ_REV,ok:Object.values(results).some(x=>x==='ok'),results}));
 }
 
 async function adoptionDispatch(a={}){
