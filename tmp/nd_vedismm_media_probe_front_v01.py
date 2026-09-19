@@ -224,10 +224,75 @@ def run_live_probe():
         return 409,{"ok":False,"stage":"draft_version","post_status":post.get("status"),"version":version}
 
     post_status=str(post.get("status") or "")
-    if post_status not in ("draft","failed"):
+    if post_status in ("published","partial"):
+        target_rows=[]
+        for t in (post.get("targets") or []):
+            if not isinstance(t,dict): continue
+            acct_t=t.get("account") or {}
+            target_rows.append({
+                "account_id":acct_t.get("id") or t.get("account_id"),
+                "network":acct_t.get("network") or t.get("network"),
+                "status":t.get("status"),
+                "external_id":t.get("external_id"),
+                "external_url":t.get("external_url"),
+                "error":t.get("error"),
+            })
+        jlist_code,jlist_obj,_=api_json("/jobs?type=publish&limit=20",bearer=token)
+        prior_job={}
+        if jlist_code==200:
+            jobs=(jlist_obj.get("data") or []) if isinstance(jlist_obj,dict) else []
+            for j in jobs:
+                if isinstance(j,dict) and int(j.get("post_id") or 0)==390:
+                    prior_job=safe_job(j)
+                    break
         existing_readback=vk_wall_readback()
-        if existing_readback.get("found"):
-            return 409,{"ok":False,"stage":"already_remote_or_non_draft","post_status":post_status,"version":version,"vk_readback":existing_readback}
+        dcode,dobj,_=api_json("/posts/390/delete-everywhere","POST",{},token,{"Idempotency-Key":"nd-vk-video-delete-post390-20260919b"})
+        del_job_safe={}
+        remote_deleted=False
+        if dcode==202:
+            del_job_id=str(((dobj.get("data") or {}).get("id") or "")).strip()
+            if del_job_id:
+                djcode,del_job=poll_job(token,del_job_id)
+                del_job_safe=safe_job(del_job)
+                remote_deleted=(djcode==200 and str(del_job.get("status") or "")=="succeeded")
+        else:
+            del_job_safe={"submit_http":dcode,"submit_error":clean(dobj)}
+        time.sleep(1)
+        after=vk_wall_readback()
+        cleanup={"internal_post_deleted":False,"media_deleted":False}
+        if remote_deleted:
+            rcode,robj,rheaders=api_json("/posts/390",bearer=token)
+            etag=str(rheaders.get("ETag") or rheaders.get("Etag") or "")
+            if rcode==200 and etag:
+                xcode,xobj,_=api_json("/posts/390","DELETE",None,token,{"If-Match":etag})
+                cleanup["internal_post_delete_http"]=xcode
+                cleanup["internal_post_deleted"]=(xcode==204)
+            if cleanup["internal_post_deleted"]:
+                mcode,mobj,_=api_json("/media/426","DELETE",None,token)
+                cleanup["media_delete_http"]=mcode
+                cleanup["media_deleted"]=(mcode==204)
+        native_hint=False
+        for t in target_rows:
+            eid=str(t.get("external_id") or "").lower()
+            eurl=str(t.get("external_url") or "").lower()
+            if "video" in eid or "video" in eurl or "vkvideo" in eurl:
+                native_hint=True
+        return 200,{
+            "ok":True,
+            "stage":"recover_published_readback_delete",
+            "post_status":post_status,
+            "version":version,
+            "post_targets":target_rows,
+            "prior_publish_job":prior_job,
+            "vk_wall_readback":existing_readback,
+            "native_video_target_hint":native_hint,
+            "delete_job":del_job_safe,
+            "remote_deleted":remote_deleted,
+            "vk_after_delete":after,
+            "cleanup":cleanup,
+            "secrets_exposed":False,
+        }
+    if post_status not in ("draft","failed"):
         return 409,{"ok":False,"stage":"unexpected_post_status","post_status":post_status,"version":version}
     publish_key="nd-vk-video-live-post390-v%s-20260919a"%version
     pcode,pobj,_=api_json("/posts/390/publish","POST",{"version":version},token,{"Idempotency-Key":publish_key})
