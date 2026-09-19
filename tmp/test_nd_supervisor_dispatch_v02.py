@@ -186,5 +186,47 @@ class AsyncDispatchTests(unittest.TestCase):
         self.assertEqual(self.provider.submit_calls, 1)
 
 
+    def test_terminal_sync_provider_preserves_pluggable_ledger(self):
+        class MemoryLedger:
+            def __init__(self):
+                self.rows = {}
+            def get(self, key):
+                row = self.rows.get(key)
+                return None if row is None else dict(row)
+            def put(self, key, value):
+                self.rows[key] = dict(value)
+
+        class SyncProvider:
+            def submit(self, assignment, supervisor, dispatch_key):
+                return {
+                    "id": "sync-1",
+                    "status": "completed",
+                    "provider": "groq",
+                    "model": "openai/gpt-oss-120b",
+                    "output": [{
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": "sync complete"}],
+                    }],
+                }
+            def retrieve(self, response_id):
+                raise AssertionError("retrieve should not be called for terminal submit")
+            def cancel(self, response_id):
+                raise AssertionError("cancel not expected")
+
+        ledger = MemoryLedger()
+        out = nd.submit_dispatch(
+            BASE_ASSIGNMENT,
+            SUPERVISOR,
+            ledger=ledger,
+            provider=SyncProvider(),
+            dispatch_key="sync-terminal",
+        )
+        self.assertEqual(out["state"], "VERIFIED")
+        self.assertEqual(out["execution_provider"], "groq")
+        self.assertEqual(out["execution_model"], "openai/gpt-oss-120b")
+        self.assertEqual(out["output_text"], "sync complete")
+        self.assertEqual(ledger.get("sync-terminal")["state"], "VERIFIED")
+
+
 if __name__ == "__main__":
     unittest.main()
