@@ -218,6 +218,73 @@ def get_ledger():
     raise RuntimeError("unsupported_ledger_mode:" + LEDGER_MODE)
 
 
+ALLOWED_PROMPT_HOST_SUFFIXES = (
+    ".oaiusercontent.com",
+    ".googleusercontent.com",
+    ".googleapis.com",
+)
+MAX_PROMPT_BYTES = int(os.environ.get("ND_SUPERVISOR_MAX_PROMPT_BYTES", "1048576"))
+
+
+def _allowed_prompt_host(host: str) -> bool:
+    host = (host or "").lower().rstrip(".")
+    return any(host.endswith(suffix) for suffix in ALLOWED_PROMPT_HOST_SUFFIXES)
+
+
+def hydrate_prompt_from_url(supervisor: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Resolve exact canonical prompt bytes from a short-lived approved HTTPS file URL.
+    The raw bytes MUST hash to authority_evidence.artifact_hash before decoding.
+    The URL itself is not persisted into the dispatch receipt.
+    """
+    out = dict(supervisor)
+    prompt_url = str(out.pop("prompt_url", "") or "").strip()
+    if not prompt_url:
+        return out
+
+    parsed = urllib.parse.urlparse(prompt_url)
+    if parsed.scheme != "https" or not _allowed_prompt_host(parsed.hostname or ""):
+        raise RuntimeError("prompt_url_host_not_allowed")
+
+    req = urllib.request.Request(
+        prompt_url,
+        headers={"User-Agent": "ND-Supervisor-Dispatch/0.6"},
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=60) as response:
+        final_url = response.geturl()
+        final_host = urllib.parse.urlparse(final_url).hostname or ""
+        if not _allowed_prompt_host(final_host):
+            raise RuntimeError("prompt_url_redirect_host_not_allowed")
+        raw = response.read(MAX_PROMPT_BYTES + 1)
+
+    if len(raw) > MAX_PROMPT_BYTES:
+        raise RuntimeError("prompt_artifact_too_large")
+
+    authority = out.get("authority_evidence")
+    if not isinstance(authority, dict):
+        raise RuntimeError("authority_evidence_required")
+    expected = str(authority.get("artifact_hash") or "").strip()
+    if not expected:
+        raise RuntimeError("authority_evidence_missing:artifact_hash")
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual != expected:
+        raise RuntimeError("prompt_url_artifact_hash_mismatch")
+
+    try:
+        out["prompt_text"] = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise RuntimeError("prompt_artifact_not_utf8") from exc
+
+    out["prompt_transport"] = {
+        "kind": "signed_canonical_artifact_url",
+        "artifact_id": authority.get("artifact_id"),
+        "artifact_hash": expected,
+        "bytes": len(raw),
+    }
+    return out
+
+
 def supervisor_tool_call(
     name: str,
     args: Dict[str, Any],
@@ -246,6 +313,7 @@ def supervisor_tool_call(
         supervisor = args.get("supervisor")
         if not isinstance(assignment, dict) or not isinstance(supervisor, dict):
             raise RuntimeError("assignment_and_supervisor_required")
+        supervisor = hydrate_prompt_from_url(supervisor)
         authority = supervisor.get("authority_evidence")
         if not isinstance(authority, dict):
             raise RuntimeError("authority_evidence_required")
