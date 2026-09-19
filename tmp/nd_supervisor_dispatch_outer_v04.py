@@ -250,6 +250,13 @@ def supervisor_tool_call(
         for field in ("registry_hash", "artifact_id", "artifact_hash", "exact_status"):
             if not str(authority.get(field) or "").strip():
                 raise RuntimeError("authority_evidence_missing:" + field)
+        status = str(authority.get("exact_status") or "").upper()
+        if "CANONICAL" not in status or "ACTIVE" not in status:
+            raise RuntimeError("authority_evidence_not_canonical_active")
+        prompt_bytes = str(supervisor.get("prompt_text") or "").encode("utf-8")
+        prompt_hash = hashlib.sha256(prompt_bytes).hexdigest()
+        if prompt_hash != str(authority.get("artifact_hash") or ""):
+            raise RuntimeError("supervisor_prompt_hash_mismatch")
         return d2.submit_dispatch(
             assignment,
             supervisor,
