@@ -138,6 +138,17 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(provider.model, "openrouter/free")
         self.assertEqual(provider.provider_name, "openrouter")
 
+    def test_mistral_uses_provisioned_model(self):
+        env = {
+            "MISTRAL_API_KEY": "m-secret",
+            "MISTRAL_MODEL": "mistral-large-latest",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            provider = p.make_sync_provider("mistral", purpose="research")
+        self.assertEqual(provider.model, "mistral-large-latest")
+        self.assertEqual(provider.provider_name, "mistral")
+        self.assertEqual(provider.endpoint, "https://api.mistral.ai/v1/chat/completions")
+
     def test_auto_order_prefers_groq_before_openrouter(self):
         env = {
             "GROQ_API_KEY": "g",
