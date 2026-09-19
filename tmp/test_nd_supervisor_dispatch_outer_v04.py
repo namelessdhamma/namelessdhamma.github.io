@@ -351,6 +351,77 @@ class _PromptResponse:
         return self.url
 
 
+class _GitHubCacheResponse:
+    def __init__(self, obj):
+        self.obj = obj
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        return False
+    def read(self):
+        return json.dumps(self.obj).encode("utf-8")
+
+
+class PromptCacheHydrationTests(unittest.TestCase):
+    def test_private_github_cache_hydrates_only_hash_matching_bytes(self):
+        raw = b"\xef\xbb\xbfcanonical cache\r\n"
+        h = hashlib.sha256(raw).hexdigest()
+        obj = {
+            "content": base64.b64encode(raw).decode("ascii"),
+            "sha": "gitblob",
+        }
+        supervisor = {
+            "prompt_cache": {
+                "repo": "namelessdhamma/nameless-dhamma-vault",
+                "path": ".nd-runtime/cache/prompt.md",
+                "ref": "main",
+            },
+            "authority_evidence": {
+                "artifact_id": "drive-id",
+                "artifact_hash": h,
+            },
+        }
+        old_pat = outer.GITHUB_PAT
+        try:
+            outer.GITHUB_PAT = "test-pat"
+            with mock.patch(
+                "urllib.request.urlopen",
+                return_value=_GitHubCacheResponse(obj),
+            ):
+                out = outer.hydrate_prompt_from_github_cache(supervisor)
+        finally:
+            outer.GITHUB_PAT = old_pat
+        self.assertNotIn("prompt_cache", out)
+        self.assertEqual(out["prompt_text"].encode("utf-8"), raw)
+        self.assertFalse(out["prompt_transport"]["cache_authoritative"])
+        self.assertEqual(out["prompt_transport"]["artifact_hash"], h)
+
+    def test_private_github_cache_hash_mismatch_fails_closed(self):
+        raw = b"wrong"
+        obj = {"content": base64.b64encode(raw).decode("ascii")}
+        supervisor = {
+            "prompt_cache": {
+                "repo": "namelessdhamma/nameless-dhamma-vault",
+                "path": ".nd-runtime/cache/prompt.md",
+            },
+            "authority_evidence": {
+                "artifact_id": "drive-id",
+                "artifact_hash": "0" * 64,
+            },
+        }
+        old_pat = outer.GITHUB_PAT
+        try:
+            outer.GITHUB_PAT = "test-pat"
+            with mock.patch(
+                "urllib.request.urlopen",
+                return_value=_GitHubCacheResponse(obj),
+            ):
+                with self.assertRaises(RuntimeError):
+                    outer.hydrate_prompt_from_github_cache(supervisor)
+        finally:
+            outer.GITHUB_PAT = old_pat
+
+
 class PromptHydrationTests(unittest.TestCase):
     def test_signed_prompt_url_hydrates_exact_bytes_and_strips_url(self):
         raw = b"\xef\xbb\xbfcanonical prompt\r\nline2\r\n"
