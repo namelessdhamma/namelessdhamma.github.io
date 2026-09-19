@@ -239,6 +239,10 @@ def refresh_dispatch(
         "last_observed_at": int(time.time()),
         "replayed": False,
     }
+    if response.get("provider"):
+        updated["execution_provider"] = response.get("provider")
+    if response.get("model"):
+        updated["execution_model"] = response.get("model")
 
     if status in ACTIVE_PROVIDER_STATUSES:
         ledger.put(dispatch_key, updated)
