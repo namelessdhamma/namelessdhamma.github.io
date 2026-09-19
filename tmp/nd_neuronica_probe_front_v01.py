@@ -58,6 +58,7 @@ def fetch(opener,path,method="GET",form=None,body=None,headers=None,timeout=45):
 
 def login():
     opener,jar=session_opener()
+    gcode,gurl,gtext,gheaders=fetch(opener,"/login.php")
     code,url,text,headers=fetch(opener,"/login.php","POST",form={
         "email":EMAIL,
         "password":PASSWORD,
@@ -65,10 +66,15 @@ def login():
         "phone_number":"",
         "remember":"1",
     })
-    # Login succeeds via redirect to dashboard or authenticated HTML.
     dcode,durl,dtext,dheaders=fetch(opener,"/dashboard.php")
     authenticated=(dcode==200 and "/login.php" not in durl and ("Выйти" in dtext or "dashboard" in dtext.lower() or "Токен" in dtext))
-    return opener,jar,{"login_http":code,"login_final":url,"dashboard_http":dcode,"dashboard_final":durl,"authenticated":authenticated},dtext
+    err=None
+    if not authenticated:
+        m=re.search(r'<div[^>]+class=["\'][^"\']*error-message[^"\']*["\'][^>]*>(.*?)</div>',text,re.I|re.S)
+        if m:
+            err=re.sub(r'<[^>]+>',' ',m.group(1))
+            err=html.unescape(re.sub(r'\s+',' ',err)).strip()[:500]
+    return opener,jar,{"prefetch_http":gcode,"login_http":code,"login_final":url,"dashboard_http":dcode,"dashboard_final":durl,"authenticated":authenticated,"login_error":err},dtext
 
 def extract_surface(text):
     # Keep only endpoint-ish strings, never page content or credentials.
