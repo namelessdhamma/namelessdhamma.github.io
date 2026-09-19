@@ -208,7 +208,13 @@ def submit_dispatch(
 
     # Some provider calls may already complete before submit returns.
     if provider_status in TERMINAL_PROVIDER_STATUSES:
-        return refresh_dispatch(key, ledger_path=ledger_path, provider=runner, provider_response=response)
+        return refresh_dispatch(
+            key,
+            ledger_path=ledger_path,
+            ledger=ledger,
+            provider=runner,
+            provider_response=response,
+        )
 
     return saved
 
