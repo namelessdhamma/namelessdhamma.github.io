@@ -185,6 +185,56 @@ class AsyncDispatchTests(unittest.TestCase):
         self.assertTrue(out["recovery_required"])
         self.assertEqual(self.provider.submit_calls, 1)
 
+    def test_terminal_submit_payload_recovers_after_crash_without_second_provider_call(self):
+        key = "terminal-crash-key"
+        response = {
+            "id": "resp-terminal",
+            "status": "completed",
+            "model": "sync-model",
+            "provider": "groq",
+            "output": [{
+                "type": "message",
+                "content": [{"type": "output_text", "text": "terminal result"}],
+            }],
+        }
+        ledger = nd.JsonLedger(self.ledger)
+        ledger.put(key, {
+            "dispatch_key": key,
+            "state": "ATTEMPTED",
+            "workitem_id": BASE_ASSIGNMENT["workitem_id"],
+            "assignment_id": BASE_ASSIGNMENT["assignment_id"],
+            "correlation_id": BASE_ASSIGNMENT["correlation_id"],
+            "supervisor_id": SUPERVISOR["supervisor_id"],
+            "supervisor_version": SUPERVISOR["canonical_version"],
+            "prompt_source": SUPERVISOR["prompt_source"],
+            "model": SUPERVISOR["model"],
+            "provider_response_id": "resp-terminal",
+            "provider_status": "completed",
+            "provider_response": response,
+        })
+
+        class NoSubmitProvider:
+            def submit(self, *args, **kwargs):
+                raise AssertionError("provider must not be resubmitted")
+            def retrieve(self, *args, **kwargs):
+                raise AssertionError("terminal payload should recover locally")
+            def cancel(self, *args, **kwargs):
+                raise AssertionError("not used")
+
+        out = nd.submit_dispatch(
+            BASE_ASSIGNMENT,
+            SUPERVISOR,
+            ledger_path=self.ledger,
+            provider=NoSubmitProvider(),
+            dispatch_key=key,
+        )
+        self.assertEqual(out["state"], "VERIFIED")
+        self.assertTrue(out["replayed"])
+        self.assertTrue(out["recovered_terminal_submit"])
+        self.assertEqual(out["execution_provider"], "groq")
+        self.assertEqual(out["execution_model"], "sync-model")
+        self.assertEqual(out["output_text"], "terminal result")
+
 
     def test_terminal_sync_provider_preserves_pluggable_ledger(self):
         class MemoryLedger:
