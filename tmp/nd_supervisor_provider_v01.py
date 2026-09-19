@@ -238,7 +238,7 @@ def auto_provider_order(*, purpose: str = "general") -> list[str]:
     configured = set(configured_provider_names())
     order = []
     if purpose.strip().lower() == "research":
-        for name in ("groq", "groq_web", "openrouter"):
+        for name in ("groq_web", "groq", "openrouter"):
             if name in configured:
                 order.append(name)
     else:
