@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -18,6 +19,7 @@ VK_SCREEN = os.environ.get("VK_GROUP_SCREEN_NAME", "namelessdhamma").strip().lst
 PROBE_TOKEN = os.environ.get("ND_VEDISMM_PROBE_TOKEN", "").strip()
 TARGET_GROUP_ID = "228330620"
 TARGET_SCREEN = "namelessdhamma"
+SESSION_PATH = "/tmp/nd_vedismm_session.json"
 
 UPSTREAM = "https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/1a7f53b5f351942838c6ea2e14280308529cefd5/tmp/nd_remotion_mcp_front_v1.py"
 UPSTREAM_PATH = "/tmp/nd_existing_gateway_vedismm_inner.py"
@@ -58,6 +60,58 @@ def api_json(path, method="GET", body=None, bearer=None, extra_headers=None):
             obj = {"raw": clean(raw)}
         return e.code, obj
 
+def save_session(data):
+    if not isinstance(data, dict):
+        return
+    now = int(time.time())
+    out = dict(data)
+    out["obtained_at"] = now
+    out["expires_at"] = now + int(out.get("expires_in") or 0)
+    out["refresh_expires_at"] = now + int(out.get("refresh_expires_in") or 0)
+    with open(SESSION_PATH, "w", encoding="utf-8") as fh:
+        json.dump(out, fh)
+    try:
+        os.chmod(SESSION_PATH, 0o600)
+    except Exception:
+        pass
+
+def load_session():
+    try:
+        with open(SESSION_PATH, "r", encoding="utf-8") as fh:
+            obj = json.load(fh)
+        return obj if isinstance(obj, dict) else {}
+    except Exception:
+        return {}
+
+def get_access_token():
+    now = int(time.time())
+    sess = load_session()
+    access = str(sess.get("access_token") or "").strip()
+    if access and int(sess.get("expires_at") or 0) > now + 60:
+        return 200, access, "cache", None
+    refresh = str(sess.get("refresh_token") or "").strip()
+    if refresh and int(sess.get("refresh_expires_at") or 0) > now + 60:
+        rcode, robj = api_json("/auth/refresh", "POST", {"refresh_token": refresh})
+        if rcode == 200:
+            data = robj.get("data") or {}
+            new_access = str(data.get("access_token") or "").strip()
+            if new_access:
+                save_session(data)
+                return 200, new_access, "refresh", None
+    code, login = api_json("/auth/login", "POST", {
+        "email": EMAIL,
+        "password": PASSWORD,
+        "client_name": "ND VediSMM qualification",
+    })
+    if code != 200:
+        return code, "", "login", clean(login)
+    data = login.get("data") or {}
+    access = str(data.get("access_token") or "").strip()
+    if not access:
+        return 502, "", "login", "access_token_missing"
+    save_session(data)
+    return 200, access, "login", None
+
 def sanitized_account(row):
     if not isinstance(row, dict):
         return {}
@@ -84,16 +138,9 @@ def qualify_connect():
     if missing:
         return 503, {"ok": False, "stage": "config", "missing": missing}
 
-    code, login = api_json("/auth/login", "POST", {
-        "email": EMAIL,
-        "password": PASSWORD,
-        "client_name": "ND VediSMM qualification",
-    })
-    if code != 200:
-        return 502, {"ok": False, "stage": "login", "http": code, "detail": clean(login)}
-    access = str(((login.get("data") or {}).get("access_token") or "")).strip()
-    if not access:
-        return 502, {"ok": False, "stage": "login", "http": code, "error": "access_token_missing"}
+    tcode, access, token_source, token_error = get_access_token()
+    if tcode != 200:
+        return 502, {"ok": False, "stage": "login", "http": tcode, "detail": token_error}
 
     # Idempotent readback first.
     acode, accounts_obj = api_json("/accounts?limit=100", bearer=access)
@@ -104,6 +151,7 @@ def qualify_connect():
             "ok": True,
             "stage": "already_connected",
             "connection_created": False,
+            "token_source": token_source,
             "account": sanitized_account(existing[0]),
             "secrets_exposed": False,
         }
@@ -180,6 +228,7 @@ def qualify_connect():
         "ok": True,
         "stage": "confirmed",
         "connection_created": True,
+        "token_source": token_source,
         "account": sanitized_account(matches[0]),
         "candidate": {
             "external_id": target.get("external_id"),
