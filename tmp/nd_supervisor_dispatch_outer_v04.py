@@ -79,6 +79,7 @@ def _bootstrap_modules() -> None:
         "nd_supervisor_dispatch_v01.py",
         "nd_supervisor_dispatch_v02.py",
         "nd_supervisor_resolver_v01.py",
+        "nd_supervisor_provider_v01.py",
     ):
         urllib.request.urlretrieve(_raw_url("tmp/" + name), str(MODULE_DIR / name))
     if str(MODULE_DIR) not in sys.path:
@@ -88,7 +89,8 @@ def _bootstrap_modules() -> None:
 def _runtime():
     d2 = importlib.import_module("nd_supervisor_dispatch_v02")
     d1 = importlib.import_module("nd_supervisor_dispatch_v01")
-    return d1, d2
+    p1 = importlib.import_module("nd_supervisor_provider_v01")
+    return d1, d2, p1
 
 
 class GitHubReceiptLedger:
@@ -209,7 +211,7 @@ def get_ledger():
     if LEDGER_MODE == "memory":
         return MemoryLedger()
     if LEDGER_MODE == "file":
-        d1, _ = _runtime()
+        d1, _, _ = _runtime()
         return d1.JsonLedger(os.environ.get("ND_SUPERVISOR_LEDGER_FILE", "/tmp/nd-supervisor-ledger.json"))
     if LEDGER_MODE == "github":
         return GitHubReceiptLedger(GITHUB_PAT, LEDGER_REPO, LEDGER_BRANCH)
@@ -223,7 +225,7 @@ def supervisor_tool_call(
     ledger=None,
     provider=None,
 ) -> Dict[str, Any]:
-    _, d2 = _runtime()
+    _, d2, p1 = _runtime()
     ledger = ledger or get_ledger()
 
     if name == "supervisor_status":
@@ -257,13 +259,33 @@ def supervisor_tool_call(
         prompt_hash = hashlib.sha256(prompt_bytes).hexdigest()
         if prompt_hash != str(authority.get("artifact_hash") or ""):
             raise RuntimeError("supervisor_prompt_hash_mismatch")
-        return d2.submit_dispatch(
+        if provider is None:
+            provider_name = str(args.get("provider") or "auto").strip().lower()
+            purpose = str(args.get("purpose") or "general").strip().lower()
+            if provider_name == "openai":
+                provider = d2.OpenAIBackgroundResponsesProvider()
+            elif provider_name in ("groq", "openrouter"):
+                provider = p1.make_sync_provider(provider_name, purpose=purpose)
+            elif provider_name == "auto":
+                order = p1.auto_provider_order(purpose=purpose)
+                if not order:
+                    raise RuntimeError("no_qualified_alternate_provider_configured")
+                provider_name = order[0]
+                provider = p1.make_sync_provider(provider_name, purpose=purpose)
+            else:
+                raise RuntimeError("unsupported_provider:" + provider_name)
+        out = d2.submit_dispatch(
             assignment,
             supervisor,
             ledger=ledger,
             provider=provider,
             dispatch_key=args.get("dispatch_key"),
         )
+        if isinstance(out, dict):
+            out["selected_provider"] = (
+                str(args.get("provider") or "auto").strip().lower()
+            )
+        return out
 
     if name == "supervisor_result":
         key = str(args.get("dispatch_key") or "").strip()
@@ -295,6 +317,14 @@ TOOLS = [
                 "assignment": {"type": "object"},
                 "supervisor": {"type": "object"},
                 "dispatch_key": {"type": "string"},
+                "provider": {
+                    "type": "string",
+                    "enum": ["auto", "openai", "groq", "openrouter"]
+                },
+                "purpose": {
+                    "type": "string",
+                    "enum": ["general", "research"]
+                },
             },
             "required": ["assignment", "supervisor"],
             "additionalProperties": False,
