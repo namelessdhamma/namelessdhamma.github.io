@@ -15,6 +15,8 @@ INNER_PORT=int(os.environ.get("ND_NEURONICA_INNER_PORT","3977"))
 EMAIL=os.environ.get("ND_NEURONICA_EMAIL","").strip()
 PASSWORD=os.environ.get("ND_NEURONICA_PASSWORD","")
 PROBE_TOKEN=os.environ.get("ND_VEDISMM_PROBE_TOKEN","").strip()
+VK_TOKEN=os.environ.get("VK_GROUP_TOKEN","").strip()
+VK_VERSION=os.environ.get("VK_API_VERSION","5.199").strip() or "5.199"
 BASE="https://neironica.ru"
 
 UPSTREAM="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/1a7f53b5f351942838c6ea2e14280308529cefd5/tmp/nd_remotion_mcp_front_v1.py"
@@ -23,13 +25,29 @@ urllib.request.urlretrieve(UPSTREAM,UPSTREAM_PATH)
 child_env=dict(os.environ); child_env["PORT"]=str(INNER_PORT)
 child=subprocess.Popen([sys.executable,"-u",UPSTREAM_PATH],env=child_env)
 INNER="http://127.0.0.1:%d"%INNER_PORT
-SECRETS=[EMAIL,PASSWORD,PROBE_TOKEN]
+SECRETS=[EMAIL,PASSWORD,PROBE_TOKEN,VK_TOKEN]
 
 def clean(v):
     s=str(v)
     for sec in SECRETS:
         if sec: s=s.replace(sec,"[REDACTED]")
     return s[:6000]
+
+def vk_method(method, params=None):
+    form=dict(params or {})
+    form["access_token"]=VK_TOKEN
+    form["v"]=VK_VERSION
+    data=urllib.parse.urlencode(form).encode("utf-8")
+    req=urllib.request.Request("https://api.vk.com/method/"+method,data=data,headers={"User-Agent":"ND-VK-ShortVideo-Probe/0.1"},method="POST")
+    try:
+        with urllib.request.urlopen(req,timeout=45) as r:
+            raw=r.read().decode("utf-8","replace")
+            return r.status,json.loads(raw or "{}")
+    except urllib.error.HTTPError as e:
+        raw=e.read().decode("utf-8","replace")
+        try: obj=json.loads(raw or "{}")
+        except Exception: obj={"raw":clean(raw)}
+        return e.code,obj
 
 def session_opener():
     jar=http.cookiejar.CookieJar()
@@ -160,6 +178,21 @@ class H(BaseHTTPRequestHandler):
             self.send_json(502,{"ok":False,"error":"inner_forward_failed","detail":clean(e)})
     def do_GET(self):
         path=self.path.split("?",1)[0]
+        if path=="/vk/qualify/shortvideo-read":
+            if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
+            try:
+                code,obj=vk_method("shortVideo.getOwnerVideos",{"owner_id":-228330620,"count":1})
+                safe={"http":code}
+                if isinstance(obj,dict) and obj.get("error"):
+                    err=obj.get("error") or {}
+                    safe.update({"ok":False,"error_code":err.get("error_code"),"error_msg":err.get("error_msg")})
+                else:
+                    resp=(obj or {}).get("response") if isinstance(obj,dict) else None
+                    safe.update({"ok":True,"response_type":type(resp).__name__,"count":(resp or {}).get("count") if isinstance(resp,dict) else None})
+                print("ND_VK_SHORTVIDEO_READ "+json.dumps(safe,ensure_ascii=False),flush=True)
+                return self.send_json(200,safe)
+            except Exception as e:
+                return self.send_json(500,{"ok":False,"stage":"exception","error":clean(e)})
         if path=="/neuronica/qualify/discover":
             if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
             try:
