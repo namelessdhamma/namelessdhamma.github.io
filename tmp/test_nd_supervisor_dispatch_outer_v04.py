@@ -2,6 +2,10 @@ import base64
 import json
 import sys
 from pathlib import Path
+import threading
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
 
 TMP = Path(__file__).parent
@@ -232,6 +236,91 @@ class OuterAdapterTests(unittest.TestCase):
         self.assertTrue(status["ok"])
         self.assertFalse(status["production_adoption"])
         self.assertEqual(self.provider.submit_calls, 0)
+
+
+class _InnerEchoHandler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def _send(self, code, payload):
+        raw = json.dumps(payload).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_GET(self):
+        self._send(200, {"inner": True, "method": "GET", "path": self.path})
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length", "0") or 0)
+        body = self.rfile.read(n).decode("utf-8", "replace") if n else ""
+        self._send(418, {"inner": True, "method": "POST", "path": self.path, "body": body})
+
+
+class ProxyIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.old_inner = outer.INNER_PORT
+        self.old_token = outer.PATH_TOKEN
+
+        self.inner = ThreadingHTTPServer(("127.0.0.1", 0), _InnerEchoHandler)
+        outer.INNER_PORT = self.inner.server_address[1]
+        outer.PATH_TOKEN = "integration-secret"
+        self.inner_thread = threading.Thread(target=self.inner.serve_forever, daemon=True)
+        self.inner_thread.start()
+
+        self.proxy = ThreadingHTTPServer(("127.0.0.1", 0), outer.Handler)
+        self.proxy_thread = threading.Thread(target=self.proxy.serve_forever, daemon=True)
+        self.proxy_thread.start()
+        self.base = "http://127.0.0.1:%d" % self.proxy.server_address[1]
+
+    def tearDown(self):
+        self.proxy.shutdown()
+        self.proxy.server_close()
+        self.inner.shutdown()
+        self.inner.server_close()
+        outer.INNER_PORT = self.old_inner
+        outer.PATH_TOKEN = self.old_token
+
+    def test_unknown_get_is_forwarded_unchanged(self):
+        with urllib.request.urlopen(self.base + "/legacy/health?x=1", timeout=3) as response:
+            data = json.loads(response.read().decode())
+        self.assertTrue(data["inner"])
+        self.assertEqual(data["method"], "GET")
+        self.assertEqual(data["path"], "/legacy/health?x=1")
+
+    def test_wrong_supervisor_token_is_forwarded_not_intercepted(self):
+        payload = b'{"hello":"world"}'
+        req = urllib.request.Request(
+            self.base + "/nd/supervisor/mcp/wrong-token",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req, timeout=3)
+        self.assertEqual(ctx.exception.code, 418)
+        data = json.loads(ctx.exception.read().decode())
+        self.assertTrue(data["inner"])
+
+    def test_exact_supervisor_path_intercepts_mcp_initialize(self):
+        msg = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18"},
+        }
+        req = urllib.request.Request(
+            self.base + "/nd/supervisor/mcp/integration-secret",
+            data=json.dumps(msg).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read().decode())
+        self.assertEqual(data["result"]["serverInfo"]["name"], "nd-supervisor-dispatch")
+        self.assertEqual(data["result"]["protocolVersion"], "2025-06-18")
 
 
 if __name__ == "__main__":
