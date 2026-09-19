@@ -1,8 +1,11 @@
+import base64
+import hashlib
 import hmac
 import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,7 +26,12 @@ env["PORT"]=str(INNER_PORT)
 child=subprocess.Popen([sys.executable,"-u",INNER_PATH],env=env)
 INNER="http://127.0.0.1:%d"%INNER_PORT
 
-VERSION="1.0.0"
+VERSION="1.1.0"
+GITHUB_MCP_PATH="/make/vk/github-mcp"
+GITHUB_OIDC_ISSUER="https://token.actions.githubusercontent.com"
+GITHUB_OIDC_AUDIENCE="nd-make-vk"
+GITHUB_OIDC_REPOSITORY="namelessdhamma/nameless-dhamma-vault"
+GITHUB_OIDC_WORKFLOW="namelessdhamma/nameless-dhamma-vault/.github/workflows/nd-make-vk-mcp.yml@refs/heads/main"
 
 def redact(value):
     s=str(value)
@@ -31,6 +39,72 @@ def redact(value):
         if secret:
             s=s.replace(secret,"[REDACTED]")
     return s[:4000]
+
+def b64url_decode(value):
+    s=str(value)
+    s += "="*((4-len(s)%4)%4)
+    return base64.urlsafe_b64decode(s.encode("ascii"))
+
+def verify_github_oidc(token):
+    parts=str(token or "").split(".")
+    if len(parts)!=3:
+        raise RuntimeError("github_oidc_invalid_jwt")
+    header=json.loads(b64url_decode(parts[0]).decode("utf-8"))
+    claims=json.loads(b64url_decode(parts[1]).decode("utf-8"))
+    if header.get("alg")!="RS256" or not header.get("kid"):
+        raise RuntimeError("github_oidc_alg_or_kid_invalid")
+    with urllib.request.urlopen(GITHUB_OIDC_ISSUER+"/.well-known/jwks",timeout=15) as r:
+        jwks=json.loads(r.read().decode("utf-8"))
+    key=next((k for k in (jwks.get("keys") or []) if k.get("kid")==header.get("kid")),None)
+    if not key or key.get("kty")!="RSA":
+        raise RuntimeError("github_oidc_signing_key_not_found")
+    n=int.from_bytes(b64url_decode(key["n"]),"big")
+    e=int.from_bytes(b64url_decode(key["e"]),"big")
+    sig=int.from_bytes(b64url_decode(parts[2]),"big")
+    klen=(n.bit_length()+7)//8
+    em=pow(sig,e,n).to_bytes(klen,"big")
+    digest=hashlib.sha256((parts[0]+"."+parts[1]).encode("ascii")).digest()
+    digest_info=bytes.fromhex("3031300d060960864801650304020105000420")+digest
+    pad_len=klen-len(digest_info)-3
+    if pad_len<8:
+        raise RuntimeError("github_oidc_signature_encoding_invalid")
+    expected=b"\x00\x01"+(b"\xff"*pad_len)+b"\x00"+digest_info
+    if not hmac.compare_digest(em,expected):
+        raise RuntimeError("github_oidc_signature_invalid")
+    now=int(time.time())
+    if claims.get("iss")!=GITHUB_OIDC_ISSUER:
+        raise RuntimeError("github_oidc_issuer_invalid")
+    aud=claims.get("aud")
+    auds=aud if isinstance(aud,list) else [aud]
+    if GITHUB_OIDC_AUDIENCE not in auds:
+        raise RuntimeError("github_oidc_audience_invalid")
+    if claims.get("repository")!=GITHUB_OIDC_REPOSITORY:
+        raise RuntimeError("github_oidc_repository_invalid")
+    if claims.get("ref")!="refs/heads/main":
+        raise RuntimeError("github_oidc_ref_invalid")
+    if claims.get("job_workflow_ref")!=GITHUB_OIDC_WORKFLOW:
+        raise RuntimeError("github_oidc_workflow_invalid")
+    if claims.get("actor")!="namelessdhamma":
+        raise RuntimeError("github_oidc_actor_invalid")
+    if int(claims.get("exp") or 0)<now-30:
+        raise RuntimeError("github_oidc_expired")
+    if int(claims.get("iat") or 0)>now+60:
+        raise RuntimeError("github_oidc_iat_invalid")
+    if claims.get("nbf") is not None and int(claims.get("nbf") or 0)>now+30:
+        raise RuntimeError("github_oidc_nbf_invalid")
+    return {
+        "repository":claims.get("repository"),
+        "ref":claims.get("ref"),
+        "workflow":claims.get("job_workflow_ref"),
+        "run_id":claims.get("run_id"),
+        "actor":claims.get("actor"),
+    }
+
+def github_oidc_from_headers(headers):
+    auth=str(headers.get("Authorization") or "")
+    if not auth.lower().startswith("bearer "):
+        raise RuntimeError("github_oidc_bearer_required")
+    return verify_github_oidc(auth[7:].strip())
 
 def health():
     return {
@@ -40,6 +114,8 @@ def health():
         "make_webhook_configured":bool(MAKE_WEBHOOK),
         "http_auth_configured":bool(BRIDGE_TOKEN),
         "mcp_path_configured":bool(MCP_PATH_TOKEN),
+        "github_oidc_mcp":GITHUB_MCP_PATH,
+        "github_oidc_audience":GITHUB_OIDC_AUDIENCE,
         "inner_runtime":"nd-remotion-mcp-front-v1",
         "route":"Railway -> Make webhook -> VK Video",
     }
@@ -247,6 +323,12 @@ class H(BaseHTTPRequestHandler):
         path=self.path.split("?",1)[0]
         if self.is_mcp():
             return self.handle_mcp()
+        if path==GITHUB_MCP_PATH:
+            try:
+                github_oidc_from_headers(self.headers)
+            except Exception as e:
+                return self.send_json(403,{"ok":False,"error":redact(e)})
+            return self.handle_mcp()
         if path=="/make/vk/video":
             if not self.authorized_http():
                 return self.send_json(403,{"ok":False,"error":"forbidden"})
@@ -279,6 +361,7 @@ print("ND_MAKE_VK_RAILWAY_BRIDGE_READY "+json.dumps({
     "make_webhook_configured":bool(MAKE_WEBHOOK),
     "http_auth_configured":bool(BRIDGE_TOKEN),
     "mcp_path_configured":bool(MCP_PATH_TOKEN),
+    "github_oidc_mcp":GITHUB_MCP_PATH,
 },ensure_ascii=False),flush=True)
 
 ThreadingHTTPServer(("0.0.0.0",PORT),H).serve_forever()
