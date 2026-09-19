@@ -1,0 +1,62 @@
+name: ND Telegram Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.nd-runtime/telegram/commands/*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nd-telegram-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    if: github.actor == 'namelessdhamma'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.ND_MAIL_TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.ND_MAIL_TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Discover command
+        id: command
+        shell: bash
+        run: |
+          before='${{ github.event.before }}'
+          after='${{ github.sha }}'
+          file=""
+          if [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ]; then
+            file="$(git diff --name-only "$before" "$after" -- '.nd-runtime/telegram/commands/*.json' | tail -n 1)"
+          fi
+          if [ -z "$file" ]; then
+            file="$(find .nd-runtime/telegram/commands -maxdepth 1 -type f -name '*.json' 2>/dev/null | sort | tail -n 1)"
+          fi
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Run qualification
+        env:
+          COMMAND_FILE: ${{ steps.command.outputs.file }}
+        run: python3 tmp/nd_telegram_qualify.py
+
+      - name: Persist result
+        if: always()
+        shell: bash
+        run: |
+          git config user.name 'nd-telegram-qualification'
+          git config user.email 'namelessdhamma@gmail.com'
+          git add .nd-runtime/telegram/results
+          if ! git diff --cached --quiet; then
+            git commit -m 'runtime(telegram): qualification result'
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          fi
