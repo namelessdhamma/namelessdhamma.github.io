@@ -20,6 +20,8 @@ const ADOPTION_READ_STATEHEAD_ID=String(process.env.ND_ADOPTION_READ_STATEHEAD_I
 const ADOPTION_READ_BUNDLE_ID=String(process.env.ND_ADOPTION_READ_BUNDLE_ID||'').trim();
 const ADOPTION_READ_EXTRA_IDS=String(process.env.ND_ADOPTION_READ_EXTRA_IDS||'').trim();
 const ADOPTION_READ_REV=String(process.env.ND_ADOPTION_READ_REV||'').trim();
+const ADOPTION_PROFILE_PROBE_REV=String(process.env.ND_ADOPTION_PROFILE_PROBE_REV||'').trim();
+const ADOPTION_PROFILE_REGISTRY_ID=String(process.env.ND_ADOPTION_PROFILE_REGISTRY_ID||'').trim();
 
 
 function sha256Text(text){return createHash('sha256').update(Buffer.from(String(text),'utf8')).digest('hex');}
@@ -163,6 +165,31 @@ async function runAdoptionReadProbe(){
     }catch(e){results.statehead=cleanErr(e);console.error('ND_ADOPTION_READ_ITEM',JSON.stringify({rev:ADOPTION_READ_REV,kind:'statehead',ok:false,error:cleanErr(e)}));}
   }
   console.log('ND_ADOPTION_READ_DONE',JSON.stringify({rev:ADOPTION_READ_REV,ok:Object.values(results).some(x=>x==='ok'),results}));
+}
+
+async function runAdoptionProfileProbe(){
+  if(!ADOPTION_PROFILE_PROBE_REV||!ADOPTION_PROFILE_REGISTRY_ID)return;
+  try{
+    const reg=await driveReadText(ADOPTION_PROFILE_REGISTRY_ID);
+    const obj=JSON.parse(reg.text.replace(/^\uFEFF/,''));
+    const keys=(obj.components||[]).map(x=>x.component_key);
+    const wanted=['TRUE_RESEARCH','RESEARCH_INTEROP','TRUE_WRITER','BOOKS_CREATOR','SYSTEM','TRUE_MEMORY'];
+    const profiles={};
+    for(const k of wanted){
+      const p=(obj.components||[]).find(x=>x.component_key===k);
+      if(p)profiles[k]=p;
+    }
+    console.log('ND_ADOPTION_PROFILE_PROBE',JSON.stringify({
+      rev:ADOPTION_PROFILE_PROBE_REV,
+      registry_sha256:reg.sha256,
+      registry_version:obj.version,
+      component_count:(obj.components||[]).length,
+      component_keys:keys,
+      profiles
+    }));
+  }catch(e){
+    console.error('ND_ADOPTION_PROFILE_PROBE',JSON.stringify({rev:ADOPTION_PROFILE_PROBE_REV,ok:false,error:cleanErr(e)}));
+  }
 }
 
 async function adoptionDispatch(a={}){
@@ -601,3 +628,4 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
 muxServer.listen(PORT,'0.0.0.0');
 setTimeout(runYoutubeQualification,2000);
 setTimeout(runAdoptionReadProbe,3000);
+setTimeout(runAdoptionProfileProbe,4500);
