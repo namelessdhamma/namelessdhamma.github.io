@@ -129,6 +129,49 @@ def multipart_upload(token,blob,filename="nd-vedismm-qualification.mp4"):
         except Exception: obj={"raw":clean(raw)}
         return e.code,obj
 
+def run_preflight_probe():
+    if not (EMAIL and PASSWORD and PROBE_TOKEN):
+        return 503,{"ok":False,"stage":"config"}
+    token,source=get_access()
+    acct,match=account_readback(token)
+    if not match:
+        return 409,{"ok":False,"stage":"account_mismatch","account":acct}
+    body={
+        "title":"ND VediSMM qualification — temporary",
+        "content":"Temporary qualification video for Nameless Dhamma. This post is not published by this probe.",
+        "account_ids":[ACCOUNT_ID],
+        "media_ids":[426],
+        "append_signature":False,
+        "content_overrides":{},
+        "first_comment":""
+    }
+    pcode,pobj,pheaders=api_json("/posts","POST",body,token,{"Idempotency-Key":"nd-vk-video-draft-account160-media426-v1"})
+    if pcode!=201:
+        return 502,{"ok":False,"stage":"draft_create","http":pcode,"detail":clean(pobj),"account":acct}
+    post=(pobj.get("data") or {}) if isinstance(pobj,dict) else {}
+    draft_safe={k:post.get(k) for k in ("id","title","status","version","scheduled_at","published_at")}
+    constraint_body={
+        "account_ids":[ACCOUNT_ID],
+        "media_ids":[426],
+        "content":"Temporary qualification video for Nameless Dhamma. This post is not published by this probe.",
+        "append_signature":False,
+        "content_overrides":{},
+        "first_comment":""
+    }
+    ccode,cobj,_=api_json("/posts/constraints","POST",constraint_body,token)
+    if ccode!=200:
+        return 502,{"ok":False,"stage":"constraints","http":ccode,"detail":clean(cobj),"draft":draft_safe,"account":acct}
+    return 200,{
+        "ok":True,
+        "stage":"draft_and_constraints_only",
+        "token_source":source,
+        "account":acct,
+        "draft":draft_safe,
+        "constraints":cobj,
+        "vk_publication_performed":False,
+        "secrets_exposed":False,
+    }
+
 def run_media_probe():
     if not (EMAIL and PASSWORD and PROBE_TOKEN):
         return 503,{"ok":False,"stage":"config"}
@@ -196,6 +239,16 @@ class H(BaseHTTPRequestHandler):
             self.send_json(502,{"ok":False,"error":"inner_forward_failed","detail":clean(e)})
     def do_GET(self):
         path=self.path.split("?",1)[0]
+        if path=="/vedismm/qualify/preflight":
+            if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
+            try:
+                code,obj=run_preflight_probe()
+                print("ND_VEDISMM_PREFLIGHT "+json.dumps({"http":code,"result":obj},ensure_ascii=False),flush=True)
+                return self.send_json(code,obj)
+            except Exception as e:
+                obj={"ok":False,"stage":"exception","error":clean(e)}
+                print("ND_VEDISMM_PREFLIGHT "+json.dumps({"http":500,"result":obj},ensure_ascii=False),flush=True)
+                return self.send_json(500,obj)
         if path=="/vedismm/qualify/media":
             if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
             try:
