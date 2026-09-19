@@ -18,4 +18,4 @@ jobs:
         with:
           python-version: '3.12'
       - name: Run dispatch unit tests
-        run: python -m unittest -v tmp/test_nd_supervisor_dispatch_v01.py tmp/test_nd_supervisor_dispatch_v02.py tmp/test_nd_supervisor_resolver_v01.py
+        run: python -m unittest -v tmp/test_nd_supervisor_dispatch_v01.py tmp/test_nd_supervisor_dispatch_v02.py tmp/test_nd_supervisor_resolver_v01.py tmp/test_nd_supervisor_dispatch_outer_v04.py
