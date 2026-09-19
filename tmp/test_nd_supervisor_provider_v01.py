@@ -162,5 +162,96 @@ class ProviderTests(unittest.TestCase):
             provider.cancel("id")
 
 
+    def test_openrouter_research_free_uses_explicit_free_model_and_broker(self):
+        env = {
+            "OpenRouter": "or-secret",
+            "QSTASH_TOKEN": "broker-secret",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            provider = p.make_sync_provider("openrouter_research_free", purpose="research")
+        self.assertEqual(provider.provider_name, "openrouter_research_free")
+        self.assertEqual(provider.model, "openai/gpt-oss-120b:free")
+        self.assertEqual(provider.broker_token, "broker-secret")
+
+    def test_local_broker_tool_loop_executes_readonly_web_and_finishes(self):
+        provider = p.LocalBrokerToolLoopProvider(
+            provider_name="openrouter_research_free",
+            api_key="or-secret",
+            endpoint="https://openrouter.invalid/chat/completions",
+            model="openai/gpt-oss-120b:free",
+            broker_token="broker-secret",
+            max_tool_rounds=3,
+        )
+        calls = {"model": 0, "broker": 0, "payloads": []}
+
+        def fake_post(url, payload, headers, secrets):
+            if "openrouter.invalid" in url:
+                calls["model"] += 1
+                calls["payloads"].append(payload)
+                if calls["model"] == 1:
+                    return {
+                        "id": "gen-1",
+                        "model": "openai/gpt-oss-120b:free",
+                        "choices": [{
+                            "message": {
+                                "role": "assistant",
+                                "content": None,
+                                "tool_calls": [{
+                                    "id": "tc-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "web_current",
+                                        "arguments": json.dumps({"query": "current agent systems"}),
+                                    },
+                                }],
+                            },
+                            "finish_reason": "tool_calls",
+                        }],
+                        "usage": {"total_tokens": 10},
+                    }
+                return {
+                    "id": "gen-2",
+                    "model": "openai/gpt-oss-120b:free",
+                    "choices": [{
+                        "message": {"role": "assistant", "content": "Evidence-backed result."},
+                        "finish_reason": "stop",
+                    }],
+                    "usage": {"total_tokens": 20},
+                }
+            self.assertEqual(url, "http://127.0.0.1:3302/invoke")
+            calls["broker"] += 1
+            self.assertEqual(payload["tool"], "web_current")
+            return {
+                "result": {
+                    "verified_search": True,
+                    "results": [{"title": "Example", "url": "https://example.com"}],
+                }
+            }
+
+        provider._post_json = fake_post
+        out = provider.submit(ASSIGNMENT, SUPERVISOR, "dispatch-tool-loop")
+        self.assertEqual(out["status"], "completed")
+        self.assertEqual(out["provider"], "openrouter_research_free")
+        self.assertEqual(out["output"][0]["content"][0]["text"], "Evidence-backed result.")
+        self.assertEqual(calls["model"], 2)
+        self.assertEqual(calls["broker"], 1)
+        self.assertEqual(out["tool_rounds"], 1)
+        self.assertEqual(out["tool_events"][0]["name"], "web_current")
+        second_messages = calls["payloads"][1]["messages"]
+        self.assertEqual(second_messages[-1]["role"], "tool")
+        self.assertIn("verified_search", second_messages[-1]["content"])
+
+    def test_local_broker_tool_loop_denies_unknown_tool(self):
+        provider = p.LocalBrokerToolLoopProvider(
+            provider_name="openrouter_research_free",
+            api_key="or-secret",
+            endpoint="https://openrouter.invalid",
+            model="openai/gpt-oss-120b:free",
+            broker_token="broker-secret",
+        )
+        with self.assertRaises(d1.ProviderError):
+            provider._broker_call("dangerous_write", {"query": "x"})
+
+
 if __name__ == "__main__":
     unittest.main()
