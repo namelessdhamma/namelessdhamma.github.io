@@ -177,7 +177,51 @@ def qualify_connect():
 
     data = start.get("data") or {}
     session_id = str(data.get("id") or data.get("session_id") or "").strip()
-    candidates = data.get("candidates") or data.get("targets") or []
+    if not session_id:
+        return 502, {"ok": False, "stage": "start_connection", "error": "session_id_missing"}
+
+    state = data
+    status = str(state.get("status") or "")
+    if status in ("processing","pending_authorization",""):
+        for _ in range(8):
+            time.sleep(1)
+            gcode, gobj = api_json("/connection-sessions/%s" % urllib.parse.quote(session_id, safe=""), bearer=access)
+            if gcode != 200:
+                return 502, {"ok": False, "stage": "poll_connection", "http": gcode, "detail": clean(gobj)}
+            state = gobj.get("data") or {}
+            status = str(state.get("status") or "")
+            if status not in ("processing","pending_authorization",""):
+                break
+
+    if status == "completed":
+        rcode, readback = api_json("/accounts?limit=100", bearer=access)
+        rows = (readback.get("data") or []) if isinstance(readback, dict) else []
+        matches = [x for x in rows if is_target(x)]
+        if rcode == 200 and matches:
+            return 200, {
+                "ok": True,
+                "stage": "completed_without_selection",
+                "connection_created": True,
+                "token_source": token_source,
+                "account": sanitized_account(matches[0]),
+                "secrets_exposed": False,
+            }
+        return 502, {
+            "ok": False,
+            "stage": "completed_without_account_readback",
+            "status": status,
+            "account_ids": state.get("account_ids") or [],
+        }
+
+    if status in ("failed","expired","cancelled"):
+        return 502, {
+            "ok": False,
+            "stage": "connection_terminal_failure",
+            "status": status,
+            "failure_code": state.get("failure_code"),
+        }
+
+    candidates = state.get("candidates") or []
     if not isinstance(candidates, list):
         candidates = []
     target = None
@@ -185,12 +229,6 @@ def qualify_connect():
         if is_target(row):
             target = row
             break
-    if target is None and len(candidates) == 1:
-        # Accept sole candidate only if its external id is the known group id after normalization,
-        # or if VediSMM omitted metadata other than the candidate id.
-        row = candidates[0]
-        if str(row.get("external_id") or "").lstrip("-") == TARGET_GROUP_ID:
-            target = row
 
     safe_candidates = [{
         "id": x.get("id"),
@@ -201,10 +239,22 @@ def qualify_connect():
         "already_connected": x.get("already_connected"),
     } for x in candidates[:20] if isinstance(x, dict)]
 
-    if not session_id:
-        return 502, {"ok": False, "stage": "start_connection", "error": "session_id_missing", "candidates": safe_candidates}
+    if status != "awaiting_selection":
+        return 409, {
+            "ok": False,
+            "stage": "connection_not_ready",
+            "status": status,
+            "failure_code": state.get("failure_code"),
+            "candidates": safe_candidates,
+        }
     if target is None:
-        return 409, {"ok": False, "stage": "candidate_selection", "error": "target_not_found", "candidates": safe_candidates}
+        return 409, {
+            "ok": False,
+            "stage": "candidate_selection",
+            "status": status,
+            "error": "target_not_found",
+            "candidates": safe_candidates,
+        }
 
     cand_id = str(target.get("id") or "")
     if not cand_id:
