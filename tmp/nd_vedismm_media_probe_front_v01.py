@@ -462,6 +462,15 @@ class H(BaseHTTPRequestHandler):
             self.send_json(502,{"ok":False,"error":"inner_forward_failed","detail":clean(e)})
     def do_GET(self):
         path=self.path.split("?",1)[0]
+        if path=="/vedismm/qualify/cleanup-wall70":
+            if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
+            try:
+                vcode,vobj=vk_api("wall.delete",{"owner_id":-228330620,"post_id":70})
+                result={"ok":bool(vcode==200 and vobj.get("response")==1),"http":vcode,"response":vobj.get("response"),"error":clean(vobj.get("error")) if vobj.get("error") else None}
+                print("ND_VEDISMM_WALL70_CLEANUP "+json.dumps(result,ensure_ascii=False),flush=True)
+                return self.send_json(200,result)
+            except Exception as e:
+                return self.send_json(500,{"ok":False,"error":clean(e)})
         if path=="/vedismm/qualify/live":
             if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
             try:
