@@ -530,6 +530,8 @@ def configured_provider_names() -> list[str]:
         or (os.environ.get("OPENROUTER_API_KEY") or "").strip()
     ):
         names.append("openrouter")
+    if (os.environ.get("MISTRAL_API_KEY") or "").strip():
+        names.append("mistral")
         names.append("openrouter_research_free")
     return names
 
@@ -588,6 +590,16 @@ def make_sync_provider(
             broker_token=broker_token,
         )
 
+    if provider_name == "mistral":
+        key = (os.environ.get("MISTRAL_API_KEY") or "").strip()
+        model = (os.environ.get("MISTRAL_MODEL") or "mistral-large-latest").strip()
+        return OpenAICompatibleSyncProvider(
+            provider_name="mistral",
+            api_key=key,
+            endpoint="https://api.mistral.ai/v1/chat/completions",
+            model=model,
+        )
+
     if provider_name == "openrouter":
         key = (
             os.environ.get("OpenRouter")
@@ -621,7 +633,7 @@ def auto_provider_order(*, purpose: str = "general") -> list[str]:
             if name in configured:
                 order.append(name)
     else:
-        for name in ("groq", "openrouter"):
+        for name in ("groq", "mistral", "openrouter"):
             if name in configured:
                 order.append(name)
     return order
