@@ -146,7 +146,7 @@ class ProviderTests(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=True):
             self.assertEqual(
                 p.auto_provider_order(purpose="research"),
-                ["groq_web", "groq", "openrouter"],
+                ["openrouter_research_free", "groq_web", "groq", "openrouter"],
             )
 
     def test_sync_provider_has_no_fake_resume_or_cancel(self):
