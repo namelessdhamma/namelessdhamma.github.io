@@ -223,9 +223,16 @@ def run_live_probe():
     if version<1:
         return 409,{"ok":False,"stage":"draft_version","post_status":post.get("status"),"version":version}
 
-    pcode,pobj,_=api_json("/posts/390/publish","POST",{"version":version},token,{"Idempotency-Key":"nd-vk-video-live-post390-v1"})
+    post_status=str(post.get("status") or "")
+    if post_status not in ("draft","failed"):
+        existing_readback=vk_wall_readback()
+        if existing_readback.get("found"):
+            return 409,{"ok":False,"stage":"already_remote_or_non_draft","post_status":post_status,"version":version,"vk_readback":existing_readback}
+        return 409,{"ok":False,"stage":"unexpected_post_status","post_status":post_status,"version":version}
+    publish_key="nd-vk-video-live-post390-v%s-20260919a"%version
+    pcode,pobj,_=api_json("/posts/390/publish","POST",{"version":version},token,{"Idempotency-Key":publish_key})
     if pcode!=202:
-        return 502,{"ok":False,"stage":"publish_submit","http":pcode,"detail":clean(pobj)}
+        return 502,{"ok":False,"stage":"publish_submit","http":pcode,"post_status":post_status,"version":version,"detail":clean(pobj)}
     pub_job_id=str(((pobj.get("data") or {}).get("id") or "")).strip()
     if not pub_job_id:
         return 502,{"ok":False,"stage":"publish_submit","error":"job_id_missing"}
