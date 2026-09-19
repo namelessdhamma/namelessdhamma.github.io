@@ -170,7 +170,7 @@ class ProviderTests(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=False):
             provider = p.make_sync_provider("openrouter_research_free", purpose="research")
         self.assertEqual(provider.provider_name, "openrouter_research_free")
-        self.assertEqual(provider.model, "openai/gpt-oss-120b:free")
+        self.assertEqual(provider.model, "nvidia/nemotron-3-ultra-550b-a55b-20260604:free")
         self.assertEqual(provider.broker_token, "broker-secret")
 
     def test_local_broker_tool_loop_executes_readonly_web_and_finishes(self):
@@ -178,7 +178,7 @@ class ProviderTests(unittest.TestCase):
             provider_name="openrouter_research_free",
             api_key="or-secret",
             endpoint="https://openrouter.invalid/chat/completions",
-            model="openai/gpt-oss-120b:free",
+            model="nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
             broker_token="broker-secret",
             max_tool_rounds=3,
         )
@@ -191,7 +191,7 @@ class ProviderTests(unittest.TestCase):
                 if calls["model"] == 1:
                     return {
                         "id": "gen-1",
-                        "model": "openai/gpt-oss-120b:free",
+                        "model": "nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
                         "choices": [{
                             "message": {
                                 "role": "assistant",
@@ -211,7 +211,7 @@ class ProviderTests(unittest.TestCase):
                     }
                 return {
                     "id": "gen-2",
-                    "model": "openai/gpt-oss-120b:free",
+                    "model": "nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
                     "choices": [{
                         "message": {"role": "assistant", "content": "Evidence-backed result."},
                         "finish_reason": "stop",
@@ -246,7 +246,7 @@ class ProviderTests(unittest.TestCase):
             provider_name="openrouter_research_free",
             api_key="or-secret",
             endpoint="https://openrouter.invalid",
-            model="openai/gpt-oss-120b:free",
+            model="nvidia/nemotron-3-ultra-550b-a55b-20260604:free",
             broker_token="broker-secret",
         )
         with self.assertRaises(d1.ProviderError):
