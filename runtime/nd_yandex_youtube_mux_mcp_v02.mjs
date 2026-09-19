@@ -3,7 +3,7 @@ import { URL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 const PORT=Number(process.env.PORT||5678);
 const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v3-20260916';
-const ND_YANDEX_MUX_CODE_REV='yandex-binary-zip-v2-20260919';
+const ND_YANDEX_MUX_CODE_REV='yandex-delete-v3-20260919';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 const ROUTE=String(process.env.ND_YANDEX_MCP_ROUTE_TOKEN||'').trim();
 const YANDEX_MCP_PATH=ROUTE?'/yandex/mcp/'+ROUTE:'';
@@ -13,6 +13,7 @@ function result(id,r){return {jsonrpc:'2.0',id,result:r};}
 function error(id,c,m){return {jsonrpc:'2.0',id,error:{code:c,message:m}};}
 const RO={readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true};
 const WR={readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true};
+const DEL={readOnlyHint:false,destructiveHint:true,idempotentHint:true,openWorldHint:true};
 async function api(endpoint,q={},method='GET'){if(!TOKEN)throw new Error('YANDEX_DISK_TOKEN missing');const u=new URL(API+endpoint);for(const[k,v]of Object.entries(q))if(v!==undefined&&v!==null)u.searchParams.set(k,String(v));const r=await fetch(u,{method,headers:{Authorization:'OAuth '+TOKEN,Accept:'application/json','User-Agent':'nd-yandex-mcp/1.0'}});const t=await r.text();let d={};if(t){try{d=JSON.parse(t);}catch{d={text:t.slice(0,5000)};}}if(!r.ok)throw new Error('Yandex Disk HTTP '+r.status+': '+(d.message||d.description||'request_failed'));return d;}
 function yandexTools(){return [
 {name:'yandex_status',description:'Verify direct Yandex Disk API access.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:RO},
@@ -25,7 +26,8 @@ function yandexTools(){return [
 {name:'yandex_import_zip_base64',description:'Unpack a standard ZIP archive supplied as base64 and upload its files under a Yandex Disk root path. Supports stored and deflate entries; rejects encrypted/ZIP64/path-traversal archives.',inputSchema:{type:'object',properties:{root_path:{type:'string',default:'disk:/'},zip_base64:{type:'string',maxLength:30000000},overwrite:{type:'boolean',default:true},max_entries:{type:'integer',minimum:1,maximum:500,default:200},max_uncompressed_bytes:{type:'integer',minimum:1,maximum:200000000,default:100000000}},required:['zip_base64'],additionalProperties:false},annotations:WR},
 {name:'yandex_mkdir',description:'Create a folder.',inputSchema:{type:'object',properties:{path:{type:'string'}},required:['path'],additionalProperties:false},annotations:WR},
 {name:'yandex_copy',description:'Copy a file or folder.',inputSchema:{type:'object',properties:{from_path:{type:'string'},to_path:{type:'string'},overwrite:{type:'boolean',default:false}},required:['from_path','to_path'],additionalProperties:false},annotations:WR},
-{name:'yandex_move',description:'Move or rename a file or folder.',inputSchema:{type:'object',properties:{from_path:{type:'string'},to_path:{type:'string'},overwrite:{type:'boolean',default:false}},required:['from_path','to_path'],additionalProperties:false},annotations:WR}
+{name:'yandex_move',description:'Move or rename a file or folder.',inputSchema:{type:'object',properties:{from_path:{type:'string'},to_path:{type:'string'},overwrite:{type:'boolean',default:false}},required:['from_path','to_path'],additionalProperties:false},annotations:WR},
+{name:'yandex_delete',description:'Delete a file or folder. By default moves it to Yandex Disk Trash; permanently=true requests permanent deletion. confirm=true is required.',inputSchema:{type:'object',properties:{path:{type:'string'},permanently:{type:'boolean',default:false},confirm:{type:'boolean'}},required:['path','confirm'],additionalProperties:false},annotations:DEL}
 ];}
 
 async function ensureDir(path){
@@ -104,8 +106,9 @@ if(name==='yandex_import_zip_base64'){const root=String(a.root_path||'disk:/').r
 if(name==='yandex_mkdir'){const path=String(a.path||'');if(!path)throw new Error('path required');return {ok:true,response:await api('/resources',{path},'PUT')};}
 if(name==='yandex_copy'){const f=String(a.from_path||''),t=String(a.to_path||'');if(!f||!t)throw new Error('from_path and to_path required');return {ok:true,response:await api('/resources/copy',{from:f,path:t,overwrite:a.overwrite?'true':'false'},'POST')};}
 if(name==='yandex_move'){const f=String(a.from_path||''),t=String(a.to_path||'');if(!f||!t)throw new Error('from_path and to_path required');return {ok:true,response:await api('/resources/move',{from:f,path:t,overwrite:a.overwrite?'true':'false'},'POST')};}
+if(name==='yandex_delete'){const path=String(a.path||'');if(!path)throw new Error('path required');if(a.confirm!==true)throw new Error('confirm_required');const permanently=a.permanently===true;return {ok:true,path,permanently,response:await api('/resources',{path,permanently:permanently?'true':'false'},'DELETE')};}
 throw new Error('unknown tool');}
-async function yandexDispatch(q){const id=q&&q.id!=null?q.id:null;const m=q&&q.method;const p=(q&&q.params)||{};if(m==='initialize')return [200,result(id,{protocolVersion:p.protocolVersion||'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'ND Yandex Disk',version:'1.0.0'},instructions:'Direct read/write access to Yandex Disk API, including binary upload and ZIP import.'})];if(m==='notifications/initialized')return [202,null];if(m==='ping')return [200,result(id,{})];if(m==='tools/list')return [200,result(id,{tools:yandexTools()})];if(m==='tools/call'){try{const d=await yandexCall(p.name,p.arguments||{});return [200,result(id,{content:[{type:'text',text:JSON.stringify(d)}],structuredContent:d,isError:false})];}catch(e){return [200,result(id,{content:[{type:'text',text:clean(e)}],isError:true})];}}return [404,error(id,-32601,'Method not found')];}
+async function yandexDispatch(q){const id=q&&q.id!=null?q.id:null;const m=q&&q.method;const p=(q&&q.params)||{};if(m==='initialize')return [200,result(id,{protocolVersion:p.protocolVersion||'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'ND Yandex Disk',version:'1.0.0'},instructions:'Direct read/write access to Yandex Disk API, including binary upload, ZIP import, and guarded deletion.'})];if(m==='notifications/initialized')return [202,null];if(m==='ping')return [200,result(id,{})];if(m==='tools/list')return [200,result(id,{tools:yandexTools()})];if(m==='tools/call'){try{const d=await yandexCall(p.name,p.arguments||{});return [200,result(id,{content:[{type:'text',text:JSON.stringify(d)}],structuredContent:d,isError:false})];}catch(e){return [200,result(id,{content:[{type:'text',text:clean(e)}],isError:true})];}}return [404,error(id,-32601,'Method not found')];}
 
 const YT_PATH_TOKEN=String(process.env.ND_YOUTUBE_MCP_PATH_TOKEN||"").trim();
 const YT_CLIENT_ID=String(process.env.ND_YOUTUBE_CLIENT_ID||"").trim();
