@@ -91,6 +91,43 @@ class ProviderTests(unittest.TestCase):
             provider = p.make_sync_provider("groq", purpose="general")
         self.assertEqual(provider.model, "openai/gpt-oss-120b")
 
+
+    def test_groq_web_uses_general_model_with_browser_search(self):
+        env = {
+            "GROQ_API_KEY": "g",
+            "GROQ_MODEL": "openai/gpt-oss-120b",
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            provider = p.make_sync_provider("groq_web", purpose="research")
+        self.assertEqual(provider.model, "openai/gpt-oss-120b")
+        self.assertEqual(provider.provider_name, "groq_web")
+        self.assertEqual(provider.built_in_tools, [{"type": "browser_search"}])
+
+    def test_groq_web_sends_browser_search_tool(self):
+        provider = p.OpenAICompatibleSyncProvider(
+            provider_name="groq_web",
+            api_key="secret",
+            endpoint="https://example.invalid/chat/completions",
+            model="openai/gpt-oss-120b",
+            built_in_tools=[{"type": "browser_search"}],
+        )
+        captured = {}
+        def fake_urlopen(req, timeout):
+            captured["payload"] = json.loads(req.data.decode("utf-8"))
+            return FakeHTTPResponse({
+                "id": "chatcmpl-web",
+                "model": "openai/gpt-oss-120b",
+                "choices": [{
+                    "message": {"content": "researched"},
+                    "finish_reason": "stop",
+                }],
+            })
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            out = provider.submit(ASSIGNMENT, SUPERVISOR, "dispatch-web")
+        self.assertEqual(captured["payload"]["tools"], [{"type": "browser_search"}])
+        self.assertEqual(out["provider"], "groq_web")
+        self.assertEqual(out["status"], "completed")
+
     def test_openrouter_uses_existing_environment_key(self):
         env = {
             "OpenRouter": "or-secret",
@@ -109,7 +146,7 @@ class ProviderTests(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=True):
             self.assertEqual(
                 p.auto_provider_order(purpose="research"),
-                ["groq", "openrouter"],
+                ["groq_web", "groq", "openrouter"],
             )
 
     def test_sync_provider_has_no_fake_resume_or_cancel(self):
