@@ -15,6 +15,8 @@ BASE=os.environ.get("ND_VEDISMM_BASE_URL","https://vedismm.ru/api/v1").rstrip("/
 EMAIL=os.environ.get("ND_VEDISMM_EMAIL","").strip()
 PASSWORD=os.environ.get("ND_VEDISMM_PASSWORD","")
 PROBE_TOKEN=os.environ.get("ND_VEDISMM_PROBE_TOKEN","").strip()
+VK_TOKEN=os.environ.get("VK_GROUP_TOKEN","").strip()
+VK_VERSION=os.environ.get("VK_API_VERSION","5.199").strip() or "5.199"
 ACCOUNT_ID=160
 TARGET_GROUP_ID="228330620"
 SAMPLE_URL="https://filesamples.com/samples/video/mp4/sample_640x360.mp4"
@@ -28,7 +30,7 @@ child_env["PORT"]=str(INNER_PORT)
 child=subprocess.Popen([sys.executable,"-u",UPSTREAM_PATH],env=child_env)
 INNER="http://127.0.0.1:%d"%INNER_PORT
 
-SECRETS=[EMAIL,PASSWORD,PROBE_TOKEN]
+SECRETS=[EMAIL,PASSWORD,PROBE_TOKEN,VK_TOKEN]
 def clean(v):
     s=str(v)
     for sec in SECRETS:
@@ -128,6 +130,155 @@ def multipart_upload(token,blob,filename="nd-vedismm-qualification.mp4"):
         try: obj=json.loads(raw or "{}")
         except Exception: obj={"raw":clean(raw)}
         return e.code,obj
+
+def vk_api(method,params=None):
+    form=dict(params or {})
+    form["access_token"]=VK_TOKEN
+    form["v"]=VK_VERSION
+    data=urllib.parse.urlencode(form).encode("utf-8")
+    req=urllib.request.Request("https://api.vk.com/method/"+method,data=data,headers={"User-Agent":"ND-VediSMM-Live-Probe/0.1"},method="POST")
+    try:
+        with urllib.request.urlopen(req,timeout=45) as r:
+            raw=r.read().decode("utf-8","replace")
+            return r.status,json.loads(raw or "{}")
+    except urllib.error.HTTPError as e:
+        raw=e.read().decode("utf-8","replace")
+        try: obj=json.loads(raw or "{}")
+        except Exception: obj={"raw":clean(raw)}
+        return e.code,obj
+
+def poll_job(token,job_id,max_polls=25):
+    last={}
+    for _ in range(max_polls):
+        code,obj,_=api_json("/jobs/"+urllib.parse.quote(str(job_id),safe=""),bearer=token)
+        if code!=200:
+            return code,obj
+        last=obj.get("data") or {}
+        if str(last.get("status") or "") in ("succeeded","partially_succeeded","failed","cancelled"):
+            return 200,last
+        time.sleep(1)
+    return 408,last
+
+def safe_job(job):
+    if not isinstance(job,dict): return {}
+    out={k:job.get(k) for k in ("id","post_id","type","status","attempts","max_attempts","error_code","created_at","started_at","updated_at","finished_at")}
+    targets=[]
+    for t in (job.get("targets") or []):
+        if not isinstance(t,dict): continue
+        acct=t.get("account") or {}
+        targets.append({
+            "id":t.get("id"),
+            "status":t.get("status"),
+            "source_status":t.get("source_status"),
+            "external_id":t.get("external_id"),
+            "external_url":t.get("external_url"),
+            "error":t.get("error"),
+            "attempts":t.get("attempts"),
+            "account":{"id":acct.get("id"),"network":acct.get("network"),"title":acct.get("title"),"username":acct.get("username"),"status":acct.get("status")}
+        })
+    out["targets"]=targets
+    return out
+
+def vk_wall_readback():
+    code,obj=vk_api("wall.get",{"owner_id":-228330620,"count":10,"filter":"all"})
+    if code!=200 or obj.get("error"):
+        return {"ok":False,"http":code,"error":clean(obj)}
+    items=((obj.get("response") or {}).get("items") or [])
+    marker="Temporary qualification video for Nameless Dhamma"
+    chosen=None
+    for item in items:
+        if marker in str(item.get("text") or ""):
+            chosen=item; break
+    if chosen is None:
+        return {"ok":False,"found":False,"items_checked":len(items)}
+    videos=[]
+    for att in (chosen.get("attachments") or []):
+        if isinstance(att,dict) and att.get("type")=="video":
+            v=att.get("video") or {}
+            videos.append({k:v.get(k) for k in ("id","owner_id","title","duration","date","player","platform")})
+    return {
+        "ok":True,
+        "found":True,
+        "post_id":chosen.get("id"),
+        "owner_id":chosen.get("owner_id"),
+        "text":chosen.get("text"),
+        "attachments_count":len(chosen.get("attachments") or []),
+        "native_video_attachments":videos,
+        "native_video":bool(videos),
+    }
+
+def run_live_probe():
+    if not (EMAIL and PASSWORD and PROBE_TOKEN and VK_TOKEN):
+        return 503,{"ok":False,"stage":"config"}
+    token,source=get_access()
+    acct,match=account_readback(token)
+    if not match:
+        return 409,{"ok":False,"stage":"account_mismatch","account":acct}
+
+    gcode,gobj,_=api_json("/posts/390",bearer=token)
+    if gcode!=200:
+        return 502,{"ok":False,"stage":"draft_read","http":gcode,"detail":clean(gobj)}
+    post=gobj.get("data") or {}
+    version=int(post.get("version") or 0)
+    if version<1:
+        return 409,{"ok":False,"stage":"draft_version","post_status":post.get("status"),"version":version}
+
+    pcode,pobj,_=api_json("/posts/390/publish","POST",{"version":version},token,{"Idempotency-Key":"nd-vk-video-live-post390-v1"})
+    if pcode!=202:
+        return 502,{"ok":False,"stage":"publish_submit","http":pcode,"detail":clean(pobj)}
+    pub_job_id=str(((pobj.get("data") or {}).get("id") or "")).strip()
+    if not pub_job_id:
+        return 502,{"ok":False,"stage":"publish_submit","error":"job_id_missing"}
+    jcode,pub_job=poll_job(token,pub_job_id)
+    pub_safe=safe_job(pub_job)
+    if jcode!=200 or str(pub_job.get("status") or "")!="succeeded":
+        return 502,{"ok":False,"stage":"publish_job","job":pub_safe}
+
+    time.sleep(1)
+    readback=vk_wall_readback()
+
+    dcode,dobj,_=api_json("/posts/390/delete-everywhere","POST",{},token,{"Idempotency-Key":"nd-vk-video-delete-post390-v1"})
+    del_job_safe={}
+    remote_deleted=False
+    if dcode==202:
+        del_job_id=str(((dobj.get("data") or {}).get("id") or "")).strip()
+        if del_job_id:
+            djcode,del_job=poll_job(token,del_job_id)
+            del_job_safe=safe_job(del_job)
+            remote_deleted=(djcode==200 and str(del_job.get("status") or "")=="succeeded")
+    else:
+        del_job_safe={"submit_http":dcode,"submit_error":clean(dobj)}
+
+    time.sleep(1)
+    post_delete_readback=vk_wall_readback()
+
+    cleanup={"internal_post_deleted":False,"media_deleted":False}
+    if remote_deleted:
+        rcode,robj,rheaders=api_json("/posts/390",bearer=token)
+        etag=str(rheaders.get("ETag") or rheaders.get("Etag") or "")
+        if rcode==200 and etag:
+            xcode,xobj,_=api_json("/posts/390","DELETE",None,token,{"If-Match":etag})
+            cleanup["internal_post_delete_http"]=xcode
+            cleanup["internal_post_deleted"]=(xcode==204)
+        if cleanup["internal_post_deleted"]:
+            mcode,mobj,_=api_json("/media/426","DELETE",None,token)
+            cleanup["media_delete_http"]=mcode
+            cleanup["media_deleted"]=(mcode==204)
+
+    return 200,{
+        "ok":bool(readback.get("native_video")),
+        "stage":"live_publish_readback_delete",
+        "token_source":source,
+        "account":acct,
+        "publish_job":pub_safe,
+        "vk_readback":readback,
+        "delete_job":del_job_safe,
+        "remote_deleted":remote_deleted,
+        "vk_after_delete":post_delete_readback,
+        "cleanup":cleanup,
+        "native_vk_video_proven":bool(readback.get("native_video")),
+        "secrets_exposed":False,
+    }
 
 def run_preflight_probe():
     if not (EMAIL and PASSWORD and PROBE_TOKEN):
@@ -239,6 +390,16 @@ class H(BaseHTTPRequestHandler):
             self.send_json(502,{"ok":False,"error":"inner_forward_failed","detail":clean(e)})
     def do_GET(self):
         path=self.path.split("?",1)[0]
+        if path=="/vedismm/qualify/live":
+            if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
+            try:
+                code,obj=run_live_probe()
+                print("ND_VEDISMM_LIVE_PROBE "+json.dumps({"http":code,"result":obj},ensure_ascii=False),flush=True)
+                return self.send_json(code,obj)
+            except Exception as e:
+                obj={"ok":False,"stage":"exception","error":clean(e)}
+                print("ND_VEDISMM_LIVE_PROBE "+json.dumps({"http":500,"result":obj},ensure_ascii=False),flush=True)
+                return self.send_json(500,obj)
         if path=="/vedismm/qualify/preflight":
             if not self.authorized(): return self.send_json(403,{"ok":False,"error":"forbidden"})
             try:
