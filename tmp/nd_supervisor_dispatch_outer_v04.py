@@ -264,7 +264,7 @@ def supervisor_tool_call(
             purpose = str(args.get("purpose") or "general").strip().lower()
             if provider_name == "openai":
                 provider = d2.OpenAIBackgroundResponsesProvider()
-            elif provider_name in ("groq", "openrouter"):
+            elif provider_name in ("groq", "groq_web", "openrouter"):
                 provider = p1.make_sync_provider(provider_name, purpose=purpose)
             elif provider_name == "auto":
                 order = p1.auto_provider_order(purpose=purpose)
@@ -319,7 +319,7 @@ TOOLS = [
                 "dispatch_key": {"type": "string"},
                 "provider": {
                     "type": "string",
-                    "enum": ["auto", "openai", "groq", "openrouter"]
+                    "enum": ["auto", "openai", "groq", "groq_web", "openrouter"]
                 },
                 "purpose": {
                     "type": "string",
