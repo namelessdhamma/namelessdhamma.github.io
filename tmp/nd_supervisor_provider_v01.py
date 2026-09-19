@@ -40,6 +40,7 @@ class OpenAICompatibleSyncProvider:
         endpoint: str,
         model: str,
         headers: Optional[Dict[str, str]] = None,
+        built_in_tools: Optional[list[Dict[str, Any]]] = None,
         timeout: int = 180,
     ):
         self.provider_name = provider_name
@@ -48,6 +49,7 @@ class OpenAICompatibleSyncProvider:
         self.model = model.strip()
         self.timeout = timeout
         self.extra_headers = dict(headers or {})
+        self.built_in_tools = list(built_in_tools or [])
         if not self.api_key:
             raise ProviderError(provider_name + "_api_key_missing")
         if not self.model:
@@ -69,6 +71,8 @@ class OpenAICompatibleSyncProvider:
             "temperature": 0,
             "max_tokens": min(supervisor.max_output_tokens, 16000),
         }
+        if self.built_in_tools:
+            payload["tools"] = self.built_in_tools
         headers = {
             "Authorization": "Bearer " + self.api_key,
             "Content-Type": "application/json",
@@ -156,6 +160,8 @@ def configured_provider_names() -> list[str]:
         names.append("openai")
     if (os.environ.get("GROQ_API_KEY") or "").strip():
         names.append("groq")
+    if (os.environ.get("GROQ_API_KEY") or "").strip():
+        names.append("groq_web")
     if (
         (os.environ.get("OpenRouter") or "").strip()
         or (os.environ.get("OPENROUTER_API_KEY") or "").strip()
@@ -192,6 +198,17 @@ def make_sync_provider(
             model=model,
         )
 
+    if provider_name == "groq_web":
+        key = (os.environ.get("GROQ_API_KEY") or "").strip()
+        model = (os.environ.get("GROQ_MODEL") or "openai/gpt-oss-120b").strip()
+        return OpenAICompatibleSyncProvider(
+            provider_name="groq_web",
+            api_key=key,
+            endpoint="https://api.groq.com/openai/v1/chat/completions",
+            model=model,
+            built_in_tools=[{"type": "browser_search"}],
+        )
+
     if provider_name == "openrouter":
         key = (
             os.environ.get("OpenRouter")
@@ -221,7 +238,7 @@ def auto_provider_order(*, purpose: str = "general") -> list[str]:
     configured = set(configured_provider_names())
     order = []
     if purpose.strip().lower() == "research":
-        for name in ("groq", "openrouter"):
+        for name in ("groq", "groq_web", "openrouter"):
             if name in configured:
                 order.append(name)
     else:
