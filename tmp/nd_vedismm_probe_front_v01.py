@@ -36,13 +36,15 @@ def clean(value):
             s = s.replace(secret, "[REDACTED]")
     return s[:4000]
 
-def api_json(path, method="GET", body=None, bearer=None):
+def api_json(path, method="GET", body=None, bearer=None, extra_headers=None):
     data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
     headers = {"Accept": "application/json", "User-Agent": "ND-VediSMM-Probe/0.1"}
     if data is not None:
         headers["Content-Type"] = "application/json; charset=utf-8"
     if bearer:
         headers["Authorization"] = "Bearer " + bearer
+    if isinstance(extra_headers, dict):
+        headers.update({str(k): str(v) for k,v in extra_headers.items()})
     req = urllib.request.Request(BASE + path, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=45) as r:
@@ -113,7 +115,7 @@ def qualify_connect():
             "access_token": VK_TOKEN,
             "community": VK_SCREEN,
         },
-    }, access)
+    }, access, {"Idempotency-Key": "nd-vk-connect-228330620-v1"})
     if scode not in (200, 201, 202):
         return 502, {"ok": False, "stage": "start_connection", "http": scode, "detail": clean(start)}
 
@@ -154,7 +156,7 @@ def qualify_connect():
 
     ccode, confirmed = api_json("/connection-sessions/%s/confirm" % urllib.parse.quote(session_id, safe=""), "POST", {
         "candidate_ids": [cand_id]
-    }, access)
+    }, access, {"Idempotency-Key": "nd-vk-confirm-" + session_id})
     if ccode not in (200, 201, 202):
         return 502, {
             "ok": False,
