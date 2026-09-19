@@ -435,7 +435,8 @@ async function runYoutubeQualification(){
 
 const muxServer=http.createServer(async(req,res)=>{
   try{
-    const path=new URL(req.url||'/','http://local').pathname;
+    const requestUrl=new URL(req.url||'/','http://local');
+    const path=requestUrl.pathname;
 
     if(path==='/healthz'){
       const body={
@@ -450,8 +451,18 @@ const muxServer=http.createServer(async(req,res)=>{
     }
 
     if(ADOPTION_PATH && path===ADOPTION_PATH){
-      if(req.method==='GET') return j(res,200,{ok:true,service:'nd-adoption-drive-guard',methods:['POST']});
-      if(req.method!=='POST'){res.writeHead(405,{Allow:'POST','content-length':'0'});res.end();return;}
+      if(req.method==='GET'){
+        try{
+          const op=String(requestUrl.searchParams.get('op')||'status');
+          if(!['status','drive_read_text','docs_read'].includes(op))return j(res,405,{ok:false,error:'read_only_get_op_forbidden'});
+          const input={op};
+          if(requestUrl.searchParams.get('file_id'))input.file_id=requestUrl.searchParams.get('file_id');
+          if(requestUrl.searchParams.get('document_id'))input.document_id=requestUrl.searchParams.get('document_id');
+          const out=await adoptionDispatch(input);
+          return j(res,200,out);
+        }catch(e){return j(res,500,{ok:false,error:cleanErr(e)});}
+      }
+      if(req.method!=='POST'){res.writeHead(405,{Allow:'GET, POST','content-length':'0'});res.end();return;}
       try{
         const raw=await readBody(req);
         const input=JSON.parse(raw||'{}');
