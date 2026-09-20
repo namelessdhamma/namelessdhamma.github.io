@@ -50,7 +50,13 @@ function collectTopCandidates(rootScores, tacticalMoves, bestMove, limit) {
   if (!ranked.length) {
     return bestMove ? [{ move: bestMove, score: 0 }] : [];
   }
-  return ranked.slice(0, Math.max(1, limit));
+  return ranked
+    .slice(0, Math.max(1, limit))
+    .map((item, index) => ({
+      move: item.move,
+      score: -index * 2,
+      rawScore: item.score
+    }));
 }
 
 function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
