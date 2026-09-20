@@ -25,7 +25,7 @@ export const PERSONAS = Object.freeze({
     denial: 0.6,
     fork: 1.5,
     cover: 2.5,
-    conservation: -0.25,
+    conservation: -4.0,
     intersection: 0.6
   }),
   sentinel: Object.freeze({
