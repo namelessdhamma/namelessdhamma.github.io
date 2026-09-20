@@ -1,13 +1,22 @@
 import { otherPlayer } from './constants.js';
-import { getLegalMoves, applyMove } from './rules.js';
+import { getLegalMoves, applyMove, topPiece } from './rules.js';
 
 function sameMove(a, b) {
   return !!a && !!b &&
     a.player === b.player && a.rank === b.rank && a.cell === b.cell;
 }
 
+function visibleTopCount(position, player) {
+  let count = 0;
+  for (let cell = 0; cell < 9; cell += 1) {
+    if (topPiece(position, cell)?.player === player) count += 1;
+  }
+  return count;
+}
+
 export function getImmediateWins(position, player, rule) {
   if (!position || position.status !== 'playing') return [];
+  if (visibleTopCount(position, player) < 2) return [];
   const probe = position.turn === player
     ? position
     : { ...position, turn: player };
@@ -23,11 +32,14 @@ export function getSafeMoves(position, player, rule) {
   const probe = position.turn === player
     ? position
     : { ...position, turn: player };
-  return getLegalMoves(probe, player, rule).filter(move => {
+  const legal = getLegalMoves(probe, player, rule);
+  const opponent = otherPlayer(player);
+  if (visibleTopCount(position, opponent) < 2) return legal;
+  return legal.filter(move => {
     const next = applyMove(probe, move, rule);
     if (!next) return false;
     if (next.status === 'win') return next.winner === player;
-    return getImmediateWins(next, otherPlayer(player), rule).length === 0;
+    return getImmediateWins(next, opponent, rule).length === 0;
   });
 }
 
