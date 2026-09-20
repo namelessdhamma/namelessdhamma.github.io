@@ -172,27 +172,6 @@ function collectOpeningCandidates(
     }));
 }
 
-function collectTopCandidates(rootScores, tacticalMoves, bestMove, limit) {
-  const allowed = new Set(tacticalMoves.map(moveKey));
-  const ranked = (rootScores ?? [])
-    .filter(item => allowed.has(moveKey(item.move)))
-    .sort((a, b) =>
-      b.score - a.score ||
-      a.move.cell - b.move.cell ||
-      a.move.rank - b.move.rank
-    );
-  if (!ranked.length) {
-    return bestMove ? [{ move: bestMove, score: 0 }] : [];
-  }
-  return ranked
-    .slice(0, Math.max(1, limit))
-    .map((item, index) => ({
-      move: item.move,
-      score: -index * 2,
-      rawScore: item.score
-    }));
-}
-
 function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
   if (candidates.length <= 1) return candidates[0]?.move ?? null;
 
