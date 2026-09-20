@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: "status | browserless | kernel | tinyfish"
+        description: "status | browserless | kernel | tinyfish | lightpanda | cloudflare | apify"
         required: true
         default: "status"
         type: choice
@@ -13,8 +13,11 @@ on:
           - browserless
           - kernel
           - tinyfish
+          - lightpanda
+          - cloudflare
+          - apify
       tool:
-        description: "Provider tool name; use __tools__ for discovery"
+        description: "Provider tool name; use __tools__ for discovery or __smoke__ for a bounded live probe"
         required: false
         default: "__tools__"
         type: string
@@ -24,18 +27,21 @@ on:
         default: "{}"
         type: string
       request_key:
-        description: "Required for TinyFish run start and Kernel browser create"
+        description: "Required for sensitive/idempotent starts such as TinyFish, Kernel browser create, and Apify async Actor run"
         required: false
         default: ""
         type: string
+  issue_comment:
+    types: [created]
   schedule:
     - cron: "17 */6 * * *"
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
-  group: nd-internet-failover-${{ github.event_name }}-${{ inputs.provider || 'status' }}-${{ inputs.request_key || github.run_id }}
+  group: nd-internet-failover-${{ github.event_name }}-${{ inputs.provider || github.event.issue.number || 'status' }}-${{ inputs.request_key || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -49,11 +55,16 @@ jobs:
           - browserless
           - kernel
           - tinyfish
+          - lightpanda
+          - cloudflare
+          - apify
     steps:
       - uses: actions/checkout@v4
         with:
           ref: qualify/browserless-railway-relay-v1
-      - name: Provider tools health probe
+
+      - name: Existing MCP provider tools health probe
+        if: contains(fromJSON('["browserless","kernel","tinyfish"]'), matrix.provider)
         env:
           ND_PROVIDER: ${{ matrix.provider }}
           ND_TOOL: __tools__
@@ -62,6 +73,28 @@ jobs:
           KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
           TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
         run: python3 tmp/nd_internet_mesh_gha_v1.py
+
+      - uses: actions/setup-node@v4
+        if: contains(fromJSON('["lightpanda","cloudflare","apify"]'), matrix.provider)
+        with:
+          node-version: "22"
+
+      - name: Install remote-browser client
+        if: contains(fromJSON('["lightpanda","cloudflare"]'), matrix.provider)
+        run: npm install --no-save playwright-core@1.55.0
+
+      - name: New browser provider tools health probe
+        if: contains(fromJSON('["lightpanda","cloudflare","apify"]'), matrix.provider)
+        env:
+          ND_PROVIDER: ${{ matrix.provider }}
+          ND_TOOL: __tools__
+          ND_ARGUMENTS_JSON: "{}"
+          LIGHTPANDA_TOKEN: ${{ secrets.LIGHTPANDA_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+        run: node tmp/nd_browser_reserve_gha_v2.mjs
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -77,7 +110,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: qualify/browserless-railway-relay-v1
-      - name: Execute bounded failover call
+
+      - name: Execute existing MCP failover call
+        if: inputs.provider == 'status' || contains(fromJSON('["browserless","kernel","tinyfish"]'), inputs.provider)
         env:
           ND_PROVIDER: ${{ inputs.provider }}
           ND_TOOL: ${{ inputs.tool }}
@@ -87,10 +122,107 @@ jobs:
           KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
           TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
         run: python3 tmp/nd_internet_mesh_gha_v1.py
+
+      - uses: actions/setup-node@v4
+        if: contains(fromJSON('["lightpanda","cloudflare","apify"]'), inputs.provider)
+        with:
+          node-version: "22"
+
+      - name: Install remote-browser client
+        if: contains(fromJSON('["lightpanda","cloudflare"]'), inputs.provider)
+        run: npm install --no-save playwright-core@1.55.0
+
+      - name: Execute new browser failover call
+        if: contains(fromJSON('["lightpanda","cloudflare","apify"]'), inputs.provider)
+        env:
+          ND_PROVIDER: ${{ inputs.provider }}
+          ND_TOOL: ${{ inputs.tool }}
+          ND_ARGUMENTS_JSON: ${{ inputs.arguments_json }}
+          ND_REQUEST_KEY: ${{ inputs.request_key }}
+          LIGHTPANDA_TOKEN: ${{ secrets.LIGHTPANDA_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+        run: node tmp/nd_browser_reserve_gha_v2.mjs
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: nd-internet-failover-result-${{ github.run_id }}
           path: nd-internet-failover-result.json
           if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always() && contains(fromJSON('["lightpanda","cloudflare"]'), inputs.provider)
+        with:
+          name: nd-browser-reserve-screenshots-${{ github.run_id }}
+          path: nd-browser-reserve-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+  issue_control:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 8 &&
+      github.actor == 'namelessdhamma' &&
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/internet ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install remote-browser client
+        run: npm install --no-save playwright-core@1.55.0
+
+      - name: Execute owner-only failover command
+        id: execute
+        continue-on-error: true
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+          BROWSERLESS_API_TOKEN: ${{ secrets.BROWSERLESS_API_TOKEN }}
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+          TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
+          LIGHTPANDA_TOKEN: ${{ secrets.LIGHTPANDA_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+        run: python3 tmp/nd_internet_comment_dispatch.py
+
+      - name: Return redacted result to control issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          if [ -f nd-internet-failover-result.json ]; then
+            {
+              echo "ND Internet Failover result"
+              echo
+              echo '~~~json'
+              head -c 60000 nd-internet-failover-result.json
+              echo
+              echo '~~~'
+            } > /tmp/nd-internet-comment.md
+          else
+            printf 'ND Internet Failover result\n\nNo result artifact was produced.\n' > /tmp/nd-internet-comment.md
+          fi
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body-file /tmp/nd-internet-comment.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nd-internet-comment-result-${{ github.run_id }}
+          path: |
+            nd-internet-failover-result.json
+            nd-browser-reserve-*.png
+          if-no-files-found: warn
           retention-days: 14

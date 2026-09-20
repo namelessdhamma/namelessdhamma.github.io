@@ -51,6 +51,8 @@ const ADOPTION_ALT_GOOGLE_PRIVATE_KEY_B64=String(process.env.ND_ADOPTION_ALT_GOO
 const ADOPTION_EXACT_REGISTRY_ID=String(process.env.ND_ADOPTION_EXACT_REGISTRY_ID||'').trim();
 const ADOPTION_EXACT_REGISTRY_EXPECTED_SHA=String(process.env.ND_ADOPTION_EXACT_REGISTRY_EXPECTED_SHA||'').trim();
 const ADOPTION_EXACT_REGISTRY_PROBE_REV=String(process.env.ND_ADOPTION_EXACT_REGISTRY_PROBE_REV||'').trim();
+const ADOPTION_PREPARE_CREATE_REV=String(process.env.ND_ADOPTION_PREPARE_CREATE_REV||'').trim();
+const ADOPTION_PREPARE_CREATE_JSON=String(process.env.ND_ADOPTION_PREPARE_CREATE_JSON||'').trim();
 let adoptionAltGoogleTokenCache={token:'',exp:0};
 
 
@@ -174,6 +176,39 @@ async function driveCreateText({name,mimeType='text/plain',parentId,text}){
   const out=await r.text(); if(!r.ok)throw new Error('drive_create_http_'+r.status+':'+out.slice(0,900));
   return {...JSON.parse(out),sha256:sha256Text(text),bytes:body.length};
 }
+
+async function driveSearchNameInParent(name,parentId){
+  const esc=x=>String(x).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  const q="name = '"+esc(name)+"' and '"+esc(parentId)+"' in parents and trashed = false";
+  const fields='files(id,name,mimeType,parents,md5Checksum,size,modifiedTime,version)';
+  const g=await googleFetch(
+    'https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(q)
+    +'&pageSize=10&spaces=drive&supportsAllDrives=true&includeItemsFromAllDrives=true&fields='+encodeURIComponent(fields)
+  );
+  return Array.isArray(JSON.parse(g.buf.toString('utf8')).files)?JSON.parse(g.buf.toString('utf8')).files:[];
+}
+async function driveDeleteFile(id){
+  await googleFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'?supportsAllDrives=true',{method:'DELETE'});
+}
+async function driveCreateExactText({name,mimeType,parentId,text}){
+  const existing=await driveSearchNameInParent(name,parentId);
+  if(existing.length>1)throw new Error('prepare_existing_name_ambiguous:'+name);
+  if(existing.length===1){
+    const rb=await driveReadText(existing[0].id);
+    if(rb.text!==String(text))throw new Error('prepare_existing_content_mismatch:'+name);
+    return {id:existing[0].id,name,mimeType:existing[0].mimeType,parents:existing[0].parents||[],sha256:rb.sha256,bytes:rb.bytes,readback_exact:true,reused_existing:true};
+  }
+  const created=await driveCreateText({name,mimeType,parentId,text});
+  const id=String(created.id||'');
+  if(!id)throw new Error('prepare_create_missing_id:'+name);
+  const rb=await driveReadText(id);
+  if(rb.text!==String(text)){
+    try{await driveDeleteFile(id);}catch{}
+    throw new Error('prepare_create_readback_mismatch:'+name);
+  }
+  return {...created,sha256:rb.sha256,bytes:rb.bytes,readback_exact:true,reused_existing:false};
+}
+
 function docText(doc){
   const out=[];
   for(const el of (doc.body?.content||[])){
@@ -362,6 +397,41 @@ async function runAdoptionReconstructProbe(){
     console.log('ND_ADOPTION_RECONSTRUCT_PROBE',JSON.stringify(out));
   }catch(e){
     console.error('ND_ADOPTION_RECONSTRUCT_PROBE',JSON.stringify({rev:ADOPTION_RECONSTRUCT_REV,ok:false,error:cleanErr(e)}));
+  }
+}
+
+
+async function runAdoptionPrepareCreate(){
+  if(!ADOPTION_PREPARE_CREATE_REV||!ADOPTION_PREPARE_CREATE_JSON)return;
+  const allowed=new Set([
+    'ND_True_Writer_v0_7_0_CANONICAL_SKILL.md',
+    'ND_Books_Creator_v3_0_0_CANONICAL_SKILL.md',
+    'ND_Literary_Critic_v0_1_0_CANONICAL_SKILL.md',
+    'ND_Story_Architect_v0_1_0_CANONICAL_SKILL.md',
+    'ND_Technical_Writer_v0_1_0_CANONICAL_SKILL.md'
+  ]);
+  const parentId='1cnJSi9cmYV_P-EBP1Hy780s3m1s6ybli';
+  try{
+    const items=JSON.parse(ADOPTION_PREPARE_CREATE_JSON);
+    if(!Array.isArray(items)||items.length<1||items.length>5)throw new Error('prepare_batch_invalid_count');
+    const seen=new Set();
+    const results=[];
+    for(const item of items){
+      const name=String(item?.name||'');
+      const text=String(item?.text??'');
+      const mimeType=String(item?.mime_type||'text/markdown');
+      if(!allowed.has(name)||seen.has(name))throw new Error('prepare_name_denied_or_duplicate:'+name);
+      if(mimeType!=='text/markdown')throw new Error('prepare_mime_denied:'+name);
+      if(!text.startsWith('---\n')||Buffer.byteLength(text,'utf8')>200000)throw new Error('prepare_content_invalid:'+name);
+      seen.add(name);
+      const file=await driveCreateExactText({name,mimeType,parentId,text});
+      const row={rev:ADOPTION_PREPARE_CREATE_REV,name,file_id:file.id,sha256:file.sha256,bytes:file.bytes,readback_exact:file.readback_exact,reused_existing:file.reused_existing};
+      results.push(row);
+      console.log('ND_ADOPTION_PREPARE_CREATE_RESULT',JSON.stringify(row));
+    }
+    console.log('ND_ADOPTION_PREPARE_CREATE_DONE',JSON.stringify({rev:ADOPTION_PREPARE_CREATE_REV,ok:true,count:results.length,results}));
+  }catch(e){
+    console.error('ND_ADOPTION_PREPARE_CREATE_DONE',JSON.stringify({rev:ADOPTION_PREPARE_CREATE_REV,ok:false,error:cleanErr(e)}));
   }
 }
 
@@ -1326,3 +1396,4 @@ setTimeout(runAdoptionProfileProbe,4500);
 setTimeout(runAdoptionWholeStateProbe,6000);
 setTimeout(runAdoptionReconstructProbe,7500);
 setTimeout(runAdoptionExactRegistryProbe,9000);
+setTimeout(runAdoptionPrepareCreate,10500);
