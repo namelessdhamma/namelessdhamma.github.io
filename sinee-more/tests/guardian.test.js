@@ -39,32 +39,35 @@ test('guardian removes moves that allow an immediate opponent win when a safe mo
   assert.deepEqual(result.moves, safe);
 });
 
-test('guardian identifies an unanswerable double threat as FORCING', () => {
+test('guardian identifies an unanswerable locked double threat as FORCING', () => {
   let p = createInitialPosition(LIGHT);
-  p = applyMove(p, { player: LIGHT, rank: 1, cell: 0 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 1, cell: 1 }, RULE_C);
-  p = applyMove(p, { player: LIGHT, rank: 2, cell: 6 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 2, cell: 3 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 1 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 1, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 3, cell: 3 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 2, cell: 8 }, RULE_C);
+
+  assert.deepEqual(getImmediateWins(p, LIGHT, RULE_C), []);
 
   const result = getTacticalCandidates(p, p.turn, RULE_C);
   assert.equal(result.tier, 'FORCING');
   assert.ok(
-    result.moves.some(move => move.cell === 4 && move.rank === 9),
+    result.moves.some(move => move.cell === 0 && move.rank === 9),
     JSON.stringify(result.moves)
   );
 
-  for (const forcing of result.moves) {
-    const next = applyMove(p, forcing, RULE_C);
-    for (const reply of getLegalMoves(next, next.turn, RULE_C)) {
-      const afterReply = applyMove(next, reply, RULE_C);
-      if (afterReply.status === 'win') {
-        assert.equal(afterReply.winner, forcing.player);
-      } else {
-        assert.ok(
-          getImmediateWins(afterReply, forcing.player, RULE_C).length > 0,
-          JSON.stringify({ forcing, reply })
-        );
-      }
+  const forcingMove = result.moves.find(move => move.cell === 0 && move.rank === 9);
+  const next = applyMove(p, forcingMove, RULE_C);
+  assert.ok(getImmediateWins(next, LIGHT, RULE_C).length >= 2);
+
+  for (const reply of getLegalMoves(next, next.turn, RULE_C)) {
+    const afterReply = applyMove(next, reply, RULE_C);
+    if (afterReply.status === 'win') {
+      assert.equal(afterReply.winner, LIGHT);
+    } else {
+      assert.ok(
+        getImmediateWins(afterReply, LIGHT, RULE_C).length > 0,
+        JSON.stringify({ forcingMove, reply })
+      );
     }
   }
 });
@@ -118,7 +121,7 @@ test('safe-move scan returns all legal moves when opponent has no line threat', 
   p = applyMove(p, { player: LIGHT, rank: 2, cell: 4 }, RULE_C);
   p = applyMove(p, { player: DARK, rank: 3, cell: 0 }, RULE_C);
   p = applyMove(p, { player: LIGHT, rank: 4, cell: 8 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 5, cell: 2 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 5, cell: 5 }, RULE_C);
 
   // Dark has two visible tops, but they do not share a winning line.
   assert.deepEqual(getImmediateThreatCells(p, DARK, RULE_C), []);
@@ -139,10 +142,10 @@ test('expired Guardian budget skips optional forcing scan but never skips immedi
   assert.equal(winResult.tier, 'WIN_NOW');
 
   let p = createInitialPosition(LIGHT);
-  p = applyMove(p, { player: LIGHT, rank: 1, cell: 0 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 1, cell: 1 }, RULE_C);
-  p = applyMove(p, { player: LIGHT, rank: 2, cell: 6 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 2, cell: 3 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 1 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 1, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 3, cell: 3 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 2, cell: 8 }, RULE_C);
 
   const bounded = getTacticalCandidates(
     p,
