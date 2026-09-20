@@ -1,5 +1,5 @@
 name: Sinee More AI v1 D Strength Probe
-# diagnostic-sample: 5
+# diagnostic-sample: 6
 
 on:
   workflow_dispatch:
