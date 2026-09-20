@@ -8,6 +8,11 @@ const ND_YANDEX_MUX_CODE_REV='yandex-delete-v3-20260919';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 const ROUTE=String(process.env.ND_YANDEX_MCP_ROUTE_TOKEN||'').trim();
 const YANDEX_MCP_PATH=ROUTE?'/yandex/mcp/'+ROUTE:'';
+const ND_LIGHTPANDA_MUX_CODE_REV='lightpanda-http-adapter-v1-20260920';
+const LIGHTPANDA_TOKEN=String(process.env.LIGHTPANDA_TOKEN||'').trim();
+const LIGHTPANDA_PATH_TOKEN=String(process.env.ND_LIGHTPANDA_MCP_PATH_TOKEN||'').trim();
+const LIGHTPANDA_MCP_PATH=LIGHTPANDA_PATH_TOKEN?'/nd/lightpanda/mcp/'+LIGHTPANDA_PATH_TOKEN:'';
+const LIGHTPANDA_API='https://euwest.cloud.lightpanda.io/api/fetch';
 const API='https://cloud-api.yandex.net/v1/disk';
 const GOOGLE_CLIENT_EMAIL=String(process.env.ND_GOOGLE_CLIENT_EMAIL||'').trim();
 const GOOGLE_PRIVATE_KEY_B64=String(process.env.ND_GOOGLE_PRIVATE_KEY_B64||'').trim();
@@ -562,6 +567,112 @@ async function runYoutubeQualification(){
 }
 
 
+const LP_TOOLS=[
+  {
+    name:"lightpanda_status",
+    description:"Check whether the ND Lightpanda Cloud adapter is configured. This does not consume a browser session.",
+    inputSchema:{type:"object",properties:{},additionalProperties:false},
+    annotations:RO
+  },
+  {
+    name:"lightpanda_fetch",
+    description:"Render a public HTTP(S) page with Lightpanda Cloud and return post-JavaScript HTML or Markdown. Use this for browser-backed reading/extraction when interaction is not required.",
+    inputSchema:{
+      type:"object",
+      properties:{
+        url:{type:"string",minLength:8},
+        output_format:{type:"string",enum:["markdown","html"],default:"markdown"},
+        wait_ms:{type:"integer",minimum:1,maximum:60000,default:5000},
+        wait_event:{type:"string",enum:["DOMContentLoaded","load","networkAlmostIdle","networkIdle"],default:"networkIdle"},
+        proxy_name:{type:"string",enum:["fast_dc","datacenter"],default:"fast_dc"},
+        country:{type:"string",minLength:2,maxLength:2}
+      },
+      required:["url"],
+      additionalProperties:false
+    },
+    annotations:RO
+  }
+];
+
+function lightpandaStatus(){
+  return {
+    ok:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),
+    service:"nd-lightpanda-cloud-mcp",
+    transport:"streamable-http",
+    provider:"Lightpanda Cloud",
+    provider_transport:"HTTP API adapter",
+    code_rev:ND_LIGHTPANDA_MUX_CODE_REV,
+    tools:LP_TOOLS.length
+  };
+}
+
+async function lightpandaFetch(a={}){
+  if(!LIGHTPANDA_TOKEN)throw new Error("lightpanda_token_missing");
+  let u;
+  try{u=new URL(String(a.url||""));}catch{throw new Error("invalid_url");}
+  if(!["http:","https:"].includes(u.protocol))throw new Error("url_must_be_http_or_https");
+  const output_format=["markdown","html"].includes(String(a.output_format||"markdown"))?String(a.output_format||"markdown"):"markdown";
+  const wait_ms=Math.max(1,Math.min(60000,Number(a.wait_ms||5000)));
+  const wait_event=["DOMContentLoaded","load","networkAlmostIdle","networkIdle"].includes(String(a.wait_event||"networkIdle"))?String(a.wait_event||"networkIdle"):"networkIdle";
+  const proxy_name=["fast_dc","datacenter"].includes(String(a.proxy_name||"fast_dc"))?String(a.proxy_name||"fast_dc"):"fast_dc";
+  const body={url:u.toString(),output_format,wait_ms,wait_event,raw:false,proxy_name};
+  if(proxy_name==="datacenter"&&a.country)body.country=String(a.country).toLowerCase();
+  const r=await fetch(LIGHTPANDA_API,{
+    method:"POST",
+    headers:{authorization:"Bearer "+LIGHTPANDA_TOKEN,"content-type":"application/json",accept:"application/json"},
+    body:JSON.stringify(body)
+  });
+  const t=await r.text();
+  let d={};try{d=t?JSON.parse(t):{};}catch{d={data:t};}
+  if(!r.ok)throw new Error("lightpanda_http_"+r.status+":"+String(d?.error||d?.message||t).slice(0,800));
+  return {
+    ok:true,
+    url:u.toString(),
+    output_format,
+    status:Number(d.status||0),
+    data:String(d.data||"").slice(0,250000),
+    truncated:String(d.data||"").length>250000,
+    headers:d.headers||{}
+  };
+}
+
+async function lightpandaCallTool(name,args){
+  if(name==="lightpanda_status")return lightpandaStatus();
+  if(name==="lightpanda_fetch")return await lightpandaFetch(args||{});
+  throw new Error("unknown_lightpanda_tool:"+String(name));
+}
+
+async function lightpandaMcp(req,res){
+  let msg;
+  try{msg=JSON.parse(await readBody(req)||"{}");}
+  catch{return j(res,400,{jsonrpc:"2.0",id:null,error:{code:-32700,message:"parse error"}});}
+  const id=msg.id,method=String(msg.method||"");
+  if(method==="notifications/initialized"){res.writeHead(204);return res.end();}
+  if(method==="initialize")return j(res,200,{jsonrpc:"2.0",id,result:{
+    protocolVersion:"2025-06-18",
+    capabilities:{tools:{listChanged:false}},
+    serverInfo:{name:"nd-lightpanda-cloud-mcp",version:"1.0.0"},
+    instructions:"Browser-backed read/fetch through the Nameless Dhamma Lightpanda Cloud adapter. Current v1 is read-only; stateful interaction tools are qualified separately."
+  }});
+  if(method==="ping")return j(res,200,{jsonrpc:"2.0",id,result:{}});
+  if(method==="tools/list")return j(res,200,{jsonrpc:"2.0",id,result:{tools:LP_TOOLS}});
+  if(method==="tools/call"){
+    const p=msg.params||{};
+    try{
+      const out=await lightpandaCallTool(String(p.name||""),p.arguments||{});
+      return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:false}});
+    }catch(e){
+      let err=String(e?.message||e||"error");
+      if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
+      if(LIGHTPANDA_PATH_TOKEN)err=err.split(LIGHTPANDA_PATH_TOKEN).join("[REDACTED]");
+      const out={ok:false,error:err.slice(0,1800)};
+      return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:true}});
+    }
+  }
+  return j(res,200,{jsonrpc:"2.0",id,error:{code:-32601,message:"Method not found"}});
+}
+
+
 
 
 const muxServer=http.createServer(async(req,res)=>{
@@ -574,7 +685,8 @@ const muxServer=http.createServer(async(req,res)=>{
         status:'ok',
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
-        youtube:{configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),writes:YT_WRITES,tools:YT_TOOLS.length}
+        youtube:{configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),writes:YT_WRITES,tools:YT_TOOLS.length},
+        lightpanda:{configured:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV}
       };
       const raw=Buffer.from(JSON.stringify(body));
       res.writeHead(200,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
@@ -622,11 +734,18 @@ const muxServer=http.createServer(async(req,res)=>{
         service:'ND Multiplex MCP Host',
         yandex_mcp_configured:Boolean(YANDEX_MCP_PATH),
         youtube_mcp_configured:Boolean(YOUTUBE_MCP_PATH),
-        youtube_read_write:YT_WRITES
+        youtube_read_write:YT_WRITES,
+        lightpanda_mcp_configured:Boolean(LIGHTPANDA_MCP_PATH)
       };
       const raw=Buffer.from(JSON.stringify(body));
       res.writeHead(200,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
       res.end(raw);return;
+    }
+
+    if(LIGHTPANDA_MCP_PATH && path===LIGHTPANDA_MCP_PATH){
+      if(req.method==='GET') return j(res,200,{ok:true,service:'nd-lightpanda-cloud-mcp',transport:'streamable-http',methods:['POST'],tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV});
+      if(req.method!=='POST'){res.writeHead(405,{Allow:'POST','content-length':'0'});res.end();return;}
+      return await lightpandaMcp(req,res);
     }
 
     if(YOUTUBE_MCP_PATH && path===YOUTUBE_MCP_PATH){
