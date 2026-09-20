@@ -14,7 +14,7 @@ export const DIFFICULTY = Object.freeze({
     strategicErrorSeverity: 1.00,
     errorCandidateLimit: 6,
     cdErrorMultiplier: 1.04,
-    cdSeverityMultiplier: 1.40,
+    cdSeverityMultiplier: 1.30,
     forcingBudgetShare: 0.08,
     guardian: 'full'
   }),
