@@ -3,7 +3,7 @@ import { topPiece } from './rules.js';
 import { evaluatePosition } from './evaluation.js';
 import { searchIterative } from './search.js';
 import { getTacticalCandidates, getSafeMoves } from './guardian.js';
-import { scorePersonaMove, PERSONAS } from './personas.js';
+import { scorePersonaMove, createPersonaScoringContext, PERSONAS } from './personas.js';
 import { createRng } from './rng.js';
 import { resolveDifficulty } from './difficulty.js';
 
@@ -175,9 +175,16 @@ function collectOpeningCandidates(
 function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
   if (candidates.length <= 1) return candidates[0]?.move ?? null;
 
+  const personaContext = createPersonaScoringContext(position, rule);
   const raw = candidates.map(item => ({
     ...item,
-    personaScore: scorePersonaMove(position, item.move, rule, personaId)
+    personaScore: scorePersonaMove(
+      position,
+      item.move,
+      rule,
+      personaId,
+      personaContext
+    )
   }));
   const minPersona = Math.min(...raw.map(item => item.personaScore));
   const maxPersona = Math.max(...raw.map(item => item.personaScore));
