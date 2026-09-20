@@ -110,3 +110,26 @@ test('transposition entries are isolated by root-player perspective', () => {
   assert.equal(cachedDark.score, freshDark.score);
   assert.deepEqual(cachedDark.move, freshDark.move);
 });
+
+
+test('iterative search preserves caller root-candidate order for timeout fallback', () => {
+  let tick = 0;
+  const now = () => (tick += 10);
+  const position = createInitialPosition(LIGHT);
+  const preferred = [
+    { player: LIGHT, rank: 5, cell: 4 },
+    { player: LIGHT, rank: 1, cell: 0 },
+    { player: LIGHT, rank: 9, cell: 8 }
+  ];
+  const result = searchIterative(position, {
+    rule: RULE_C,
+    rootPlayer: LIGHT,
+    evaluate: evalMaterial,
+    timeBudgetMs: 1,
+    maxDepth: 4,
+    now,
+    rootCandidates: preferred
+  });
+  assert.deepEqual(result.move, preferred[0]);
+  assert.equal(result.completedDepth, 0);
+});
