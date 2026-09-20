@@ -31,14 +31,17 @@ on:
         required: false
         default: ""
         type: string
+  issue_comment:
+    types: [created]
   schedule:
     - cron: "17 */6 * * *"
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
-  group: nd-internet-failover-${{ github.event_name }}-${{ inputs.provider || 'status' }}-${{ inputs.request_key || github.run_id }}
+  group: nd-internet-failover-${{ github.event_name }}-${{ inputs.provider || github.event.issue.number || 'status' }}-${{ inputs.request_key || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -157,3 +160,69 @@ jobs:
           path: nd-browser-reserve-*.png
           if-no-files-found: ignore
           retention-days: 7
+
+  issue_control:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.number == 8 &&
+      github.actor == 'namelessdhamma' &&
+      github.event.issue.pull_request == null &&
+      startsWith(github.event.comment.body, '/internet ')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualify/browserless-railway-relay-v1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install remote-browser client
+        run: npm install --no-save playwright-core@1.55.0
+
+      - name: Execute owner-only failover command
+        id: execute
+        continue-on-error: true
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+          BROWSERLESS_API_TOKEN: ${{ secrets.BROWSERLESS_API_TOKEN }}
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+          TINYFISH_API_KEY: ${{ secrets.TINYFISH_API_KEY }}
+          LIGHTPANDA_TOKEN: ${{ secrets.LIGHTPANDA_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+        run: python3 tmp/nd_internet_comment_dispatch.py
+
+      - name: Return redacted result to control issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          if [ -f nd-internet-failover-result.json ]; then
+            {
+              echo "ND Internet Failover result"
+              echo
+              echo '~~~json'
+              head -c 60000 nd-internet-failover-result.json
+              echo
+              echo '~~~'
+            } > /tmp/nd-internet-comment.md
+          else
+            printf 'ND Internet Failover result\n\nNo result artifact was produced.\n' > /tmp/nd-internet-comment.md
+          fi
+          gh issue comment "$ISSUE_NUMBER" --repo "${{ github.repository }}" --body-file /tmp/nd-internet-comment.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nd-internet-comment-result-${{ github.run_id }}
+          path: |
+            nd-internet-failover-result.json
+            nd-browser-reserve-*.png
+          if-no-files-found: warn
+          retention-days: 14
