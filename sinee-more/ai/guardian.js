@@ -152,26 +152,30 @@ export function getTacticalCandidates(position, player = position.turn, rule, op
     ? position
     : { ...position, turn: player };
   const legal = getLegalMoves(probe, player, rule);
-  if (!legal.length) return { tier: 'ALL_LEGAL', moves: [] };
+  if (!legal.length) return { tier: 'ALL_LEGAL', moves: [], forcingSkipped: false };
 
   const wins = getImmediateWins(probe, player, rule);
-  if (wins.length) return { tier: 'WIN_NOW', moves: wins };
+  if (wins.length) return { tier: 'WIN_NOW', moves: wins, forcingSkipped: false };
 
   const safe = getSafeMoves(probe, player, rule);
   if (safe.length && safe.length < legal.length) {
-    return { tier: 'MUST_DEFEND', moves: safe };
+    return { tier: 'MUST_DEFEND', moves: safe, forcingSkipped: false };
   }
 
   const base = safe.length ? safe : legal;
   const now = options.now ?? (() => performance.now());
   const deadline = options.deadline ?? Infinity;
-  if (now() < deadline) {
+  const forcingSkipped = now() >= deadline;
+
+  if (!forcingSkipped) {
     const forcing = forcingMoves(probe, player, rule, base, { now, deadline });
-    if (forcing.length) return { tier: 'FORCING', moves: forcing };
+    if (forcing.length) {
+      return { tier: 'FORCING', moves: forcing, forcingSkipped: false };
+    }
   }
 
-  if (safe.length) return { tier: 'SAFE', moves: safe };
-  return { tier: 'ALL_LEGAL', moves: legal };
+  if (safe.length) return { tier: 'SAFE', moves: safe, forcingSkipped };
+  return { tier: 'ALL_LEGAL', moves: legal, forcingSkipped };
 }
 
 export { sameMove };
