@@ -17,6 +17,16 @@ const LIGHTPANDA_API='https://euwest.cloud.lightpanda.io/api/fetch';
 const LIGHTPANDA_CDP_URL='wss://euwest.cloud.lightpanda.io/ws?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
 const LIGHTPANDA_MCP_SSE='https://euwest.cloud.lightpanda.io/mcp/sse?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
 let lpUpstream={reader:null,postUrl:'',pending:new Map(),connecting:null,ready:false,seq:1000,lastError:''};
+const ND_CLOUDFLARE_MUX_CODE_REV='cloudflare-browser-run-cdp-v1-20260920';
+const CLOUDFLARE_ACCOUNT_ID=String(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
+const CLOUDFLARE_API_TOKEN=String(process.env.CLOUDFLARE_API_TOKEN||'').trim();
+const CLOUDFLARE_PATH_TOKEN=String(process.env.ND_CLOUDFLARE_MCP_PATH_TOKEN||'').trim();
+const CLOUDFLARE_MCP_PATH=CLOUDFLARE_PATH_TOKEN?'/nd/cloudflare-browser/mcp/'+CLOUDFLARE_PATH_TOKEN:'';
+const CLOUDFLARE_KEEP_ALIVE_MS=90000;
+function cloudflareCdpUrl(){
+  return 'wss://api.cloudflare.com/client/v4/accounts/'+encodeURIComponent(CLOUDFLARE_ACCOUNT_ID)+'/browser-rendering/devtools/browser?keep_alive='+CLOUDFLARE_KEEP_ALIVE_MS;
+}
+
 
 const API='https://cloud-api.yandex.net/v1/disk';
 const GOOGLE_CLIENT_EMAIL=String(process.env.ND_GOOGLE_CLIENT_EMAIL||'').trim();
@@ -1015,6 +1025,154 @@ async function lightpandaMcp(req,res){
 
 
 
+const CF_TOOLS=[
+  {name:"cloudflare_status",description:"Check the ND Cloudflare Browser Run adapter configuration and current browser-session state.",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:RO},
+  {name:"cloudflare_goto",description:"Open a URL in a stateful Cloudflare Browser Run Chrome session.",inputSchema:{type:"object",properties:{url:{type:"string",minLength:8},wait_until:{type:"string",enum:["load","domcontentloaded","networkidle","commit"],default:"domcontentloaded"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:20000}},required:["url"],additionalProperties:false},annotations:RO},
+  {name:"cloudflare_get_url",description:"Return the current URL and title of the active Cloudflare Browser Run page.",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:RO},
+  {name:"cloudflare_read_text",description:"Read visible text from the current page or a CSS selector.",inputSchema:{type:"object",properties:{selector:{type:"string",default:"body"},max_chars:{type:"integer",minimum:1,maximum:100000,default:30000}},additionalProperties:false},annotations:RO},
+  {name:"cloudflare_html",description:"Return HTML for the current document or a selected element.",inputSchema:{type:"object",properties:{selector:{type:"string"},max_chars:{type:"integer",minimum:1,maximum:200000,default:60000}},additionalProperties:false},annotations:RO},
+  {name:"cloudflare_click",description:"Click an element in the active Cloudflare browser page using a CSS selector.",inputSchema:{type:"object",properties:{selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector"],additionalProperties:false},annotations:WR},
+  {name:"cloudflare_fill",description:"Fill a text input or textarea in the active Cloudflare browser page.",inputSchema:{type:"object",properties:{selector:{type:"string"},value:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector","value"],additionalProperties:false},annotations:WR},
+  {name:"cloudflare_press",description:"Press a keyboard key on the active page or on a selected element.",inputSchema:{type:"object",properties:{key:{type:"string"},selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["key"],additionalProperties:false},annotations:WR},
+  {name:"cloudflare_hover",description:"Hover over an element in the active Cloudflare browser page.",inputSchema:{type:"object",properties:{selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector"],additionalProperties:false},annotations:WR},
+  {name:"cloudflare_select_option",description:"Select a value from a select element in the active page.",inputSchema:{type:"object",properties:{selector:{type:"string"},value:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector","value"],additionalProperties:false},annotations:WR},
+  {name:"cloudflare_set_checked",description:"Check or uncheck a checkbox/radio input in the active page.",inputSchema:{type:"object",properties:{selector:{type:"string"},checked:{type:"boolean"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector","checked"],additionalProperties:false},annotations:WR},
+  {name:"cloudflare_wait_for_selector",description:"Wait until a CSS selector appears in the active page.",inputSchema:{type:"object",properties:{selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:20000}},required:["selector"],additionalProperties:false},annotations:RO},
+  {name:"cloudflare_evaluate",description:"Evaluate JavaScript in the active page and return a JSON-serializable result.",inputSchema:{type:"object",properties:{script:{type:"string",minLength:1}},required:["script"],additionalProperties:false},annotations:WR},
+  {name:"cloudflare_get_cookies",description:"Read cookies from the active Cloudflare browser context, optionally scoped to a URL.",inputSchema:{type:"object",properties:{url:{type:"string"}},additionalProperties:false},annotations:RO},
+  {name:"cloudflare_screenshot",description:"Capture a PNG screenshot of the current Cloudflare Browser Run page and return it as MCP image content.",inputSchema:{type:"object",properties:{full_page:{type:"boolean",default:false},selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},additionalProperties:false},annotations:RO}
+];
+
+let cfCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:"",stage:"idle"};
+function cfTouch(){
+  if(cfCdp.idleTimer)clearTimeout(cfCdp.idleTimer);
+  cfCdp.idleTimer=setTimeout(async()=>{
+    try{if(cfCdp.browser)await cfCdp.browser.close();}catch{}
+    cfCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:"",stage:"idle_closed"};
+  },60000);
+}
+async function cfStage(label,promise,ms=12000){
+  cfCdp.stage=label;
+  let timer;
+  try{
+    return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error("cloudflare_stage_timeout:"+label)),ms);})]);
+  }finally{if(timer)clearTimeout(timer);}
+}
+async function ensureCfCdp(){
+  if(cfCdp.browser&&cfCdp.page){cfTouch();return cfCdp;}
+  if(cfCdp.connecting)return await cfCdp.connecting;
+  cfCdp.connecting=(async()=>{
+    if(!CLOUDFLARE_ACCOUNT_ID)throw new Error("cloudflare_account_id_missing");
+    if(!CLOUDFLARE_API_TOKEN)throw new Error("cloudflare_api_token_missing");
+    const browser=await cfStage("connectOverCDP",chromium.connectOverCDP(cloudflareCdpUrl(),{
+      headers:{Authorization:"Bearer "+CLOUDFLARE_API_TOKEN},
+      timeout:10000
+    }),12000);
+    browser.on("disconnected",()=>{cfCdp.browser=null;cfCdp.context=null;cfCdp.page=null;cfCdp.connecting=null;cfCdp.stage="disconnected";});
+    let context=null;
+    try{context=await cfStage("newContext",browser.newContext(),8000);}catch{}
+    if(!context)context=browser.contexts()[0]||null;
+    if(!context)throw new Error("cloudflare_context_unavailable");
+    let page=context.pages()[0]||null;
+    if(!page)page=await cfStage("newPage",context.newPage(),8000);
+    cfCdp.browser=browser;cfCdp.context=context;cfCdp.page=page;cfCdp.lastError="";cfCdp.connecting=null;cfCdp.stage="ready";
+    cfTouch();
+    return cfCdp;
+  })().catch(e=>{
+    cfCdp.connecting=null;cfCdp.lastError=String(e?.message||e||"cloudflare_connect_error");
+    throw e;
+  });
+  return await cfCdp.connecting;
+}
+function cfTimeout(a,def=15000,max=60000){return Math.max(1000,Math.min(max,Number(a?.timeout_ms||def)));}
+async function cfCall(name,a={}){
+  if(name==="cloudflare_status")return {
+    ok:Boolean(CLOUDFLARE_ACCOUNT_ID&&CLOUDFLARE_API_TOKEN&&CLOUDFLARE_PATH_TOKEN),
+    service:"nd-cloudflare-browser-run-mcp",
+    provider:"Cloudflare Browser Run",
+    code_rev:ND_CLOUDFLARE_MUX_CODE_REV,
+    tools:CF_TOOLS.length,
+    cdp_active:Boolean(cfCdp.browser&&cfCdp.page),
+    cdp_stage:cfCdp.stage,
+    cdp_last_error:cfCdp.lastError||null,
+    idle_close_seconds:60
+  };
+  const st=await ensureCfCdp();const page=st.page;cfTouch();
+  if(name==="cloudflare_goto"){
+    let u;try{u=new URL(String(a.url||""));}catch{throw new Error("invalid_url");}
+    if(!["http:","https:"].includes(u.protocol))throw new Error("url_must_be_http_or_https");
+    const waitUntil=["load","domcontentloaded","networkidle","commit"].includes(String(a.wait_until||"domcontentloaded"))?String(a.wait_until||"domcontentloaded"):"domcontentloaded";
+    const response=await page.goto(u.toString(),{waitUntil,timeout:cfTimeout(a,20000,60000)});
+    return {ok:true,url:page.url(),title:await page.title(),status:response?response.status():null};
+  }
+  if(name==="cloudflare_get_url")return {ok:true,url:page.url(),title:await page.title()};
+  if(name==="cloudflare_read_text"){
+    const selector=String(a.selector||"body"),max=Math.max(1,Math.min(100000,Number(a.max_chars||30000)));
+    const value=await page.locator(selector).innerText({timeout:15000});
+    return {ok:true,url:page.url(),selector,text:String(value).slice(0,max),truncated:String(value).length>max};
+  }
+  if(name==="cloudflare_html"){
+    const max=Math.max(1,Math.min(200000,Number(a.max_chars||60000)));
+    const value=a.selector?await page.locator(String(a.selector)).evaluate(el=>el.outerHTML):await page.content();
+    return {ok:true,url:page.url(),html:String(value).slice(0,max),truncated:String(value).length>max};
+  }
+  if(name==="cloudflare_click"){await page.locator(String(a.selector||"")).click({timeout:cfTimeout(a)});return {ok:true,url:page.url(),title:await page.title()};}
+  if(name==="cloudflare_fill"){await page.locator(String(a.selector||"")).fill(String(a.value??""),{timeout:cfTimeout(a)});return {ok:true,url:page.url(),selector:String(a.selector)};}
+  if(name==="cloudflare_press"){const target=a.selector?page.locator(String(a.selector)):page.locator("body");await target.press(String(a.key||""),{timeout:cfTimeout(a)});return {ok:true,url:page.url(),key:String(a.key||"")};}
+  if(name==="cloudflare_hover"){await page.locator(String(a.selector||"")).hover({timeout:cfTimeout(a)});return {ok:true,url:page.url(),selector:String(a.selector)};}
+  if(name==="cloudflare_select_option"){const selected=await page.locator(String(a.selector||"")).selectOption(String(a.value??""),{timeout:cfTimeout(a)});return {ok:true,url:page.url(),selected};}
+  if(name==="cloudflare_set_checked"){await page.locator(String(a.selector||"")).setChecked(Boolean(a.checked),{timeout:cfTimeout(a)});return {ok:true,url:page.url(),checked:Boolean(a.checked)};}
+  if(name==="cloudflare_wait_for_selector"){await page.locator(String(a.selector||"")).waitFor({state:"attached",timeout:cfTimeout(a,20000,60000)});return {ok:true,url:page.url(),selector:String(a.selector)};}
+  if(name==="cloudflare_evaluate"){const value=await page.evaluate(String(a.script||""));return {ok:true,url:page.url(),value};}
+  if(name==="cloudflare_get_cookies"){const cookies=a.url?await st.context.cookies(String(a.url)):await st.context.cookies();return {ok:true,url:page.url(),cookies};}
+  if(name==="cloudflare_screenshot"){
+    const opts={type:"png",timeout:cfTimeout(a)};
+    if(a.full_page)opts.fullPage=true;
+    let buf;
+    if(a.selector)buf=await page.locator(String(a.selector)).screenshot(opts);
+    else buf=await page.screenshot(opts);
+    return {ok:true,url:page.url(),__mcp_image:true,mimeType:"image/png",data:Buffer.from(buf).toString("base64")};
+  }
+  throw new Error("unknown_cloudflare_tool:"+String(name));
+}
+
+async function cloudflareMcp(req,res){
+  let msg;
+  try{msg=JSON.parse(await readBody(req)||"{}");}
+  catch{return j(res,400,{jsonrpc:"2.0",id:null,error:{code:-32700,message:"parse error"}});}
+  const id=msg.id,method=String(msg.method||"");
+  if(method==="notifications/initialized"){res.writeHead(204);return res.end();}
+  if(method==="initialize")return j(res,200,{jsonrpc:"2.0",id,result:{
+    protocolVersion:"2025-06-18",
+    capabilities:{tools:{listChanged:false}},
+    serverInfo:{name:"nd-cloudflare-browser-run-mcp",version:"1.0.0"},
+    instructions:"Stateful Cloudflare Browser Run Chrome control through the ND Streamable HTTP MCP facade. Sessions close after 60 seconds idle to preserve the recurring free daily browser allowance."
+  }});
+  if(method==="ping")return j(res,200,{jsonrpc:"2.0",id,result:{}});
+  if(method==="tools/list")return j(res,200,{jsonrpc:"2.0",id,result:{tools:CF_TOOLS}});
+  if(method==="tools/call"){
+    const p=msg.params||{};
+    try{
+      const out=await cfCall(String(p.name||""),p.arguments||{});
+      if(out&&out.__mcp_image){
+        return j(res,200,{jsonrpc:"2.0",id,result:{content:[
+          {type:"image",data:out.data,mimeType:out.mimeType},
+          {type:"text",text:JSON.stringify({ok:true,url:out.url})}
+        ],structuredContent:{ok:true,url:out.url},isError:false}});
+      }
+      return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:false}});
+    }catch(e){
+      let err=String(e?.message||e||"error");
+      if(CLOUDFLARE_API_TOKEN)err=err.split(CLOUDFLARE_API_TOKEN).join("[REDACTED]");
+      if(CLOUDFLARE_PATH_TOKEN)err=err.split(CLOUDFLARE_PATH_TOKEN).join("[REDACTED]");
+      const out={ok:false,error:err.slice(0,1600),stage:cfCdp.stage};
+      return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:true}});
+    }
+  }
+  return j(res,200,{jsonrpc:"2.0",id,error:{code:-32601,message:"Method not found"}});
+}
+
+
 const muxServer=http.createServer(async(req,res)=>{
   try{
     const requestUrl=new URL(req.url||'/','http://local');
@@ -1026,7 +1184,8 @@ const muxServer=http.createServer(async(req,res)=>{
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
         youtube:{configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),writes:YT_WRITES,tools:YT_TOOLS.length},
-        lightpanda:{configured:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_stage:lpCdp.stage,cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:String(lpCdp.lastError||"").slice(0,300)}
+        lightpanda:{configured:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_stage:lpCdp.stage,cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:String(lpCdp.lastError||"").slice(0,300)},
+        cloudflare_browser:{configured:Boolean(CLOUDFLARE_ACCOUNT_ID&&CLOUDFLARE_API_TOKEN&&CLOUDFLARE_PATH_TOKEN),tools:CF_TOOLS.length,code_rev:ND_CLOUDFLARE_MUX_CODE_REV,cdp_stage:cfCdp.stage,cdp_active:Boolean(cfCdp.browser&&cfCdp.page),cdp_last_error:String(cfCdp.lastError||"").slice(0,300)}
       };
       const raw=Buffer.from(JSON.stringify(body));
       res.writeHead(200,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
@@ -1068,39 +1227,15 @@ const muxServer=http.createServer(async(req,res)=>{
       }
     }
 
-    if(path==='/lightpanda/qualification'){
-      const stages=[];
+    if(path==='/cloudflare-browser/diagnostic'){
+      if(!CLOUDFLARE_ACCOUNT_ID||!CLOUDFLARE_API_TOKEN)return j(res,200,{ok:false,configured:false,code_rev:ND_CLOUDFLARE_MUX_CODE_REV,tools:CF_TOOLS.length});
       try{
-        const st=await lpStage("qual_connect",ensureLpCdp(),12000);
-        const page=st.page;
-        stages.push({stage:"connect",ok:true,url:page.url()});
-
-        const nav=await lpStage("qual_external_goto",page.goto("https://namelessdhamma.org/tmp/lightpanda-qualification.html",{waitUntil:"domcontentloaded",timeout:15000}),17000);
-        stages.push({stage:"external_goto",ok:true,status:nav?nav.status():null,url:page.url()});
-
-        const heading=await lpStage("qual_external_read",page.locator("#heading").innerText({timeout:6000}),7000);
-        stages.push({stage:"external_read",ok:heading==="ND Lightpanda Qualification",heading});
-
-        await lpStage("qual_fill",page.locator("#q").fill("ND-LIGHTPANDA-QUAL",{timeout:6000}),7000);
-        const value=await lpStage("qual_fill_readback",page.locator("#q").inputValue({timeout:6000}),7000);
-        stages.push({stage:"fill_readback",ok:value==="ND-LIGHTPANDA-QUAL",value_match:value==="ND-LIGHTPANDA-QUAL"});
-
-        await lpStage("qual_click",page.locator("#go").click({timeout:6000}),7000);
-        const resultText=await lpStage("qual_click_readback",page.locator("#out").innerText({timeout:6000}),7000);
-        stages.push({stage:"click_readback",ok:resultText==="ND-LIGHTPANDA-QUAL-CLICKED",result:resultText});
-
-        return j(res,200,{
-          ok:stages.every(x=>x.ok!==false),
-          code_rev:ND_LIGHTPANDA_MUX_CODE_REV,
-          engine:"lightpanda",
-          stages,
-          final_url:page.url()
-        });
+        const st=await ensureCfCdp();
+        return j(res,200,{ok:true,configured:true,code_rev:ND_CLOUDFLARE_MUX_CODE_REV,cdp_connected:true,stage:cfCdp.stage,url:st.page.url(),tools:CF_TOOLS.length,idle_close_seconds:60});
       }catch(e){
         let err=String(e?.message||e||"error");
-        if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
-        if(LIGHTPANDA_PATH_TOKEN)err=err.split(LIGHTPANDA_PATH_TOKEN).join("[REDACTED]");
-        return j(res,200,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,engine:"lightpanda",stage:lpCdp.stage,error:err.slice(0,1200),stages});
+        if(CLOUDFLARE_API_TOKEN)err=err.split(CLOUDFLARE_API_TOKEN).join("[REDACTED]");
+        return j(res,200,{ok:false,configured:true,code_rev:ND_CLOUDFLARE_MUX_CODE_REV,cdp_connected:false,stage:cfCdp.stage,error:err.slice(0,1200)});
       }
     }
 
@@ -1128,6 +1263,12 @@ const muxServer=http.createServer(async(req,res)=>{
       const raw=Buffer.from(JSON.stringify(body));
       res.writeHead(200,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
       res.end(raw);return;
+    }
+
+    if(CLOUDFLARE_MCP_PATH && path===CLOUDFLARE_MCP_PATH){
+      if(req.method==='GET') return j(res,200,{ok:true,service:'nd-cloudflare-browser-run-mcp',transport:'streamable-http',methods:['POST'],tools:CF_TOOLS.length,configured:Boolean(CLOUDFLARE_ACCOUNT_ID&&CLOUDFLARE_API_TOKEN),code_rev:ND_CLOUDFLARE_MUX_CODE_REV});
+      if(req.method!=='POST'){res.writeHead(405,{Allow:'POST','content-length':'0'});res.end();return;}
+      return await cloudflareMcp(req,res);
     }
 
     if(LIGHTPANDA_MCP_PATH && path===LIGHTPANDA_MCP_PATH){
