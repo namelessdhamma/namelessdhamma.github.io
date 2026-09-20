@@ -151,4 +151,5 @@ test('expired Guardian budget skips optional forcing scan but never skips immedi
     { deadline: 0, now: () => 1 }
   );
   assert.equal(bounded.tier, 'SAFE');
+  assert.equal(bounded.forcingSkipped, true);
 });
