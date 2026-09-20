@@ -143,19 +143,23 @@ function openingPersonaBonus(position, move, personaId) {
   if (position.moves > 1) return 0;
   const lines = lineCountForCell(move.cell);
   const middleRank = Math.max(0, 5 - Math.abs(move.rank - 5));
+  const corner = [0, 2, 6, 8].includes(move.cell);
+  const edge = [1, 3, 5, 7].includes(move.cell);
 
+  // Opening identity is intentionally stronger than generic persona features.
+  // Objective safety is enforced separately by the engine's opening regret band.
   if (personaId === 'architect') {
-    return (move.cell === 4 ? 28 : lines * 3) + middleRank * 3;
+    return (move.cell === 4 ? 600 : lines * 40) + middleRank * 80;
   }
   if (personaId === 'hunter') {
-    return move.rank * 5 + lines * 2;
+    return move.rank * 100 + (move.cell === 4 ? 60 : lines * 20);
   }
   if (personaId === 'sentinel') {
-    return (10 - move.rank) * 5 + lines * 2;
+    return (10 - move.rank) * 100 + (move.cell === 4 ? 80 : lines * 25);
   }
   if (personaId === 'trickster') {
-    const offCenter = move.cell === 4 ? -20 : (move.cell % 2 === 0 ? 22 : 32);
-    return offCenter + middleRank * 4;
+    const geometry = edge ? 700 : (corner ? 550 : -700);
+    return geometry + middleRank * 60;
   }
   return 0;
 }
