@@ -1,5 +1,5 @@
 name: Sinee More AI v1 Strength Probe
-# calibration-sample: 3
+# calibration-sample: 4
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '22'
       - name: Difficulty strength probe
-        run: node tools/qualification.js --strength-only --games-per-pair 24 --budget-scale 0.04 --json difficulty-strength-probe.json
+        run: node tools/qualification.js --strength-only --games-per-pair 24 --budget-scale 0.10 --json difficulty-strength-probe.json
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
