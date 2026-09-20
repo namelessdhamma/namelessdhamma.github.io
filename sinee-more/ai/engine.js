@@ -38,6 +38,21 @@ function collectNearBestCandidates(rootScores, tacticalMoves, bestMove, regretBa
     .filter(item => item.score != null && item.score >= best - regretBand);
 }
 
+function collectTopCandidates(rootScores, tacticalMoves, bestMove, limit) {
+  const allowed = new Set(tacticalMoves.map(moveKey));
+  const ranked = (rootScores ?? [])
+    .filter(item => allowed.has(moveKey(item.move)))
+    .sort((a, b) =>
+      b.score - a.score ||
+      a.move.cell - b.move.cell ||
+      a.move.rank - b.move.rank
+    );
+  if (!ranked.length) {
+    return bestMove ? [{ move: bestMove, score: 0 }] : [];
+  }
+  return ranked.slice(0, Math.max(1, limit));
+}
+
 function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
   if (candidates.length <= 1) return candidates[0]?.move ?? null;
 
@@ -126,14 +141,19 @@ export function chooseMove(position, {
         ?? searchResult.score
     }));
   } else {
-    accepted = collectNearBestCandidates(
-      searchResult.rootScores,
-      tactical.moves,
-      searchResult.move,
-      position.moves <= 1
-        ? policy.openingRegretBand
-        : policy.regretBand
-    );
+    accepted = position.moves <= 1
+      ? collectTopCandidates(
+          searchResult.rootScores,
+          tactical.moves,
+          searchResult.move,
+          policy.openingCandidateLimit
+        )
+      : collectNearBestCandidates(
+          searchResult.rootScores,
+          tactical.moves,
+          searchResult.move,
+          policy.regretBand
+        );
   }
 
   const move = chooseByPersona(
