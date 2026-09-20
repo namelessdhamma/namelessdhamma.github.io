@@ -116,3 +116,17 @@ test('D opening values maximum center flexibility and rank economy over a high b
     })
   );
 });
+
+
+test('non-terminal evaluation remains zero-sum symmetric', () => {
+  const p = positionWithPieces([
+    { player: LIGHT, rank: 3, cell: 0 },
+    { player: DARK, rank: 6, cell: 4 },
+    { player: LIGHT, rank: 5, cell: 8 }
+  ], DARK);
+  for (const rule of [RULE_C, RULE_D, RULE_CD]) {
+    const light = evaluatePosition(p, LIGHT, rule, BASE_PROFILE);
+    const dark = evaluatePosition(p, DARK, rule, BASE_PROFILE);
+    assert.ok(Math.abs(light + dark) < 1e-9, `${rule}: ${light} / ${dark}`);
+  }
+});
