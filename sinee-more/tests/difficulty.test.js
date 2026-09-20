@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RULE_C, LIGHT } from '../ai/constants.js';
+import { RULE_C, RULE_D, RULE_CD, LIGHT } from '../ai/constants.js';
 import { createInitialPosition, applyMove } from '../ai/rules.js';
 import { DIFFICULTY, resolveDifficulty } from '../ai/difficulty.js';
 import { chooseMove } from '../ai/engine.js';
@@ -89,4 +89,22 @@ test('engine always returns a legal coherent move under tiny budget', () => {
   assert.ok(result.move);
   assert.equal(result.move.player, LIGHT);
   assert.equal(result.metrics.timedOut, true);
+});
+
+
+test('hard personas do not collapse to one opening script', () => {
+  for (const rule of [RULE_C, RULE_D, RULE_CD]) {
+    const p = createInitialPosition(LIGHT);
+    const choices = ['architect','hunter','sentinel','trickster'].map((persona, index) =>
+      chooseMove(p, {
+        rule,
+        difficulty: 'hard',
+        persona,
+        seed: 100 + index,
+        timeBudgetOverrideMs: 30
+      }).move
+    );
+    const unique = new Set(choices.map(move => `${move.cell}:${move.rank}`));
+    assert.ok(unique.size >= 2, `${rule}: ${JSON.stringify(choices)}`);
+  }
 });
