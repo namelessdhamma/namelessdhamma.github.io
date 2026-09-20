@@ -202,6 +202,7 @@ export function chooseMove(position, {
   seed = 1,
   timeBudgetOverrideMs = null
 } = {}) {
+  const engineStarted = performance.now();
   const personaId = Object.hasOwn(PERSONAS, persona) ? persona : 'architect';
   const policy = resolveDifficulty(difficulty, timeBudgetOverrideMs);
   const tactical = getTacticalCandidates(position, position.turn, rule);
@@ -213,7 +214,8 @@ export function chooseMove(position, {
       score: evaluatePosition(position, position.turn, rule),
       persona: personaId,
       metrics: {
-        elapsedMs: 0,
+        elapsedMs: performance.now() - engineStarted,
+        searchElapsedMs: 0,
         nodes: 0,
         ttHits: 0,
         completedDepth: 0,
@@ -250,7 +252,8 @@ export function chooseMove(position, {
         score: evaluatePosition(position, position.turn, rule),
         persona: personaId,
         metrics: {
-          elapsedMs: 0,
+          elapsedMs: performance.now() - engineStarted,
+          searchElapsedMs: 0,
           nodes: 0,
           ttHits: 0,
           completedDepth: 0,
@@ -324,7 +327,8 @@ export function chooseMove(position, {
     score: searchResult.score,
     persona: personaId,
     metrics: {
-      elapsedMs: searchResult.elapsedMs ?? 0,
+      elapsedMs: performance.now() - engineStarted,
+      searchElapsedMs: searchResult.elapsedMs ?? 0,
       nodes: searchResult.nodes ?? 0,
       ttHits: searchResult.ttHits ?? 0,
       completedDepth: searchResult.completedDepth ?? 0,
