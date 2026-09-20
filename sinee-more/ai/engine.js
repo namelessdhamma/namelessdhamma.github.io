@@ -1,6 +1,6 @@
 import { LINES } from './constants.js';
 import { topPiece, applyMove } from './rules.js';
-import { evaluatePosition } from './evaluation.js';
+import { evaluatePosition, BASE_PROFILE } from './evaluation.js';
 import { searchIterative } from './search.js';
 import { getTacticalCandidates, getSafeMoves } from './guardian.js';
 import { scorePersonaMove, createPersonaScoringContext, PERSONAS } from './personas.js';
@@ -231,7 +231,7 @@ function collectOpeningCandidates(
     }));
 }
 
-function collectDeliberateErrorCandidates(
+export function collectDeliberateErrorCandidates(
   rootScores,
   allowedMoves,
   fallbackMove,
@@ -257,11 +257,15 @@ function collectDeliberateErrorCandidates(
     .slice(1)
     .map(item => ({
       move: item.move,
+      objectiveScore: item.score,
       searchRegret: bestScore - item.score
     }))
     .filter(item =>
       Number.isFinite(item.searchRegret) &&
-      item.searchRegret > 1e-9
+      item.searchRegret > 1e-9 &&
+      // A deliberate strategic mistake may be suboptimal, but must not
+      // knowingly choose a forced loss already proven by completed search.
+      item.objectiveScore > -BASE_PROFILE.terminal * 0.5
     )
     .sort((a, b) =>
       a.searchRegret - b.searchRegret ||
