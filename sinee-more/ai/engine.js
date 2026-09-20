@@ -147,19 +147,28 @@ function collectTopCandidates(rootScores, tacticalMoves, bestMove, limit) {
 function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
   if (candidates.length <= 1) return candidates[0]?.move ?? null;
 
-  const scored = candidates.map(item => {
-    const personaScore = scorePersonaMove(position, item.move, rule, personaId);
+  const raw = candidates.map(item => ({
+    ...item,
+    personaScore: scorePersonaMove(position, item.move, rule, personaId)
+  }));
+  const minPersona = Math.min(...raw.map(item => item.personaScore));
+  const maxPersona = Math.max(...raw.map(item => item.personaScore));
+  const spanPersona = Math.max(1e-9, maxPersona - minPersona);
+
+  const scored = raw.map(item => {
+    const personaNormalized =
+      ((item.personaScore - minPersona) / spanPersona) * 2 - 1;
     return {
       ...item,
-      personaScore,
-      combinedScore: item.score + personaScore * personaWeight
+      personaNormalized,
+      combinedScore: item.score + personaNormalized * personaWeight
     };
   });
 
   scored.sort((a, b) =>
     b.combinedScore - a.combinedScore ||
     b.score - a.score ||
-    b.personaScore - a.personaScore ||
+    b.personaNormalized - a.personaNormalized ||
     a.move.cell - b.move.cell ||
     a.move.rank - b.move.rank
   );
