@@ -189,7 +189,8 @@ test('optimized safe-move scan matches brute one-ply defense', () => {
         const next = applyMove(item.position, move, item.rule);
         if (!next) return false;
         if (next.status === 'win') return next.winner === player;
-        const opponent = next.turn;
+        const opponent = player === LIGHT ? DARK : LIGHT;
+        if (next.turn !== opponent) return true;
         return !getLegalMoves(next, opponent, item.rule).some(reply => {
           const after = applyMove(next, reply, item.rule);
           return after?.status === 'win' && after.winner === opponent;
