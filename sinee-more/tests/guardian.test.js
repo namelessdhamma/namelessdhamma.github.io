@@ -222,3 +222,28 @@ test('two opponent tops do not restrict safe moves when the third cell is un-cov
   const safe = getSafeMoves(p, p.turn, RULE_C);
   assert.deepEqual(safe, legal);
 });
+
+
+test('Ladder two-top line is ignored when no remaining rank can complete monotonic order', () => {
+  let p = createInitialPosition(LIGHT);
+  p = applyMove(p, { player: LIGHT, rank: 1, cell: 4 }, RULE_D);
+  p = applyMove(p, { player: DARK, rank: 8, cell: 0 }, RULE_D);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 6 }, RULE_D);
+  p = applyMove(p, { player: DARK, rank: 1, cell: 1 }, RULE_D);
+
+  assert.deepEqual(getImmediateThreatCells(p, DARK, RULE_D), [2]);
+  assert.deepEqual(getImmediateWins(p, DARK, RULE_D), []);
+
+  const legal = getLegalMoves(p, p.turn, RULE_D);
+  const safe = getSafeMoves(p, p.turn, RULE_D);
+  assert.deepEqual(safe, legal);
+});
+
+test('precomputed legal moves preserve safe-move semantics', () => {
+  const fx = immediateBlockFixture();
+  const legal = getLegalMoves(fx.position, fx.position.turn, fx.rule);
+  assert.deepEqual(
+    getSafeMoves(fx.position, fx.position.turn, fx.rule, legal),
+    getSafeMoves(fx.position, fx.position.turn, fx.rule)
+  );
+});
