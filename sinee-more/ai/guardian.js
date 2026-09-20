@@ -59,6 +59,11 @@ function forcingMoves(position, player, rule, candidates) {
     const threats = getImmediateWins(next, player, rule);
     if (threats.length < 2) continue;
 
+    if (next.turn === player) {
+      out.push(move);
+      continue;
+    }
+
     let forced = true;
     const replies = getLegalMoves(next, next.turn, rule);
     for (const reply of replies) {
