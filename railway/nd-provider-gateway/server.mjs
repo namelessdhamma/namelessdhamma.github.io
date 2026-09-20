@@ -1028,7 +1028,7 @@ const muxServer=http.createServer(async(req,res)=>{
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
         youtube:{configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),writes:YT_WRITES,tools:YT_TOOLS.length},
-        lightpanda:{configured:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV}
+        lightpanda:{configured:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_stage:lpCdp.stage,cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:String(lpCdp.lastError||"").slice(0,300)}
       };
       const raw=Buffer.from(JSON.stringify(body));
       res.writeHead(200,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
