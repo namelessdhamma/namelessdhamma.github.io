@@ -109,3 +109,18 @@ test('positions without two owned tops on a line have no immediate threat cells'
   assert.deepEqual(getImmediateThreatCells(p, LIGHT, RULE_D), []);
   assert.deepEqual(getImmediateWins(p, LIGHT, RULE_D), []);
 });
+
+
+test('safe-move scan returns all legal moves when opponent has no line threat', () => {
+  let p = createInitialPosition(LIGHT);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 4 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 3, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 4, cell: 8 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 5, cell: 2 }, RULE_C);
+
+  // Dark has two visible tops, but they do not share a winning line.
+  assert.deepEqual(getImmediateThreatCells(p, DARK, RULE_C), []);
+  const legal = (await import('../ai/rules.js')).getLegalMoves(p, p.turn, RULE_C);
+  const safe = getSafeMoves(p, p.turn, RULE_C);
+  assert.deepEqual(safe, legal);
+});
