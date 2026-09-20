@@ -1,5 +1,5 @@
-name: Sinee More AI v1 D Persona Control
-# diagnostic-sample: 1
+name: Sinee More AI v1 D Medium Search-Only Control
+# diagnostic-sample: 2
 
 on:
   workflow_dispatch:
@@ -12,9 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  d-persona-control:
+  d-medium-search-only:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: sinee-more
@@ -23,24 +23,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: D with Medium persona influence matched to Hard
+      - name: Production D with Medium deliberate errors disabled
         continue-on-error: true
         shell: bash
         run: |
           cp ai/difficulty.js /tmp/difficulty.js
+          trap 'cp /tmp/difficulty.js ai/difficulty.js' EXIT
           python3 - <<'PY'
           from pathlib import Path
           p=Path('ai/difficulty.js')
           s=p.read_text()
-          # Replace only the Medium block's first matching values.
           marker='medium: Object.freeze({'
           a,b=s.split(marker,1)
-          b=b.replace('personaWeight: 0.6,','personaWeight: 0.35,',1)
-          b=b.replace('openingPersonaWeight: 6,','openingPersonaWeight: 3,',1)
+          b=b.replace('strategicErrorRate: 0.58,','strategicErrorRate: 0,',1)
           p.write_text(a+marker+b)
           PY
-          node tools/qualification.js --strength-only --rules D --games-per-pair 8 --budget-scale 0.10 --json d-persona-control.json
-          cp /tmp/difficulty.js ai/difficulty.js
+          node tools/qualification.js --strength-only --rules D --games-per-pair 8 --budget-scale 1.0 --json d-medium-search-only.json
       - name: Restore difficulty
         if: always()
         run: git checkout -- ai/difficulty.js
@@ -48,6 +46,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sinee-more-ai-v1-d-persona-control
-          path: sinee-more/d-persona-control.json
+          name: sinee-more-ai-v1-d-medium-search-only
+          path: sinee-more/d-medium-search-only.json
           if-no-files-found: ignore
