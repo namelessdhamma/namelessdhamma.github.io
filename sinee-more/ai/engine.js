@@ -236,7 +236,7 @@ export function collectDeliberateErrorCandidates(
   allowedMoves,
   fallbackMove,
   severity,
-  protectForcedLoss = false
+  protectProvenTerminal = false
 ) {
   const allowed = new Set(allowedMoves.map(moveKey));
   const ranked = (rootScores ?? [])
@@ -256,7 +256,7 @@ export function collectDeliberateErrorCandidates(
   const bestScore = ranked[0].score;
   const terminalScoreFloor = BASE_PROFILE.terminal * 0.5;
 
-  if (protectForcedLoss && bestScore >= terminalScoreFloor) {
+  if (protectProvenTerminal && bestScore >= terminalScoreFloor) {
     return [{
       move: ranked[0].move,
       score: 0,
@@ -275,7 +275,7 @@ export function collectDeliberateErrorCandidates(
       Number.isFinite(item.searchRegret) &&
       item.searchRegret > 1e-9 &&
       (
-        !protectForcedLoss ||
+        !protectProvenTerminal ||
         // Medium D may make strategic mistakes, but should not knowingly
         // choose a forced loss already proven by completed search.
         item.objectiveScore > -terminalScoreFloor
