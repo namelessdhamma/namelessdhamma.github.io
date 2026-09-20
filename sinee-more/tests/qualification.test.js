@@ -74,4 +74,6 @@ test('focused strength probe can isolate CD calibration', () => {
     Object.keys(report.metrics.strength.mediumVsEasy.byRule),
     ['CD']
   );
+  assert.equal(report.metrics.strength.hardVsMedium.weakestRule, 'CD');
+  assert.equal(report.metrics.strength.mediumVsEasy.weakestRule, 'CD');
 });
