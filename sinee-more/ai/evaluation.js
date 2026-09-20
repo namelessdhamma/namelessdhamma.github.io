@@ -13,7 +13,8 @@ export const BASE_PROFILE = Object.freeze({
   ladderResource: 0.35,
   linePressure: 7,
   forkPressure: 10,
-  ladderPlan: 0.9,
+  ladderPlan: 0.45,
+  ladderStructuralFlex: 1.5,
   ladderOwned: 8,
   ladderBlocked: 11,
   ladderGlobalCapacity: 16,
@@ -221,8 +222,24 @@ function classicLineFeatures(position, player) {
   return { pressure, nearWins };
 }
 
+function ladderStructuralFlexibility(position, player) {
+  let flexibility = 0;
+  for (const line of LINES) {
+    for (let index = 0; index < line.length; index += 1) {
+      const top = topPiece(position, line[index]);
+      if (!top || top.player !== player) continue;
+      for (const triple of LADDER_TRIPLES) {
+        if (triple[index] === top.rank) flexibility += 1;
+      }
+    }
+  }
+  return flexibility;
+}
+
 function ladderPotential(position, player, rule, profile) {
-  let score = 0;
+  let score =
+    ladderStructuralFlexibility(position, player) *
+    profile.ladderStructuralFlex;
   const analysis = analyzeLadder(position, player, rule);
 
   for (const { own, plans } of analysis.entries) {
