@@ -436,7 +436,6 @@ function strengthMatchup({
     games,
     scoreRate,
     score95CI,
-    gateMargin: scoreRate - GATES.hardVsMediumMinScore,
     averagePlies: games ? totalPlies / games : 0,
     repeatedSequenceRate: games
       ? repeatedGames / games
@@ -479,8 +478,13 @@ function strengthMetrics({
 
   hardVsMedium.gateMargin =
     hardVsMedium.scoreRate - GATES.hardVsMediumMinScore;
+  hardVsMedium.ciClearsGate =
+    hardVsMedium.score95CI.low >= GATES.hardVsMediumMinScore;
+
   mediumVsEasy.gateMargin =
     mediumVsEasy.scoreRate - GATES.mediumVsEasyMinScore;
+  mediumVsEasy.ciClearsGate =
+    mediumVsEasy.score95CI.low >= GATES.mediumVsEasyMinScore;
 
   return { hardVsMedium, mediumVsEasy };
 }
