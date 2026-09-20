@@ -1,5 +1,5 @@
 name: Sinee More AI v1 Strength Probe
-# calibration-sample: 1
+# calibration-sample: 2
 
 on:
   workflow_dispatch:
