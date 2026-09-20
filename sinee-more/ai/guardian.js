@@ -32,28 +32,20 @@ export function getSafeMoves(position, player, rule) {
 }
 
 function forcingMoves(position, player, rule, candidates) {
+  if (position.moves < 2) return [];
   const probe = position.turn === player
     ? position
     : { ...position, turn: player };
   const out = [];
+
   for (const move of candidates) {
     const next = applyMove(probe, move, rule);
     if (!next || next.status !== 'playing') continue;
-    const replyMoves = getLegalMoves(next, next.turn, rule);
-    let guaranteesThreat = replyMoves.length > 0;
-    for (const reply of replyMoves) {
-      const afterReply = applyMove(next, reply, rule);
-      if (!afterReply || afterReply.status !== 'playing') {
-        guaranteesThreat = false;
-        break;
-      }
-      const wins = getImmediateWins(afterReply, player, rule);
-      if (wins.length < 1) {
-        guaranteesThreat = false;
-        break;
-      }
-    }
-    if (guaranteesThreat || getImmediateWins(next, player, rule).length >= 2) out.push(move);
+
+    // A true tactical fork means that, before the opponent replies,
+    // the mover would have at least two distinct immediate wins next turn.
+    // This bounded definition avoids an exhaustive reply × reply scan.
+    if (getImmediateWins(next, player, rule).length >= 2) out.push(move);
   }
   return out;
 }
