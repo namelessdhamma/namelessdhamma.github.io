@@ -140,8 +140,12 @@ export function getSafeMoves(position, player, rule) {
   const opponent = otherPlayer(player);
   if (visibleTopCount(position, opponent) < 2) return legal;
 
-  const threatLines = getImmediateThreatLines(probe, opponent);
-  if (!threatLines.length) return legal;
+  const opponentWins = getImmediateWins(probe, opponent, rule);
+  if (!opponentWins.length) return legal;
+
+  const winningTargets = new Set(opponentWins.map(move => move.cell));
+  const threatLines = getImmediateThreatLines(probe, opponent)
+    .filter(item => winningTargets.has(item.target));
 
   const relevantCells = new Set();
   for (const item of threatLines) {
