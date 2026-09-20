@@ -83,7 +83,8 @@ function makeAgent({
         overrunMs: Math.max(0, result.metrics.elapsedMs - budget),
         nodes: result.metrics.nodes,
         ttHits: result.metrics.ttHits,
-        depth: result.metrics.completedDepth
+        depth: result.metrics.completedDepth,
+        deliberateError: result.metrics.deliberateError === true
       });
       ply += 1;
       return result;
@@ -486,16 +487,13 @@ function openingMetrics({
   };
 }
 
-function timingMetrics(timings) {
+function summarizeTiming(timings) {
   const elapsed = timings.map(x => x.elapsedMs);
   const overruns = timings.map(x => x.overrunMs);
-  const totalNodes = timings.reduce(
-    (sum, x) => sum + x.nodes, 0
-  );
-  const totalHits = timings.reduce(
-    (sum, x) => sum + x.ttHits, 0
-  );
+  const totalNodes = timings.reduce((sum, x) => sum + x.nodes, 0);
+  const totalHits = timings.reduce((sum, x) => sum + x.ttHits, 0);
   const depth = timings.map(x => x.depth);
+  const deliberateErrors = timings.filter(x => x.deliberateError).length;
 
   return {
     samples: timings.length,
@@ -509,9 +507,25 @@ function timingMetrics(timings) {
     meanCompletedDepth: depth.length
       ? depth.reduce((a, b) => a + b, 0) / depth.length
       : 0,
+    deliberateErrors,
+    deliberateErrorRate: timings.length
+      ? deliberateErrors / timings.length
+      : 0,
     nodes: totalNodes,
     ttHits: totalHits,
     ttHitRatio: totalNodes ? totalHits / totalNodes : 0
+  };
+}
+
+function timingMetrics(timings) {
+  return {
+    ...summarizeTiming(timings),
+    byDifficulty: Object.fromEntries(
+      ['easy', 'medium', 'hard'].map(difficulty => [
+        difficulty,
+        summarizeTiming(timings.filter(x => x.difficulty === difficulty))
+      ])
+    )
   };
 }
 
