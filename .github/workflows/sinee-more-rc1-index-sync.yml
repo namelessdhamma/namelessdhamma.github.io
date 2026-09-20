@@ -1,0 +1,59 @@
+name: Sinee More RC1 Index Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.nd-runtime/sinee-more-release-index.trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  sync-index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify RC1 dependencies and copy index
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin sinee-more-ai-v1
+          python3 - <<'PY'
+          import subprocess, sys
+          expected = {
+            'sinee-more/ai/constants.js':'1b35141306c42d276813b9c9f1be421d69b24e6d',
+            'sinee-more/ai/difficulty.js':'8f5d881b76632d82d65e16f53ec4348768db8a92',
+            'sinee-more/ai/engine.js':'e1ae86ffb2a0e8c5d21cbc1c4b25c5235dc78ee1',
+            'sinee-more/ai/evaluation.js':'fd199bf2ebda2044b12cec683a81978f642e21b2',
+            'sinee-more/ai/guardian.js':'7908d6898a9de8a93d3e6ea84f17bf70789bd78b',
+            'sinee-more/ai/personas.js':'ab1a8fa86e03bc7c17ea26920c3588dc06e837ab',
+            'sinee-more/ai/rng.js':'1f1ffb16a4491d4fa8eda899815ebdfbaf040815',
+            'sinee-more/ai/rules.js':'4f2e22026d72511687134491b5e7a8d9ac1bf12e',
+            'sinee-more/ai/search.js':'7ca9d3e9257ca0fc4b3d8769376aae86aa62bd2b',
+            'sinee-more/ai/symmetry.js':'91f0524b123a0eb9ad9b1b80e3bcfb7375d2859f',
+            'sinee-more/app.js':'5345ba8111b49230239f03b3022e0cf0260759b9',
+          }
+          for path, want in expected.items():
+            got = subprocess.check_output(['git','hash-object',path], text=True).strip()
+            if got != want:
+              print(f'BLOB_MISMATCH {path} {got} != {want}', file=sys.stderr)
+              sys.exit(2)
+          PY
+          git show origin/sinee-more-ai-v1:sinee-more/index.html > sinee-more/index.html
+          got="$(git hash-object sinee-more/index.html)"
+          test "$got" = "4415ef79e2f38d0914c1760711f8ec2e08368283"
+      - name: Commit release switch
+        shell: bash
+        run: |
+          git config user.name 'nd-sinee-more-release'
+          git config user.email 'namelessdhamma@gmail.com'
+          git add sinee-more/index.html
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'release(sinee-more): publish AI 1.0-rc1 index'
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
