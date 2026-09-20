@@ -120,7 +120,7 @@ test('safe-move scan returns all legal moves when opponent has no line threat', 
 
   // Dark has two visible tops, but they do not share a winning line.
   assert.deepEqual(getImmediateThreatCells(p, DARK, RULE_C), []);
-  const legal = (await import('../ai/rules.js')).getLegalMoves(p, p.turn, RULE_C);
+  const legal = getLegalMoves(p, p.turn, RULE_C);
   const safe = getSafeMoves(p, p.turn, RULE_C);
   assert.deepEqual(safe, legal);
 });
