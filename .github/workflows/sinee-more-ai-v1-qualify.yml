@@ -1,0 +1,37 @@
+name: Sinee More AI v1 Qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sinee-more-ai-v1]
+    paths:
+      - 'sinee-more/tools/qualification.js'
+      - 'sinee-more/ai/**'
+      - '.github/workflows/sinee-more-ai-v1-qualify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: sinee-more
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit tests
+        run: npm test
+      - name: Full AI qualification
+        run: npm run qualify:json
+      - name: Upload qualification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sinee-more-ai-v1-qualification
+          path: sinee-more/qualification-report.json
+          if-no-files-found: ignore
