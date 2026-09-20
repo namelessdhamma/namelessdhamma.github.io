@@ -2,7 +2,7 @@ import { LINES } from './constants.js';
 import { topPiece } from './rules.js';
 import { evaluatePosition } from './evaluation.js';
 import { searchIterative } from './search.js';
-import { getTacticalCandidates } from './guardian.js';
+import { getTacticalCandidates, getSafeMoves } from './guardian.js';
 import { scorePersonaMove, PERSONAS } from './personas.js';
 import { createRng } from './rng.js';
 import { resolveDifficulty } from './difficulty.js';
@@ -215,13 +215,22 @@ export function chooseMove(position, {
   }
 
   if (
-    (tactical.tier === 'SAFE' || tactical.tier === 'ALL_LEGAL') &&
+    (tactical.tier === 'SAFE' ||
+      tactical.tier === 'ALL_LEGAL' ||
+      tactical.tier === 'FORCING') &&
     policy.strategicErrorRate > 0 &&
     rng() < policy.strategicErrorRate
   ) {
+    let mistakePool = tactical.moves;
+    if (tactical.tier === 'FORCING') {
+      const forcing = new Set(tactical.moves.map(moveKey));
+      const safe = getSafeMoves(position, position.turn, rule);
+      const nonForcingSafe = safe.filter(move => !forcing.has(moveKey(move)));
+      mistakePool = nonForcingSafe.length ? nonForcingSafe : safe;
+    }
     const mistake = choosePlausibleMistake(
       position,
-      tactical.moves,
+      mistakePool,
       rule,
       policy.strategicErrorSeverity,
       rng
