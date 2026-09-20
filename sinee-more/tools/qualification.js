@@ -37,7 +37,8 @@ export const GATES = Object.freeze({
   minPairwisePersonaDisagreement: 0.10,
   minStrongPersonaPairsAt20Pct: 3,
   maxMixedOpeningShare: 0.75,
-  maxBudgetOverrunMs: 40
+  maxBudgetOverrunMs: 40,
+  minStrengthGamesPerDifficultyMatchup: 400
 });
 
 const RULES = Object.freeze([RULE_C, RULE_D, RULE_CD]);
@@ -755,6 +756,8 @@ export function runQualification({
     enforceStatisticalGates
   });
   const timing = timingMetrics(timings);
+  const totalStrengthGamesPerDifficultyMatchup =
+    gamesPerPair * RULES.length * PERSONA_IDS.length;
 
   const failures = [];
 
@@ -784,6 +787,19 @@ export function runQualification({
   }
 
   if (enforceStatisticalGates) {
+    if (gamesPerPair % 4 !== 0) {
+      failures.push(
+        `Incomplete mirrored quartet: gamesPerPair=${gamesPerPair}`
+      );
+    }
+    if (
+      totalStrengthGamesPerDifficultyMatchup <
+      GATES.minStrengthGamesPerDifficultyMatchup
+    ) {
+      failures.push(
+        `Strength sample too small: ${totalStrengthGamesPerDifficultyMatchup}`
+      );
+    }
     if (
       personas.minPairwiseDisagreement <
       GATES.minPairwisePersonaDisagreement
@@ -840,7 +856,9 @@ export function runQualification({
     config: {
       gamesPerPair,
       totalGamesPerDifficultyMatchup:
-        gamesPerPair * RULES.length * PERSONA_IDS.length,
+        totalStrengthGamesPerDifficultyMatchup,
+      completeMirrorQuartetsPerPersona: Math.floor(gamesPerPair / 4),
+      incompleteMirrorGamesPerPersona: gamesPerPair % 4,
       seed,
       enforceStatisticalGates,
       qualificationBudgetScale,
