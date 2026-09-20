@@ -42,3 +42,16 @@ test('browser controller renders the active persona through personaName()', asyn
   assert.match(app, /personaName\(\)/);
   assert.doesNotMatch(app, /persona\(\)\.name/);
 });
+
+
+test('v0.9.1 selected-setting highlighting remains wired in rc1', async () => {
+  const [html, app] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../app.js', import.meta.url), 'utf8')
+  ]);
+  assert.match(html, /\.choice\.selected/);
+  assert.match(app, /markSelected\('rule',rule\)/);
+  assert.match(app, /markSelected\('mode',mode\)/);
+  assert.match(app, /markSelected\('level',difficulty\)/);
+  assert.match(app, /markSelected\('style',styleChoice\)/);
+});
