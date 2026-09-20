@@ -125,7 +125,13 @@ export function getSafeMoves(position, player, rule) {
     for (const cell of item.line) relevantCells.add(cell);
   }
 
+  const ownWinningMoves = new Set(
+    getImmediateWins(probe, player, rule)
+      .map(move => `${move.cell}:${move.rank}`)
+  );
+
   return legal.filter(move => {
+    if (ownWinningMoves.has(`${move.cell}:${move.rank}`)) return true;
     if (!relevantCells.has(move.cell)) return false;
     const next = applyMove(probe, move, rule);
     if (!next) return false;
