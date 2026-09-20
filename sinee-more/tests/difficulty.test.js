@@ -4,6 +4,7 @@ import { RULE_C, RULE_D, RULE_CD, LIGHT } from '../ai/constants.js';
 import { createInitialPosition, applyMove } from '../ai/rules.js';
 import { DIFFICULTY, resolveDifficulty } from '../ai/difficulty.js';
 import { chooseMove } from '../ai/engine.js';
+import { evaluatePosition } from '../ai/evaluation.js';
 import {
   immediateWinFixture, immediateBlockFixture,
   increasingLadderFixture, decreasingLadderFixture
@@ -255,7 +256,7 @@ test('deliberate Easy errors in CD are objectively below the best safe one-ply m
   const safe = getSafeMoves(p, p.turn, RULE_CD);
   const scores = safe.map(move => {
     const next = applyMove(p, move, RULE_CD);
-    return { move, score: (await import('../ai/evaluation.js')).evaluatePosition(next, p.turn, RULE_CD) };
+    return { move, score: evaluatePosition(next, p.turn, RULE_CD) };
   });
   const best = Math.max(...scores.map(x => x.score));
 
