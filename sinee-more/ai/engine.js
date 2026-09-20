@@ -90,13 +90,29 @@ function openingSearchCandidates(position, moves, rule, policy) {
       Math.floor(Math.max(1, policy.timeBudgetMs) / 20) + 5
     )
   );
-  return [...moves]
-    .sort((a, b) =>
-      cheapOpeningScore(b, rule) - cheapOpeningScore(a, rule) ||
-      a.cell - b.cell ||
-      a.rank - b.rank
-    )
-    .slice(0, dynamicLimit);
+  const ranked = [...moves].sort((a, b) =>
+    cheapOpeningScore(b, rule) - cheapOpeningScore(a, rule) ||
+    a.cell - b.cell ||
+    a.rank - b.rank
+  );
+  const selected = ranked.slice(0, dynamicLimit);
+
+  // Prevent the bounded opening search from becoming center-only.
+  // This keeps at least one strategically plausible representative of
+  // center, corner and edge play, while still starting from the strongest
+  // generic opening shortlist.
+  const ensureClass = predicate => {
+    if (selected.some(predicate)) return;
+    const candidate = ranked.find(predicate);
+    if (!candidate) return;
+    if (selected.length >= dynamicLimit) selected[selected.length - 1] = candidate;
+    else selected.push(candidate);
+  };
+  ensureClass(move => move.cell === 4);
+  ensureClass(move => [0, 2, 6, 8].includes(move.cell));
+  ensureClass(move => [1, 3, 5, 7].includes(move.cell));
+
+  return [...new Map(selected.map(move => [moveKey(move), move])).values()];
 }
 
 function collectNearBestCandidates(rootScores, tacticalMoves, bestMove, regretBand) {
