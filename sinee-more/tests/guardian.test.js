@@ -61,3 +61,13 @@ test('guardian always returns legal candidates across C D and CD', () => {
     assert.ok(['SAFE', 'ALL_LEGAL'].includes(result.tier));
   }
 });
+
+
+test('early positions expose all legal moves as safe when opponent cannot yet have two visible tops', () => {
+  for (const rule of [RULE_C, RULE_D, RULE_CD]) {
+    const p = createInitialPosition(LIGHT);
+    assert.deepEqual(getImmediateWins(p, LIGHT, rule), []);
+    const safe = getSafeMoves(p, LIGHT, rule);
+    assert.equal(safe.length, 81);
+  }
+});
