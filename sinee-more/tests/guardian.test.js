@@ -206,3 +206,19 @@ test('optimized safe-move scan matches brute one-ply defense', () => {
     assert.deepEqual(actual, expected, item.name);
   }
 });
+
+
+test('two opponent tops do not restrict safe moves when the third cell is un-coverable', () => {
+  let p = createInitialPosition(LIGHT);
+  p = applyMove(p, { player: LIGHT, rank: 9, cell: 2 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 1, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 1, cell: 4 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 2, cell: 1 }, RULE_C);
+
+  assert.deepEqual(getImmediateThreatCells(p, DARK, RULE_C), [2]);
+  assert.deepEqual(getImmediateWins(p, DARK, RULE_C), []);
+
+  const legal = getLegalMoves(p, p.turn, RULE_C);
+  const safe = getSafeMoves(p, p.turn, RULE_C);
+  assert.deepEqual(safe, legal);
+});
