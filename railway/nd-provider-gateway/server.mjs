@@ -13,7 +13,7 @@ const LIGHTPANDA_TOKEN=String(process.env.LIGHTPANDA_TOKEN||'').trim();
 const LIGHTPANDA_PATH_TOKEN=String(process.env.ND_LIGHTPANDA_MCP_PATH_TOKEN||'').trim();
 const LIGHTPANDA_MCP_PATH=LIGHTPANDA_PATH_TOKEN?'/nd/lightpanda/mcp/'+LIGHTPANDA_PATH_TOKEN:'';
 const LIGHTPANDA_API='https://euwest.cloud.lightpanda.io/api/fetch';
-const LIGHTPANDA_MCP_SSE='https://euwest.cloud.lightpanda.io/mcp/sse';
+const LIGHTPANDA_MCP_SSE='https://euwest.cloud.lightpanda.io/mcp/sse?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
 let lpUpstream={reader:null,postUrl:'',pending:new Map(),connecting:null,ready:false,seq:1000,lastError:''};
 
 const API='https://cloud-api.yandex.net/v1/disk';
