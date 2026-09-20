@@ -10,6 +10,7 @@ export const DIFFICULTY = Object.freeze({
     strategicNoise: 0.25,
     strategicErrorRate: 0.90,
     strategicErrorSeverity: 1.00,
+    forcingBudgetShare: 0.08,
     guardian: 'full'
   }),
   medium: Object.freeze({
@@ -23,6 +24,7 @@ export const DIFFICULTY = Object.freeze({
     strategicNoise: 0.10,
     strategicErrorRate: 0.58,
     strategicErrorSeverity: 0.85,
+    forcingBudgetShare: 0.12,
     guardian: 'full'
   }),
   hard: Object.freeze({
@@ -36,6 +38,7 @@ export const DIFFICULTY = Object.freeze({
     strategicNoise: 0,
     strategicErrorRate: 0,
     strategicErrorSeverity: 0,
+    forcingBudgetShare: 0.20,
     guardian: 'full'
   })
 });
