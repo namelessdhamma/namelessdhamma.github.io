@@ -8,7 +8,7 @@ export const DIFFICULTY = Object.freeze({
     openingPersonaWeight: 9,
     openingCandidateLimit: 40,
     strategicNoise: 0.25,
-    strategicErrorRate: 0.75,
+    strategicErrorRate: 0.90,
     strategicErrorSeverity: 1.00,
     guardian: 'full'
   }),
@@ -21,7 +21,7 @@ export const DIFFICULTY = Object.freeze({
     openingPersonaWeight: 6,
     openingCandidateLimit: 30,
     strategicNoise: 0.10,
-    strategicErrorRate: 0.36,
+    strategicErrorRate: 0.58,
     strategicErrorSeverity: 0.85,
     guardian: 'full'
   }),
