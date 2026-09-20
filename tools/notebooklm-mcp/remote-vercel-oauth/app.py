@@ -608,6 +608,54 @@ async def _drive_permissions_audit() -> dict:
     return {"statehead_service_accounts": service_accounts, "targets": targets}
 
 
+async def _drive_true_writer_inventory() -> dict:
+    bearer = await _mint_drive_bearer()
+    try:
+        q = "trashed = false"
+        fields = urllib.parse.quote(
+            "files(id,name,mimeType,modifiedTime,version,trashed,parents,webViewLink)",
+            safe=",()",
+        )
+        url = (
+            "https://www.googleapis.com/drive/v3/files?q="
+            + urllib.parse.quote(q, safe="")
+            + "&pageSize=1000&orderBy=modifiedTime%20desc&spaces=drive"
+            + "&supportsAllDrives=true&includeItemsFromAllDrives=true&fields="
+            + fields
+        )
+        data = await asyncio.to_thread(_drive_http_sync, bearer, "GET", url)
+        files = list(data.get("files") or [])
+        known_ids = {
+            "1Hergfhojk4Un8PBD0yyaZ_He9KGLmqTV",
+            "1bivAThjgwB3yq7P4BVC5PooQwt27UWgT4zP6Su2pkR4",
+            "1q9SVB3Z2-FZFvPU1AZR7rTt5JN8ELDMazTCVs7pxcfQ",
+        }
+        out = []
+        seen = set()
+        for item in files:
+            fid = str(item.get("id") or "")
+            name = str(item.get("name") or "")
+            low = name.lower()
+            if (
+                "true writer" in low
+                or "true_writer" in low
+                or "true-writer" in low
+                or fid in known_ids
+            ):
+                out.append(item)
+                seen.add(fid)
+        for fid in sorted(known_ids - seen):
+            try:
+                meta = await _drive_metadata_user(fid)
+                if meta and not meta.get("trashed"):
+                    out.append(meta)
+            except Exception:
+                pass
+        return {"count": len(out), "files": out}
+    finally:
+        bearer = ""
+
+
 async def _drive_repair_railway_rw(args: dict) -> dict:
     if args.get("confirm") is not True:
         raise RuntimeError("confirm_required")
@@ -890,6 +938,9 @@ async def github_bridge(request: Request) -> JSONResponse:
         async with client_factory() as client:
             if operation == "drive_permissions_audit":
                 result = await _drive_permissions_audit()
+
+            elif operation == "drive_true_writer_inventory":
+                result = await _drive_true_writer_inventory()
 
             elif operation == "drive_read_canonical_json":
                 result = await _drive_read_canonical_json(args)
