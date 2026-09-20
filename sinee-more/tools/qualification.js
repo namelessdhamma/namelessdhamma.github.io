@@ -381,7 +381,17 @@ function strengthMatchup({
 
   for (let r = 0; r < rules.length; r += 1) {
     const rule = rules[r];
-    byRule[rule] = { score: 0, games: 0, rate: 0 };
+    byRule[rule] = {
+      score: 0,
+      games: 0,
+      rate: 0,
+      byPersona: Object.fromEntries(
+        PERSONA_IDS.map(id => [id, { score: 0, games: 0, rate: 0 }])
+      ),
+      byPhase: Object.fromEntries(
+        [0, 1, 2, 3].map(phase => [phase, { score: 0, games: 0, rate: 0 }])
+      )
+    };
 
     for (let p = 0; p < PERSONA_IDS.length; p += 1) {
       const persona = PERSONA_IDS[p];
@@ -402,6 +412,11 @@ function strengthMatchup({
         totalPlies += result.plies;
         byRule[rule].score += result.score;
         byRule[rule].games += 1;
+        byRule[rule].byPersona[persona].score += result.score;
+        byRule[rule].byPersona[persona].games += 1;
+        const phase = g % 4;
+        byRule[rule].byPhase[phase].score += result.score;
+        byRule[rule].byPhase[phase].games += 1;
         sequences.set(
           result.sequence,
           (sequences.get(result.sequence) ?? 0) + 1
@@ -414,6 +429,14 @@ function strengthMatchup({
     byRule[rule].rate = byRule[rule].games
       ? byRule[rule].score / byRule[rule].games
       : 0;
+    for (const persona of PERSONA_IDS) {
+      const bucket = byRule[rule].byPersona[persona];
+      bucket.rate = bucket.games ? bucket.score / bucket.games : 0;
+    }
+    for (const phase of [0, 1, 2, 3]) {
+      const bucket = byRule[rule].byPhase[phase];
+      bucket.rate = bucket.games ? bucket.score / bucket.games : 0;
+    }
   }
 
   const repeatedGames = [...sequences.values()]
