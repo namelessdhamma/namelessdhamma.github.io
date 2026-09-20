@@ -86,6 +86,14 @@ _DRIVE_CANONICAL_TARGETS = {
     "durable_root": "1cnJSi9cmYV_P-EBP1Hy780s3m1s6ybli",
 }
 
+_LITERARY_CANONICAL_MARKDOWN_NAMES = frozenset({
+    "ND_True_Writer_v0_7_0_CANONICAL_SKILL.md",
+    "ND_Books_Creator_v3_0_0_CANONICAL_SKILL.md",
+    "ND_Literary_Critic_v0_1_0_CANONICAL_SKILL.md",
+    "ND_Story_Architect_v0_1_0_CANONICAL_SKILL.md",
+    "ND_Technical_Writer_v0_1_0_CANONICAL_SKILL.md",
+})
+
 
 async def _mint_drive_bearer() -> str:
     raw = base64.b64decode(config.master_token_b64.encode("ascii"), validate=True)
@@ -257,6 +265,154 @@ def _drive_delete_sync(bearer: str, file_id: str) -> None:
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")
         raise RuntimeError("google_drive_delete_" + str(exc.code) + ":" + detail[:900]) from None
+
+
+
+def _drive_find_named_in_parent_sync(
+    bearer: str,
+    name: str,
+    parent_id: str,
+) -> list[dict]:
+    escaped_name = name.replace("\\", "\\\\").replace("'", "\\'")
+    escaped_parent = parent_id.replace("\\", "\\\\").replace("'", "\\'")
+    q = (
+        "name = '" + escaped_name + "' and '"
+        + escaped_parent + "' in parents and trashed = false"
+    )
+    fields = urllib.parse.quote(
+        "files(id,name,mimeType,modifiedTime,version,parents,md5Checksum,webViewLink)",
+        safe=",()",
+    )
+    url = (
+        "https://www.googleapis.com/drive/v3/files?q="
+        + urllib.parse.quote(q, safe="")
+        + "&pageSize=10&spaces=drive&supportsAllDrives=true"
+        + "&includeItemsFromAllDrives=true&fields="
+        + fields
+    )
+    data = _drive_http_sync(bearer, "GET", url)
+    return list(data.get("files") or [])
+
+
+def _drive_create_markdown_sync(
+    bearer: str,
+    name: str,
+    parent_id: str,
+    content: bytes,
+) -> dict:
+    boundary = "ndliterarycanonicalboundary"
+    meta = json.dumps(
+        {
+            "name": name,
+            "mimeType": "text/markdown",
+            "parents": [parent_id],
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    crlf = bytes([13, 10])
+    bnd = boundary.encode("ascii")
+    body = (
+        b"--" + bnd + crlf
+        + b"Content-Type: application/json; charset=UTF-8" + crlf + crlf
+        + meta + crlf
+        + b"--" + bnd + crlf
+        + b"Content-Type: text/markdown; charset=UTF-8" + crlf + crlf
+        + content + crlf
+        + b"--" + bnd + b"--" + crlf
+    )
+    url = (
+        "https://www.googleapis.com/upload/drive/v3/files"
+        "?uploadType=multipart&supportsAllDrives=true"
+        "&fields=id,name,mimeType,modifiedTime,version,parents,md5Checksum,webViewLink"
+    )
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": "Bearer " + bearer,
+            "Content-Type": "multipart/related; boundary=" + boundary,
+            "Content-Length": str(len(body)),
+            "User-Agent": "nd-true-writer-canonical-prepare/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as response:
+            return json.loads(response.read().decode("utf-8", "replace") or "{}")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")
+        raise RuntimeError("google_drive_create_markdown_" + str(exc.code) + ":" + detail[:900]) from None
+
+
+async def _drive_create_immutable_markdown(args: dict) -> dict:
+    if args.get("confirm") is not True:
+        raise RuntimeError("confirm_required")
+    name = str(args.get("name") or "").strip()
+    if name not in _LITERARY_CANONICAL_MARKDOWN_NAMES:
+        raise RuntimeError("literary_canonical_name_denied")
+    content_text = str(args.get("content") or "")
+    raw = content_text.encode("utf-8")
+    if not raw or len(raw) > 200000:
+        raise RuntimeError("invalid_canonical_markdown_content")
+    if not content_text.startswith("---\n"):
+        raise RuntimeError("canonical_markdown_frontmatter_required")
+    parent_id = _DRIVE_CANONICAL_TARGETS["durable_root"]
+    bearer = await _mint_drive_bearer()
+    created_id = ""
+    try:
+        existing = await asyncio.to_thread(
+            _drive_find_named_in_parent_sync,
+            bearer,
+            name,
+            parent_id,
+        )
+        if len(existing) > 1:
+            raise RuntimeError("ambiguous_existing_canonical_markdown")
+        if len(existing) == 1:
+            existing_id = str(existing[0].get("id") or "")
+            if not existing_id:
+                raise RuntimeError("existing_canonical_markdown_missing_id")
+            readback = await asyncio.to_thread(_drive_file_bytes_sync, bearer, existing_id)
+            if readback != raw:
+                raise RuntimeError("existing_canonical_markdown_content_mismatch")
+            return {
+                "file_id": existing_id,
+                "name": name,
+                "parent_id": parent_id,
+                "byte_length": len(readback),
+                "sha256": hashlib.sha256(readback).hexdigest(),
+                "metadata": existing[0],
+                "readback_exact": True,
+                "reused_existing": True,
+            }
+
+        meta = await asyncio.to_thread(
+            _drive_create_markdown_sync,
+            bearer,
+            name,
+            parent_id,
+            raw,
+        )
+        created_id = str(meta.get("id") or "")
+        if not created_id:
+            raise RuntimeError("drive_create_markdown_missing_id")
+        readback = await asyncio.to_thread(_drive_file_bytes_sync, bearer, created_id)
+        if readback != raw:
+            await asyncio.to_thread(_drive_delete_sync, bearer, created_id)
+            created_id = ""
+            raise RuntimeError("drive_create_markdown_readback_mismatch")
+        return {
+            "file_id": created_id,
+            "name": name,
+            "parent_id": parent_id,
+            "byte_length": len(readback),
+            "sha256": hashlib.sha256(readback).hexdigest(),
+            "metadata": meta,
+            "readback_exact": True,
+            "reused_existing": False,
+        }
+    finally:
+        bearer = ""
 
 
 async def _drive_create_immutable_json(args: dict) -> dict:
@@ -740,6 +896,9 @@ async def github_bridge(request: Request) -> JSONResponse:
 
             elif operation == "drive_create_immutable_json":
                 result = await _drive_create_immutable_json(args)
+
+            elif operation == "drive_create_immutable_markdown":
+                result = await _drive_create_immutable_markdown(args)
 
             elif operation == "drive_repair_railway_rw":
                 result = await _drive_repair_railway_rw(args)
