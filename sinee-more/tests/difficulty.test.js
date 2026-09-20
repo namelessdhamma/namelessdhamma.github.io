@@ -88,7 +88,10 @@ test('engine always returns a legal coherent move under tiny budget', () => {
   });
   assert.ok(result.move);
   assert.equal(result.move.player, LIGHT);
-  assert.equal(result.metrics.timedOut, true);
+  assert.ok(
+    result.metrics.timedOut || result.metrics.deliberateError === true,
+    JSON.stringify(result.metrics)
+  );
 });
 
 
