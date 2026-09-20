@@ -8,11 +8,14 @@ const ND_YANDEX_MUX_CODE_REV='yandex-delete-v3-20260919';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 const ROUTE=String(process.env.ND_YANDEX_MCP_ROUTE_TOKEN||'').trim();
 const YANDEX_MCP_PATH=ROUTE?'/yandex/mcp/'+ROUTE:'';
-const ND_LIGHTPANDA_MUX_CODE_REV='lightpanda-http-adapter-v1-20260920';
+const ND_LIGHTPANDA_MUX_CODE_REV='lightpanda-native-mcp-proxy-v2-20260920';
 const LIGHTPANDA_TOKEN=String(process.env.LIGHTPANDA_TOKEN||'').trim();
 const LIGHTPANDA_PATH_TOKEN=String(process.env.ND_LIGHTPANDA_MCP_PATH_TOKEN||'').trim();
 const LIGHTPANDA_MCP_PATH=LIGHTPANDA_PATH_TOKEN?'/nd/lightpanda/mcp/'+LIGHTPANDA_PATH_TOKEN:'';
 const LIGHTPANDA_API='https://euwest.cloud.lightpanda.io/api/fetch';
+const LIGHTPANDA_MCP_SSE='https://euwest.cloud.lightpanda.io/mcp/sse';
+let lpUpstream={reader:null,postUrl:'',pending:new Map(),connecting:null,ready:false,seq:1000,lastError:''};
+
 const API='https://cloud-api.yandex.net/v1/disk';
 const GOOGLE_CLIENT_EMAIL=String(process.env.ND_GOOGLE_CLIENT_EMAIL||'').trim();
 const GOOGLE_PRIVATE_KEY_B64=String(process.env.ND_GOOGLE_PRIVATE_KEY_B64||'').trim();
@@ -677,10 +680,143 @@ async function lightpandaFetch(a={}){
   };
 }
 
+async function lpProcessSse(reader){
+  const decoder=new TextDecoder();
+  let buf="";
+  try{
+    while(true){
+      const {value,done}=await reader.read();
+      if(done)break;
+      buf+=decoder.decode(value,{stream:true}).replace(/\r\n/g,"\n");
+      while(true){
+        const cut=buf.indexOf("\n\n");
+        if(cut<0)break;
+        const block=buf.slice(0,cut);buf=buf.slice(cut+2);
+        let event="",data=[];
+        for(const line of block.split("\n")){
+          if(line.startsWith("event:"))event=line.slice(6).trim();
+          else if(line.startsWith("data:"))data.push(line.slice(5).trimStart());
+        }
+        const payload=data.join("\n").trim();
+        if(!payload)continue;
+        if(event==="endpoint"){
+          try{lpUpstream.postUrl=new URL(payload,LIGHTPANDA_MCP_SSE).toString();}catch{}
+          continue;
+        }
+        if(event==="message"||!event){
+          let msg;try{msg=JSON.parse(payload);}catch{continue;}
+          const key=String(msg?.id??"");
+          const p=lpUpstream.pending.get(key);
+          if(p){lpUpstream.pending.delete(key);p.resolve(msg);}
+        }
+      }
+    }
+  }catch(e){
+    lpUpstream.lastError=String(e?.message||e||"sse_read_error");
+  }finally{
+    for(const p of lpUpstream.pending.values())p.reject(new Error("lightpanda_sse_closed"));
+    lpUpstream.pending.clear();
+    lpUpstream.reader=null;lpUpstream.postUrl="";lpUpstream.ready=false;lpUpstream.connecting=null;
+  }
+}
+
+async function lpPost(msg){
+  if(!lpUpstream.postUrl)throw new Error("lightpanda_upstream_endpoint_missing");
+  const r=await fetch(lpUpstream.postUrl,{
+    method:"POST",
+    headers:{authorization:"Bearer "+LIGHTPANDA_TOKEN,"content-type":"application/json",accept:"application/json,text/event-stream"},
+    body:JSON.stringify(msg)
+  });
+  if(!r.ok){
+    const t=await r.text();
+    throw new Error("lightpanda_upstream_post_"+r.status+":"+t.slice(0,500));
+  }
+}
+
+async function lpRpc(method,params={},timeoutMs=45000){
+  await ensureLpUpstream();
+  const id=++lpUpstream.seq;
+  const msg={jsonrpc:"2.0",id,method,params};
+  const reply=new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{
+      lpUpstream.pending.delete(String(id));
+      reject(new Error("lightpanda_upstream_timeout:"+method));
+    },timeoutMs);
+    lpUpstream.pending.set(String(id),{
+      resolve:(v)=>{clearTimeout(timer);resolve(v);},
+      reject:(e)=>{clearTimeout(timer);reject(e);}
+    });
+  });
+  await lpPost(msg);
+  const out=await reply;
+  if(out?.error)throw new Error("lightpanda_upstream_rpc_"+String(out.error?.code||"")+":"+String(out.error?.message||"error"));
+  return out;
+}
+
+async function ensureLpUpstream(){
+  if(lpUpstream.ready&&lpUpstream.reader&&lpUpstream.postUrl)return;
+  if(lpUpstream.connecting)return await lpUpstream.connecting;
+  lpUpstream.connecting=(async()=>{
+    if(!LIGHTPANDA_TOKEN)throw new Error("lightpanda_token_missing");
+    const r=await fetch(LIGHTPANDA_MCP_SSE,{
+      method:"GET",
+      headers:{authorization:"Bearer "+LIGHTPANDA_TOKEN,accept:"text/event-stream"},
+      signal:AbortSignal.timeout(30000)
+    });
+    if(!r.ok)throw new Error("lightpanda_sse_http_"+r.status+":"+String(await r.text()).slice(0,500));
+    if(!r.body)throw new Error("lightpanda_sse_body_missing");
+    lpUpstream.reader=r.body.getReader();
+    void lpProcessSse(lpUpstream.reader);
+    const started=Date.now();
+    while(!lpUpstream.postUrl&&Date.now()-started<10000)await new Promise(x=>setTimeout(x,50));
+    if(!lpUpstream.postUrl)throw new Error("lightpanda_sse_endpoint_event_timeout");
+
+    const id=++lpUpstream.seq;
+    const initPromise=new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{lpUpstream.pending.delete(String(id));reject(new Error("lightpanda_initialize_timeout"));},15000);
+      lpUpstream.pending.set(String(id),{
+        resolve:(v)=>{clearTimeout(timer);resolve(v);},
+        reject:(e)=>{clearTimeout(timer);reject(e);}
+      });
+    });
+    await lpPost({
+      jsonrpc:"2.0",id,method:"initialize",
+      params:{protocolVersion:"2024-11-05",capabilities:{},clientInfo:{name:"nd-lightpanda-streamable-bridge",version:"2.0.0"}}
+    });
+    const init=await initPromise;
+    if(init?.error)throw new Error("lightpanda_initialize_failed:"+String(init.error?.message||"error"));
+    await lpPost({jsonrpc:"2.0",method:"notifications/initialized",params:{}});
+    lpUpstream.ready=true;
+    lpUpstream.lastError="";
+  })().catch(e=>{
+    lpUpstream.reader=null;lpUpstream.postUrl="";lpUpstream.ready=false;lpUpstream.connecting=null;
+    lpUpstream.lastError=String(e?.message||e||"connect_error");
+    throw e;
+  });
+  try{return await lpUpstream.connecting;}
+  finally{if(lpUpstream.ready)lpUpstream.connecting=null;}
+}
+
+async function lpNativeTools(){
+  const out=await lpRpc("tools/list",{});
+  return Array.isArray(out?.result?.tools)?out.result.tools:[];
+}
+
 async function lightpandaCallTool(name,args){
-  if(name==="lightpanda_status")return lightpandaStatus();
+  if(name==="lightpanda_status"){
+    let nativeCount=null,nativeNames=[];
+    try{
+      const tools=await lpNativeTools();
+      nativeCount=tools.length;
+      nativeNames=tools.map(x=>x?.name).filter(Boolean);
+    }catch(e){
+      lpUpstream.lastError=String(e?.message||e||"probe_error");
+    }
+    return {...lightpandaStatus(),native_mcp_connected:lpUpstream.ready,native_tools:nativeCount,native_tool_names:nativeNames,upstream_error:lpUpstream.lastError||null};
+  }
   if(name==="lightpanda_fetch")return await lightpandaFetch(args||{});
-  throw new Error("unknown_lightpanda_tool:"+String(name));
+  const out=await lpRpc("tools/call",{name,arguments:args||{}},90000);
+  return out?.result;
 }
 
 async function lightpandaMcp(req,res){
@@ -696,12 +832,34 @@ async function lightpandaMcp(req,res){
     instructions:"Browser-backed read/fetch through the Nameless Dhamma Lightpanda Cloud adapter. Current v1 is read-only; stateful interaction tools are qualified separately."
   }});
   if(method==="ping")return j(res,200,{jsonrpc:"2.0",id,result:{}});
-  if(method==="tools/list")return j(res,200,{jsonrpc:"2.0",id,result:{tools:LP_TOOLS}});
+  if(method==="tools/list"){
+    try{
+      const native=await lpNativeTools();
+      const names=new Set(LP_TOOLS.map(x=>x.name));
+      const merged=[...LP_TOOLS,...native.filter(x=>x&&x.name&&!names.has(x.name))];
+      return j(res,200,{jsonrpc:"2.0",id,result:{tools:merged}});
+    }catch(e){
+      return j(res,200,{jsonrpc:"2.0",id,result:{tools:LP_TOOLS}});
+    }
+  }
+  if(method==="resources/list"||method==="resources/read"){
+    try{
+      const out=await lpRpc(method,msg.params||{},60000);
+      return j(res,200,{jsonrpc:"2.0",id,result:out?.result||{}});
+    }catch(e){
+      return j(res,200,{jsonrpc:"2.0",id,error:{code:-32000,message:"Lightpanda upstream resource error"}});
+    }
+  }
   if(method==="tools/call"){
     const p=msg.params||{};
     try{
-      const out=await lightpandaCallTool(String(p.name||""),p.arguments||{});
-      return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:false}});
+      const name=String(p.name||"");
+      if(name==="lightpanda_status"||name==="lightpanda_fetch"){
+        const out=await lightpandaCallTool(name,p.arguments||{});
+        return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:false}});
+      }
+      const out=await lpRpc("tools/call",{name,arguments:p.arguments||{}},90000);
+      return j(res,200,{jsonrpc:"2.0",id,result:out?.result||{content:[{type:"text",text:""}],isError:false}});
     }catch(e){
       let err=String(e?.message||e||"error");
       if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
