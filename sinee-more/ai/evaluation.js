@@ -124,21 +124,33 @@ export function maxCompatiblePlanCount(linePlanGroups) {
   return visit(0, new Set());
 }
 
-export function countGlobalLadderCapacity(position, player, rule = 'D') {
+function analyzeLadder(position, player, rule = 'D') {
   const activeGroups = [];
+  const entries = [];
   let totalViablePlans = 0;
 
   for (const line of LINES) {
     const own = ownTopCount(position, player, line);
     const plans = enumerateLadderPlans(position, player, line, rule);
     totalViablePlans += plans.length;
+    entries.push({ line, own, plans });
     if (own >= 2 && plans.length) activeGroups.push(plans);
   }
 
   return {
+    entries,
     activeLinePlans: activeGroups.length,
     compatibleActivePlans: maxCompatiblePlanCount(activeGroups),
     totalViablePlans
+  };
+}
+
+export function countGlobalLadderCapacity(position, player, rule = 'D') {
+  const analysis = analyzeLadder(position, player, rule);
+  return {
+    activeLinePlans: analysis.activeLinePlans,
+    compatibleActivePlans: analysis.compatibleActivePlans,
+    totalViablePlans: analysis.totalViablePlans
   };
 }
 
@@ -211,9 +223,9 @@ function classicLineFeatures(position, player) {
 
 function ladderPotential(position, player, rule, profile) {
   let score = 0;
-  for (const line of LINES) {
-    const own = ownTopCount(position, player, line);
-    const plans = enumerateLadderPlans(position, player, line, rule);
+  const analysis = analyzeLadder(position, player, rule);
+
+  for (const { own, plans } of analysis.entries) {
     if (plans.length) {
       score += Math.min(40, plans.length) * profile.ladderPlan;
       score += own * own * profile.ladderOwned;
@@ -224,11 +236,10 @@ function ladderPotential(position, player, rule, profile) {
     }
   }
 
-  const global = countGlobalLadderCapacity(position, player, rule);
-  score += global.compatibleActivePlans * profile.ladderGlobalCapacity;
+  score += analysis.compatibleActivePlans * profile.ladderGlobalCapacity;
   score -= Math.max(
     0,
-    global.activeLinePlans - global.compatibleActivePlans
+    analysis.activeLinePlans - analysis.compatibleActivePlans
   ) * profile.ladderResourceConflict;
 
   return score;
