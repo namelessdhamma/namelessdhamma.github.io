@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GATES, runQualification } from '../tools/qualification.js';
+import { GATES, runQualification, runStrengthProbe } from '../tools/qualification.js';
 
 test('qualification exposes the v1 release gates', () => {
   assert.equal(GATES.tacticalHardBlunders, 0);
@@ -37,5 +37,21 @@ test('fast qualification returns a complete report shape', () => {
   assert.ok(report.metrics.timing.byDifficulty.hard);
   assert.equal(typeof report.metrics.timing.forcingSkippedRate, 'number');
   assert.equal(typeof report.metrics.timing.guardianShare, 'number');
+  assert.ok(Array.isArray(report.failures));
+});
+
+
+test('focused strength probe omits unrelated qualification work', () => {
+  const report = runStrengthProbe({
+    gamesPerPair: 1,
+    seed: 11,
+    qualificationBudgetScale: 0
+  });
+  assert.equal(typeof report.ok, 'boolean');
+  assert.ok(report.metrics.strength.hardVsMedium);
+  assert.ok(report.metrics.strength.mediumVsEasy);
+  assert.ok(report.metrics.timing.byDifficulty);
+  assert.equal('personas' in report.metrics, false);
+  assert.equal('openings' in report.metrics, false);
   assert.ok(Array.isArray(report.failures));
 });
