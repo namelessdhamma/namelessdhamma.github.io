@@ -6,6 +6,7 @@
     "test": "node --test",
     "qualify": "node tools/qualification.js",
     "qualify:json": "node tools/qualification.js --json qualification-report.json",
-    "qualify:fast": "node tools/qualification.js --fast"
+    "qualify:fast": "node tools/qualification.js --fast",
+    "probe:difficulty": "node tools/qualification.js --strength-only --games-per-pair 8 --budget-scale 0.04"
   }
 }
