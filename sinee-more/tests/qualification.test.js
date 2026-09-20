@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GATES, runQualification, runStrengthProbe } from '../tools/qualification.js';
+import { GATES, runQualification, runStrengthProbe, mirroredStrengthPhase } from '../tools/qualification.js';
 
 test('qualification exposes the v1 release gates', () => {
   assert.equal(GATES.tacticalHardBlunders, 0);
@@ -12,6 +12,30 @@ test('qualification exposes the v1 release gates', () => {
   assert.equal(GATES.minStrongPersonaPairsAt20Pct, 3);
   assert.equal(GATES.maxMixedOpeningShare, 0.75);
   assert.equal(GATES.maxBudgetOverrunMs, 40);
+});
+
+
+test('strength quartet mirrors roles without changing agent RNG identities', () => {
+  const phases = [0, 1, 2, 3].map(gameIndex =>
+    mirroredStrengthPhase(gameIndex, 1000)
+  );
+
+  assert.deepEqual(
+    phases.map(x => [x.aIsLight, x.firstPlayer]),
+    [
+      [true, 'light'],
+      [false, 'light'],
+      [true, 'dark'],
+      [false, 'dark']
+    ]
+  );
+  assert.equal(new Set(phases.map(x => x.agentASeed)).size, 1);
+  assert.equal(new Set(phases.map(x => x.agentBSeed)).size, 1);
+
+  const next = mirroredStrengthPhase(4, 1000);
+  assert.notEqual(next.agentASeed, phases[0].agentASeed);
+  assert.notEqual(next.agentBSeed, phases[0].agentBSeed);
+  assert.equal(next.quartet, 1);
 });
 
 test('fast qualification returns a complete report shape', () => {
