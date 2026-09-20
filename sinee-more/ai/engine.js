@@ -78,12 +78,33 @@ function boundedMistakeSample(position, moves, rule, limit = 18) {
       a.move.cell - b.move.cell
     );
 
-  const selected = cheap.slice(0, Math.ceil(limit * 0.6)).map(x => x.move);
-  const stride = Math.max(1, Math.floor(cheap.length / Math.max(1, limit - selected.length)));
-  for (let i = 0; selected.length < limit && i < cheap.length; i += stride) {
-    const move = cheap[i].move;
+  // Deliberate-error search needs a representative slice of the whole
+  // tactical-safe move space, not only the cheap heuristic's worst tail.
+  const selected = [];
+  const slots = Math.max(2, limit);
+  for (let i = 0; i < slots; i += 1) {
+    const index = Math.round(
+      (i * (cheap.length - 1)) / Math.max(1, slots - 1)
+    );
+    const move = cheap[index].move;
     if (!selected.some(x => sameMove(x, move))) selected.push(move);
   }
+
+  // Rounding can collapse adjacent indices. Fill any remaining slots
+  // deterministically from alternating ends to retain both strong and weak
+  // cheap candidates.
+  let lo = 0;
+  let hi = cheap.length - 1;
+  while (selected.length < limit && lo <= hi) {
+    for (const index of [lo, hi]) {
+      const move = cheap[index]?.move;
+      if (move && !selected.some(x => sameMove(x, move))) selected.push(move);
+      if (selected.length >= limit) break;
+    }
+    lo += 1;
+    hi -= 1;
+  }
+
   return selected.slice(0, limit);
 }
 
@@ -232,16 +253,61 @@ function collectDeliberateErrorCandidates(
   }
 
   const bestScore = ranked[0].score;
-  const severity01 = Math.max(0, Math.min(1.5, severity));
-  const startFraction = Math.min(0.92, 0.35 + severity01 * 0.38);
-  const start = Math.max(1, Math.floor(ranked.length * startFraction));
-  const tail = ranked.slice(start);
+  const positive = ranked
+    .slice(1)
+    .map(item => ({
+      move: item.move,
+      searchRegret: bestScore - item.score
+    }))
+    .filter(item =>
+      Number.isFinite(item.searchRegret) &&
+      item.searchRegret > 1e-9
+    )
+    .sort((a, b) =>
+      a.searchRegret - b.searchRegret ||
+      a.move.cell - b.move.cell ||
+      a.move.rank - b.move.rank
+    );
 
-  return (tail.length ? tail : ranked.slice(1)).map(item => ({
-    move: item.move,
-    score: item.score,
-    searchRegret: bestScore - item.score
-  }));
+  if (!positive.length) {
+    return fallbackMove
+      ? [{ move: fallbackMove, score: 0, searchRegret: null }]
+      : [];
+  }
+
+  // Avoid the catastrophic extreme tail: Easy should make larger plausible
+  // mistakes than Medium, not occasional near-suicidal outliers that make
+  // calibration noisy and unpleasant to play.
+  const cappedCount = Math.max(
+    1,
+    Math.ceil(positive.length * 0.90)
+  );
+  const plausible = positive.slice(0, cappedCount);
+
+  const severity01 = Math.max(0, Math.min(1.5, severity)) / 1.5;
+  const targetFraction = 0.20 + severity01 * 0.65;
+  const targetIndex = Math.min(
+    plausible.length - 1,
+    Math.max(
+      0,
+      Math.round(targetFraction * (plausible.length - 1))
+    )
+  );
+
+  const radius = Math.min(2, plausible.length - 1);
+  const start = Math.max(0, targetIndex - radius);
+  const end = Math.min(plausible.length, targetIndex + radius + 1);
+
+  return plausible.slice(start, end).map((item, offset) => {
+    const index = start + offset;
+    return {
+      move: item.move,
+      // Persona may choose within a small regret neighborhood, but the
+      // difficulty tier determines which neighborhood is offered.
+      score: -Math.abs(index - targetIndex),
+      searchRegret: item.searchRegret
+    };
+  });
 }
 
 function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
@@ -359,7 +425,14 @@ export function chooseMove(position, {
   const searchCandidates =
     tactical.tier === 'WIN_NOW' || tactical.tier === 'MUST_DEFEND'
       ? tactical.moves
-      : openingSearchCandidates(position, decisionMoves, rule, policy);
+      : deliberateError
+        ? boundedMistakeSample(
+            position,
+            decisionMoves,
+            rule,
+            policy.errorCandidateLimit
+          )
+        : openingSearchCandidates(position, decisionMoves, rule, policy);
 
   const guardianElapsedMs = performance.now() - engineStarted;
   const remainingSearchBudgetMs = Math.max(
