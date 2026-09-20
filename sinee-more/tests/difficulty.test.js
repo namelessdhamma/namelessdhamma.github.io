@@ -111,6 +111,14 @@ test('hard personas do not collapse to one opening script', () => {
       })
     );
     const choices = results.map(result => result.move);
+    for (const result of results) {
+      if (typeof result.metrics.openingRegret === 'number') {
+        assert.ok(
+          result.metrics.openingRegret <= DIFFICULTY.hard.openingRegretBand + 1e-9,
+          `${rule}: opening regret ${result.metrics.openingRegret}`
+        );
+      }
+    }
     const unique = new Set(choices.map(move => `${move.cell}:${move.rank}`));
     assert.ok(
       unique.size >= 2,
