@@ -92,6 +92,7 @@ _LITERARY_CANONICAL_MARKDOWN_NAMES = frozenset({
     "ND_Literary_Critic_v0_1_0_CANONICAL_SKILL.md",
     "ND_Story_Architect_v0_1_0_CANONICAL_SKILL.md",
     "ND_Technical_Writer_v0_1_0_CANONICAL_SKILL.md",
+    "ND_TRUE_MEMORY_STATE_HEAD_CURRENT.md",
 })
 
 
@@ -656,6 +657,60 @@ async def _drive_true_writer_inventory() -> dict:
         bearer = ""
 
 
+async def _drive_delete_superseded_true_writer(args: dict) -> dict:
+    if args.get("confirm") is not True:
+        raise ValueError("confirm_required")
+    ids = [str(x).strip() for x in (args.get("file_ids") or []) if str(x).strip()]
+    protected = {str(x).strip() for x in (args.get("protected_ids") or []) if str(x).strip()}
+    if not ids or len(ids) > 50:
+        raise ValueError("invalid_file_ids")
+    if "1rHdK2Qyps5syz2fWXGVS6KiPJRCxWhxC" not in protected:
+        raise ValueError("current_true_writer_must_be_protected")
+    known_old = {
+        "1Hergfhojk4Un8PBD0yyaZ_He9KGLmqTV",
+        "1bivAThjgwB3yq7P4BVC5PooQwt27UWgT4zP6Su2pkR4",
+        "1q9SVB3Z2-FZFvPU1AZR7rTt5JN8ELDMazTCVs7pxcfQ",
+    }
+    deleted = []
+    refused = []
+    for fid in ids:
+        if fid in protected:
+            refused.append({"file_id": fid, "reason": "protected_current"})
+            continue
+        try:
+            meta = await _drive_metadata_user(fid)
+        except Exception as exc:
+            text = str(exc)
+            if "404" in text:
+                deleted.append({"file_id": fid, "already_absent": True})
+                continue
+            raise
+        name = str(meta.get("name") or "")
+        low = name.lower()
+        allowed = (
+            fid in known_old
+            or "true writer" in low
+            or "true_writer" in low
+            or "true-writer" in low
+        )
+        if not allowed:
+            refused.append({"file_id": fid, "name": name, "reason": "not_true_writer_artifact"})
+            continue
+        if name == "ND_True_Writer_v0_7_0_CANONICAL_SKILL.md":
+            refused.append({"file_id": fid, "name": name, "reason": "current_name_protected"})
+            continue
+        await asyncio.to_thread(_drive_delete_sync, await _mint_drive_bearer(), fid)
+        absent = False
+        try:
+            await _drive_metadata_user(fid)
+        except Exception as exc:
+            absent = "404" in str(exc)
+        if not absent:
+            raise RuntimeError("delete_readback_failed:" + fid)
+        deleted.append({"file_id": fid, "name": name, "verified_absent": True})
+    return {"deleted": deleted, "refused": refused}
+
+
 async def _drive_repair_railway_rw(args: dict) -> dict:
     if args.get("confirm") is not True:
         raise RuntimeError("confirm_required")
@@ -941,6 +996,9 @@ async def github_bridge(request: Request) -> JSONResponse:
 
             elif operation == "drive_true_writer_inventory":
                 result = await _drive_true_writer_inventory()
+
+            elif operation == "drive_delete_superseded_true_writer":
+                result = await _drive_delete_superseded_true_writer(args)
 
             elif operation == "drive_read_canonical_json":
                 result = await _drive_read_canonical_json(args)
