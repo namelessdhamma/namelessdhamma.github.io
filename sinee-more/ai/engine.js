@@ -100,13 +100,12 @@ function openingSearchCandidates(position, moves, rule, policy) {
   // Prevent the bounded opening search from becoming center-only.
   // This keeps at least one strategically plausible representative of
   // center, corner and edge play, while still starting from the strongest
-  // generic opening shortlist.
+  // generic opening shortlist. The shortlist may grow by at most two moves.
   const ensureClass = predicate => {
     if (selected.some(predicate)) return;
     const candidate = ranked.find(predicate);
     if (!candidate) return;
-    if (selected.length >= dynamicLimit) selected[selected.length - 1] = candidate;
-    else selected.push(candidate);
+    selected.push(candidate);
   };
   ensureClass(move => move.cell === 4);
   ensureClass(move => [0, 2, 6, 8].includes(move.cell));
