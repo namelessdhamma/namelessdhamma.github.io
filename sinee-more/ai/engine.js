@@ -424,99 +424,17 @@ export function chooseMove(position, {
 
   const guardianElapsedMs = performance.now() - engineStarted;
 
-  if (deliberateError && decisionMoves.length > 1) {
-    const sample = boundedMistakeSample(
-      position,
-      decisionMoves,
-      rule,
-      policy.errorCandidateLimit
-    );
-    const rootPlayer = position.turn;
-    const objectiveScores = [];
-    const moveDeadline = engineStarted + policy.timeBudgetMs;
-
-    for (const move of sample) {
-      // Complete at least two one-ply evaluations so regret is meaningful.
-      if (
-        objectiveScores.length >= 2 &&
-        performance.now() >= moveDeadline
-      ) {
-        break;
-      }
-
-      const next = applyMove(position, move, rule);
-      if (!next) continue;
-      objectiveScores.push({
-        move,
-        score: evaluatePosition(next, rootPlayer, rule)
-      });
-    }
-
-    let acceptedError = collectDeliberateErrorCandidates(
-      objectiveScores,
-      sample,
-      objectiveScores[0]?.move ?? sample[0] ?? null,
-      policy.strategicErrorSeverity
-    );
-
-    if (!acceptedError.length) {
-      const fallback = choosePlausibleMistake(
-        position,
-        decisionMoves,
-        rule,
-        policy.strategicErrorSeverity,
-        rng
-      );
-      acceptedError = fallback
-        ? [{ move: fallback, score: 0, searchRegret: null }]
-        : [];
-    }
-
-    const errorMove = chooseByPersona(
-      position,
-      rule,
-      personaId,
-      acceptedError,
-      Math.min(policy.personaWeight, 0.20),
-      policy.strategicNoise,
-      rng
-    ) ?? acceptedError[0]?.move ?? sample[0] ?? tactical.moves[0];
-
-    const selectedError = acceptedError.find(
-      item => sameMove(item.move, errorMove)
-    );
-    const elapsedMs = performance.now() - engineStarted;
-
-    return {
-      move: errorMove,
-      score: objectiveScores.find(
-        item => sameMove(item.move, errorMove)
-      )?.score ?? evaluatePosition(position, rootPlayer, rule),
-      persona: personaId,
-      metrics: {
-        elapsedMs,
-        guardianElapsedMs,
-        searchElapsedMs: 0,
-        nodes: objectiveScores.length,
-        ttHits: 0,
-        completedDepth: objectiveScores.length >= 2 ? 1 : 0,
-        timedOut: elapsedMs >= policy.timeBudgetMs,
-        tacticalTier: tactical.tier,
-        forcingSkipped: Boolean(tactical.forcingSkipped),
-        deliberateError: true,
-        strategicRegret:
-          typeof selectedError?.searchRegret === 'number'
-            ? selectedError.searchRegret
-            : null,
-        openingRegret: null
-      }
-    };
-  }
-
   const searchCandidates =
     tactical.tier === 'WIN_NOW' || tactical.tier === 'MUST_DEFEND'
       ? tactical.moves
-      : openingSearchCandidates(position, decisionMoves, rule, policy);
+      : deliberateError
+        ? boundedMistakeSample(
+            position,
+            decisionMoves,
+            rule,
+            policy.errorCandidateLimit
+          )
+        : openingSearchCandidates(position, decisionMoves, rule, policy);
 
   const remainingSearchBudgetMs = Math.max(
     0,
@@ -540,6 +458,30 @@ export function chooseMove(position, {
       score: searchResult.rootScores?.find(x => sameMove(x.move, move))?.score
         ?? searchResult.score
     }));
+  } else if (deliberateError) {
+    accepted = collectDeliberateErrorCandidates(
+      searchResult.rootScores,
+      searchCandidates,
+      searchResult.move,
+      policy.strategicErrorSeverity
+    );
+
+    if (
+      accepted.length <= 1 &&
+      searchResult.completedDepth === 0 &&
+      decisionMoves.length > 1
+    ) {
+      const fallback = choosePlausibleMistake(
+        position,
+        decisionMoves,
+        rule,
+        policy.strategicErrorSeverity,
+        rng
+      );
+      accepted = fallback
+        ? [{ move: fallback, score: 0, searchRegret: null }]
+        : accepted;
+    }
   } else {
     accepted = position.moves <= 1
       ? (
@@ -570,9 +512,11 @@ export function chooseMove(position, {
     rule,
     personaId,
     accepted,
-    position.moves <= 1
-      ? policy.openingPersonaWeight
-      : policy.personaWeight,
+    deliberateError
+      ? Math.min(policy.personaWeight, 0.20)
+      : position.moves <= 1
+        ? policy.openingPersonaWeight
+        : policy.personaWeight,
     policy.strategicNoise,
     rng
   ) ?? searchResult.move ?? tactical.moves[0];
