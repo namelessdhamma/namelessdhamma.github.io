@@ -1,5 +1,5 @@
 import { LINES } from './constants.js';
-import { topPiece } from './rules.js';
+import { topPiece, applyMove } from './rules.js';
 import { evaluatePosition } from './evaluation.js';
 import { searchIterative } from './search.js';
 import { getTacticalCandidates, getSafeMoves } from './guardian.js';
@@ -67,18 +67,50 @@ function cheapMoveQuality(position, move, rule) {
   return score;
 }
 
-function choosePlausibleMistake(position, moves, rule, severity, rng) {
-  if (!moves.length) return null;
-  const ranked = [...moves]
+function boundedMistakeSample(position, moves, rule, limit = 18) {
+  if (moves.length <= limit) return [...moves];
+
+  const cheap = [...moves]
     .map(move => ({ move, quality: cheapMoveQuality(position, move, rule) }))
     .sort((a, b) =>
       a.quality - b.quality ||
       b.move.rank - a.move.rank ||
       a.move.cell - b.move.cell
     );
-  // Higher severity means a narrower slice of the objectively weakest
-  // plausible safe moves. This keeps Easy mistakes coherent but reliably
-  // worse than Medium's broader, less severe error pool.
+
+  const selected = cheap.slice(0, Math.ceil(limit * 0.6)).map(x => x.move);
+  const stride = Math.max(1, Math.floor(cheap.length / Math.max(1, limit - selected.length)));
+  for (let i = 0; selected.length < limit && i < cheap.length; i += stride) {
+    const move = cheap[i].move;
+    if (!selected.some(x => sameMove(x, move))) selected.push(move);
+  }
+  return selected.slice(0, limit);
+}
+
+function choosePlausibleMistake(position, moves, rule, severity, rng) {
+  if (!moves.length) return null;
+
+  const player = position.turn;
+  const sample = boundedMistakeSample(position, moves, rule);
+  const ranked = sample
+    .map(move => {
+      const next = applyMove(position, move, rule);
+      const objectiveScore = next
+        ? evaluatePosition(next, player, rule)
+        : Infinity;
+      return {
+        move,
+        objectiveScore,
+        cheapQuality: cheapMoveQuality(position, move, rule)
+      };
+    })
+    .sort((a, b) =>
+      a.objectiveScore - b.objectiveScore ||
+      a.cheapQuality - b.cheapQuality ||
+      b.move.rank - a.move.rank ||
+      a.move.cell - b.move.cell
+    );
+
   const fraction = Math.max(
     0.06,
     Math.min(0.35, 0.35 - severity * 0.28)
