@@ -1,6 +1,6 @@
 import { LINES } from './constants.js';
 import { topPiece, applyMove } from './rules.js';
-import { evaluatePosition } from './evaluation.js';
+import { evaluatePosition, BASE_PROFILE } from './evaluation.js';
 import { searchIterative } from './search.js';
 import { getTacticalCandidates, getSafeMoves } from './guardian.js';
 import { scorePersonaMove, createPersonaScoringContext, PERSONAS } from './personas.js';
@@ -253,15 +253,32 @@ function collectDeliberateErrorCandidates(
   }
 
   const bestScore = ranked[0].score;
+  const terminalScoreFloor = BASE_PROFILE.terminal * 0.5;
+
+  // Difficulty noise may vary strategic quality, but it must not knowingly
+  // discard a terminal result already proven by the completed search depth.
+  // Likewise, do not offer a search-proven terminal alternative as a
+  // "plausible" deliberate mistake. This primarily protects deeper Medium
+  // searches from rare terminal-scale regret outliers.
+  if (Math.abs(bestScore) >= terminalScoreFloor) {
+    return [{
+      move: ranked[0].move,
+      score: 0,
+      searchRegret: null
+    }];
+  }
+
   const positive = ranked
     .slice(1)
     .map(item => ({
       move: item.move,
+      objectiveScore: item.score,
       searchRegret: bestScore - item.score
     }))
     .filter(item =>
       Number.isFinite(item.searchRegret) &&
-      item.searchRegret > 1e-9
+      item.searchRegret > 1e-9 &&
+      Math.abs(item.objectiveScore) < terminalScoreFloor
     )
     .sort((a, b) =>
       a.searchRegret - b.searchRegret ||
