@@ -68,11 +68,20 @@ export function getSafeMoves(position, player, rule) {
   const legal = getLegalMoves(probe, player, rule);
   const opponent = otherPlayer(player);
   if (visibleTopCount(position, opponent) < 2) return legal;
-  if (getImmediateThreatCells(probe, opponent, rule).length === 0) return legal;
+
+  const threatLines = getImmediateThreatLines(probe, opponent);
+  if (!threatLines.length) return legal;
+
+  const relevantCells = new Set();
+  for (const item of threatLines) {
+    for (const cell of item.line) relevantCells.add(cell);
+  }
+
   return legal.filter(move => {
     const next = applyMove(probe, move, rule);
     if (!next) return false;
     if (next.status === 'win') return next.winner === player;
+    if (!relevantCells.has(move.cell)) return false;
     return getImmediateWins(next, opponent, rule).length === 0;
   });
 }
