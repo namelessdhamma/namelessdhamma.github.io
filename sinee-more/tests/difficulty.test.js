@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { RULE_C, RULE_D, RULE_CD, LIGHT } from '../ai/constants.js';
 import { createInitialPosition, applyMove } from '../ai/rules.js';
 import { DIFFICULTY, resolveDifficulty } from '../ai/difficulty.js';
-import { chooseMove } from '../ai/engine.js';
+import { chooseMove, collectDeliberateErrorCandidates } from '../ai/engine.js';
 import {
   immediateWinFixture, immediateBlockFixture,
   increasingLadderFixture, decreasingLadderFixture
@@ -40,6 +40,50 @@ test('difficulty policies increase search budget and tighten regret', () => {
     DIFFICULTY.medium.strategicErrorSeverity
   );
   assert.equal(resolveDifficulty('hard', null, RULE_CD).strategicErrorRate, 0);
+});
+
+
+test('deliberate errors never select a search-proven forced loss', () => {
+  const best = { player: LIGHT, rank: 5, cell: 4 };
+  const plausible = { player: LIGHT, rank: 4, cell: 0 };
+  const forcedLoss = { player: LIGHT, rank: 9, cell: 8 };
+  const rootScores = [
+    { move: best, score: 120 },
+    { move: plausible, score: 80 },
+    { move: forcedLoss, score: -100003 }
+  ];
+  const allowed = [best, plausible, forcedLoss];
+
+  const candidates = collectDeliberateErrorCandidates(
+    rootScores,
+    allowed,
+    best,
+    1
+  );
+
+  assert.ok(candidates.some(item => sameMove(item.move, plausible)));
+  assert.equal(
+    candidates.some(item => sameMove(item.move, forcedLoss)),
+    false
+  );
+});
+
+test('deliberate errors fall back to best move when every alternative is a proven loss', () => {
+  const best = { player: LIGHT, rank: 5, cell: 4 };
+  const forcedLoss = { player: LIGHT, rank: 9, cell: 8 };
+  const candidates = collectDeliberateErrorCandidates(
+    [
+      { move: best, score: 50 },
+      { move: forcedLoss, score: -100010 }
+    ],
+    [best, forcedLoss],
+    best,
+    1
+  );
+
+  assert.equal(candidates.length, 1);
+  assert.ok(sameMove(candidates[0].move, best));
+  assert.equal(candidates[0].searchRegret, null);
 });
 
 test('hard always takes a known immediate win across personas', () => {
