@@ -245,7 +245,7 @@ export function chooseMove(position, {
 } = {}) {
   const engineStarted = performance.now();
   const personaId = Object.hasOwn(PERSONAS, persona) ? persona : 'architect';
-  const policy = resolveDifficulty(difficulty, timeBudgetOverrideMs);
+  const policy = resolveDifficulty(difficulty, timeBudgetOverrideMs, rule);
   const forcingDeadline =
     engineStarted + policy.timeBudgetMs * policy.forcingBudgetShare;
   const tactical = getTacticalCandidates(
