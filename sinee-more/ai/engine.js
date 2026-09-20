@@ -231,12 +231,41 @@ function collectOpeningCandidates(
     }));
 }
 
+export function selectSearchCandidates(position, {
+  tacticalTier,
+  tacticalMoves,
+  decisionMoves,
+  rule,
+  policy,
+  deliberateError,
+  difficulty
+}) {
+  if (tacticalTier === 'WIN_NOW' || tacticalTier === 'MUST_DEFEND') {
+    return tacticalMoves;
+  }
+
+  // A deliberate strategic error should change which searched move is
+  // accepted, not silently switch Medium/D onto a different root-search
+  // policy. Search the same objective root set first, then apply regret.
+  if (deliberateError && !(difficulty === 'medium' && rule === RULE_D)) {
+    return boundedMistakeSample(
+      position,
+      decisionMoves,
+      rule,
+      policy.errorCandidateLimit
+    );
+  }
+
+  return openingSearchCandidates(position, decisionMoves, rule, policy);
+}
+
 export function collectDeliberateErrorCandidates(
   rootScores,
   allowedMoves,
   fallbackMove,
   severity,
-  protectProvenTerminal = false
+  protectProvenTerminal = false,
+  minimumRegret = 0
 ) {
   const allowed = new Set(allowedMoves.map(moveKey));
   const ranked = (rootScores ?? [])
@@ -273,7 +302,7 @@ export function collectDeliberateErrorCandidates(
     }))
     .filter(item =>
       Number.isFinite(item.searchRegret) &&
-      item.searchRegret > 1e-9 &&
+      item.searchRegret > Math.max(1e-9, minimumRegret) &&
       (
         !protectProvenTerminal ||
         // Medium D may make strategic mistakes, but should not knowingly
@@ -288,6 +317,7 @@ export function collectDeliberateErrorCandidates(
     );
 
   if (!positive.length) {
+    if (minimumRegret > 0) return [];
     return fallbackMove
       ? [{ move: fallbackMove, score: 0, searchRegret: null }]
       : [];
@@ -442,17 +472,15 @@ export function chooseMove(position, {
 
   const guardianElapsedMs = performance.now() - engineStarted;
 
-  const searchCandidates =
-    tactical.tier === 'WIN_NOW' || tactical.tier === 'MUST_DEFEND'
-      ? tactical.moves
-      : deliberateError
-        ? boundedMistakeSample(
-            position,
-            decisionMoves,
-            rule,
-            policy.errorCandidateLimit
-          )
-        : openingSearchCandidates(position, decisionMoves, rule, policy);
+  const searchCandidates = selectSearchCandidates(position, {
+    tacticalTier: tactical.tier,
+    tacticalMoves: tactical.moves,
+    decisionMoves,
+    rule,
+    policy,
+    deliberateError,
+    difficulty
+  });
 
   const remainingSearchBudgetMs = Math.max(
     0,
@@ -469,23 +497,55 @@ export function chooseMove(position, {
     rootCandidates: searchCandidates
   });
 
+  const normalCandidates = () => position.moves <= 1
+    ? (
+        searchResult.completedDepth === 0
+          ? searchCandidates.map((move, index) => ({
+              move,
+              score: -Math.min(index, 4),
+              rawScore: null
+            }))
+          : collectOpeningCandidates(
+              searchResult.rootScores,
+              searchCandidates,
+              searchResult.move,
+              policy.openingRegretBand,
+              policy.openingCandidateLimit
+            )
+      )
+    : collectNearBestCandidates(
+        searchResult.rootScores,
+        decisionMoves,
+        searchResult.move,
+        policy.regretBand
+      );
+
   let accepted;
+  let appliedDeliberateError = deliberateError;
   if (tactical.tier === 'WIN_NOW') {
+    appliedDeliberateError = false;
     accepted = tactical.moves.map(move => ({
       move,
       score: searchResult.rootScores?.find(x => sameMove(x.move, move))?.score
         ?? searchResult.score
     }));
   } else if (deliberateError) {
+    const minimumRegret = difficulty === 'medium' && rule === RULE_D
+      ? (position.moves <= 1 ? policy.openingRegretBand : policy.regretBand)
+      : 0;
     accepted = collectDeliberateErrorCandidates(
       searchResult.rootScores,
       searchCandidates,
       searchResult.move,
       policy.strategicErrorSeverity,
-      difficulty === 'medium' && rule === RULE_D
+      difficulty === 'medium' && rule === RULE_D,
+      minimumRegret
     );
 
-    if (
+    if (!accepted.length && minimumRegret > 0) {
+      appliedDeliberateError = false;
+      accepted = normalCandidates();
+    } else if (
       accepted.length <= 1 &&
       searchResult.completedDepth === 0 &&
       decisionMoves.length > 1
@@ -502,28 +562,7 @@ export function chooseMove(position, {
         : accepted;
     }
   } else {
-    accepted = position.moves <= 1
-      ? (
-          searchResult.completedDepth === 0
-            ? searchCandidates.map((move, index) => ({
-                move,
-                score: -Math.min(index, 4),
-                rawScore: null
-              }))
-            : collectOpeningCandidates(
-                searchResult.rootScores,
-                searchCandidates,
-                searchResult.move,
-                policy.openingRegretBand,
-                policy.openingCandidateLimit
-              )
-        )
-      : collectNearBestCandidates(
-          searchResult.rootScores,
-          decisionMoves,
-          searchResult.move,
-          policy.regretBand
-        );
+    accepted = normalCandidates();
   }
 
   const move = chooseByPersona(
@@ -531,7 +570,7 @@ export function chooseMove(position, {
     rule,
     personaId,
     accepted,
-    deliberateError
+    appliedDeliberateError
       ? Math.min(policy.personaWeight, 0.20)
       : position.moves <= 1
         ? policy.openingPersonaWeight
@@ -565,9 +604,9 @@ export function chooseMove(position, {
       timedOut: Boolean(searchResult.timedOut),
       tacticalTier: tactical.tier,
       forcingSkipped: Boolean(tactical.forcingSkipped),
-      deliberateError,
+      deliberateError: appliedDeliberateError,
       strategicRegret:
-        deliberateError && typeof selectedCandidate?.searchRegret === 'number'
+        appliedDeliberateError && typeof selectedCandidate?.searchRegret === 'number'
           ? selectedCandidate.searchRegret
           : null,
       openingRegret
