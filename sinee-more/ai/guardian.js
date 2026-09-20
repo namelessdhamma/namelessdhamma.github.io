@@ -1,5 +1,5 @@
-import { otherPlayer } from './constants.js';
-import { getLegalMoves, applyMove, topPiece } from './rules.js';
+import { LINES, otherPlayer } from './constants.js';
+import { getLegalMoves, isLegalMove, applyMove, topPiece } from './rules.js';
 
 function sameMove(a, b) {
   return !!a && !!b &&
