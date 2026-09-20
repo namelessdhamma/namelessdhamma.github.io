@@ -270,12 +270,18 @@ export function chooseMove(position, {
       ? tactical.moves
       : openingSearchCandidates(position, tactical.moves, rule, policy);
 
+  const guardianElapsedMs = performance.now() - engineStarted;
+  const remainingSearchBudgetMs = Math.max(
+    0,
+    policy.timeBudgetMs - guardianElapsedMs
+  );
+
   const searchResult = searchIterative(position, {
     rule,
     rootPlayer: position.turn,
     evaluate: (state, rootPlayer) =>
       evaluatePosition(state, rootPlayer, rule),
-    timeBudgetMs: policy.timeBudgetMs,
+    timeBudgetMs: remainingSearchBudgetMs,
     maxDepth: policy.maxDepth,
     rootCandidates: searchCandidates
   });
@@ -328,6 +334,7 @@ export function chooseMove(position, {
     persona: personaId,
     metrics: {
       elapsedMs: performance.now() - engineStarted,
+      guardianElapsedMs,
       searchElapsedMs: searchResult.elapsedMs ?? 0,
       nodes: searchResult.nodes ?? 0,
       ttHits: searchResult.ttHits ?? 0,
