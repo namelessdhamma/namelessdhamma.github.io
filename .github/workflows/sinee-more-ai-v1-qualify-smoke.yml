@@ -1,5 +1,5 @@
 name: Sinee More AI v1 Qualification Smoke
-# calibration-sample: 10
+# calibration-sample: 11
 
 on:
   workflow_dispatch:
