@@ -65,6 +65,10 @@ test('focused strength probe omits unrelated qualification work', () => {
     'number'
   );
   assert.equal(
+    typeof report.metrics.strength.hardVsMedium.ciClearsGate,
+    'boolean'
+  );
+  assert.equal(
     typeof report.metrics.strength.hardVsMedium.ruleSpread,
     'number'
   );
