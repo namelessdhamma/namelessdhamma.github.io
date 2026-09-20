@@ -54,10 +54,30 @@ function forcingMoves(position, player, rule, candidates) {
     const next = applyMove(probe, move, rule);
     if (!next || next.status !== 'playing') continue;
 
-    // A true tactical fork means that, before the opponent replies,
-    // the mover would have at least two distinct immediate wins next turn.
-    // This bounded definition avoids an exhaustive reply × reply scan.
-    if (getImmediateWins(next, player, rule).length >= 2) out.push(move);
+    // First use the cheap double-threat test. Only rare candidates that
+    // create 2+ immediate wins pay for reply verification.
+    const threats = getImmediateWins(next, player, rule);
+    if (threats.length < 2) continue;
+
+    let forced = true;
+    const replies = getLegalMoves(next, next.turn, rule);
+    for (const reply of replies) {
+      const afterReply = applyMove(next, reply, rule);
+      if (!afterReply) continue;
+      if (afterReply.status === 'win' && afterReply.winner !== player) {
+        forced = false;
+        break;
+      }
+      if (
+        afterReply.status === 'playing' &&
+        getImmediateWins(afterReply, player, rule).length === 0
+      ) {
+        forced = false;
+        break;
+      }
+    }
+
+    if (forced) out.push(move);
   }
   return out;
 }
