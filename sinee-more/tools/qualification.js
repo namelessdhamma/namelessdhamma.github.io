@@ -80,6 +80,8 @@ function makeAgent({
         difficulty,
         budget,
         elapsedMs: result.metrics.elapsedMs,
+        guardianMs: result.metrics.guardianElapsedMs ?? 0,
+        searchMs: result.metrics.searchElapsedMs ?? 0,
         overrunMs: Math.max(0, result.metrics.elapsedMs - budget),
         nodes: result.metrics.nodes,
         ttHits: result.metrics.ttHits,
@@ -494,11 +496,19 @@ function summarizeTiming(timings) {
   const totalHits = timings.reduce((sum, x) => sum + x.ttHits, 0);
   const depth = timings.map(x => x.depth);
   const deliberateErrors = timings.filter(x => x.deliberateError).length;
+  const guardian = timings.map(x => x.guardianMs ?? 0);
+  const search = timings.map(x => x.searchMs ?? 0);
 
   return {
     samples: timings.length,
     meanMoveMs: elapsed.length
       ? elapsed.reduce((a, b) => a + b, 0) / elapsed.length
+      : 0,
+    meanGuardianMs: guardian.length
+      ? guardian.reduce((a, b) => a + b, 0) / guardian.length
+      : 0,
+    meanSearchMs: search.length
+      ? search.reduce((a, b) => a + b, 0) / search.length
       : 0,
     p95MoveMs: percentile(elapsed, 0.95),
     maxBudgetOverrunMs: overruns.length
