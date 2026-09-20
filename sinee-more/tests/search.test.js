@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { RULE_C, LIGHT } from '../ai/constants.js';
 import { createInitialPosition } from '../ai/rules.js';
 import {
-  searchFixedDepth, TranspositionTable, TT_LOWER, makeSearchKey
+  searchFixedDepth, searchIterative, TranspositionTable, TT_LOWER, makeSearchKey
 } from '../ai/search.js';
 
 const evalMaterial = (p, root) =>
@@ -49,4 +49,41 @@ test('lower-bound cutoff entry is not reused as an exact value', () => {
   });
   assert.equal(full.score, 9);
   assert.deepEqual(full.move, { player: LIGHT, rank: 9, cell: 0 });
+});
+
+
+test('iterative search returns last fully completed depth on timeout', () => {
+  let tick = 0;
+  const now = () => (tick += 1);
+  const position = createInitialPosition(LIGHT);
+  const result = searchIterative(position, {
+    rule: RULE_C,
+    rootPlayer: LIGHT,
+    evaluate: evalMaterial,
+    timeBudgetMs: 150,
+    maxDepth: 6,
+    now
+  });
+  assert.ok(result.move);
+  assert.ok(result.completedDepth >= 1);
+  assert.ok(result.completedDepth < 6);
+  assert.equal(result.timedOut, true);
+  assert.ok(Array.isArray(result.principalVariation));
+});
+
+test('iterative search always has a legal emergency fallback', () => {
+  let tick = 0;
+  const now = () => (tick += 10);
+  const position = createInitialPosition(LIGHT);
+  const result = searchIterative(position, {
+    rule: RULE_C,
+    rootPlayer: LIGHT,
+    evaluate: evalMaterial,
+    timeBudgetMs: 1,
+    maxDepth: 6,
+    now
+  });
+  assert.ok(result.move);
+  assert.equal(result.completedDepth, 0);
+  assert.equal(result.timedOut, true);
 });
