@@ -1,5 +1,5 @@
-name: Sinee More AI v1 D Medium Error-Rate Confirm
-# diagnostic-sample: 6
+name: Sinee More AI v1 D Medium Error-Rate Confirm 0.90
+# diagnostic-sample: 7
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Confirm Medium D error rate 0.80 on mirrored quartets
+      - name: Confirm Medium D error rate 0.90 on mirrored quartets
         continue-on-error: true
         shell: bash
         run: |
@@ -37,9 +37,9 @@ jobs:
           old='strategicErrorRate: 0.58,'
           if old not in s:
               raise SystemExit('medium error-rate anchor missing')
-          p.write_text(s.replace(old, 'strategicErrorRate: 0.80,', 1))
+          p.write_text(s.replace(old, 'strategicErrorRate: 0.90,', 1))
           PY
-          node tools/qualification.js --strength-only --rules D --games-per-pair 12 --budget-scale 1.0 --json d-medium-rate-080-mirrored.json
+          node tools/qualification.js --strength-only --rules D --games-per-pair 12 --budget-scale 1.0 --json d-medium-rate-090-mirrored.json
 
       - name: Restore difficulty
         if: always()
@@ -49,6 +49,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sinee-more-ai-v1-d-medium-error-rate-confirm
+          name: sinee-more-ai-v1-d-medium-error-rate-confirm-090
           path: sinee-more/d-medium-rate-080-mirrored.json
           if-no-files-found: ignore
