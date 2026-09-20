@@ -62,6 +62,25 @@ function percentile(values, p) {
   return sorted[index];
 }
 
+
+function proportion95CI(rate, n) {
+  if (!n) return { low: 0, high: 0 };
+  const z = 1.96;
+  const denominator = 1 + (z * z) / n;
+  const center =
+    (rate + (z * z) / (2 * n)) / denominator;
+  const margin =
+    (z / denominator) *
+    Math.sqrt(
+      (rate * (1 - rate)) / n +
+      (z * z) / (4 * n * n)
+    );
+  return {
+    low: Math.max(0, center - margin),
+    high: Math.min(1, center + margin)
+  };
+}
+
 function makeAgent({
   difficulty, persona, seed, qualificationBudgetScale, timings
 }) {
@@ -407,17 +426,27 @@ function strengthMatchup({
       )[0]
     : null;
 
+  const scoreRate = games ? score / games : 0;
+  const score95CI = proportion95CI(scoreRate, games);
+  const ruleRates = rules.map(rule => byRule[rule].rate);
+
   return {
     aDifficulty,
     bDifficulty,
     games,
-    scoreRate: games ? score / games : 0,
+    scoreRate,
+    score95CI,
+    gateMargin: scoreRate - GATES.hardVsMediumMinScore,
     averagePlies: games ? totalPlies / games : 0,
     repeatedSequenceRate: games
       ? repeatedGames / games
       : 0,
     weakestRule,
     weakestRuleRate: weakestRule ? byRule[weakestRule].rate : null,
+    strongestRuleRate: ruleRates.length ? Math.max(...ruleRates) : null,
+    ruleSpread: ruleRates.length
+      ? Math.max(...ruleRates) - Math.min(...ruleRates)
+      : 0,
     byRule
   };
 }
@@ -429,26 +458,31 @@ function strengthMetrics({
   timings,
   rules = RULES
 }) {
-  return {
-    hardVsMedium: strengthMatchup({
-      aDifficulty: 'hard',
-      bDifficulty: 'medium',
-      gamesPerPair,
-      seed: seed + 1000000,
-      qualificationBudgetScale,
-      timings,
-      rules
-    }),
-    mediumVsEasy: strengthMatchup({
-      aDifficulty: 'medium',
-      bDifficulty: 'easy',
-      gamesPerPair,
-      seed: seed + 2000000,
-      qualificationBudgetScale,
-      timings,
-      rules
-    })
-  };
+  const hardVsMedium = strengthMatchup({
+    aDifficulty: 'hard',
+    bDifficulty: 'medium',
+    gamesPerPair,
+    seed: seed + 1000000,
+    qualificationBudgetScale,
+    timings,
+    rules
+  });
+  const mediumVsEasy = strengthMatchup({
+    aDifficulty: 'medium',
+    bDifficulty: 'easy',
+    gamesPerPair,
+    seed: seed + 2000000,
+    qualificationBudgetScale,
+    timings,
+    rules
+  });
+
+  hardVsMedium.gateMargin =
+    hardVsMedium.scoreRate - GATES.hardVsMediumMinScore;
+  mediumVsEasy.gateMargin =
+    mediumVsEasy.scoreRate - GATES.mediumVsEasyMinScore;
+
+  return { hardVsMedium, mediumVsEasy };
 }
 
 function openingMetrics({
