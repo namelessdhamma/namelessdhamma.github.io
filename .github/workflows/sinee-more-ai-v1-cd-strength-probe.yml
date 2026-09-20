@@ -1,5 +1,5 @@
 name: Sinee More AI v1 CD Strength Probe
-# calibration-sample: 3
+# calibration-sample: 4
 
 on:
   workflow_dispatch:
