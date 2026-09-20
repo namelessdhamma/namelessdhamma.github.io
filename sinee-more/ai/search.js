@@ -17,8 +17,8 @@ export class TranspositionTable {
   get size() { return this.map.size; }
 }
 
-export function makeSearchKey(position, rule) {
-  return canonicalize(position, rule).key;
+export function makeSearchKey(position, rule, rootPlayer = position.turn) {
+  return `${canonicalize(position, rule).key}|root:${rootPlayer}`;
 }
 
 function compareMoves(a, b) {
@@ -60,7 +60,7 @@ function node(position, depth, alpha, beta, ctx, ply = 0) {
   const canonical = ctx.useSymmetry
     ? canonicalize(position, ctx.rule)
     : { key: rawPositionKey(position, ctx.rule), transformId: 0 };
-  const key = canonical.key;
+  const key = `${canonical.key}|root:${ctx.rootPlayer}`;
   const alphaOriginal = alpha;
   const betaOriginal = beta;
   let entry = null;
