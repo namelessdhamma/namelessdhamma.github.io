@@ -11,7 +11,8 @@ import {
 } from '../ai/guardian.js';
 import { evaluatePosition } from '../ai/evaluation.js';
 import {
-  scorePersonaMove, PERSONAS, selectPersonaAtGameStart
+  scorePersonaMove, createPersonaScoringContext,
+  PERSONAS, selectPersonaAtGameStart
 } from '../ai/personas.js';
 import { createRng } from '../ai/rng.js';
 import {
@@ -232,12 +233,15 @@ function personaMetrics(corpus) {
     const tactical = getTacticalCandidates(
       item.position, item.position.turn, item.rule
     );
+    const personaContext = createPersonaScoringContext(
+      item.position, item.rule
+    );
     for (const id of PERSONA_IDS) {
       const best = tactical.moves
         .map(move => ({
           move,
           score: scorePersonaMove(
-            item.position, move, item.rule, id
+            item.position, move, item.rule, id, personaContext
           )
         }))
         .sort((a, b) =>
