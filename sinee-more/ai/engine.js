@@ -280,7 +280,7 @@ function collectDeliberateErrorCandidates(
   // calibration noisy and unpleasant to play.
   const cappedCount = Math.max(
     1,
-    Math.ceil(positive.length * 0.90)
+    Math.floor(positive.length * 0.90)
   );
   const plausible = positive.slice(0, cappedCount);
 
@@ -422,6 +422,8 @@ export function chooseMove(position, {
     decisionMoves = nonForcingSafe.length ? nonForcingSafe : safe;
   }
 
+  const guardianElapsedMs = performance.now() - engineStarted;
+
   if (deliberateError && decisionMoves.length > 1) {
     const sample = boundedMistakeSample(
       position,
@@ -493,7 +495,7 @@ export function chooseMove(position, {
       persona: personaId,
       metrics: {
         elapsedMs,
-        guardianElapsedMs: Math.min(elapsedMs, performance.now() - engineStarted),
+        guardianElapsedMs,
         searchElapsedMs: 0,
         nodes: objectiveScores.length,
         ttHits: 0,
@@ -516,7 +518,6 @@ export function chooseMove(position, {
       ? tactical.moves
       : openingSearchCandidates(position, decisionMoves, rule, policy);
 
-  const guardianElapsedMs = performance.now() - engineStarted;
   const remainingSearchBudgetMs = Math.max(
     0,
     policy.timeBudgetMs - guardianElapsedMs
