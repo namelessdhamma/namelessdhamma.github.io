@@ -62,6 +62,7 @@ export function getSafeMoves(position, player, rule) {
   const legal = getLegalMoves(probe, player, rule);
   const opponent = otherPlayer(player);
   if (visibleTopCount(position, opponent) < 2) return legal;
+  if (getImmediateThreatCells(probe, opponent, rule).length === 0) return legal;
   return legal.filter(move => {
     const next = applyMove(probe, move, rule);
     if (!next) return false;
