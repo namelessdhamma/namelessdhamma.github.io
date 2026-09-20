@@ -1,5 +1,5 @@
 name: Sinee More AI v1 D Strength Probe
-# diagnostic-sample: 1
+# diagnostic-sample: 2
 
 on:
   workflow_dispatch:
@@ -25,10 +25,28 @@ jobs:
           node-version: '22'
       - name: D-only difficulty strength diagnostic
         run: node tools/qualification.js --strength-only --rules D --games-per-pair 24 --budget-scale 0.10 --json d-strength-probe.json
-      - name: Upload report
+      - name: D diagnostic with Hard opening shortlist forced to 6
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ai/difficulty.js')
+          s=p.read_text()
+          old='openingCandidateLimit: 12,'
+          if old not in s:
+              raise SystemExit('hard openingCandidateLimit anchor missing')
+          p.write_text(s.replace(old, 'openingCandidateLimit: 6,', 1))
+          PY
+          node tools/qualification.js --strength-only --rules D --games-per-pair 24 --budget-scale 0.10 --json d-strength-hard-open6.json
+      - name: Restore diagnostic patch
+        if: always()
+        run: git checkout -- ai/difficulty.js
+      - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sinee-more-ai-v1-d-strength-probe
-          path: sinee-more/d-strength-probe.json
+          path: |
+            sinee-more/d-strength-probe.json
+            sinee-more/d-strength-hard-open6.json
           if-no-files-found: ignore
