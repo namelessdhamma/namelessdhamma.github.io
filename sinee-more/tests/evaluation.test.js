@@ -102,3 +102,17 @@ test('CD accounts for stack closure while preserving ladder semantics', () => {
     evaluatePosition(blocked, LIGHT, RULE_CD, BASE_PROFILE)
   );
 });
+
+
+test('D opening values maximum center flexibility and rank economy over a high blocking center', () => {
+  const center5 = positionWithPieces([{ player: LIGHT, rank: 5, cell: 4 }], DARK);
+  const center7 = positionWithPieces([{ player: LIGHT, rank: 7, cell: 4 }], DARK);
+  assert.ok(
+    evaluatePosition(center5, LIGHT, RULE_D, BASE_PROFILE) >
+    evaluatePosition(center7, LIGHT, RULE_D, BASE_PROFILE),
+    JSON.stringify({
+      center5: evaluatePosition(center5, LIGHT, RULE_D, BASE_PROFILE),
+      center7: evaluatePosition(center7, LIGHT, RULE_D, BASE_PROFILE)
+    })
+  );
+});
