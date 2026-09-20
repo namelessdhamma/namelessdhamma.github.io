@@ -29,6 +29,29 @@ function getLegalMovesOnCells(position, player, rule, cells) {
   return out;
 }
 
+
+function simulateNonWinningMove(position, move) {
+  const board = position.board.slice();
+  board[move.cell] = [
+    ...position.board[move.cell],
+    { player: move.player, rank: move.rank }
+  ];
+  return {
+    ...position,
+    board,
+    remaining: {
+      ...position.remaining,
+      [move.player]: position.remaining[move.player]
+        .filter(rank => rank !== move.rank)
+    },
+    turn: otherPlayer(move.player),
+    moves: position.moves + 1,
+    status: 'playing',
+    winner: null,
+    winLine: null
+  };
+}
+
 function getImmediateThreatLines(position, player) {
   if (!position || position.status !== 'playing') return [];
   const out = [];
@@ -133,9 +156,7 @@ export function getSafeMoves(position, player, rule) {
   return legal.filter(move => {
     if (ownWinningMoves.has(`${move.cell}:${move.rank}`)) return true;
     if (!relevantCells.has(move.cell)) return false;
-    const next = applyMove(probe, move, rule);
-    if (!next) return false;
-    if (next.status === 'win') return next.winner === player;
+    const next = simulateNonWinningMove(probe, move);
     return getImmediateWins(next, opponent, rule).length === 0;
   });
 }
@@ -151,8 +172,7 @@ function forcingMoves(position, player, rule, candidates, options = {}) {
 
   for (const move of candidates) {
     if (now() >= deadline) break;
-    const next = applyMove(probe, move, rule);
-    if (!next || next.status !== 'playing') continue;
+    const next = simulateNonWinningMove(probe, move);
 
     // First use the cheap double-threat test. Only rare candidates that
     // create 2+ immediate wins pay for reply verification.
@@ -189,12 +209,8 @@ function forcingMoves(position, player, rule, candidates, options = {}) {
         forced = false;
         break;
       }
-      const afterReply = applyMove(next, reply, rule);
-      if (!afterReply) continue;
-      if (
-        afterReply.status === 'playing' &&
-        getImmediateWins(afterReply, player, rule).length === 0
-      ) {
+      const afterReply = simulateNonWinningMove(next, reply);
+      if (getImmediateWins(afterReply, player, rule).length === 0) {
         forced = false;
         break;
       }
