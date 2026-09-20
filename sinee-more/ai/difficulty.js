@@ -2,22 +2,28 @@ export const DIFFICULTY = Object.freeze({
   easy: Object.freeze({
     timeBudgetMs: 80,
     maxDepth: 3,
-    regretBand: 35,
-    strategicNoise: 0.24,
+    regretBand: 50,
+    openingRegretBand: 140,
+    personaWeight: 0.85,
+    strategicNoise: 0.30,
     guardian: 'full'
   }),
   medium: Object.freeze({
     timeBudgetMs: 220,
     maxDepth: 5,
-    regretBand: 16,
-    strategicNoise: 0.10,
+    regretBand: 28,
+    openingRegretBand: 90,
+    personaWeight: 0.55,
+    strategicNoise: 0.18,
     guardian: 'full'
   }),
   hard: Object.freeze({
     timeBudgetMs: 650,
     maxDepth: 8,
-    regretBand: 5,
-    strategicNoise: 0.03,
+    regretBand: 1.5,
+    openingRegretBand: 45,
+    personaWeight: 0.22,
+    strategicNoise: 0,
     guardian: 'full'
   })
 });
