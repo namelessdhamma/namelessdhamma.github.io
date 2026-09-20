@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LIGHT, DARK, RULE_C, RULE_D, RULE_CD } from '../ai/constants.js';
-import { createInitialPosition, applyMove } from '../ai/rules.js';
+import { createInitialPosition, applyMove, getLegalMoves } from '../ai/rules.js';
 import {
   getImmediateWins, getSafeMoves, getTacticalCandidates
 } from '../ai/guardian.js';
@@ -48,6 +48,20 @@ test('guardian identifies a created double immediate threat as FORCING', () => {
   const result = getTacticalCandidates(p, p.turn, RULE_C);
   if (result.tier === 'FORCING') {
     assert.ok(result.moves.length > 0);
+    for (const forcing of result.moves) {
+      const next = applyMove(p, forcing, RULE_C);
+      for (const reply of getLegalMoves(next, next.turn, RULE_C)) {
+        const afterReply = applyMove(next, reply, RULE_C);
+        if (afterReply.status === 'win') {
+          assert.equal(afterReply.winner, forcing.player);
+        } else {
+          assert.ok(
+            getImmediateWins(afterReply, forcing.player, RULE_C).length > 0,
+            JSON.stringify({ forcing, reply })
+          );
+        }
+      }
+    }
   } else {
     assert.ok(['SAFE', 'MUST_DEFEND', 'WIN_NOW'].includes(result.tier));
   }
