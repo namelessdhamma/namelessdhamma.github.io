@@ -85,10 +85,15 @@ function node(position, depth, alpha, beta, ctx, ply = 0) {
   const maximizing = position.turn === ctx.rootPlayer;
   let bestScore = maximizing ? -Infinity : Infinity;
   let bestMove = null;
-  let moves = ply === 0 && ctx.rootCandidates
-    ? [...ctx.rootCandidates]
-    : getLegalMoves(position, position.turn, ctx.rule);
-  moves.sort(compareMoves);
+  let moves;
+  if (ply === 0 && ctx.rootCandidates) {
+    // Root candidates may already be strategically ordered by the caller.
+    // Preserve that order so timeout fallback and partial iterations start
+    // from the strongest cheap candidates instead of lexicographic cell order.
+    moves = [...ctx.rootCandidates];
+  } else {
+    moves = getLegalMoves(position, position.turn, ctx.rule).sort(compareMoves);
+  }
   if (ply === 0) prioritize(moves, ctx.preferredMove);
   else if (entryLocalMove) prioritize(moves, entryLocalMove);
 
@@ -176,7 +181,7 @@ export function searchIterative(position, {
   rootCandidates = null
 }) {
   const legal = rootCandidates?.length
-    ? [...rootCandidates].sort(compareMoves)
+    ? [...rootCandidates]
     : getLegalMoves(position, position.turn, rule).sort(compareMoves);
   const started = now();
   const deadline = started + Math.max(0, timeBudgetMs);
