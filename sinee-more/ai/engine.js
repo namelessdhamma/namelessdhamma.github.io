@@ -141,7 +141,9 @@ export function chooseMove(position, {
     rule,
     personaId,
     accepted,
-    policy.personaWeight,
+    position.moves <= 1
+      ? policy.openingPersonaWeight
+      : policy.personaWeight,
     policy.strategicNoise,
     rng
   ) ?? searchResult.move ?? tactical.moves[0];
