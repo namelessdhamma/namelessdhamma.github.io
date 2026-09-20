@@ -12,6 +12,7 @@ test('qualification exposes the v1 release gates', () => {
   assert.equal(GATES.minStrongPersonaPairsAt20Pct, 3);
   assert.equal(GATES.maxMixedOpeningShare, 0.75);
   assert.equal(GATES.maxBudgetOverrunMs, 40);
+  assert.equal(GATES.minStrengthGamesPerDifficultyMatchup, 400);
 });
 
 
