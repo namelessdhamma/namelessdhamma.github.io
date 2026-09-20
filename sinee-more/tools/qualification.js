@@ -347,7 +347,8 @@ function strengthMatchup({
   gamesPerPair,
   seed,
   qualificationBudgetScale,
-  timings
+  timings,
+  rules = RULES
 }) {
   let score = 0;
   let games = 0;
@@ -355,8 +356,8 @@ function strengthMatchup({
   const byRule = {};
   const sequences = new Map();
 
-  for (let r = 0; r < RULES.length; r += 1) {
-    const rule = RULES[r];
+  for (let r = 0; r < rules.length; r += 1) {
+    const rule = rules[r];
     byRule[rule] = { score: 0, games: 0, rate: 0 };
 
     for (let p = 0; p < PERSONA_IDS.length; p += 1) {
@@ -386,7 +387,7 @@ function strengthMatchup({
     }
   }
 
-  for (const rule of RULES) {
+  for (const rule of rules) {
     byRule[rule].rate = byRule[rule].games
       ? byRule[rule].score / byRule[rule].games
       : 0;
@@ -413,7 +414,8 @@ function strengthMetrics({
   gamesPerPair,
   seed,
   qualificationBudgetScale,
-  timings
+  timings,
+  rules = RULES
 }) {
   return {
     hardVsMedium: strengthMatchup({
@@ -422,7 +424,8 @@ function strengthMetrics({
       gamesPerPair,
       seed: seed + 1000000,
       qualificationBudgetScale,
-      timings
+      timings,
+      rules
     }),
     mediumVsEasy: strengthMatchup({
       aDifficulty: 'medium',
@@ -430,7 +433,8 @@ function strengthMetrics({
       gamesPerPair,
       seed: seed + 2000000,
       qualificationBudgetScale,
-      timings
+      timings,
+      rules
     })
   };
 }
@@ -568,14 +572,16 @@ function timingMetrics(timings) {
 export function runStrengthProbe({
   gamesPerPair = 8,
   seed = 0x51eaea,
-  qualificationBudgetScale = 0.04
+  qualificationBudgetScale = 0.04,
+  rules = RULES
 } = {}) {
   const timings = [];
   const strength = strengthMetrics({
     gamesPerPair,
     seed,
     qualificationBudgetScale,
-    timings
+    timings,
+    rules
   });
   const timing = timingMetrics(timings);
   const failures = [];
@@ -605,8 +611,9 @@ export function runStrengthProbe({
     },
     config: {
       gamesPerPair,
+      rules: [...rules],
       totalGamesPerDifficultyMatchup:
-        gamesPerPair * RULES.length * PERSONA_IDS.length,
+        gamesPerPair * rules.length * PERSONA_IDS.length,
       seed,
       qualificationBudgetScale
     },
@@ -768,6 +775,10 @@ if (
 ) {
   const fast = process.argv.includes('--fast');
   const strengthOnly = process.argv.includes('--strength-only');
+  const requestedRules = String(cliArg('--rules', 'C,D,CD'))
+    .split(',')
+    .map(value => value.trim())
+    .filter(value => RULES.includes(value));
   const common = {
     gamesPerPair: Number(
       cliArg('--games-per-pair', fast ? 1 : 34)
@@ -778,7 +789,10 @@ if (
     )
   };
   const report = strengthOnly
-    ? runStrengthProbe(common)
+    ? runStrengthProbe({
+        ...common,
+        rules: requestedRules.length ? requestedRules : RULES
+      })
     : runQualification({
         ...common,
         enforceStatisticalGates: !fast,
