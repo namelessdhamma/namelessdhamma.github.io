@@ -1077,21 +1077,22 @@ const muxServer=http.createServer(async(req,res)=>{
         const page=st.page;
         stages.push({stage:"connect",ok:true,url:page.url()});
 
-        const nav=await lpStage("qual_goto",page.goto("https://www.selenium.dev/selenium/web/web-form.html",{waitUntil:"domcontentloaded",timeout:10000}),12000);
-        stages.push({stage:"goto",ok:true,status:nav?nav.status():null,url:page.url()});
+        const nav=await lpStage("qual_external_goto",page.goto("https://example.com/",{waitUntil:"domcontentloaded",timeout:12000}),14000);
+        stages.push({stage:"external_goto",ok:true,status:nav?nav.status():null,url:page.url()});
 
-        const input=page.locator('input[name="my-text"]');
-        await lpStage("qual_fill",input.fill("ND-LIGHTPANDA-QUAL",{timeout:6000}),7000);
-        const value=await lpStage("qual_fill_readback",input.inputValue({timeout:6000}),7000);
+        const externalText=await lpStage("qual_external_read",page.locator("body").innerText({timeout:5000}),6000);
+        stages.push({stage:"external_read",ok:/Example Domain/i.test(String(externalText)),contains_example_domain:/Example Domain/i.test(String(externalText))});
+
+        await lpStage("qual_set_content",page.setContent('<!doctype html><html><body><input id="q" value=""><button id="go" onclick="document.querySelector(\'#out\').textContent=document.querySelector(\'#q\').value+\'-CLICKED\'">Go</button><div id="out">EMPTY</div></body></html>',{waitUntil:"domcontentloaded",timeout:6000}),7000);
+        stages.push({stage:"set_content",ok:true});
+
+        await lpStage("qual_fill",page.locator("#q").fill("ND-LIGHTPANDA-QUAL",{timeout:5000}),6000);
+        const value=await lpStage("qual_fill_readback",page.locator("#q").inputValue({timeout:5000}),6000);
         stages.push({stage:"fill_readback",ok:value==="ND-LIGHTPANDA-QUAL",value_match:value==="ND-LIGHTPANDA-QUAL"});
 
-        const submit=page.locator('button');
-        await lpStage("qual_click",submit.click({timeout:6000}),7000);
-        stages.push({stage:"click",ok:true,url:page.url()});
-
-        let text="";
-        try{text=await lpStage("qual_readback",page.locator("body").innerText({timeout:6000}),7000);}catch{}
-        stages.push({stage:"post_click_readback",ok:Boolean(text),contains_received:/Received!/i.test(String(text)),excerpt:String(text).slice(0,300)});
+        await lpStage("qual_click",page.locator("#go").click({timeout:5000}),6000);
+        const resultText=await lpStage("qual_click_readback",page.locator("#out").innerText({timeout:5000}),6000);
+        stages.push({stage:"click_readback",ok:resultText==="ND-LIGHTPANDA-QUAL-CLICKED",result:resultText});
 
         return j(res,200,{
           ok:stages.every(x=>x.ok!==false),
