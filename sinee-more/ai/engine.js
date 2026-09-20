@@ -294,7 +294,7 @@ function collectDeliberateErrorCandidates(
     )
   );
 
-  const radius = Math.min(2, plausible.length - 1);
+  const radius = Math.min(1, plausible.length - 1);
   const start = Math.max(0, targetIndex - radius);
   const end = Math.min(plausible.length, targetIndex + radius + 1);
 
@@ -304,7 +304,7 @@ function collectDeliberateErrorCandidates(
       move: item.move,
       // Persona may choose within a small regret neighborhood, but the
       // difficulty tier determines which neighborhood is offered.
-      score: -Math.abs(index - targetIndex),
+      score: -4 * Math.abs(index - targetIndex),
       searchRegret: item.searchRegret
     };
   });
@@ -477,7 +477,7 @@ export function chooseMove(position, {
       rule,
       personaId,
       acceptedError,
-      Math.min(policy.personaWeight, 0.35),
+      Math.min(policy.personaWeight, 0.20),
       policy.strategicNoise,
       rng
     ) ?? acceptedError[0]?.move ?? sample[0] ?? tactical.moves[0];
