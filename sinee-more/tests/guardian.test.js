@@ -39,31 +39,33 @@ test('guardian removes moves that allow an immediate opponent win when a safe mo
   assert.deepEqual(result.moves, safe);
 });
 
-test('guardian identifies a created double immediate threat as FORCING', () => {
+test('guardian identifies an unanswerable double threat as FORCING', () => {
   let p = createInitialPosition(LIGHT);
-  p = applyMove(p, { player: LIGHT, rank: 2, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 1, cell: 0 }, RULE_C);
   p = applyMove(p, { player: DARK, rank: 1, cell: 1 }, RULE_C);
-  p = applyMove(p, { player: LIGHT, rank: 3, cell: 4 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 2, cell: 2 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 6 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 2, cell: 3 }, RULE_C);
+
   const result = getTacticalCandidates(p, p.turn, RULE_C);
-  if (result.tier === 'FORCING') {
-    assert.ok(result.moves.length > 0);
-    for (const forcing of result.moves) {
-      const next = applyMove(p, forcing, RULE_C);
-      for (const reply of getLegalMoves(next, next.turn, RULE_C)) {
-        const afterReply = applyMove(next, reply, RULE_C);
-        if (afterReply.status === 'win') {
-          assert.equal(afterReply.winner, forcing.player);
-        } else {
-          assert.ok(
-            getImmediateWins(afterReply, forcing.player, RULE_C).length > 0,
-            JSON.stringify({ forcing, reply })
-          );
-        }
+  assert.equal(result.tier, 'FORCING');
+  assert.ok(
+    result.moves.some(move => move.cell === 4 && move.rank === 9),
+    JSON.stringify(result.moves)
+  );
+
+  for (const forcing of result.moves) {
+    const next = applyMove(p, forcing, RULE_C);
+    for (const reply of getLegalMoves(next, next.turn, RULE_C)) {
+      const afterReply = applyMove(next, reply, RULE_C);
+      if (afterReply.status === 'win') {
+        assert.equal(afterReply.winner, forcing.player);
+      } else {
+        assert.ok(
+          getImmediateWins(afterReply, forcing.player, RULE_C).length > 0,
+          JSON.stringify({ forcing, reply })
+        );
       }
     }
-  } else {
-    assert.ok(['SAFE', 'MUST_DEFEND', 'WIN_NOW'].includes(result.tier));
   }
 });
 
