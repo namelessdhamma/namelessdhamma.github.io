@@ -1,0 +1,25 @@
+name: Sinee More AI v1 Tests
+
+on:
+  push:
+    branches: [sinee-more-ai-v1]
+    paths:
+      - 'sinee-more/**'
+      - '.github/workflows/sinee-more-ai-v1-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sinee-more
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
