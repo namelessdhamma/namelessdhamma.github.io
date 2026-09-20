@@ -27,6 +27,9 @@ test('difficulty policies increase search budget and tighten regret', () => {
   assert.ok(DIFFICULTY.easy.strategicErrorSeverity > DIFFICULTY.medium.strategicErrorSeverity);
   assert.ok(DIFFICULTY.medium.strategicErrorSeverity > DIFFICULTY.hard.strategicErrorSeverity);
   assert.equal(resolveDifficulty('hard', 17).timeBudgetMs, 17);
+  assert.equal(resolveDifficulty('medium', null, RULE_C).strategicErrorRate, DIFFICULTY.medium.strategicErrorRate);
+  assert.ok(resolveDifficulty('medium', null, RULE_CD).strategicErrorRate > DIFFICULTY.medium.strategicErrorRate);
+  assert.equal(resolveDifficulty('hard', null, RULE_CD).strategicErrorRate, 0);
 });
 
 test('hard always takes a known immediate win across personas', () => {
@@ -206,6 +209,37 @@ test('Easy deliberately deviates more often than Medium on the same safe positio
 
   assert.ok(
     easyErrors >= mediumErrors + 12,
+    JSON.stringify({ easyErrors, mediumErrors })
+  );
+});
+
+
+test('CD complexity keeps a clear Easy Medium strategic-error gap', () => {
+  const p = createInitialPosition(LIGHT);
+  let easyErrors = 0;
+  let mediumErrors = 0;
+
+  for (let seed = 1; seed <= 64; seed += 1) {
+    const easy = chooseMove(p, {
+      rule: RULE_CD,
+      difficulty: 'easy',
+      persona: 'architect',
+      seed,
+      timeBudgetOverrideMs: 0
+    });
+    const medium = chooseMove(p, {
+      rule: RULE_CD,
+      difficulty: 'medium',
+      persona: 'architect',
+      seed,
+      timeBudgetOverrideMs: 0
+    });
+    if (easy.metrics.deliberateError === true) easyErrors += 1;
+    if (medium.metrics.deliberateError === true) mediumErrors += 1;
+  }
+
+  assert.ok(
+    easyErrors >= mediumErrors + 8,
     JSON.stringify({ easyErrors, mediumErrors })
   );
 });
