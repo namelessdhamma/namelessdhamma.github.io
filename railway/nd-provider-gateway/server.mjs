@@ -29,6 +29,8 @@ const ADOPTION_PROFILE_PROBE_REV=String(process.env.ND_ADOPTION_PROFILE_PROBE_RE
 const ADOPTION_PROFILE_REGISTRY_ID=String(process.env.ND_ADOPTION_PROFILE_REGISTRY_ID||'').trim();
 const ADOPTION_WHOLE_STATE_B64=String(process.env.ND_ADOPTION_WHOLE_STATE_B64||'').trim();
 const ADOPTION_WHOLE_STATE_PROBE_REV=String(process.env.ND_ADOPTION_WHOLE_STATE_PROBE_REV||'').trim();
+const ADOPTION_STATE_REFRESH_B64=String(process.env.ND_ADOPTION_STATE_REFRESH_B64||'').trim();
+const ADOPTION_RECONSTRUCT_REV=String(process.env.ND_ADOPTION_RECONSTRUCT_REV||'').trim();
 
 
 function sha256Text(text){return createHash('sha256').update(Buffer.from(String(text),'utf8')).digest('hex');}
@@ -240,6 +242,45 @@ async function runAdoptionWholeStateProbe(){
     console.log('ND_ADOPTION_WHOLE_STATE_PROBE',JSON.stringify(summary));
   }catch(e){
     console.error('ND_ADOPTION_WHOLE_STATE_PROBE',JSON.stringify({rev:ADOPTION_WHOLE_STATE_PROBE_REV,ok:false,error:cleanErr(e)}));
+  }
+}
+
+async function runAdoptionReconstructProbe(){
+  if(!ADOPTION_RECONSTRUCT_REV)return;
+  const out={rev:ADOPTION_RECONSTRUCT_REV};
+  try{
+    if(ADOPTION_PROFILE_REGISTRY_ID){
+      const reg=await driveReadText(ADOPTION_PROFILE_REGISTRY_ID);
+      const obj=JSON.parse(reg.text.replace(/^\uFEFF/,''));
+      const pretty=JSON.stringify(obj,null,2)+'\n';
+      const prettyNoNl=JSON.stringify(obj,null,2);
+      out.serialization={
+        original_sha256:reg.sha256,
+        pretty_lf_sha256:sha256Text(pretty),
+        pretty_no_final_nl_sha256:sha256Text(prettyNoNl),
+        original_bytes:reg.bytes,
+        pretty_bytes:Buffer.byteLength(pretty,'utf8'),
+        pretty_no_final_nl_bytes:Buffer.byteLength(prettyNoNl,'utf8')
+      };
+    }
+    if(ADOPTION_STATE_REFRESH_B64){
+      const script=Buffer.from(ADOPTION_STATE_REFRESH_B64,'base64').toString('utf8');
+      out.state_refresh_sha256=sha256Text(script);
+      out.state_refresh_bytes=Buffer.byteLength(script,'utf8');
+      const terms=['TRUE_RESEARCH','RESEARCH_INTEROP','1.13.0','1.4.4','1.4.0','GOVERNING_RESEARCH_CORE'];
+      out.snippets={};
+      for(const term of terms){
+        const hits=[]; let p=0;
+        while((p=script.indexOf(term,p))>=0 && hits.length<12){
+          hits.push(script.slice(Math.max(0,p-1200),Math.min(script.length,p+2800)));
+          p+=term.length;
+        }
+        out.snippets[term]=hits;
+      }
+    }
+    console.log('ND_ADOPTION_RECONSTRUCT_PROBE',JSON.stringify(out));
+  }catch(e){
+    console.error('ND_ADOPTION_RECONSTRUCT_PROBE',JSON.stringify({rev:ADOPTION_RECONSTRUCT_REV,ok:false,error:cleanErr(e)}));
   }
 }
 
@@ -795,3 +836,4 @@ setTimeout(runYoutubeQualification,2000);
 setTimeout(runAdoptionReadProbe,3000);
 setTimeout(runAdoptionProfileProbe,4500);
 setTimeout(runAdoptionWholeStateProbe,6000);
+setTimeout(runAdoptionReconstructProbe,7500);
