@@ -399,6 +399,7 @@ export function chooseMove(position, {
       completedDepth: searchResult.completedDepth ?? 0,
       timedOut: Boolean(searchResult.timedOut),
       tacticalTier: tactical.tier,
+      forcingSkipped: Boolean(tactical.forcingSkipped),
       openingRegret
     }
   };
