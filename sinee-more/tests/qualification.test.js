@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GATES, runQualification, runStrengthProbe, mirroredStrengthPhase } from '../tools/qualification.js';
-
+import { GATES, DEFAULT_QUALIFICATION_BUDGET_SCALE, runQualification, runStrengthProbe, mirroredStrengthPhase } from '../tools/qualification.js';
 test('qualification exposes the v1 release gates', () => {
   assert.equal(GATES.tacticalHardBlunders, 0);
   assert.equal(GATES.cachedUncachedMismatches, 0);
@@ -13,14 +12,12 @@ test('qualification exposes the v1 release gates', () => {
   assert.equal(GATES.maxMixedOpeningShare, 0.75);
   assert.equal(GATES.maxBudgetOverrunMs, 40);
   assert.equal(GATES.minStrengthGamesPerDifficultyMatchup, 400);
+  assert.equal(DEFAULT_QUALIFICATION_BUDGET_SCALE, 0.10);
 });
-
-
 test('strength quartet mirrors roles without changing agent RNG identities', () => {
   const phases = [0, 1, 2, 3].map(gameIndex =>
     mirroredStrengthPhase(gameIndex, 1000)
   );
-
   assert.deepEqual(
     phases.map(x => [x.aIsLight, x.firstPlayer]),
     [
@@ -32,13 +29,11 @@ test('strength quartet mirrors roles without changing agent RNG identities', () 
   );
   assert.equal(new Set(phases.map(x => x.agentASeed)).size, 1);
   assert.equal(new Set(phases.map(x => x.agentBSeed)).size, 1);
-
   const next = mirroredStrengthPhase(4, 1000);
   assert.notEqual(next.agentASeed, phases[0].agentASeed);
   assert.notEqual(next.agentBSeed, phases[0].agentBSeed);
   assert.equal(next.quartet, 1);
 });
-
 test('fast qualification returns a complete report shape', () => {
   const report = runQualification({
     gamesPerPair: 1,
@@ -66,8 +61,6 @@ test('fast qualification returns a complete report shape', () => {
   assert.equal(typeof report.metrics.timing.p95StrategicRegret, 'number');
   assert.ok(Array.isArray(report.failures));
 });
-
-
 test('focused strength probe omits unrelated qualification work', () => {
   const report = runStrengthProbe({
     gamesPerPair: 1,
@@ -106,8 +99,6 @@ test('focused strength probe omits unrelated qualification work', () => {
   assert.equal('openings' in report.metrics, false);
   assert.ok(Array.isArray(report.failures));
 });
-
-
 test('focused strength probe can isolate CD calibration', () => {
   const report = runStrengthProbe({
     gamesPerPair: 1,
