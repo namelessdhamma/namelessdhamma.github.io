@@ -9,6 +9,7 @@ import {
   immediateWinFixture, immediateBlockFixture,
   increasingLadderFixture, decreasingLadderFixture
 } from '../fixtures/regressions.js';
+import { buildQualificationCorpus } from '../tools/corpus.js';
 
 function sameMove(a, b) {
   return a.player === b.player && a.rank === b.rank && a.cell === b.cell;
@@ -155,4 +156,25 @@ test('expired Guardian budget skips optional forcing scan but never skips immedi
   );
   assert.equal(bounded.tier, 'SAFE');
   assert.equal(bounded.forcingSkipped, true);
+});
+
+
+test('optimized immediate-win scan matches brute-force rule execution', () => {
+  const corpus = buildQualificationCorpus({ count: 36, seed: 0x9911aa });
+  for (const item of corpus) {
+    const player = item.position.turn;
+    const expected = getLegalMoves(item.position, player, item.rule)
+      .filter(move => {
+        const next = applyMove(item.position, move, item.rule);
+        return next?.status === 'win' && next.winner === player;
+      })
+      .map(move => `${move.cell}:${move.rank}`)
+      .sort();
+
+    const actual = getImmediateWins(item.position, player, item.rule)
+      .map(move => `${move.cell}:${move.rank}`)
+      .sort();
+
+    assert.deepEqual(actual, expected, item.name);
+  }
 });
