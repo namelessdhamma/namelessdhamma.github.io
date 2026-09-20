@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { LIGHT, DARK, RULE_C, RULE_D, RULE_CD } from '../ai/constants.js';
 import { createInitialPosition, applyMove, getLegalMoves } from '../ai/rules.js';
 import {
-  getImmediateWins, getSafeMoves, getTacticalCandidates
+  getImmediateWins, getImmediateThreatCells, getSafeMoves, getTacticalCandidates
 } from '../ai/guardian.js';
 import {
   immediateWinFixture, immediateBlockFixture,
@@ -84,4 +84,28 @@ test('early positions expose all legal moves as safe when opponent cannot yet ha
     const safe = getSafeMoves(p, LIGHT, rule);
     assert.equal(safe.length, 81);
   }
+});
+
+
+test('immediate-win scan is restricted to cells that can complete a line', () => {
+  let p = createInitialPosition(LIGHT);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 1, cell: 4 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 5, cell: 1 }, RULE_C);
+
+  assert.deepEqual(
+    getImmediateThreatCells(p, LIGHT, RULE_C),
+    [2]
+  );
+
+  const wins = getImmediateWins(p, LIGHT, RULE_C);
+  assert.ok(wins.length > 0);
+  assert.ok(wins.every(move => move.cell === 2));
+});
+
+test('positions without two owned tops on a line have no immediate threat cells', () => {
+  let p = createInitialPosition(LIGHT);
+  p = applyMove(p, { player: LIGHT, rank: 5, cell: 4 }, RULE_D);
+  assert.deepEqual(getImmediateThreatCells(p, LIGHT, RULE_D), []);
+  assert.deepEqual(getImmediateWins(p, LIGHT, RULE_D), []);
 });
