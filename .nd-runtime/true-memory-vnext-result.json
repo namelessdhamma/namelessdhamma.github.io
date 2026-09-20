@@ -1,9 +1,9 @@
 {
-  "request_id": "tm-vnext-save-true-writer-current-20260920T0919Z",
+  "request_id": "tm-vnext-save-true-writer-current-20260920T0924Z",
   "status_code": 502,
   "response": {
     "ok": false,
     "operation": "drive_create_immutable_markdown",
-    "error": "existing_canonical_markdown_content_mismatch"
+    "error": "literary_canonical_name_denied"
   }
 }
