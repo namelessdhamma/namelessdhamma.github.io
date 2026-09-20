@@ -215,6 +215,7 @@ export function chooseMove(position, {
       persona: personaId,
       metrics: {
         elapsedMs: performance.now() - engineStarted,
+        guardianElapsedMs: performance.now() - engineStarted,
         searchElapsedMs: 0,
         nodes: 0,
         ttHits: 0,
@@ -253,6 +254,7 @@ export function chooseMove(position, {
         persona: personaId,
         metrics: {
           elapsedMs: performance.now() - engineStarted,
+          guardianElapsedMs: performance.now() - engineStarted,
           searchElapsedMs: 0,
           nodes: 0,
           ttHits: 0,
