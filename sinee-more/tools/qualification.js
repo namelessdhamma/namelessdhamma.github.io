@@ -565,6 +565,59 @@ function timingMetrics(timings) {
   };
 }
 
+export function runStrengthProbe({
+  gamesPerPair = 8,
+  seed = 0x51eaea,
+  qualificationBudgetScale = 0.04
+} = {}) {
+  const timings = [];
+  const strength = strengthMetrics({
+    gamesPerPair,
+    seed,
+    qualificationBudgetScale,
+    timings
+  });
+  const timing = timingMetrics(timings);
+  const failures = [];
+
+  if (
+    strength.hardVsMedium.scoreRate <
+    GATES.hardVsMediumMinScore
+  ) {
+    failures.push(
+      `Hard vs Medium score: ${strength.hardVsMedium.scoreRate.toFixed(3)}`
+    );
+  }
+  if (
+    strength.mediumVsEasy.scoreRate <
+    GATES.mediumVsEasyMinScore
+  ) {
+    failures.push(
+      `Medium vs Easy score: ${strength.mediumVsEasy.scoreRate.toFixed(3)}`
+    );
+  }
+
+  return {
+    ok: failures.length === 0,
+    gates: {
+      hardVsMediumMinScore: GATES.hardVsMediumMinScore,
+      mediumVsEasyMinScore: GATES.mediumVsEasyMinScore
+    },
+    config: {
+      gamesPerPair,
+      totalGamesPerDifficultyMatchup:
+        gamesPerPair * RULES.length * PERSONA_IDS.length,
+      seed,
+      qualificationBudgetScale
+    },
+    metrics: {
+      strength,
+      timing
+    },
+    failures
+  };
+}
+
 export function runQualification({
   gamesPerPair = 34,
   seed = 0x51eaea,
@@ -714,19 +767,25 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   const fast = process.argv.includes('--fast');
-  const report = runQualification({
+  const strengthOnly = process.argv.includes('--strength-only');
+  const common = {
     gamesPerPair: Number(
       cliArg('--games-per-pair', fast ? 1 : 34)
     ),
     seed: Number(cliArg('--seed', 0x51eaea)),
-    enforceStatisticalGates: !fast,
     qualificationBudgetScale: Number(
       cliArg('--budget-scale', fast ? 0 : 0.04)
-    ),
-    corpusSize: Number(
-      cliArg('--corpus-size', fast ? 24 : 100)
     )
-  });
+  };
+  const report = strengthOnly
+    ? runStrengthProbe(common)
+    : runQualification({
+        ...common,
+        enforceStatisticalGates: !fast,
+        corpusSize: Number(
+          cliArg('--corpus-size', fast ? 24 : 100)
+        )
+      });
 
   const json = JSON.stringify(report, null, 2);
   console.log(json);
