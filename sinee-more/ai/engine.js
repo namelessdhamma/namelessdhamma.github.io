@@ -14,6 +14,62 @@ function moveKey(move) {
   return `${move.player}:${move.rank}:${move.cell}`;
 }
 
+
+const MONOTONIC_TRIPLES = (() => {
+  const triples = [];
+  for (let a = 1; a <= 9; a += 1) {
+    for (let b = 1; b <= 9; b += 1) {
+      for (let c = 1; c <= 9; c += 1) {
+        if ((a < b && b < c) || (a > b && b > c)) triples.push([a,b,c]);
+      }
+    }
+  }
+  return triples;
+})();
+
+const LINE_POSITIONS = [
+  [[0,0],[3,0],[6,0]], [[0,1],[4,0]], [[0,2],[5,0],[7,0]],
+  [[1,0],[3,1]], [[1,1],[4,1],[5,1],[6,1],[7,1]],
+  [[1,2],[5,2]], [[2,0],[3,2],[7,2]], [[2,1],[4,2]], [[2,2],[5,2],[6,2]]
+];
+
+function ladderRoleFlexibility(cell, rank) {
+  let count = 0;
+  for (const [, index] of LINE_POSITIONS[cell]) {
+    for (const triple of MONOTONIC_TRIPLES) {
+      if (triple[index] === rank) count += 1;
+    }
+  }
+  return count;
+}
+
+function cheapOpeningScore(move, rule) {
+  const location = move.cell === 4 ? 8 : (move.cell % 2 === 0 ? 5 : 3);
+  const rankEconomy = (10 - move.rank) * 0.18;
+  if (rule === 'D' || rule === 'CD') {
+    return ladderRoleFlexibility(move.cell, move.rank) * 1.4 + location + rankEconomy;
+  }
+  return location + rankEconomy;
+}
+
+function openingSearchCandidates(position, moves, rule, policy) {
+  if (position.moves > 1 || moves.length <= 1) return moves;
+  const dynamicLimit = Math.max(
+    6,
+    Math.min(
+      policy.openingCandidateLimit,
+      Math.floor(Math.max(1, policy.timeBudgetMs) / 20) + 5
+    )
+  );
+  return [...moves]
+    .sort((a, b) =>
+      cheapOpeningScore(b, rule) - cheapOpeningScore(a, rule) ||
+      a.cell - b.cell ||
+      a.rank - b.rank
+    )
+    .slice(0, dynamicLimit);
+}
+
 function collectNearBestCandidates(rootScores, tacticalMoves, bestMove, regretBand) {
   const scoreMap = new Map(
     (rootScores ?? []).map(item => [moveKey(item.move), item.score])
@@ -129,6 +185,11 @@ export function chooseMove(position, {
     };
   }
 
+  const searchCandidates =
+    tactical.tier === 'WIN_NOW' || tactical.tier === 'MUST_DEFEND'
+      ? tactical.moves
+      : openingSearchCandidates(position, tactical.moves, rule, policy);
+
   const searchResult = searchIterative(position, {
     rule,
     rootPlayer: position.turn,
@@ -136,7 +197,7 @@ export function chooseMove(position, {
       evaluatePosition(state, rootPlayer, rule),
     timeBudgetMs: policy.timeBudgetMs,
     maxDepth: policy.maxDepth,
-    rootCandidates: tactical.moves
+    rootCandidates: searchCandidates
   });
 
   let accepted;
@@ -148,11 +209,18 @@ export function chooseMove(position, {
     }));
   } else {
     accepted = position.moves <= 1
-      ? collectTopCandidates(
-          searchResult.rootScores,
-          tactical.moves,
-          searchResult.move,
-          policy.openingCandidateLimit
+      ? (
+          searchResult.completedDepth === 0
+            ? searchCandidates.map((move, index) => ({
+                move,
+                score: -index * 2
+              }))
+            : collectTopCandidates(
+                searchResult.rootScores,
+                searchCandidates,
+                searchResult.move,
+                policy.openingCandidateLimit
+              )
         )
       : collectNearBestCandidates(
           searchResult.rootScores,
