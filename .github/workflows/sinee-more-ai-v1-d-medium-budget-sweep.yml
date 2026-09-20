@@ -1,5 +1,5 @@
-name: Sinee More AI v1 D Medium Budget Sweep
-# diagnostic-sample: 4
+name: Sinee More AI v1 D Medium Error-Rate Sweep
+# diagnostic-sample: 5
 
 on:
   workflow_dispatch:
@@ -12,9 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  d-medium-budget-sweep:
+  d-medium-error-rate-sweep:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: sinee-more
@@ -24,40 +24,65 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Medium 220 ms
+      - name: Medium D error rate 0.70
         continue-on-error: true
         shell: bash
         run: |
           cp ai/difficulty.js /tmp/difficulty.js
           trap 'cp /tmp/difficulty.js ai/difficulty.js' EXIT
-          sed -i '0,/timeBudgetMs: 220/s//timeBudgetMs: 220/' ai/difficulty.js
-          node tools/qualification.js --strength-only --rules D --games-per-pair 4 --budget-scale 1.0 --json d-medium-220.json
-          
-      - name: Medium 180 ms
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ai/difficulty.js')
+          s=p.read_text()
+          old='strategicErrorRate: 0.58,'
+          if old not in s:
+              raise SystemExit('medium error-rate anchor missing')
+          p.write_text(s.replace(old, 'strategicErrorRate: 0.70,', 1))
+          PY
+          node tools/qualification.js --strength-only --rules D --games-per-pair 8 --budget-scale 1.0 --json d-medium-rate-070.json
+
+      - name: Medium D error rate 0.80
         continue-on-error: true
         shell: bash
         run: |
           cp ai/difficulty.js /tmp/difficulty.js
           trap 'cp /tmp/difficulty.js ai/difficulty.js' EXIT
-          sed -i '0,/timeBudgetMs: 220/s//timeBudgetMs: 180/' ai/difficulty.js
-          node tools/qualification.js --strength-only --rules D --games-per-pair 4 --budget-scale 1.0 --json d-medium-180.json
-          
-      - name: Medium 160 ms
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ai/difficulty.js')
+          s=p.read_text()
+          old='strategicErrorRate: 0.58,'
+          if old not in s:
+              raise SystemExit('medium error-rate anchor missing')
+          p.write_text(s.replace(old, 'strategicErrorRate: 0.80,', 1))
+          PY
+          node tools/qualification.js --strength-only --rules D --games-per-pair 8 --budget-scale 1.0 --json d-medium-rate-080.json
+
+      - name: Medium D error rate 0.90
         continue-on-error: true
         shell: bash
         run: |
           cp ai/difficulty.js /tmp/difficulty.js
           trap 'cp /tmp/difficulty.js ai/difficulty.js' EXIT
-          sed -i '0,/timeBudgetMs: 220/s//timeBudgetMs: 160/' ai/difficulty.js
-          node tools/qualification.js --strength-only --rules D --games-per-pair 4 --budget-scale 1.0 --json d-medium-160.json
-          
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ai/difficulty.js')
+          s=p.read_text()
+          old='strategicErrorRate: 0.58,'
+          if old not in s:
+              raise SystemExit('medium error-rate anchor missing')
+          p.write_text(s.replace(old, 'strategicErrorRate: 0.90,', 1))
+          PY
+          node tools/qualification.js --strength-only --rules D --games-per-pair 8 --budget-scale 1.0 --json d-medium-rate-090.json
+
       - name: Restore difficulty
         if: always()
         run: git checkout -- ai/difficulty.js
+
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sinee-more-ai-v1-d-medium-budget-sweep
-          path: sinee-more/d-medium-*.json
+          name: sinee-more-ai-v1-d-medium-error-rate-sweep
+          path: sinee-more/d-medium-rate-*.json
           if-no-files-found: ignore
