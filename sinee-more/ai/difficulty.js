@@ -5,7 +5,8 @@ export const DIFFICULTY = Object.freeze({
     regretBand: 50,
     openingRegretBand: 220,
     personaWeight: 0.85,
-    openingPersonaWeight: 2.2,
+    openingPersonaWeight: 10,
+    openingCandidateLimit: 18,
     strategicNoise: 0.30,
     guardian: 'full'
   }),
@@ -15,7 +16,8 @@ export const DIFFICULTY = Object.freeze({
     regretBand: 28,
     openingRegretBand: 170,
     personaWeight: 0.55,
-    openingPersonaWeight: 1.8,
+    openingPersonaWeight: 8,
+    openingCandidateLimit: 12,
     strategicNoise: 0.18,
     guardian: 'full'
   }),
@@ -25,7 +27,8 @@ export const DIFFICULTY = Object.freeze({
     regretBand: 1.5,
     openingRegretBand: 120,
     personaWeight: 0.22,
-    openingPersonaWeight: 1.5,
+    openingPersonaWeight: 6,
+    openingCandidateLimit: 8,
     strategicNoise: 0,
     guardian: 'full'
   })
