@@ -95,16 +95,20 @@ test('engine always returns a legal coherent move under tiny budget', () => {
 test('hard personas do not collapse to one opening script', () => {
   for (const rule of [RULE_C, RULE_D, RULE_CD]) {
     const p = createInitialPosition(LIGHT);
-    const choices = ['architect','hunter','sentinel','trickster'].map((persona, index) =>
+    const results = ['architect','hunter','sentinel','trickster'].map((persona, index) =>
       chooseMove(p, {
         rule,
         difficulty: 'hard',
         persona,
         seed: 100 + index,
         timeBudgetOverrideMs: 30
-      }).move
+      })
     );
+    const choices = results.map(result => result.move);
     const unique = new Set(choices.map(move => `${move.cell}:${move.rank}`));
-    assert.ok(unique.size >= 2, `${rule}: ${JSON.stringify(choices)}`);
+    assert.ok(
+      unique.size >= 2,
+      `${rule}: ${JSON.stringify(results.map(result => ({move: result.move, depth: result.metrics.completedDepth, nodes: result.metrics.nodes})))}`
+    );
   }
 });
