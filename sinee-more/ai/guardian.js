@@ -30,13 +30,27 @@ function getLegalMovesOnCells(position, player, rule, cells) {
 }
 
 
-function simulateNonWinningMove(position, move) {
+function hasAnyLegalMove(position, player, rule) {
+  const probe = position.turn === player
+    ? position
+    : { ...position, turn: player };
+
+  for (const rank of probe.remaining[player]) {
+    for (let cell = 0; cell < 9; cell += 1) {
+      if (isLegalMove(probe, { player, rank, cell }, rule)) return true;
+    }
+  }
+  return false;
+}
+
+function simulateNonWinningMove(position, move, rule) {
   const board = position.board.slice();
   board[move.cell] = [
     ...position.board[move.cell],
     { player: move.player, rank: move.rank }
   ];
-  return {
+
+  const next = {
     ...position,
     board,
     remaining: {
@@ -50,6 +64,19 @@ function simulateNonWinningMove(position, move) {
     winner: null,
     winLine: null
   };
+
+  if (hasAnyLegalMove(next, next.turn, rule)) return next;
+
+  next.turn = move.player;
+  if (hasAnyLegalMove(next, next.turn, rule)) {
+    next.passes = (position.passes ?? 0) + 1;
+    return next;
+  }
+
+  next.status = 'draw';
+  next.winner = null;
+  next.winLine = null;
+  return next;
 }
 
 function getImmediateThreatLines(position, player) {
@@ -174,7 +201,8 @@ export function getSafeMoves(position, player, rule) {
     .sort((a, b) => a.rank - b.rank || a.cell - b.cell)
     .filter(move => {
       if (ownWinningMoves.has(`${move.cell}:${move.rank}`)) return true;
-      const next = simulateNonWinningMove(probe, move);
+      const next = simulateNonWinningMove(probe, move, rule);
+      if (next.status !== 'playing' || next.turn !== opponent) return true;
       return getImmediateWins(next, opponent, rule).length === 0;
     });
 }
@@ -190,7 +218,7 @@ function forcingMoves(position, player, rule, candidates, options = {}) {
 
   for (const move of candidates) {
     if (now() >= deadline) break;
-    const next = simulateNonWinningMove(probe, move);
+    const next = simulateNonWinningMove(probe, move, rule);
 
     // First use the cheap double-threat test. Only rare candidates that
     // create 2+ immediate wins pay for reply verification.
@@ -227,8 +255,12 @@ function forcingMoves(position, player, rule, candidates, options = {}) {
         forced = false;
         break;
       }
-      const afterReply = simulateNonWinningMove(next, reply);
-      if (getImmediateWins(afterReply, player, rule).length === 0) {
+      const afterReply = simulateNonWinningMove(next, reply, rule);
+      if (
+        afterReply.status !== 'playing' ||
+        afterReply.turn !== player ||
+        getImmediateWins(afterReply, player, rule).length === 0
+      ) {
         forced = false;
         break;
       }
