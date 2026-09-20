@@ -34,6 +34,12 @@ const ADOPTION_WHOLE_STATE_B64=String(process.env.ND_ADOPTION_WHOLE_STATE_B64||'
 const ADOPTION_WHOLE_STATE_PROBE_REV=String(process.env.ND_ADOPTION_WHOLE_STATE_PROBE_REV||'').trim();
 const ADOPTION_STATE_REFRESH_B64=String(process.env.ND_ADOPTION_STATE_REFRESH_B64||'').trim();
 const ADOPTION_RECONSTRUCT_REV=String(process.env.ND_ADOPTION_RECONSTRUCT_REV||'').trim();
+const ADOPTION_ALT_GOOGLE_CLIENT_EMAIL=String(process.env.ND_ADOPTION_ALT_GOOGLE_CLIENT_EMAIL||'').trim();
+const ADOPTION_ALT_GOOGLE_PRIVATE_KEY_B64=String(process.env.ND_ADOPTION_ALT_GOOGLE_PRIVATE_KEY_B64||'').trim();
+const ADOPTION_EXACT_REGISTRY_ID=String(process.env.ND_ADOPTION_EXACT_REGISTRY_ID||'').trim();
+const ADOPTION_EXACT_REGISTRY_EXPECTED_SHA=String(process.env.ND_ADOPTION_EXACT_REGISTRY_EXPECTED_SHA||'').trim();
+const ADOPTION_EXACT_REGISTRY_PROBE_REV=String(process.env.ND_ADOPTION_EXACT_REGISTRY_PROBE_REV||'').trim();
+let adoptionAltGoogleTokenCache={token:'',exp:0};
 
 
 function sha256Text(text){return createHash('sha256').update(Buffer.from(String(text),'utf8')).digest('hex');}
@@ -64,6 +70,66 @@ async function googleAccessToken(){
   googleTokenCache={token:o.access_token,exp:now+Number(o.expires_in||3600)};
   return googleTokenCache.token;
 }
+async function adoptionAltGoogleAccessToken(){
+  const now=Math.floor(Date.now()/1000);
+  if(adoptionAltGoogleTokenCache.token && adoptionAltGoogleTokenCache.exp>now+60)return adoptionAltGoogleTokenCache.token;
+  if(!ADOPTION_ALT_GOOGLE_CLIENT_EMAIL||!ADOPTION_ALT_GOOGLE_PRIVATE_KEY_B64)throw new Error('alt_google_credentials_missing');
+  const pem=Buffer.from(ADOPTION_ALT_GOOGLE_PRIVATE_KEY_B64,'base64').toString('utf8');
+  const header=b64url(JSON.stringify({alg:'RS256',typ:'JWT'}));
+  const payload=b64url(JSON.stringify({
+    iss:ADOPTION_ALT_GOOGLE_CLIENT_EMAIL,
+    scope:'https://www.googleapis.com/auth/drive.readonly',
+    aud:'https://oauth2.googleapis.com/token',
+    iat:now,
+    exp:now+3600
+  }));
+  const unsigned=header+'.'+payload;
+  const signer=createSign('RSA-SHA256'); signer.update(unsigned); signer.end();
+  const assertion=unsigned+'.'+b64url(signer.sign(pem));
+  const body=new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion});
+  const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
+  const t=await r.text(); if(!r.ok)throw new Error('alt_google_token_http_'+r.status+':'+t.slice(0,300));
+  const o=JSON.parse(t); if(!o.access_token)throw new Error('alt_google_access_token_missing');
+  adoptionAltGoogleTokenCache={token:o.access_token,exp:now+Number(o.expires_in||3600)};
+  return adoptionAltGoogleTokenCache.token;
+}
+async function adoptionAltDriveReadText(id){
+  const token=await adoptionAltGoogleAccessToken();
+  async function get(url){
+    const r=await fetch(url,{headers:{authorization:'Bearer '+token}});
+    const buf=Buffer.from(await r.arrayBuffer());
+    if(!r.ok)throw new Error('alt_drive_http_'+r.status+':'+buf.toString('utf8').slice(0,500));
+    return buf;
+  }
+  const mb=await get('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'?fields=id,name,mimeType,parents,md5Checksum,size,modifiedTime,version');
+  const meta=JSON.parse(mb.toString('utf8'));
+  const data=await get('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'?alt=media&supportsAllDrives=true');
+  const text=data.toString('utf8');
+  return {meta,text,sha256:sha256Text(text),bytes:data.length};
+}
+async function runAdoptionExactRegistryProbe(){
+  if(!ADOPTION_EXACT_REGISTRY_PROBE_REV||!ADOPTION_EXACT_REGISTRY_ID)return;
+  try{
+    const r=await adoptionAltDriveReadText(ADOPTION_EXACT_REGISTRY_ID);
+    const match=!ADOPTION_EXACT_REGISTRY_EXPECTED_SHA||r.sha256===ADOPTION_EXACT_REGISTRY_EXPECTED_SHA;
+    const b64=Buffer.from(r.text,'utf8').toString('base64'), chunkSize=6000, total=Math.max(1,Math.ceil(b64.length/chunkSize));
+    console.log('ND_ADOPTION_EXACT_REGISTRY_META',JSON.stringify({
+      rev:ADOPTION_EXACT_REGISTRY_PROBE_REV,ok:match,sha256:r.sha256,expected_sha256:ADOPTION_EXACT_REGISTRY_EXPECTED_SHA||null,
+      bytes:r.bytes,total,meta:r.meta
+    }));
+    if(!match)throw new Error('exact_registry_sha_mismatch');
+    for(let i=0;i<total;i++)console.log('ND_ADOPTION_EXACT_REGISTRY_CHUNK',JSON.stringify({
+      rev:ADOPTION_EXACT_REGISTRY_PROBE_REV,index:i,total,data:b64.slice(i*chunkSize,(i+1)*chunkSize)
+    }));
+    const obj=JSON.parse(r.text.replace(/^\uFEFF/,''));
+    console.log('ND_ADOPTION_EXACT_REGISTRY_DONE',JSON.stringify({
+      rev:ADOPTION_EXACT_REGISTRY_PROBE_REV,ok:true,version:obj.version,component_count:(obj.components||[]).length
+    }));
+  }catch(e){
+    console.error('ND_ADOPTION_EXACT_REGISTRY_DONE',JSON.stringify({rev:ADOPTION_EXACT_REGISTRY_PROBE_REV,ok:false,error:cleanErr(e)}));
+  }
+}
+
 async function googleFetch(url,init={}){
   const token=await googleAccessToken();
   const headers={...(init.headers||{}),authorization:'Bearer '+token};
@@ -995,3 +1061,4 @@ setTimeout(runAdoptionReadProbe,3000);
 setTimeout(runAdoptionProfileProbe,4500);
 setTimeout(runAdoptionWholeStateProbe,6000);
 setTimeout(runAdoptionReconstructProbe,7500);
+setTimeout(runAdoptionExactRegistryProbe,9000);
