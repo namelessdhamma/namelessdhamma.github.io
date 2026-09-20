@@ -1,4 +1,4 @@
-import { LINES, otherPlayer } from './constants.js';
+import { LINES, otherPlayer, usesLadder } from './constants.js';
 import { getLegalMoves, isLegalMove, applyMove, topPiece } from './rules.js';
 
 function sameMove(a, b) {
@@ -40,6 +40,40 @@ export function getImmediateThreatCells(position, player, rule) {
   return [...cells].sort((a, b) => a - b);
 }
 
+
+function isWinningVisibleLine(position, player, rule, move) {
+  for (const line of LINES) {
+    if (!line.includes(move.cell)) continue;
+
+    const ranks = [];
+    let owned = true;
+    for (const cell of line) {
+      if (cell === move.cell) {
+        ranks.push(move.rank);
+        continue;
+      }
+
+      const top = topPiece(position, cell);
+      if (!top || top.player !== player) {
+        owned = false;
+        break;
+      }
+      ranks.push(top.rank);
+    }
+
+    if (!owned) continue;
+    if (!usesLadder(rule)) return true;
+
+    if (
+      (ranks[0] < ranks[1] && ranks[1] < ranks[2]) ||
+      (ranks[0] > ranks[1] && ranks[1] > ranks[2])
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function getImmediateWins(position, player, rule) {
   if (!position || position.status !== 'playing') return [];
   const probe = position.turn === player
@@ -53,8 +87,7 @@ export function getImmediateWins(position, player, rule) {
     for (const cell of threatCells) {
       const move = { player, rank, cell };
       if (!isLegalMove(probe, move, rule)) continue;
-      const next = applyMove(probe, move, rule);
-      if (next?.status === 'win' && next.winner === player) wins.push(move);
+      if (isWinningVisibleLine(probe, player, rule, move)) wins.push(move);
     }
   }
   return wins;
