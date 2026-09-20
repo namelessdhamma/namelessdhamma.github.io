@@ -27,7 +27,6 @@ import {
   immediateWinFixture, immediateBlockFixture,
   increasingLadderFixture, decreasingLadderFixture
 } from '../fixtures/regressions.js';
-
 export const GATES = Object.freeze({
   tacticalHardBlunders: 0,
   cachedUncachedMismatches: 0,
@@ -40,19 +39,15 @@ export const GATES = Object.freeze({
   maxBudgetOverrunMs: 40,
   minStrengthGamesPerDifficultyMatchup: 400
 });
-
 const RULES = Object.freeze([RULE_C, RULE_D, RULE_CD]);
 const PERSONA_IDS = Object.freeze(Object.keys(PERSONAS));
-
 function sameMove(a, b) {
   return !!a && !!b &&
     a.player === b.player && a.rank === b.rank && a.cell === b.cell;
 }
-
 function moveKey(move) {
   return move ? `${move.player}:${move.cell}:${move.rank}` : '-';
 }
-
 function percentile(values, p) {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -62,8 +57,6 @@ function percentile(values, p) {
   );
   return sorted[index];
 }
-
-
 function proportion95CI(rate, n) {
   if (!n) return { low: 0, high: 0 };
   const z = 1.96;
@@ -81,7 +74,6 @@ function proportion95CI(rate, n) {
     high: Math.min(1, center + margin)
   };
 }
-
 function makeAgent({
   difficulty, persona, seed, qualificationBudgetScale, timings
 }) {
@@ -119,7 +111,6 @@ function makeAgent({
     }
   };
 }
-
 function tacticalMetrics(qualificationBudgetScale, seed) {
   const winFixtures = [
     immediateWinFixture(),
@@ -128,7 +119,6 @@ function tacticalMetrics(qualificationBudgetScale, seed) {
   ];
   const failures = [];
   let checked = 0;
-
   for (const fx of winFixtures) {
     for (const persona of PERSONA_IDS) {
       const budget = Math.max(
@@ -151,7 +141,6 @@ function tacticalMetrics(qualificationBudgetScale, seed) {
       }
     }
   }
-
   const block = immediateBlockFixture();
   const safe = getSafeMoves(
     block.position, block.position.turn, block.rule
@@ -173,23 +162,19 @@ function tacticalMetrics(qualificationBudgetScale, seed) {
       failures.push(`${block.name}/${persona}: left immediate loss`);
     }
   }
-
   return {
     checked,
     blunders: failures.length,
     failures
   };
 }
-
 function searchConsistencyMetrics(corpus) {
   let mismatches = 0;
   const details = [];
   const sample = corpus.slice(0, Math.min(12, corpus.length));
-
   for (const item of sample) {
     const evaluate = (position, root) =>
       evaluatePosition(position, root, item.rule);
-
     const plain = searchFixedDepth(item.position, {
       rule: item.rule,
       rootPlayer: item.position.turn,
@@ -198,7 +183,6 @@ function searchConsistencyMetrics(corpus) {
       useTable: false,
       useSymmetry: false
     });
-
     const cached = searchFixedDepth(item.position, {
       rule: item.rule,
       rootPlayer: item.position.turn,
@@ -208,7 +192,6 @@ function searchConsistencyMetrics(corpus) {
       useSymmetry: false,
       table: new TranspositionTable()
     });
-
     if (
       plain.score !== cached.score ||
       !sameMove(plain.move, cached.move)
@@ -217,19 +200,16 @@ function searchConsistencyMetrics(corpus) {
       details.push(item.name);
     }
   }
-
   return {
     checked: sample.length,
     mismatches,
     details
   };
 }
-
 function symmetryMetrics(corpus) {
   let mismatches = 0;
   const details = [];
   const sample = corpus.slice(0, Math.min(12, corpus.length));
-
   for (const item of sample) {
     const target = canonicalize(item.position, item.rule).key;
     for (let id = 0; id < TRANSFORMS.length; id += 1) {
@@ -243,17 +223,14 @@ function symmetryMetrics(corpus) {
       }
     }
   }
-
   return {
     checked: sample.length * TRANSFORMS.length,
     mismatches,
     details
   };
 }
-
 function personaMetrics(corpus) {
   const selections = new Map(PERSONA_IDS.map(id => [id, []]));
-
   for (const item of corpus) {
     const tactical = getTacticalCandidates(
       item.position, item.position.turn, item.rule
@@ -277,7 +254,6 @@ function personaMetrics(corpus) {
       selections.get(id).push(moveKey(best));
     }
   }
-
   const pairs = [];
   for (let i = 0; i < PERSONA_IDS.length; i += 1) {
     for (let j = i + 1; j < PERSONA_IDS.length; j += 1) {
@@ -301,7 +277,6 @@ function personaMetrics(corpus) {
       });
     }
   }
-
   return {
     positions: corpus.length,
     pairs,
@@ -313,7 +288,6 @@ function personaMetrics(corpus) {
     ).length
   };
 }
-
 export function mirroredStrengthPhase(gameIndex, seed) {
   const phase = gameIndex % 4;
   const quartet = Math.floor(gameIndex / 4);
@@ -329,7 +303,6 @@ export function mirroredStrengthPhase(gameIndex, seed) {
     agentBSeed: seed + quartet * 1009 + 53
   };
 }
-
 function playStrengthGame({
   rule,
   persona,
@@ -342,7 +315,6 @@ function playStrengthGame({
 }) {
   const mirror = mirroredStrengthPhase(gameIndex, seed);
   const { phase, aIsLight, firstPlayer } = mirror;
-
   const agentA = makeAgent({
     difficulty: aDifficulty,
     persona,
@@ -357,7 +329,6 @@ function playStrengthGame({
     qualificationBudgetScale,
     timings
   });
-
   const report = runGame({
     rule,
     lightAgent: aIsLight ? agentA : agentB,
@@ -365,12 +336,10 @@ function playStrengthGame({
     firstPlayer,
     maxPlies: 40
   });
-
   const aColor = aIsLight ? LIGHT : DARK;
   const score = report.result === 'draw'
     ? 0.5
     : report.result === aColor ? 1 : 0;
-
   return {
     score,
     plies: report.plies,
@@ -379,7 +348,6 @@ function playStrengthGame({
     ).join('|')
   };
 }
-
 function strengthMatchup({
   aDifficulty,
   bDifficulty,
@@ -394,7 +362,6 @@ function strengthMatchup({
   let totalPlies = 0;
   const byRule = {};
   const sequences = new Map();
-
   for (let r = 0; r < rules.length; r += 1) {
     const rule = rules[r];
     byRule[rule] = {
@@ -408,10 +375,8 @@ function strengthMatchup({
         [0, 1, 2, 3].map(phase => [phase, { score: 0, games: 0, rate: 0 }])
       )
     };
-
     for (let p = 0; p < PERSONA_IDS.length; p += 1) {
       const persona = PERSONA_IDS[p];
-
       for (let g = 0; g < gamesPerPair; g += 1) {
         const result = playStrengthGame({
           rule,
@@ -440,7 +405,6 @@ function strengthMatchup({
       }
     }
   }
-
   for (const rule of rules) {
     byRule[rule].rate = byRule[rule].games
       ? byRule[rule].score / byRule[rule].games
@@ -454,21 +418,17 @@ function strengthMatchup({
       bucket.rate = bucket.games ? bucket.score / bucket.games : 0;
     }
   }
-
   const repeatedGames = [...sequences.values()]
     .filter(count => count > 1)
     .reduce((sum, count) => sum + count, 0);
-
   const weakestRule = rules.length
     ? [...rules].sort(
         (a, b) => byRule[a].rate - byRule[b].rate
       )[0]
     : null;
-
   const scoreRate = games ? score / games : 0;
   const score95CI = proportion95CI(scoreRate, games);
   const ruleRates = rules.map(rule => byRule[rule].rate);
-
   return {
     aDifficulty,
     bDifficulty,
@@ -488,7 +448,6 @@ function strengthMatchup({
     byRule
   };
 }
-
 function strengthMetrics({
   gamesPerPair,
   seed,
@@ -514,20 +473,16 @@ function strengthMetrics({
     timings,
     rules
   });
-
   hardVsMedium.gateMargin =
     hardVsMedium.scoreRate - GATES.hardVsMediumMinScore;
   hardVsMedium.ciClearsGate =
     hardVsMedium.score95CI.low >= GATES.hardVsMediumMinScore;
-
   mediumVsEasy.gateMargin =
     mediumVsEasy.scoreRate - GATES.mediumVsEasyMinScore;
   mediumVsEasy.ciClearsGate =
     mediumVsEasy.score95CI.low >= GATES.mediumVsEasyMinScore;
-
   return { hardVsMedium, mediumVsEasy };
 }
-
 function openingMetrics({
   seed,
   qualificationBudgetScale,
@@ -536,7 +491,6 @@ function openingMetrics({
   const gamesPerRule = enforceStatisticalGates ? 200 : 8;
   const byRule = {};
   let maxOpeningShare = 0;
-
   for (let r = 0; r < RULES.length; r += 1) {
     const rule = RULES[r];
     const histogram = new Map();
@@ -544,13 +498,11 @@ function openingMetrics({
     let unknownRegrets = 0;
     let previousPersona = '';
     const rng = createRng(seed + r * 1000);
-
     for (let game = 0; game < gamesPerRule; game += 1) {
       const persona = selectPersonaAtGameStart(
         'mixed', previousPersona, rng
       );
       previousPersona = persona;
-
       const position = createInitialPosition(LIGHT);
       const budget =
         resolveDifficulty('hard').timeBudgetMs *
@@ -570,7 +522,6 @@ function openingMetrics({
         unknownRegrets += 1;
       }
     }
-
     const peak = histogram.size
       ? Math.max(...histogram.values())
       : 0;
@@ -578,7 +529,6 @@ function openingMetrics({
       ? peak / gamesPerRule
       : 0;
     maxOpeningShare = Math.max(maxOpeningShare, share);
-
     byRule[rule] = {
       games: gamesPerRule,
       uniqueOpenings: histogram.size,
@@ -591,14 +541,12 @@ function openingMetrics({
       histogram: Object.fromEntries(histogram)
     };
   }
-
   return {
     gamesPerRule,
     maxOpeningShare,
     byRule
   };
 }
-
 function summarizeTiming(timings) {
   const elapsed = timings.map(x => x.elapsedMs);
   const overruns = timings.map(x => x.overrunMs);
@@ -612,7 +560,6 @@ function summarizeTiming(timings) {
   const forcingSkipped = timings.filter(x => x.forcingSkipped).length;
   const guardian = timings.map(x => x.guardianMs ?? 0);
   const search = timings.map(x => x.searchMs ?? 0);
-
   return {
     samples: timings.length,
     meanMoveMs: elapsed.length
@@ -652,7 +599,6 @@ function summarizeTiming(timings) {
     ttHitRatio: totalNodes ? totalHits / totalNodes : 0
   };
 }
-
 function timingMetrics(timings) {
   return {
     ...summarizeTiming(timings),
@@ -664,11 +610,10 @@ function timingMetrics(timings) {
     )
   };
 }
-
 export function runStrengthProbe({
   gamesPerPair = 8,
   seed = 0x51eaea,
-  qualificationBudgetScale = 0.04,
+  qualificationBudgetScale = DEFAULT_QUALIFICATION_BUDGET_SCALE,
   rules = RULES
 } = {}) {
   const timings = [];
@@ -681,7 +626,6 @@ export function runStrengthProbe({
   });
   const timing = timingMetrics(timings);
   const failures = [];
-
   if (
     strength.hardVsMedium.scoreRate <
     GATES.hardVsMediumMinScore
@@ -698,7 +642,6 @@ export function runStrengthProbe({
       `Medium vs Easy score: ${strength.mediumVsEasy.scoreRate.toFixed(3)}`
     );
   }
-
   return {
     ok: failures.length === 0,
     gates: {
@@ -722,12 +665,11 @@ export function runStrengthProbe({
     failures
   };
 }
-
 export function runQualification({
   gamesPerPair = 36,
   seed = 0x51eaea,
   enforceStatisticalGates = true,
-  qualificationBudgetScale = 0.04,
+  qualificationBudgetScale = DEFAULT_QUALIFICATION_BUDGET_SCALE,
   corpusSize = 100
 } = {}) {
   const timings = [];
@@ -735,7 +677,6 @@ export function runQualification({
     count: corpusSize,
     seed
   });
-
   const tactical = tacticalMetrics(
     qualificationBudgetScale,
     seed
@@ -758,9 +699,7 @@ export function runQualification({
   const timing = timingMetrics(timings);
   const totalStrengthGamesPerDifficultyMatchup =
     gamesPerPair * RULES.length * PERSONA_IDS.length;
-
   const failures = [];
-
   if (
     tactical.blunders >
     GATES.tacticalHardBlunders
@@ -785,7 +724,6 @@ export function runQualification({
       `Symmetry mismatches: ${symmetry.mismatches}`
     );
   }
-
   if (enforceStatisticalGates) {
     if (gamesPerPair % 4 !== 0) {
       failures.push(
@@ -849,7 +787,6 @@ export function runQualification({
       );
     }
   }
-
   return {
     ok: failures.length === 0,
     gates: GATES,
@@ -876,14 +813,12 @@ export function runQualification({
     failures
   };
 }
-
 function cliArg(name, fallback = null) {
   const index = process.argv.indexOf(name);
   return index >= 0 && process.argv[index + 1] != null
     ? process.argv[index + 1]
     : fallback;
 }
-
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
@@ -900,7 +835,7 @@ if (
     ),
     seed: Number(cliArg('--seed', 0x51eaea)),
     qualificationBudgetScale: Number(
-      cliArg('--budget-scale', fast ? 0 : 0.04)
+      cliArg('--budget-scale', fast ? 0 : DEFAULT_QUALIFICATION_BUDGET_SCALE)
     )
   };
   const report = strengthOnly
@@ -915,12 +850,9 @@ if (
           cliArg('--corpus-size', fast ? 24 : 100)
         )
       });
-
   const json = JSON.stringify(report, null, 2);
   console.log(json);
-
   const outputPath = cliArg('--json');
   if (outputPath) fs.writeFileSync(outputPath, json + '\n');
-
   process.exitCode = report.ok ? 0 : 1;
 }
