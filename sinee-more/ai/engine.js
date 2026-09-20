@@ -210,6 +210,40 @@ function collectOpeningCandidates(
     }));
 }
 
+function collectDeliberateErrorCandidates(
+  rootScores,
+  allowedMoves,
+  fallbackMove,
+  severity
+) {
+  const allowed = new Set(allowedMoves.map(moveKey));
+  const ranked = (rootScores ?? [])
+    .filter(item => allowed.has(moveKey(item.move)))
+    .sort((a, b) =>
+      b.score - a.score ||
+      a.move.cell - b.move.cell ||
+      a.move.rank - b.move.rank
+    );
+
+  if (ranked.length <= 1) {
+    return fallbackMove
+      ? [{ move: fallbackMove, score: 0, searchRegret: null }]
+      : [];
+  }
+
+  const bestScore = ranked[0].score;
+  const severity01 = Math.max(0, Math.min(1.5, severity));
+  const startFraction = Math.min(0.92, 0.35 + severity01 * 0.38);
+  const start = Math.max(1, Math.floor(ranked.length * startFraction));
+  const tail = ranked.slice(start);
+
+  return (tail.length ? tail : ranked.slice(1)).map(item => ({
+    move: item.move,
+    score: item.score,
+    searchRegret: bestScore - item.score
+  }));
+}
+
 function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
   if (candidates.length <= 1) return candidates[0]?.move ?? null;
 
@@ -307,52 +341,25 @@ export function chooseMove(position, {
     };
   }
 
-  if (
+  const deliberateError =
     (tactical.tier === 'SAFE' ||
       tactical.tier === 'ALL_LEGAL' ||
       tactical.tier === 'FORCING') &&
     policy.strategicErrorRate > 0 &&
-    rng() < policy.strategicErrorRate
-  ) {
-    let mistakePool = tactical.moves;
-    if (tactical.tier === 'FORCING') {
-      const forcing = new Set(tactical.moves.map(moveKey));
-      const safe = getSafeMoves(position, position.turn, rule);
-      const nonForcingSafe = safe.filter(move => !forcing.has(moveKey(move)));
-      mistakePool = nonForcingSafe.length ? nonForcingSafe : safe;
-    }
-    const mistake = choosePlausibleMistake(
-      position,
-      mistakePool,
-      rule,
-      policy.strategicErrorSeverity,
-      rng
-    );
-    if (mistake) {
-      return {
-        move: mistake,
-        score: evaluatePosition(position, position.turn, rule),
-        persona: personaId,
-        metrics: {
-          elapsedMs: performance.now() - engineStarted,
-          guardianElapsedMs: performance.now() - engineStarted,
-          searchElapsedMs: 0,
-          nodes: 0,
-          ttHits: 0,
-          completedDepth: 0,
-          timedOut: false,
-          tacticalTier: tactical.tier,
-          forcingSkipped: Boolean(tactical.forcingSkipped),
-          deliberateError: true
-        }
-      };
-    }
+    rng() < policy.strategicErrorRate;
+
+  let decisionMoves = tactical.moves;
+  if (deliberateError && tactical.tier === 'FORCING') {
+    const forcing = new Set(tactical.moves.map(moveKey));
+    const safe = getSafeMoves(position, position.turn, rule);
+    const nonForcingSafe = safe.filter(move => !forcing.has(moveKey(move)));
+    decisionMoves = nonForcingSafe.length ? nonForcingSafe : safe;
   }
 
   const searchCandidates =
     tactical.tier === 'WIN_NOW' || tactical.tier === 'MUST_DEFEND'
       ? tactical.moves
-      : openingSearchCandidates(position, tactical.moves, rule, policy);
+      : openingSearchCandidates(position, decisionMoves, rule, policy);
 
   const guardianElapsedMs = performance.now() - engineStarted;
   const remainingSearchBudgetMs = Math.max(
@@ -377,6 +384,30 @@ export function chooseMove(position, {
       score: searchResult.rootScores?.find(x => sameMove(x.move, move))?.score
         ?? searchResult.score
     }));
+  } else if (deliberateError) {
+    accepted = collectDeliberateErrorCandidates(
+      searchResult.rootScores,
+      searchCandidates,
+      searchResult.move,
+      policy.strategicErrorSeverity
+    );
+
+    if (
+      accepted.length <= 1 &&
+      searchResult.completedDepth === 0 &&
+      decisionMoves.length > 1
+    ) {
+      const fallback = choosePlausibleMistake(
+        position,
+        decisionMoves,
+        rule,
+        policy.strategicErrorSeverity,
+        rng
+      );
+      accepted = fallback
+        ? [{ move: fallback, score: 0, searchRegret: null }]
+        : accepted;
+    }
   } else {
     accepted = position.moves <= 1
       ? (
@@ -396,7 +427,7 @@ export function chooseMove(position, {
         )
       : collectNearBestCandidates(
           searchResult.rootScores,
-          tactical.moves,
+          decisionMoves,
           searchResult.move,
           policy.regretBand
         );
@@ -439,6 +470,11 @@ export function chooseMove(position, {
       timedOut: Boolean(searchResult.timedOut),
       tacticalTier: tactical.tier,
       forcingSkipped: Boolean(tactical.forcingSkipped),
+      deliberateError,
+      strategicRegret:
+        deliberateError && typeof selectedCandidate?.searchRegret === 'number'
+          ? selectedCandidate.searchRegret
+          : null,
       openingRegret
     }
   };
