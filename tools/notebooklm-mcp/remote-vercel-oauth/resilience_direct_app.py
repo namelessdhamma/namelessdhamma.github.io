@@ -392,10 +392,13 @@ async def github(request: Request) -> JSONResponse:
                 result = {'notebook_id': nb, 'source': to_jsonable(await client.sources.add_url(nb, url))}
             elif operation == 'source_add_drive':
                 nb = await resolve_notebook(client, str(args.get('notebook') or ''))
-                fid = str(args.get('file_id') or '').strip()
+                fid = str(args.get('file_id') or args.get('document_id') or '').strip()
+                title = str(args.get('title') or '').strip()
                 if not fid:
                     return bad('missing_file_id', 400)
-                result = {'notebook_id': nb, 'source': to_jsonable(await client.sources.add_drive(nb, fid))}
+                if not title:
+                    return bad('missing_title', 400)
+                result = {'notebook_id': nb, 'source': to_jsonable(await client.sources.add_drive(nb, fid, title))}
             elif operation == 'source_delete':
                 if args.get('confirm') is not True:
                     return bad('confirm_required', 400)
