@@ -87,7 +87,8 @@ function makeAgent({
         nodes: result.metrics.nodes,
         ttHits: result.metrics.ttHits,
         depth: result.metrics.completedDepth,
-        deliberateError: result.metrics.deliberateError === true
+        deliberateError: result.metrics.deliberateError === true,
+        forcingSkipped: result.metrics.forcingSkipped === true
       });
       ply += 1;
       return result;
@@ -512,6 +513,7 @@ function summarizeTiming(timings) {
   const totalHits = timings.reduce((sum, x) => sum + x.ttHits, 0);
   const depth = timings.map(x => x.depth);
   const deliberateErrors = timings.filter(x => x.deliberateError).length;
+  const forcingSkipped = timings.filter(x => x.forcingSkipped).length;
   const guardian = timings.map(x => x.guardianMs ?? 0);
   const search = timings.map(x => x.searchMs ?? 0);
 
@@ -536,6 +538,10 @@ function summarizeTiming(timings) {
     deliberateErrors,
     deliberateErrorRate: timings.length
       ? deliberateErrors / timings.length
+      : 0,
+    forcingSkipped,
+    forcingSkippedRate: timings.length
+      ? forcingSkipped / timings.length
       : 0,
     nodes: totalNodes,
     ttHits: totalHits,
