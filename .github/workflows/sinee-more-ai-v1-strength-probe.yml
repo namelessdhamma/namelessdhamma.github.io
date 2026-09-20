@@ -1,5 +1,5 @@
 name: Sinee More AI v1 Strength Probe
-# calibration-sample: 2
+# calibration-sample: 3
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
 jobs:
   strength-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     defaults:
       run:
         working-directory: sinee-more
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '22'
       - name: Difficulty strength probe
-        run: node tools/qualification.js --strength-only --games-per-pair 8 --budget-scale 0.04 --json difficulty-strength-probe.json
+        run: node tools/qualification.js --strength-only --games-per-pair 24 --budget-scale 0.04 --json difficulty-strength-probe.json
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
