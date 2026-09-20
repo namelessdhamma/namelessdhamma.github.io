@@ -212,8 +212,8 @@ export function searchIterative(position, {
         useSymmetry,
         now,
         deadline,
-        preferredMove: best.move,
-        rootCandidates: legal
+        preferredMove: best.completedDepth > 0 ? best.move : null,
+        rootCandidates: [...legal].sort(compareMoves)
       });
       totalNodes += current.nodes;
       totalHits += current.ttHits;
