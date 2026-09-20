@@ -75,8 +75,9 @@ test('same position config and seed returns the same move', () => {
   assert.equal(typeof a.metrics.elapsedMs, 'number');
   assert.equal(typeof a.metrics.nodes, 'number');
   assert.equal(typeof a.metrics.completedDepth, 'number');
+  assert.equal(typeof a.metrics.guardianElapsedMs, 'number');
   assert.equal(typeof a.metrics.searchElapsedMs, 'number');
-  assert.ok(a.metrics.elapsedMs >= a.metrics.searchElapsedMs);
+  assert.ok(a.metrics.elapsedMs >= a.metrics.guardianElapsedMs + a.metrics.searchElapsedMs - 1);
 });
 
 test('engine always returns a legal coherent move under tiny budget', () => {
