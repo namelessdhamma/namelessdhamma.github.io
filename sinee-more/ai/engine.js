@@ -6,17 +6,13 @@ import { getTacticalCandidates, getSafeMoves } from './guardian.js';
 import { scorePersonaMove, createPersonaScoringContext, PERSONAS } from './personas.js';
 import { createRng } from './rng.js';
 import { resolveDifficulty } from './difficulty.js';
-
 function sameMove(a, b) {
   return !!a && !!b &&
     a.player === b.player && a.rank === b.rank && a.cell === b.cell;
 }
-
 function moveKey(move) {
   return `${move.player}:${move.rank}:${move.cell}`;
 }
-
-
 const MONOTONIC_TRIPLES = (() => {
   const triples = [];
   for (let a = 1; a <= 9; a += 1) {
@@ -28,7 +24,6 @@ const MONOTONIC_TRIPLES = (() => {
   }
   return triples;
 })();
-
 function ladderRoleFlexibility(cell, rank) {
   let count = 0;
   for (const line of LINES) {
@@ -40,7 +35,6 @@ function ladderRoleFlexibility(cell, rank) {
   }
   return count;
 }
-
 function cheapOpeningScore(move, rule) {
   const location = move.cell === 4 ? 8 : (move.cell % 2 === 0 ? 5 : 3);
   const rankEconomy = (10 - move.rank) * 0.18;
@@ -49,7 +43,6 @@ function cheapOpeningScore(move, rule) {
   }
   return location + rankEconomy;
 }
-
 function cheapMoveQuality(position, move, rule) {
   const location = move.cell === 4 ? 7 : (move.cell % 2 === 0 ? 4 : 2);
   const resource = (10 - move.rank) * 0.85;
@@ -66,10 +59,8 @@ function cheapMoveQuality(position, move, rule) {
   }
   return score;
 }
-
 function boundedMistakeSample(position, moves, rule, limit = 18) {
   if (moves.length <= limit) return [...moves];
-
   const cheap = [...moves]
     .map(move => ({ move, quality: cheapMoveQuality(position, move, rule) }))
     .sort((a, b) =>
@@ -77,7 +68,6 @@ function boundedMistakeSample(position, moves, rule, limit = 18) {
       b.move.rank - a.move.rank ||
       a.move.cell - b.move.cell
     );
-
   // Deliberate-error search needs a representative slice of the whole
   // tactical-safe move space, not only the cheap heuristic's worst tail.
   const selected = [];
@@ -89,7 +79,6 @@ function boundedMistakeSample(position, moves, rule, limit = 18) {
     const move = cheap[index].move;
     if (!selected.some(x => sameMove(x, move))) selected.push(move);
   }
-
   // Rounding can collapse adjacent indices. Fill any remaining slots
   // deterministically from alternating ends to retain both strong and weak
   // cheap candidates.
@@ -104,13 +93,10 @@ function boundedMistakeSample(position, moves, rule, limit = 18) {
     lo += 1;
     hi -= 1;
   }
-
   return selected.slice(0, limit);
 }
-
 function choosePlausibleMistake(position, moves, rule, severity, rng) {
   if (!moves.length) return null;
-
   const player = position.turn;
   const sample = boundedMistakeSample(position, moves, rule);
   const ranked = sample
@@ -131,7 +117,6 @@ function choosePlausibleMistake(position, moves, rule, severity, rng) {
       b.move.rank - a.move.rank ||
       a.move.cell - b.move.cell
     );
-
   const fraction = Math.max(
     0.06,
     Math.min(0.35, 0.35 - severity * 0.28)
@@ -139,7 +124,6 @@ function choosePlausibleMistake(position, moves, rule, severity, rng) {
   const span = Math.max(1, Math.ceil(ranked.length * fraction));
   return ranked[Math.floor(rng() * span)].move;
 }
-
 function openingSearchCandidates(position, moves, rule, policy) {
   if (position.moves > 1 || moves.length <= 1) return moves;
   const dynamicLimit = Math.max(
@@ -155,7 +139,6 @@ function openingSearchCandidates(position, moves, rule, policy) {
     a.rank - b.rank
   );
   const selected = ranked.slice(0, dynamicLimit);
-
   // Prevent the bounded opening search from becoming center-only.
   // This keeps at least one strategically plausible representative of
   // center, corner and edge play, while still starting from the strongest
@@ -169,34 +152,27 @@ function openingSearchCandidates(position, moves, rule, policy) {
   ensureClass(move => move.cell === 4);
   ensureClass(move => [0, 2, 6, 8].includes(move.cell));
   ensureClass(move => [1, 3, 5, 7].includes(move.cell));
-
   return [...new Map(selected.map(move => [moveKey(move), move])).values()];
 }
-
 function collectNearBestCandidates(rootScores, tacticalMoves, bestMove, regretBand) {
   const scoreMap = new Map(
     (rootScores ?? []).map(item => [moveKey(item.move), item.score])
   );
-
   if (!scoreMap.size && bestMove) {
     return [{ move: bestMove, score: 0 }];
   }
-
   let best = -Infinity;
   for (const move of tacticalMoves) {
     const score = scoreMap.get(moveKey(move));
     if (score != null && score > best) best = score;
   }
-
   if (best === -Infinity) {
     return bestMove ? [{ move: bestMove, score: 0 }] : [];
   }
-
   return tacticalMoves
     .map(move => ({ move, score: scoreMap.get(moveKey(move)) }))
     .filter(item => item.score != null && item.score >= best - regretBand);
 }
-
 function collectOpeningCandidates(
   rootScores,
   tacticalMoves,
@@ -212,11 +188,9 @@ function collectOpeningCandidates(
       a.move.cell - b.move.cell ||
       a.move.rank - b.move.rank
     );
-
   if (!ranked.length) {
     return bestMove ? [{ move: bestMove, score: 0, rawScore: 0 }] : [];
   }
-
   const bestScore = ranked[0].score;
   const band = Math.max(1e-9, regretBand);
   return ranked
@@ -230,7 +204,6 @@ function collectOpeningCandidates(
       score: -4 * ((bestScore - item.score) / band)
     }));
 }
-
 export function selectSearchCandidates(position, {
   tacticalTier,
   tacticalMoves,
@@ -243,11 +216,10 @@ export function selectSearchCandidates(position, {
   if (tacticalTier === 'WIN_NOW' || tacticalTier === 'MUST_DEFEND') {
     return tacticalMoves;
   }
-
   // A deliberate strategic error should change which searched move is
   // accepted, not silently switch Medium/D onto a different root-search
   // policy. Search the same objective root set first, then apply regret.
-  if (deliberateError && !(difficulty === 'medium' && rule === RULE_D)) {
+  if (deliberateError && rule !== RULE_D) {
     return boundedMistakeSample(
       position,
       decisionMoves,
@@ -255,10 +227,8 @@ export function selectSearchCandidates(position, {
       policy.errorCandidateLimit
     );
   }
-
   return openingSearchCandidates(position, decisionMoves, rule, policy);
 }
-
 export function collectDeliberateErrorCandidates(
   rootScores,
   allowedMoves,
@@ -275,16 +245,13 @@ export function collectDeliberateErrorCandidates(
       a.move.cell - b.move.cell ||
       a.move.rank - b.move.rank
     );
-
   if (ranked.length <= 1) {
     return fallbackMove
       ? [{ move: fallbackMove, score: 0, searchRegret: null }]
       : [];
   }
-
   const bestScore = ranked[0].score;
   const terminalScoreFloor = BASE_PROFILE.terminal * 0.5;
-
   if (protectProvenTerminal && bestScore >= terminalScoreFloor) {
     return [{
       move: ranked[0].move,
@@ -292,7 +259,6 @@ export function collectDeliberateErrorCandidates(
       searchRegret: null
     }];
   }
-
   const positive = ranked
     .slice(1)
     .map(item => ({
@@ -315,14 +281,12 @@ export function collectDeliberateErrorCandidates(
       a.move.cell - b.move.cell ||
       a.move.rank - b.move.rank
     );
-
   if (!positive.length) {
     if (minimumRegret > 0) return [];
     return fallbackMove
       ? [{ move: fallbackMove, score: 0, searchRegret: null }]
       : [];
   }
-
   // Avoid the catastrophic extreme tail: Easy should make larger plausible
   // mistakes than Medium, not occasional near-suicidal outliers that make
   // calibration noisy and unpleasant to play.
@@ -331,7 +295,6 @@ export function collectDeliberateErrorCandidates(
     Math.floor(positive.length * 0.90)
   );
   const plausible = positive.slice(0, cappedCount);
-
   const severity01 = Math.max(0, Math.min(1.5, severity)) / 1.5;
   const targetFraction = 0.20 + severity01 * 0.65;
   const targetIndex = Math.min(
@@ -341,11 +304,9 @@ export function collectDeliberateErrorCandidates(
       Math.round(targetFraction * (plausible.length - 1))
     )
   );
-
   const radius = Math.min(1, plausible.length - 1);
   const start = Math.max(0, targetIndex - radius);
   const end = Math.min(plausible.length, targetIndex + radius + 1);
-
   return plausible.slice(start, end).map((item, offset) => {
     const index = start + offset;
     return {
@@ -357,10 +318,8 @@ export function collectDeliberateErrorCandidates(
     };
   });
 }
-
 function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
   if (candidates.length <= 1) return candidates[0]?.move ?? null;
-
   const personaContext = createPersonaScoringContext(position, rule);
   const raw = candidates.map(item => ({
     ...item,
@@ -375,7 +334,6 @@ function chooseByPersona(position, rule, personaId, candidates, personaWeight, n
   const minPersona = Math.min(...raw.map(item => item.personaScore));
   const maxPersona = Math.max(...raw.map(item => item.personaScore));
   const spanPersona = Math.max(1e-9, maxPersona - minPersona);
-
   const scored = raw.map(item => {
     const personaNormalized =
       ((item.personaScore - minPersona) / spanPersona) * 2 - 1;
@@ -385,7 +343,6 @@ function chooseByPersona(position, rule, personaId, candidates, personaWeight, n
       combinedScore: item.score + personaNormalized * personaWeight
     };
   });
-
   scored.sort((a, b) =>
     b.combinedScore - a.combinedScore ||
     b.score - a.score ||
@@ -393,15 +350,12 @@ function chooseByPersona(position, rule, personaId, candidates, personaWeight, n
     a.move.cell - b.move.cell ||
     a.move.rank - b.move.rank
   );
-
   if (noise <= 0) return scored[0].move;
-
   const span = Math.min(
     scored.length,
     Math.max(1, 1 + Math.floor(noise * scored.length * 2.5))
   );
   const pool = scored.slice(0, span);
-
   const weights = pool.map((item, index) => {
     const rankWeight = 1 / (1 + index);
     const strategic = Math.max(0.05, 1 - noise * index);
@@ -415,7 +369,6 @@ function chooseByPersona(position, rule, personaId, candidates, personaWeight, n
   }
   return pool[0].move;
 }
-
 export function chooseMove(position, {
   rule,
   difficulty = 'medium',
@@ -435,7 +388,6 @@ export function chooseMove(position, {
     { deadline: forcingDeadline, now: () => performance.now() }
   );
   const rng = createRng(seed);
-
   if (!tactical.moves.length) {
     return {
       move: null,
@@ -454,14 +406,12 @@ export function chooseMove(position, {
       }
     };
   }
-
   const deliberateError =
     (tactical.tier === 'SAFE' ||
       tactical.tier === 'ALL_LEGAL' ||
       tactical.tier === 'FORCING') &&
     policy.strategicErrorRate > 0 &&
     rng() < policy.strategicErrorRate;
-
   let decisionMoves = tactical.moves;
   if (deliberateError && tactical.tier === 'FORCING') {
     const forcing = new Set(tactical.moves.map(moveKey));
@@ -469,9 +419,7 @@ export function chooseMove(position, {
     const nonForcingSafe = safe.filter(move => !forcing.has(moveKey(move)));
     decisionMoves = nonForcingSafe.length ? nonForcingSafe : safe;
   }
-
   const guardianElapsedMs = performance.now() - engineStarted;
-
   const searchCandidates = selectSearchCandidates(position, {
     tacticalTier: tactical.tier,
     tacticalMoves: tactical.moves,
@@ -481,12 +429,10 @@ export function chooseMove(position, {
     deliberateError,
     difficulty
   });
-
   const remainingSearchBudgetMs = Math.max(
     0,
     policy.timeBudgetMs - guardianElapsedMs
   );
-
   const searchResult = searchIterative(position, {
     rule,
     rootPlayer: position.turn,
@@ -496,7 +442,6 @@ export function chooseMove(position, {
     maxDepth: policy.maxDepth,
     rootCandidates: searchCandidates
   });
-
   const normalCandidates = () => position.moves <= 1
     ? (
         searchResult.completedDepth === 0
@@ -519,7 +464,6 @@ export function chooseMove(position, {
         searchResult.move,
         policy.regretBand
       );
-
   let accepted;
   let appliedDeliberateError = deliberateError;
   if (tactical.tier === 'WIN_NOW') {
@@ -530,7 +474,7 @@ export function chooseMove(position, {
         ?? searchResult.score
     }));
   } else if (deliberateError) {
-    const minimumRegret = difficulty === 'medium' && rule === RULE_D
+    const minimumRegret = rule === RULE_D
       ? (position.moves <= 1 ? policy.openingRegretBand : policy.regretBand)
       : 0;
     accepted = collectDeliberateErrorCandidates(
@@ -541,7 +485,6 @@ export function chooseMove(position, {
       difficulty === 'medium' && rule === RULE_D,
       minimumRegret
     );
-
     if (!accepted.length && minimumRegret > 0) {
       appliedDeliberateError = false;
       accepted = normalCandidates();
@@ -564,7 +507,6 @@ export function chooseMove(position, {
   } else {
     accepted = normalCandidates();
   }
-
   const move = chooseByPersona(
     position,
     rule,
@@ -578,7 +520,6 @@ export function chooseMove(position, {
     policy.strategicNoise,
     rng
   ) ?? searchResult.move ?? tactical.moves[0];
-
   const selectedCandidate = accepted.find(item => sameMove(item.move, move));
   const rawOpeningScores = position.moves <= 1
     ? accepted
@@ -589,7 +530,6 @@ export function chooseMove(position, {
     rawOpeningScores.length && typeof selectedCandidate?.rawScore === 'number'
       ? Math.max(...rawOpeningScores) - selectedCandidate.rawScore
       : null;
-
   return {
     move,
     score: searchResult.score,
