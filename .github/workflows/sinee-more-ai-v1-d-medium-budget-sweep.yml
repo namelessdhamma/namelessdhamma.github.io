@@ -1,5 +1,5 @@
 name: Sinee More AI v1 D Medium Budget Sweep
-# diagnostic-sample: 1
+# diagnostic-sample: 2
 
 on:
   workflow_dispatch:
@@ -24,13 +24,13 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Medium 180 ms
+      - name: Medium 220 ms
         continue-on-error: true
         shell: bash
         run: |
           cp ai/difficulty.js /tmp/difficulty.js
-          sed -i '0,/timeBudgetMs: 220/s//timeBudgetMs: 180/' ai/difficulty.js
-          node tools/qualification.js --strength-only --rules D --games-per-pair 4 --budget-scale 1.0 --json d-medium-180.json
+          sed -i '0,/timeBudgetMs: 220/s//timeBudgetMs: 220/' ai/difficulty.js
+          node tools/qualification.js --strength-only --rules D --games-per-pair 4 --budget-scale 1.0 --json d-medium-220.json
           cp /tmp/difficulty.js ai/difficulty.js
 
       - name: Medium 160 ms
@@ -42,13 +42,13 @@ jobs:
           node tools/qualification.js --strength-only --rules D --games-per-pair 4 --budget-scale 1.0 --json d-medium-160.json
           cp /tmp/difficulty.js ai/difficulty.js
 
-      - name: Medium 140 ms
+      - name: Medium 160 ms
         continue-on-error: true
         shell: bash
         run: |
           cp ai/difficulty.js /tmp/difficulty.js
-          sed -i '0,/timeBudgetMs: 220/s//timeBudgetMs: 140/' ai/difficulty.js
-          node tools/qualification.js --strength-only --rules D --games-per-pair 4 --budget-scale 1.0 --json d-medium-140.json
+          sed -i '0,/timeBudgetMs: 220/s//timeBudgetMs: 160/' ai/difficulty.js
+          node tools/qualification.js --strength-only --rules D --games-per-pair 4 --budget-scale 1.0 --json d-medium-160b.json
           cp /tmp/difficulty.js ai/difficulty.js
 
       - name: Restore difficulty
