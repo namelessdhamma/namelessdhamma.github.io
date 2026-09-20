@@ -442,6 +442,8 @@ function openingMetrics({
   for (let r = 0; r < RULES.length; r += 1) {
     const rule = RULES[r];
     const histogram = new Map();
+    const regrets = [];
+    let unknownRegrets = 0;
     let previousPersona = '';
     const rng = createRng(seed + r * 1000);
 
@@ -464,6 +466,11 @@ function openingMetrics({
       });
       const key = moveKey(result.move);
       histogram.set(key, (histogram.get(key) ?? 0) + 1);
+      if (typeof result.metrics.openingRegret === 'number') {
+        regrets.push(result.metrics.openingRegret);
+      } else {
+        unknownRegrets += 1;
+      }
     }
 
     const peak = histogram.size
@@ -478,6 +485,11 @@ function openingMetrics({
       games: gamesPerRule,
       uniqueOpenings: histogram.size,
       maxOpeningShare: share,
+      meanOpeningRegret: regrets.length
+        ? regrets.reduce((a, b) => a + b, 0) / regrets.length
+        : null,
+      maxOpeningRegret: regrets.length ? Math.max(...regrets) : null,
+      unknownOpeningRegrets: unknownRegrets,
       histogram: Object.fromEntries(histogram)
     };
   }
