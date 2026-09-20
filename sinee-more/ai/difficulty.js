@@ -13,6 +13,7 @@ export const DIFFICULTY = Object.freeze({
     strategicErrorRate: 0.98,
     strategicErrorSeverity: 1.00,
     cdErrorMultiplier: 1.04,
+    cdSeverityMultiplier: 1.30,
     forcingBudgetShare: 0.08,
     guardian: 'full'
   }),
@@ -28,6 +29,7 @@ export const DIFFICULTY = Object.freeze({
     strategicErrorRate: 0.58,
     strategicErrorSeverity: 0.85,
     cdErrorMultiplier: 1.28,
+    cdSeverityMultiplier: 0.65,
     forcingBudgetShare: 0.12,
     guardian: 'full'
   }),
@@ -43,6 +45,7 @@ export const DIFFICULTY = Object.freeze({
     strategicErrorRate: 0,
     strategicErrorSeverity: 0,
     cdErrorMultiplier: 1,
+    cdSeverityMultiplier: 1,
     forcingBudgetShare: 0.20,
     guardian: 'full'
   })
@@ -57,10 +60,14 @@ export function resolveDifficulty(
   const strategicErrorRate = rule === RULE_CD
     ? Math.min(1, base.strategicErrorRate * base.cdErrorMultiplier)
     : base.strategicErrorRate;
+  const strategicErrorSeverity = rule === RULE_CD
+    ? base.strategicErrorSeverity * base.cdSeverityMultiplier
+    : base.strategicErrorSeverity;
 
   return {
     ...base,
     strategicErrorRate,
+    strategicErrorSeverity,
     timeBudgetMs: timeBudgetOverrideMs == null
       ? base.timeBudgetMs
       : Math.max(0, Number(timeBudgetOverrideMs))
