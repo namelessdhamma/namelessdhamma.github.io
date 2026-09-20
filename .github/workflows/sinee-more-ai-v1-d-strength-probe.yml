@@ -1,5 +1,5 @@
 name: Sinee More AI v1 D Strength Probe
-# diagnostic-sample: 4
+# diagnostic-sample: 5
 
 on:
   workflow_dispatch:
@@ -14,30 +14,22 @@ permissions:
 jobs:
   d-strength-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: sinee-more
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: D diagnostic with pre-refactor engine
+      - name: D production-budget strength diagnostic
         continue-on-error: true
-        shell: bash
-        run: |
-          git show 7078b69ece6dde00948d6e66271d07b84e4e9524:sinee-more/ai/engine.js > ai/engine.js
-          node tools/qualification.js --strength-only --rules D --games-per-pair 24 --budget-scale 0.10 --json d-strength-pre-refactor-engine.json
-      - name: Restore diagnostic patch
-        if: always()
-        run: git checkout -- ai/engine.js
+        run: node tools/qualification.js --strength-only --rules D --games-per-pair 8 --budget-scale 1.0 --json d-strength-production-budget.json
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sinee-more-ai-v1-d-strength-probe
-          path: sinee-more/d-strength-pre-refactor-engine.json
+          path: sinee-more/d-strength-production-budget.json
           if-no-files-found: ignore
