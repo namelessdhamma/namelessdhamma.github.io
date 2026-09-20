@@ -37,6 +37,8 @@ test('fast qualification returns a complete report shape', () => {
   assert.ok(report.metrics.timing.byDifficulty.hard);
   assert.equal(typeof report.metrics.timing.forcingSkippedRate, 'number');
   assert.equal(typeof report.metrics.timing.guardianShare, 'number');
+  assert.equal(typeof report.metrics.timing.meanStrategicRegret, 'number');
+  assert.equal(typeof report.metrics.timing.p95StrategicRegret, 'number');
   assert.ok(Array.isArray(report.failures));
 });
 
