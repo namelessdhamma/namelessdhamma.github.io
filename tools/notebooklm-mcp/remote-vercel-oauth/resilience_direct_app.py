@@ -69,7 +69,10 @@ def _bootstrap_private_key():
         if len(raw) != 32:
             raise RuntimeError('invalid_bootstrap_private_key')
         return x25519.X25519PrivateKey.from_private_bytes(raw)
-    existing_secret = os.environ.get('NOTEBOOKLM_MCP_OAUTH_PASSWORD', '').strip()
+    existing_secret = (
+        os.environ.get('NOTEBOOKLM_MCP_OAUTH_PASSWORD', '').strip()
+        or BOOTSTRAP_SHARED_TOKEN
+    )
     if not existing_secret:
         return None
     raw = hashlib.sha256(
