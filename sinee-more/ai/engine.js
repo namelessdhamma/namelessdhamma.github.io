@@ -262,7 +262,8 @@ export function chooseMove(position, {
         ttHits: 0,
         completedDepth: 0,
         timedOut: false,
-        tacticalTier: tactical.tier
+        tacticalTier: tactical.tier,
+        forcingSkipped: Boolean(tactical.forcingSkipped)
       }
     };
   }
@@ -302,6 +303,7 @@ export function chooseMove(position, {
           completedDepth: 0,
           timedOut: false,
           tacticalTier: tactical.tier,
+          forcingSkipped: Boolean(tactical.forcingSkipped),
           deliberateError: true
         }
       };
