@@ -277,6 +277,51 @@ async def bootstrap_import_sealed(request: Request) -> JSONResponse:
         return JSONResponse({'ok': False, 'error': str(exc)[:1200]}, status_code=502)
 
 
+async def bootstrap_export_sealed(request: Request) -> JSONResponse:
+    claims = verify_oidc(request)
+    if claims is None:
+        return bad('not_found', 404)
+    credential_b64 = _load_master_token_b64()
+    if not credential_b64:
+        return bad('credential_unconfigured', 503)
+    try:
+        payload = await request.json()
+        public_key_b64 = str(payload.get('recipient_public_key_b64') or '').strip()
+        public_key_raw = base64.b64decode(public_key_b64.encode('ascii'), validate=True)
+        if len(public_key_raw) != 32:
+            raise ValueError('invalid_recipient_public_key')
+        recipient = x25519.X25519PublicKey.from_public_bytes(public_key_raw)
+        ephemeral = x25519.X25519PrivateKey.generate()
+        shared = ephemeral.exchange(recipient)
+        aes_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=b'nd-notebooklm-bootstrap-v1',
+        ).derive(shared)
+        nonce = secrets.token_bytes(12)
+        ciphertext = AESGCM(aes_key).encrypt(
+            nonce,
+            credential_b64.encode('utf-8'),
+            b'nd-notebooklm-master-token-b64',
+        )
+        ephemeral_public = ephemeral.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        return JSONResponse({
+            'ok': True,
+            'algorithm': 'X25519+HKDF-SHA256+AESGCM',
+            'ephemeral_public_key_b64': base64.b64encode(ephemeral_public).decode('ascii'),
+            'nonce_b64': base64.b64encode(nonce).decode('ascii'),
+            'ciphertext_b64': base64.b64encode(ciphertext).decode('ascii'),
+            'oidc_repository': claims.get('repository'),
+            'credential_exposed': False,
+        })
+    except Exception as exc:
+        return JSONResponse({'ok': False, 'error': str(exc)[:1200]}, status_code=400)
+
+
 async def github(request: Request) -> JSONResponse:
     claims = verify_oidc(request)
     if claims is None:
@@ -370,4 +415,4 @@ async def github(request: Request) -> JSONResponse:
     except Exception as exc:
         return JSONResponse({'ok': False, 'operation': operation, 'error': str(exc)[:1600]}, status_code=502)
 
-app = Starlette(routes=[Route('/health', health, methods=['GET']), Route('/github', github, methods=['POST']), Route('/bootstrap/exchange', bootstrap_exchange, methods=['POST']), Route('/bootstrap/public-key', bootstrap_public_key, methods=['GET']), Route('/bootstrap/import-sealed', bootstrap_import_sealed, methods=['POST'])])
+app = Starlette(routes=[Route('/health', health, methods=['GET']), Route('/github', github, methods=['POST']), Route('/bootstrap/exchange', bootstrap_exchange, methods=['POST']), Route('/bootstrap/public-key', bootstrap_public_key, methods=['GET']), Route('/bootstrap/import-sealed', bootstrap_import_sealed, methods=['POST']), Route('/bootstrap/export-sealed', bootstrap_export_sealed, methods=['POST'])])
