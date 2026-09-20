@@ -1,9 +1,33 @@
 {
-  "request_id": "tm-vnext-save-true-writer-current-20260920T0924Z",
-  "status_code": 502,
+  "request_id": "tm-vnext-save-true-writer-current-json-20260920T0926Z",
+  "status_code": 200,
   "response": {
-    "ok": false,
-    "operation": "drive_create_immutable_markdown",
-    "error": "literary_canonical_name_denied"
+    "ok": true,
+    "provider": "NotebookLM",
+    "transport": "github_actions_oidc_to_vercel",
+    "operation": "drive_create_immutable_json",
+    "result": {
+      "file_id": "1ZEOJ4yZnMOBHCvQwEeRftLnXGBMAMMNZ",
+      "name": "ND_TRUE_WRITER_CURRENT.json",
+      "parent_id": "1cnJSi9cmYV_P-EBP1Hy780s3m1s6ybli",
+      "byte_length": 33556,
+      "sha256": "67a7d0203f67100e7da6054f374947111b1a224af2eaa6f782f2782def663f4d",
+      "metadata": {
+        "id": "1ZEOJ4yZnMOBHCvQwEeRftLnXGBMAMMNZ",
+        "name": "ND_TRUE_WRITER_CURRENT.json",
+        "mimeType": "application/json",
+        "parents": [
+          "1cnJSi9cmYV_P-EBP1Hy780s3m1s6ybli"
+        ],
+        "version": "1",
+        "webViewLink": "https://drive.google.com/file/d/1ZEOJ4yZnMOBHCvQwEeRftLnXGBMAMMNZ/view?usp=drivesdk",
+        "modifiedTime": "2026-09-20T09:25:06.776Z",
+        "md5Checksum": "66e576053be26b2576e011567d637cd9",
+        "sha1Checksum": "839de3be986321ce5af370cd1fc26c519d4c3073",
+        "sha256Checksum": "67a7d0203f67100e7da6054f374947111b1a224af2eaa6f782f2782def663f4d"
+      },
+      "readback_exact": true
+    },
+    "oidc_repository": "namelessdhamma/namelessdhamma.github.io"
   }
 }
