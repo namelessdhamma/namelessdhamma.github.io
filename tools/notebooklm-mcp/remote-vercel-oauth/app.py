@@ -87,6 +87,7 @@ _DRIVE_CANONICAL_TARGETS = {
 }
 
 _LITERARY_CANONICAL_MARKDOWN_NAMES = frozenset({
+    "ND_TRUE_WRITER_CURRENT.md",
     "ND_True_Writer_v0_7_0_CANONICAL_SKILL.md",
     "ND_Books_Creator_v3_0_0_CANONICAL_SKILL.md",
     "ND_Literary_Critic_v0_1_0_CANONICAL_SKILL.md",
