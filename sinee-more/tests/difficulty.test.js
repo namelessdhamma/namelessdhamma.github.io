@@ -22,6 +22,10 @@ test('difficulty policies increase search budget and tighten regret', () => {
   assert.ok(DIFFICULTY.medium.regretBand > DIFFICULTY.hard.regretBand);
   assert.ok(DIFFICULTY.easy.forcingBudgetShare < DIFFICULTY.medium.forcingBudgetShare);
   assert.ok(DIFFICULTY.medium.forcingBudgetShare < DIFFICULTY.hard.forcingBudgetShare);
+  assert.ok(DIFFICULTY.easy.strategicErrorRate > DIFFICULTY.medium.strategicErrorRate);
+  assert.ok(DIFFICULTY.medium.strategicErrorRate > DIFFICULTY.hard.strategicErrorRate);
+  assert.ok(DIFFICULTY.easy.strategicErrorSeverity > DIFFICULTY.medium.strategicErrorSeverity);
+  assert.ok(DIFFICULTY.medium.strategicErrorSeverity > DIFFICULTY.hard.strategicErrorSeverity);
   assert.equal(resolveDifficulty('hard', 17).timeBudgetMs, 17);
 });
 
@@ -173,4 +177,35 @@ test('opening personas keep distinct identities inside the Hard fallback shortli
   assert.equal(architect.cell, 4);
   assert.notEqual(trickster.cell, 4);
   assert.ok(hunter.rank > sentinel.rank, JSON.stringify({ hunter, sentinel }));
+});
+
+
+test('Easy deliberately deviates more often than Medium on the same safe position', () => {
+  const p = createInitialPosition(LIGHT);
+  let easyErrors = 0;
+  let mediumErrors = 0;
+
+  for (let seed = 1; seed <= 64; seed += 1) {
+    const easy = chooseMove(p, {
+      rule: RULE_C,
+      difficulty: 'easy',
+      persona: 'architect',
+      seed,
+      timeBudgetOverrideMs: 0
+    });
+    const medium = chooseMove(p, {
+      rule: RULE_C,
+      difficulty: 'medium',
+      persona: 'architect',
+      seed,
+      timeBudgetOverrideMs: 0
+    });
+    if (easy.metrics.deliberateError === true) easyErrors += 1;
+    if (medium.metrics.deliberateError === true) mediumErrors += 1;
+  }
+
+  assert.ok(
+    easyErrors >= mediumErrors + 12,
+    JSON.stringify({ easyErrors, mediumErrors })
+  );
 });
