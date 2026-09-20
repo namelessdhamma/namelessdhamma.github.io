@@ -39,6 +39,7 @@ export const GATES = Object.freeze({
   maxBudgetOverrunMs: 40,
   minStrengthGamesPerDifficultyMatchup: 400
 });
+export const DEFAULT_QUALIFICATION_BUDGET_SCALE = 0.10;
 const RULES = Object.freeze([RULE_C, RULE_D, RULE_CD]);
 const PERSONA_IDS = Object.freeze(Object.keys(PERSONAS));
 function sameMove(a, b) {
