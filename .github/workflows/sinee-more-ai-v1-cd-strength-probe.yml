@@ -1,5 +1,5 @@
 name: Sinee More AI v1 CD Strength Probe
-# calibration-sample: 6
+# calibration-sample: 7
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: '22'
       - name: CD-only difficulty strength probe
-        run: node tools/qualification.js --strength-only --rules CD --games-per-pair 24 --budget-scale 0.04 --json cd-strength-probe.json
+        run: node tools/qualification.js --strength-only --rules CD --games-per-pair 24 --budget-scale 0.10 --json cd-strength-probe.json
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
