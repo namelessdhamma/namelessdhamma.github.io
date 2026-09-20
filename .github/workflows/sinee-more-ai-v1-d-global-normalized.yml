@@ -1,5 +1,5 @@
 name: Sinee More AI v1 D Global Normalized
-# diagnostic-sample: 1
+# diagnostic-sample: 2
 
 on:
   workflow_dispatch:
@@ -33,20 +33,22 @@ jobs:
           from pathlib import Path
           p=Path('ai/evaluation.js')
           s=p.read_text()
-          old="""  score += analysis.compatibleActivePlans * profile.ladderGlobalCapacity;
-  score -= Math.max(
-    0,
-    analysis.activeLinePlans - analysis.compatibleActivePlans
-  ) * profile.ladderResourceConflict;
-"""
-          new="""  if (analysis.activeLinePlans > 0) {
-    const conflictingShare = Math.max(
-      0,
-      analysis.activeLinePlans - analysis.compatibleActivePlans
-    ) / analysis.activeLinePlans;
-    score -= conflictingShare * profile.ladderResourceConflict;
-  }
-"""
+          old=(
+              "  score += analysis.compatibleActivePlans * profile.ladderGlobalCapacity;\n"
+              "  score -= Math.max(\n"
+              "    0,\n"
+              "    analysis.activeLinePlans - analysis.compatibleActivePlans\n"
+              "  ) * profile.ladderResourceConflict;\n"
+          )
+          new=(
+              "  if (analysis.activeLinePlans > 0) {\n"
+              "    const conflictingShare = Math.max(\n"
+              "      0,\n"
+              "      analysis.activeLinePlans - analysis.compatibleActivePlans\n"
+              "    ) / analysis.activeLinePlans;\n"
+              "    score -= conflictingShare * profile.ladderResourceConflict;\n"
+              "  }\n"
+          )
           if old not in s:
               raise SystemExit('global ladder scoring anchor missing')
           p.write_text(s.replace(old,new))
