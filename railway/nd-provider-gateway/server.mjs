@@ -1061,13 +1061,50 @@ const muxServer=http.createServer(async(req,res)=>{
     if(path==='/lightpanda/diagnostic'){
       try{
         const st=await ensureLpCdp();
-        const title=await st.page.title();
-        return j(res,200,{ok:true,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_connected:true,url:st.page.url(),title,tools:LP_TOOLS.length,idle_close_seconds:120});
+        return j(res,200,{ok:true,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_connected:true,stage:lpCdp.stage,url:st.page.url(),tools:LP_TOOLS.length,idle_close_seconds:120});
       }catch(e){
         let err=String(e?.message||e||"error");
         if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
         if(LIGHTPANDA_PATH_TOKEN)err=err.split(LIGHTPANDA_PATH_TOKEN).join("[REDACTED]");
         return j(res,200,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_connected:false,stage:lpCdp.stage,error:err.slice(0,1200)});
+      }
+    }
+
+    if(path==='/lightpanda/qualification'){
+      const stages=[];
+      try{
+        const st=await lpStage("qual_connect",ensureLpCdp(),12000);
+        const page=st.page;
+        stages.push({stage:"connect",ok:true,url:page.url()});
+
+        const nav=await lpStage("qual_goto",page.goto("https://www.selenium.dev/selenium/web/web-form.html",{waitUntil:"domcontentloaded",timeout:10000}),12000);
+        stages.push({stage:"goto",ok:true,status:nav?nav.status():null,url:page.url()});
+
+        const input=page.locator('input[name="my-text"]');
+        await lpStage("qual_fill",input.fill("ND-LIGHTPANDA-QUAL",{timeout:6000}),7000);
+        const value=await lpStage("qual_fill_readback",input.inputValue({timeout:6000}),7000);
+        stages.push({stage:"fill_readback",ok:value==="ND-LIGHTPANDA-QUAL",value_match:value==="ND-LIGHTPANDA-QUAL"});
+
+        const submit=page.locator('button');
+        await lpStage("qual_click",submit.click({timeout:6000}),7000);
+        stages.push({stage:"click",ok:true,url:page.url()});
+
+        let text="";
+        try{text=await lpStage("qual_readback",page.locator("body").innerText({timeout:6000}),7000);}catch{}
+        stages.push({stage:"post_click_readback",ok:Boolean(text),contains_received:/Received!/i.test(String(text)),excerpt:String(text).slice(0,300)});
+
+        return j(res,200,{
+          ok:stages.every(x=>x.ok!==false),
+          code_rev:ND_LIGHTPANDA_MUX_CODE_REV,
+          engine:"lightpanda",
+          stages,
+          final_url:page.url()
+        });
+      }catch(e){
+        let err=String(e?.message||e||"error");
+        if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
+        if(LIGHTPANDA_PATH_TOKEN)err=err.split(LIGHTPANDA_PATH_TOKEN).join("[REDACTED]");
+        return j(res,200,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,engine:"lightpanda",stage:lpCdp.stage,error:err.slice(0,1200),stages});
       }
     }
 
