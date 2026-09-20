@@ -158,7 +158,7 @@ export function getImmediateWins(position, player, rule) {
   return wins;
 }
 
-export function getSafeMoves(position, player, rule) {
+export function getSafeMoves(position, player, rule, legalMoves = null) {
   if (!position || position.status !== 'playing') return [];
   const probe = position.turn === player
     ? position
@@ -166,12 +166,12 @@ export function getSafeMoves(position, player, rule) {
   const opponent = otherPlayer(player);
 
   if (visibleTopCount(position, opponent) < 2) {
-    return getLegalMoves(probe, player, rule);
+    return legalMoves ?? getLegalMoves(probe, player, rule);
   }
 
   const opponentWins = getImmediateWins(probe, opponent, rule);
   if (!opponentWins.length) {
-    return getLegalMoves(probe, player, rule);
+    return legalMoves ?? getLegalMoves(probe, player, rule);
   }
 
   const winningTargets = new Set(opponentWins.map(move => move.cell));
@@ -281,7 +281,7 @@ export function getTacticalCandidates(position, player = position.turn, rule, op
   const wins = getImmediateWins(probe, player, rule);
   if (wins.length) return { tier: 'WIN_NOW', moves: wins, forcingSkipped: false };
 
-  const safe = getSafeMoves(probe, player, rule);
+  const safe = getSafeMoves(probe, player, rule, legal);
   if (safe.length && safe.length < legal.length) {
     return { tier: 'MUST_DEFEND', moves: safe, forcingSkipped: false };
   }
