@@ -58,7 +58,8 @@ test('deliberate errors never select a search-proven forced loss', () => {
     rootScores,
     allowed,
     best,
-    1
+    1,
+    true
   );
 
   assert.ok(candidates.some(item => sameMove(item.move, plausible)));
@@ -78,12 +79,32 @@ test('deliberate errors fall back to best move when every alternative is a prove
     ],
     [best, forcedLoss],
     best,
-    1
+    1,
+    true
   );
 
   assert.equal(candidates.length, 1);
   assert.ok(sameMove(candidates[0].move, best));
   assert.equal(candidates[0].searchRegret, null);
+});
+
+test('Easy-style deliberate errors may still miss a deeper forced consequence', () => {
+  const best = { player: LIGHT, rank: 5, cell: 4 };
+  const forcedLoss = { player: LIGHT, rank: 9, cell: 8 };
+  const candidates = collectDeliberateErrorCandidates(
+    [
+      { move: best, score: 50 },
+      { move: forcedLoss, score: -100010 }
+    ],
+    [best, forcedLoss],
+    best,
+    1,
+    false
+  );
+
+  assert.equal(candidates.length, 1);
+  assert.ok(sameMove(candidates[0].move, forcedLoss));
+  assert.ok(candidates[0].searchRegret > 100000);
 });
 
 test('hard always takes a known immediate win across personas', () => {
