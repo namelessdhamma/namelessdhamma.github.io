@@ -989,7 +989,7 @@ const muxServer=http.createServer(async(req,res)=>{
         let err=String(e?.message||e||"error");
         if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
         if(LIGHTPANDA_PATH_TOKEN)err=err.split(LIGHTPANDA_PATH_TOKEN).join("[REDACTED]");
-        return j(res,503,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,native_mcp_connected:lpUpstream.ready,error:err.slice(0,1200),last_error:String(lpUpstream.lastError||"").slice(0,1200)});
+        return j(res,200,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,native_mcp_connected:lpUpstream.ready,error:err.slice(0,1200),last_error:String(lpUpstream.lastError||"").slice(0,1200)});
       }
     }
 
