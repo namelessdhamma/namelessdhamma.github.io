@@ -14,17 +14,44 @@ function visibleTopCount(position, player) {
   return count;
 }
 
+export function getImmediateThreatCells(position, player, rule) {
+  if (!position || position.status !== 'playing') return [];
+  const cells = new Set();
+
+  for (const line of LINES) {
+    let owned = 0;
+    let target = -1;
+
+    for (const cell of line) {
+      const top = topPiece(position, cell);
+      if (top?.player === player) owned += 1;
+      else target = cell;
+    }
+
+    if (owned === 2 && target >= 0) cells.add(target);
+  }
+
+  return [...cells].sort((a, b) => a - b);
+}
+
 export function getImmediateWins(position, player, rule) {
   if (!position || position.status !== 'playing') return [];
-  if (visibleTopCount(position, player) < 2) return [];
   const probe = position.turn === player
     ? position
     : { ...position, turn: player };
-  const legal = getLegalMoves(probe, player, rule);
-  return legal.filter(move => {
-    const next = applyMove(probe, move, rule);
-    return next?.status === 'win' && next.winner === player;
-  });
+  const threatCells = getImmediateThreatCells(probe, player, rule);
+  if (!threatCells.length) return [];
+
+  const wins = [];
+  for (const rank of probe.remaining[player]) {
+    for (const cell of threatCells) {
+      const move = { player, rank, cell };
+      if (!isLegalMove(probe, move, rule)) continue;
+      const next = applyMove(probe, move, rule);
+      if (next?.status === 'win' && next.winner === player) wins.push(move);
+    }
+  }
+  return wins;
 }
 
 export function getSafeMoves(position, player, rule) {
