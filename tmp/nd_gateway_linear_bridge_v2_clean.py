@@ -89,7 +89,7 @@ s=s.replace(post_anchor,post_inject,1)
 
 needle="threading.Thread(target=drive_qualify_once,daemon=True).start()"
 if s.count(needle)==1:
-    s=s.replace(needle,"# Drive startup qualification invocation disabled after Generation 8.1 adoption",1)
+    s=s.replace(needle,"# Drive startup qualification invocation disabled after current protocol adoption",1)
 
 print('ND_LINEAR_BRIDGE_PATCH_READY '+json.dumps({'endpoint':('/nd/linear/invoke' in s),'status_endpoint':('/nd/linear/status' in s),'credential_env':('ND_LINEAR_API_KEY' in s)}),flush=True)
 exec(compile(s,'nd_gateway_linear_bridge_v2_clean_runtime.py','exec'))
