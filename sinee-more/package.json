@@ -1,0 +1,9 @@
+{
+  "name": "sinee-more",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "qualify": "node tools/qualification.js"
+  }
+}
