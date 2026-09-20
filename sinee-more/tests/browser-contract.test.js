@@ -35,3 +35,10 @@ test('browser controller uses only the unified AI engine for computer moves', as
   assert.doesNotMatch(app, /fastHeuristic/);
   assert.doesNotMatch(app, /centerFlex/);
 });
+
+
+test('browser controller renders the active persona through personaName()', async () => {
+  const app = await readFile(new URL('../app.js', import.meta.url), 'utf8');
+  assert.match(app, /personaName\(\)/);
+  assert.doesNotMatch(app, /persona\(\)\.name/);
+});
