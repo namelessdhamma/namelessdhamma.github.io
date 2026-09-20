@@ -87,3 +87,26 @@ test('iterative search always has a legal emergency fallback', () => {
   assert.equal(result.completedDepth, 0);
   assert.equal(result.timedOut, true);
 });
+
+
+test('transposition entries are isolated by root-player perspective', () => {
+  const position = createInitialPosition(LIGHT);
+  const shared = new TranspositionTable();
+
+  searchFixedDepth(position, {
+    rule: RULE_C, rootPlayer: LIGHT, depth: 1,
+    evaluate: evalMaterial, useTable: true, table: shared
+  });
+
+  const cachedDark = searchFixedDepth(position, {
+    rule: RULE_C, rootPlayer: 'dark', depth: 1,
+    evaluate: evalMaterial, useTable: true, table: shared
+  });
+  const freshDark = searchFixedDepth(position, {
+    rule: RULE_C, rootPlayer: 'dark', depth: 1,
+    evaluate: evalMaterial, useTable: true, table: new TranspositionTable()
+  });
+
+  assert.equal(cachedDark.score, freshDark.score);
+  assert.deepEqual(cachedDark.move, freshDark.move);
+});
