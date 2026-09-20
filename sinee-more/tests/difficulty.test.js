@@ -280,3 +280,35 @@ test('deliberate Easy errors in CD carry positive search regret when search comp
   }
   assert.ok(checked >= 8, `checked=${checked}`);
 });
+
+
+test('CD Easy deliberate errors have larger search regret than Medium', () => {
+  let p = createInitialPosition(LIGHT);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 4 }, RULE_CD);
+  p = applyMove(p, { player: 'dark', rank: 1, cell: 0 }, RULE_CD);
+
+  const easy = [];
+  const medium = [];
+  for (let seed = 1; seed <= 16; seed += 1) {
+    for (const difficulty of ['easy', 'medium']) {
+      const result = chooseMove(p, {
+        rule: RULE_CD,
+        difficulty,
+        persona: 'architect',
+        seed,
+        timeBudgetOverrideMs: 24
+      });
+      if (typeof result.metrics.strategicRegret !== 'number') continue;
+      (difficulty === 'easy' ? easy : medium).push(result.metrics.strategicRegret);
+    }
+  }
+
+  assert.ok(easy.length >= 8, `easy=${easy.length}`);
+  assert.ok(medium.length >= 4, `medium=${medium.length}`);
+  const easyMean = easy.reduce((a, b) => a + b, 0) / easy.length;
+  const mediumMean = medium.reduce((a, b) => a + b, 0) / medium.length;
+  assert.ok(
+    easyMean > mediumMean,
+    JSON.stringify({ easyMean, mediumMean, easy, medium })
+  );
+});
