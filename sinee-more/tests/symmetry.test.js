@@ -7,6 +7,8 @@ import {
   transformPosition, canonicalize
 } from '../ai/symmetry.js';
 import { searchFixedDepth } from '../ai/search.js';
+import { evaluatePosition } from '../ai/evaluation.js';
+import { buildQualificationCorpus } from '../tools/corpus.js';
 
 const evalMaterial = (p, root) =>
   p.board.reduce((score, stack) => {
@@ -62,4 +64,34 @@ test('symmetry-aware search preserves score and does not increase nodes', () => 
   });
   assert.equal(sym.score, plain.score);
   assert.ok(sym.nodes <= plain.nodes);
+});
+
+
+test('symmetry-enabled search matches plain search on rule-aware corpus positions', () => {
+  const corpus = buildQualificationCorpus({ count: 9, seed: 0x51eaea });
+  for (const item of corpus) {
+    const evaluate = (position, root) =>
+      evaluatePosition(position, root, item.rule);
+    const plain = searchFixedDepth(item.position, {
+      rule: item.rule,
+      rootPlayer: item.position.turn,
+      depth: 2,
+      evaluate,
+      useTable: true,
+      useSymmetry: false
+    });
+    const symmetric = searchFixedDepth(item.position, {
+      rule: item.rule,
+      rootPlayer: item.position.turn,
+      depth: 2,
+      evaluate,
+      useTable: true,
+      useSymmetry: true
+    });
+    assert.equal(
+      symmetric.score,
+      plain.score,
+      `${item.name}/${item.rule}: ${plain.score} vs ${symmetric.score}`
+    );
+  }
 });
