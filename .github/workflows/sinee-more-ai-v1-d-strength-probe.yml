@@ -1,5 +1,5 @@
 name: Sinee More AI v1 D Strength Probe
-# diagnostic-sample: 6
+# diagnostic-sample: 7
 
 on:
   workflow_dispatch:
@@ -23,9 +23,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: D production-budget strength diagnostic
+      - name: D scaled strength diagnostic after forced-loss filter
         continue-on-error: true
-        run: node tools/qualification.js --strength-only --rules D --games-per-pair 8 --budget-scale 1.0 --json d-strength-production-budget.json
+        run: node tools/qualification.js --strength-only --rules D --games-per-pair 24 --budget-scale 0.10 --json d-strength-production-budget.json
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
