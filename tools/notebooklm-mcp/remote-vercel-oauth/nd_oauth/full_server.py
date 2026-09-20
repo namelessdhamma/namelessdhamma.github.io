@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 from pathlib import Path
 from urllib.error import HTTPError
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
+
+import httpx
 
 from fastmcp import Context, FastMCP
 from notebooklm._app.serialize import to_jsonable
@@ -104,6 +109,85 @@ def _register_drive_tools(mcp) -> None:
             "drive_changes_list",
             {"page_token": page_token, "page_size": page_size},
         )
+
+
+async def _raw_drive_read_via_client(client, file_id: str) -> dict:
+    """Read one non-native Drive file through the authenticated Android bearer.
+
+    This is a bounded read-only recovery primitive. It does not create, update,
+    import, refresh, rename, share, or delete any Drive/NotebookLM resource.
+    """
+    file_id = (file_id or "").strip()
+    if not file_id:
+        raise ValueError("file_id is required")
+    if any(ch in file_id for ch in "/?#\\") or any(ord(ch) < 0x20 for ch in file_id):
+        raise ValueError("invalid Drive file id")
+
+    session = getattr(client, "_android_session", None)
+    bearer_provider = getattr(client, "_android_bearer_provider", None)
+    if session is None or bearer_provider is None:
+        raise RuntimeError("Android Drive bearer is unavailable")
+
+    fields = "id,name,mimeType,size,modifiedTime,version,md5Checksum,capabilities(canDownload)"
+    metadata_url = (
+        "https://www.googleapis.com/drive/v3/files/"
+        + quote(file_id, safe="")
+        + "?"
+        + urlencode({"fields": fields})
+    )
+    media_url = (
+        "https://www.googleapis.com/drive/v3/files/"
+        + quote(file_id, safe="")
+        + "?alt=media"
+    )
+
+    async with session.operation_scope("nd.raw_drive_recovery.read") as lease:
+        credential = await bearer_provider.get(lease.epoch)
+        headers = {"Authorization": f"Bearer {credential.token}"}
+        async with httpx.AsyncClient(
+            follow_redirects=False,
+            timeout=httpx.Timeout(30.0),
+        ) as http:
+            meta_response = await http.get(metadata_url, headers=headers)
+            if meta_response.status_code == 401:
+                bearer_provider.invalidate(credential.generation)
+            if meta_response.status_code >= 300:
+                raise RuntimeError(
+                    f"Drive metadata HTTP {meta_response.status_code} for {file_id}"
+                )
+            metadata = meta_response.json()
+            if str(metadata.get("mimeType", "")).startswith("application/vnd.google-apps."):
+                raise RuntimeError("raw recovery supports non-native Drive files only")
+            if isinstance(metadata.get("capabilities"), dict) and metadata["capabilities"].get("canDownload") is False:
+                raise RuntimeError("Drive file is not downloadable by this account")
+
+            declared = metadata.get("size")
+            if declared is not None and int(declared) > 5 * 1024 * 1024:
+                raise RuntimeError("raw recovery file exceeds 5 MiB cap")
+
+            media_response = await http.get(media_url, headers=headers)
+            if media_response.status_code == 401:
+                bearer_provider.invalidate(credential.generation)
+            if media_response.status_code >= 300:
+                raise RuntimeError(
+                    f"Drive media HTTP {media_response.status_code} for {file_id}"
+                )
+            raw = bytes(media_response.content)
+
+    if len(raw) > 5 * 1024 * 1024:
+        raise RuntimeError("raw recovery file exceeds 5 MiB cap")
+
+    return {
+        "file_id": file_id,
+        "name": metadata.get("name"),
+        "mime_type": metadata.get("mimeType"),
+        "size": len(raw),
+        "version": metadata.get("version"),
+        "modified_time": metadata.get("modifiedTime"),
+        "md5_checksum": metadata.get("md5Checksum"),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "content_b64": base64.b64encode(raw).decode("ascii"),
+    }
 
 
 def _register_source_currentness_tools(mcp) -> None:
@@ -229,19 +313,24 @@ def create_full_mcp(
     _register_source_currentness_tools(mcp)
 
     @mcp.tool
-    def nd_ping_secure() -> str:
-        return json.dumps(
-            {
-                "ok": True,
-                "service": SERVICE_NAME,
-                "mode": "oauth-qualification",
-                "version": SERVICE_VERSION,
-                "drive_bridge_configured": bool(
-                    os.environ.get("ND_DRIVE_BRIDGE_URL")
-                    and os.environ.get("ND_DRIVE_BRIDGE_TOKEN")
-                ),
-            },
-            separators=(",", ":"),
-        )
+    async def nd_ping_secure(ctx: Context) -> str:
+        payload = {
+            "ok": True,
+            "service": SERVICE_NAME,
+            "mode": "oauth-qualification",
+            "version": SERVICE_VERSION,
+            "drive_bridge_configured": bool(
+                os.environ.get("ND_DRIVE_BRIDGE_URL")
+                and os.environ.get("ND_DRIVE_BRIDGE_TOKEN")
+            ),
+        }
+        recovery_id = os.environ.get("ND_RAW_DRIVE_RECOVERY_FILE_ID", "").strip()
+        if recovery_id:
+            client = await get_client(ctx)
+            payload["raw_drive_recovery"] = await _raw_drive_read_via_client(
+                client,
+                recovery_id,
+            )
+        return json.dumps(payload, separators=(",", ":"))
 
     return mcp
