@@ -20,6 +20,8 @@ test('difficulty policies increase search budget and tighten regret', () => {
   assert.ok(DIFFICULTY.medium.timeBudgetMs < DIFFICULTY.hard.timeBudgetMs);
   assert.ok(DIFFICULTY.easy.regretBand > DIFFICULTY.medium.regretBand);
   assert.ok(DIFFICULTY.medium.regretBand > DIFFICULTY.hard.regretBand);
+  assert.ok(DIFFICULTY.easy.forcingBudgetShare < DIFFICULTY.medium.forcingBudgetShare);
+  assert.ok(DIFFICULTY.medium.forcingBudgetShare < DIFFICULTY.hard.forcingBudgetShare);
   assert.equal(resolveDifficulty('hard', 17).timeBudgetMs, 17);
 });
 
