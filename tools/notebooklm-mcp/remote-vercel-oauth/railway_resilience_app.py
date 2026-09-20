@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -14,7 +17,7 @@ from nd_oauth.railway_deployment import build_railway_app_from_environ
 from nd_oauth.full_server import _drive_bridge_call
 from resilience_direct_app import (
     bootstrap_exchange,
-    bootstrap_import_sealed,
+    bootstrap_import_sealed as direct_bootstrap_import_sealed,
     bootstrap_public_key,
     bootstrap_export_sealed,
     github as direct_github,
@@ -25,6 +28,31 @@ from resilience_direct_app import (
 
 
 VERCEL_GITHUB_URL = 'https://nd-notebooklm-oauth-mcp.vercel.app/doctor/github'
+
+_RESTART_LOCK = threading.Lock()
+_RESTART_SCHEDULED = False
+
+def _schedule_runtime_reload() -> bool:
+    """Restart Railway after a successful credential import so the MCP surface reloads FULL state."""
+    global _RESTART_SCHEDULED
+    with _RESTART_LOCK:
+        if _RESTART_SCHEDULED:
+            return False
+        _RESTART_SCHEDULED = True
+
+    def _reload() -> None:
+        # Leave enough room for the reseed workflow's immediate direct semantic readback.
+        time.sleep(30)
+        os._exit(75)
+
+    threading.Thread(target=_reload, name='nd-notebooklm-runtime-reload', daemon=True).start()
+    return True
+
+async def bootstrap_import_sealed(request: Request) -> JSONResponse:
+    response = await direct_bootstrap_import_sealed(request)
+    if response.status_code == 200:
+        _schedule_runtime_reload()
+    return response
 
 def _relay_to_vercel(body: bytes, vercel_oidc: str) -> tuple[int, dict]:
     req = urllib.request.Request(
