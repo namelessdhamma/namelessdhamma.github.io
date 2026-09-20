@@ -76,7 +76,13 @@ function choosePlausibleMistake(position, moves, rule, severity, rng) {
       b.move.rank - a.move.rank ||
       a.move.cell - b.move.cell
     );
-  const fraction = Math.max(0.08, Math.min(0.35, severity * 0.32));
+  // Higher severity means a narrower slice of the objectively weakest
+  // plausible safe moves. This keeps Easy mistakes coherent but reliably
+  // worse than Medium's broader, less severe error pool.
+  const fraction = Math.max(
+    0.06,
+    Math.min(0.35, 0.35 - severity * 0.28)
+  );
   const span = Math.max(1, Math.ceil(ranked.length * fraction));
   return ranked[Math.floor(rng() * span)].move;
 }
