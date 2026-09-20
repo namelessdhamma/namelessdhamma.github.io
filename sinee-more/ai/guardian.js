@@ -136,12 +136,16 @@ export function getSafeMoves(position, player, rule) {
   const probe = position.turn === player
     ? position
     : { ...position, turn: player };
-  const legal = getLegalMoves(probe, player, rule);
   const opponent = otherPlayer(player);
-  if (visibleTopCount(position, opponent) < 2) return legal;
+
+  if (visibleTopCount(position, opponent) < 2) {
+    return getLegalMoves(probe, player, rule);
+  }
 
   const opponentWins = getImmediateWins(probe, opponent, rule);
-  if (!opponentWins.length) return legal;
+  if (!opponentWins.length) {
+    return getLegalMoves(probe, player, rule);
+  }
 
   const winningTargets = new Set(opponentWins.map(move => move.cell));
   const threatLines = getImmediateThreatLines(probe, opponent)
@@ -152,17 +156,27 @@ export function getSafeMoves(position, player, rule) {
     for (const cell of item.line) relevantCells.add(cell);
   }
 
+  const ownWins = getImmediateWins(probe, player, rule);
+  const candidates = new Map();
+
+  for (const move of ownWins) {
+    candidates.set(`${move.cell}:${move.rank}`, move);
+  }
+  for (const move of getLegalMovesOnCells(probe, player, rule, relevantCells)) {
+    candidates.set(`${move.cell}:${move.rank}`, move);
+  }
+
   const ownWinningMoves = new Set(
-    getImmediateWins(probe, player, rule)
-      .map(move => `${move.cell}:${move.rank}`)
+    ownWins.map(move => `${move.cell}:${move.rank}`)
   );
 
-  return legal.filter(move => {
-    if (ownWinningMoves.has(`${move.cell}:${move.rank}`)) return true;
-    if (!relevantCells.has(move.cell)) return false;
-    const next = simulateNonWinningMove(probe, move);
-    return getImmediateWins(next, opponent, rule).length === 0;
-  });
+  return [...candidates.values()]
+    .sort((a, b) => a.rank - b.rank || a.cell - b.cell)
+    .filter(move => {
+      if (ownWinningMoves.has(`${move.cell}:${move.rank}`)) return true;
+      const next = simulateNonWinningMove(probe, move);
+      return getImmediateWins(next, opponent, rule).length === 0;
+    });
 }
 
 function forcingMoves(position, player, rule, candidates, options = {}) {
