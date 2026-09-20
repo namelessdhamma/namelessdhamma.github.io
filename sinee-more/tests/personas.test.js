@@ -68,3 +68,14 @@ test('persona preferences diverge across deterministic corpus', () => {
   assert.ok(disagreements.every(x => x >= 0.10), JSON.stringify(disagreements));
   assert.ok(disagreements.filter(x => x >= 0.20).length >= 3, JSON.stringify(disagreements));
 });
+
+
+test('nearby integer seeds do not collapse to the same first RNG band', () => {
+  const first = Array.from({ length: 64 }, (_, index) =>
+    createRng(index + 1)()
+  );
+  const low = first.filter(x => x < 0.25).length;
+  const high = first.filter(x => x >= 0.75).length;
+  assert.ok(low >= 6 && low <= 26, JSON.stringify({ low, first }));
+  assert.ok(high >= 6 && high <= 26, JSON.stringify({ high, first }));
+});
