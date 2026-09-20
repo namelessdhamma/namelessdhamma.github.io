@@ -178,3 +178,30 @@ test('optimized immediate-win scan matches brute-force rule execution', () => {
     assert.deepEqual(actual, expected, item.name);
   }
 });
+
+
+test('optimized safe-move scan matches brute one-ply defense', () => {
+  const corpus = buildQualificationCorpus({ count: 24, seed: 0x551177 });
+  for (const item of corpus) {
+    const player = item.position.turn;
+    const expected = getLegalMoves(item.position, player, item.rule)
+      .filter(move => {
+        const next = applyMove(item.position, move, item.rule);
+        if (!next) return false;
+        if (next.status === 'win') return next.winner === player;
+        const opponent = next.turn;
+        return !getLegalMoves(next, opponent, item.rule).some(reply => {
+          const after = applyMove(next, reply, item.rule);
+          return after?.status === 'win' && after.winner === opponent;
+        });
+      })
+      .map(move => `${move.cell}:${move.rank}`)
+      .sort();
+
+    const actual = getSafeMoves(item.position, player, item.rule)
+      .map(move => `${move.cell}:${move.rank}`)
+      .sort();
+
+    assert.deepEqual(actual, expected, item.name);
+  }
+});
