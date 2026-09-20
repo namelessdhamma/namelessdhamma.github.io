@@ -138,6 +138,40 @@ function collectNearBestCandidates(rootScores, tacticalMoves, bestMove, regretBa
     .filter(item => item.score != null && item.score >= best - regretBand);
 }
 
+function collectOpeningCandidates(
+  rootScores,
+  tacticalMoves,
+  bestMove,
+  regretBand,
+  limit
+) {
+  const allowed = new Set(tacticalMoves.map(moveKey));
+  const ranked = (rootScores ?? [])
+    .filter(item => allowed.has(moveKey(item.move)))
+    .sort((a, b) =>
+      b.score - a.score ||
+      a.move.cell - b.move.cell ||
+      a.move.rank - b.move.rank
+    );
+
+  if (!ranked.length) {
+    return bestMove ? [{ move: bestMove, score: 0, rawScore: 0 }] : [];
+  }
+
+  const bestScore = ranked[0].score;
+  const band = Math.max(1e-9, regretBand);
+  return ranked
+    .filter(item => item.score >= bestScore - regretBand)
+    .slice(0, Math.max(1, limit))
+    .map(item => ({
+      move: item.move,
+      rawScore: item.score,
+      // Once a move is inside the objective safety band, compress the
+      // difference so persona can express style without leaving the band.
+      score: -4 * ((bestScore - item.score) / band)
+    }));
+}
+
 function collectTopCandidates(rootScores, tacticalMoves, bestMove, limit) {
   const allowed = new Set(tacticalMoves.map(moveKey));
   const ranked = (rootScores ?? [])
@@ -316,12 +350,14 @@ export function chooseMove(position, {
           searchResult.completedDepth === 0
             ? searchCandidates.map((move, index) => ({
                 move,
-                score: -index * 2
+                score: -Math.min(index, 4),
+                rawScore: null
               }))
-            : collectTopCandidates(
+            : collectOpeningCandidates(
                 searchResult.rootScores,
                 searchCandidates,
                 searchResult.move,
+                policy.openingRegretBand,
                 policy.openingCandidateLimit
               )
         )
