@@ -739,7 +739,17 @@ async function lightpandaFetch(a={}){
   };
 }
 
-let lpCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:""};
+let lpCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:"",stage:"idle"};
+async function lpStage(label,promise,ms=10000){
+  lpCdp.stage=label;
+  let timer;
+  try{
+    return await Promise.race([
+      promise,
+      new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error("lightpanda_stage_timeout:"+label)),ms);})
+    ]);
+  }finally{if(timer)clearTimeout(timer);}
+}
 function lpCdpTouch(){
   if(lpCdp.idleTimer)clearTimeout(lpCdp.idleTimer);
   lpCdp.idleTimer=setTimeout(async()=>{
@@ -755,13 +765,13 @@ async function ensureLpCdp(){
   if(lpCdp.connecting)return await lpCdp.connecting;
   lpCdp.connecting=(async()=>{
     if(!LIGHTPANDA_TOKEN)throw new Error("lightpanda_token_missing");
-    const browser=await chromium.connectOverCDP(LIGHTPANDA_CDP_URL,{timeout:25000});
-    browser.on("disconnected",()=>{lpCdp.browser=null;lpCdp.context=null;lpCdp.page=null;lpCdp.connecting=null;});
+    const browser=await lpStage("connectOverCDP",chromium.connectOverCDP(LIGHTPANDA_CDP_URL,{timeout:9000}),10000);
+    browser.on("disconnected",()=>{lpCdp.browser=null;lpCdp.context=null;lpCdp.page=null;lpCdp.connecting=null;lpCdp.stage="disconnected";});
     let context=browser.contexts()[0]||null;
-    if(!context)context=await browser.newContext();
+    if(!context)context=await lpStage("newContext",browser.newContext(),10000);
     let page=context.pages()[0]||null;
-    if(!page)page=await context.newPage();
-    lpCdp.browser=browser;lpCdp.context=context;lpCdp.page=page;lpCdp.lastError="";lpCdp.connecting=null;
+    if(!page)page=await lpStage("newPage",context.newPage(),10000);
+    lpCdp.browser=browser;lpCdp.context=context;lpCdp.page=page;lpCdp.lastError="";lpCdp.connecting=null;lpCdp.stage="ready";
     lpCdpTouch();
     return lpCdp;
   })().catch(e=>{
@@ -1057,7 +1067,7 @@ const muxServer=http.createServer(async(req,res)=>{
         let err=String(e?.message||e||"error");
         if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
         if(LIGHTPANDA_PATH_TOKEN)err=err.split(LIGHTPANDA_PATH_TOKEN).join("[REDACTED]");
-        return j(res,200,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_connected:false,error:err.slice(0,1200)});
+        return j(res,200,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_connected:false,stage:lpCdp.stage,error:err.slice(0,1200)});
       }
     }
 
