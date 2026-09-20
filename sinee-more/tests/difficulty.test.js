@@ -146,3 +146,28 @@ test('Hard D never opens with an extreme rank in the center', () => {
     );
   }
 });
+
+
+test('opening personas keep distinct identities inside the Hard fallback shortlist', () => {
+  const p = createInitialPosition(LIGHT);
+  const architect = chooseMove(p, {
+    rule: RULE_D, difficulty: 'hard', persona: 'architect',
+    seed: 41, timeBudgetOverrideMs: 0
+  }).move;
+  const hunter = chooseMove(p, {
+    rule: RULE_D, difficulty: 'hard', persona: 'hunter',
+    seed: 42, timeBudgetOverrideMs: 0
+  }).move;
+  const sentinel = chooseMove(p, {
+    rule: RULE_D, difficulty: 'hard', persona: 'sentinel',
+    seed: 43, timeBudgetOverrideMs: 0
+  }).move;
+  const trickster = chooseMove(p, {
+    rule: RULE_D, difficulty: 'hard', persona: 'trickster',
+    seed: 44, timeBudgetOverrideMs: 0
+  }).move;
+
+  assert.equal(architect.cell, 4);
+  assert.notEqual(trickster.cell, 4);
+  assert.ok(hunter.rank > sentinel.rank, JSON.stringify({ hunter, sentinel }));
+});
