@@ -98,12 +98,25 @@ function closedCellDelta(before, after, player, rule) {
   return delta;
 }
 
-export function extractPersonaFeatures(position, move, rule) {
-  const player = move.player;
+export function createPersonaScoringContext(position, rule, player = position.turn) {
   const opponent = otherPlayer(player);
+  return {
+    player,
+    opponent,
+    ownBefore: optionSpace(position, player, rule),
+    oppBefore: optionSpace(position, opponent, rule)
+  };
+}
+
+export function extractPersonaFeatures(position, move, rule, context = null) {
+  const player = move.player;
+  const base = context && context.player === player
+    ? context
+    : createPersonaScoringContext(position, rule, player);
+  const opponent = base.opponent;
   const beforeTop = topPiece(position, move.cell);
-  const ownBefore = optionSpace(position, player, rule);
-  const oppBefore = optionSpace(position, opponent, rule);
+  const ownBefore = base.ownBefore;
+  const oppBefore = base.oppBefore;
   const next = applyMove(position, move, rule);
   if (!next) {
     return {
@@ -164,9 +177,9 @@ function openingPersonaBonus(position, move, personaId) {
   return 0;
 }
 
-export function scorePersonaMove(position, move, rule, personaId) {
+export function scorePersonaMove(position, move, rule, personaId, context = null) {
   const profile = PERSONAS[personaId] ?? PERSONAS.architect;
-  const f = extractPersonaFeatures(position, move, rule);
+  const f = extractPersonaFeatures(position, move, rule, context);
   return (
     f.planContinuity * profile.planContinuity +
     f.ladderFlexibility * profile.ladderFlexibility +
