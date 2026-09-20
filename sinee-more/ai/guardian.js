@@ -86,7 +86,9 @@ export function getSafeMoves(position, player, rule) {
   });
 }
 
-function forcingMoves(position, player, rule, candidates) {
+function forcingMoves(position, player, rule, candidates, options = {}) {
+  const now = options.now ?? (() => performance.now());
+  const deadline = options.deadline ?? Infinity;
   if (position.moves < 2) return [];
   const probe = position.turn === player
     ? position
@@ -94,6 +96,7 @@ function forcingMoves(position, player, rule, candidates) {
   const out = [];
 
   for (const move of candidates) {
+    if (now() >= deadline) break;
     const next = applyMove(probe, move, rule);
     if (!next || next.status !== 'playing') continue;
 
@@ -124,6 +127,10 @@ function forcingMoves(position, player, rule, candidates) {
       .filter(reply => relevantCells.has(reply.cell));
 
     for (const reply of replies) {
+      if (now() >= deadline) {
+        forced = false;
+        break;
+      }
       const afterReply = applyMove(next, reply, rule);
       if (!afterReply) continue;
       if (
@@ -140,7 +147,7 @@ function forcingMoves(position, player, rule, candidates) {
   return out;
 }
 
-export function getTacticalCandidates(position, player = position.turn, rule) {
+export function getTacticalCandidates(position, player = position.turn, rule, options = {}) {
   const probe = position.turn === player
     ? position
     : { ...position, turn: player };
@@ -156,8 +163,12 @@ export function getTacticalCandidates(position, player = position.turn, rule) {
   }
 
   const base = safe.length ? safe : legal;
-  const forcing = forcingMoves(probe, player, rule, base);
-  if (forcing.length) return { tier: 'FORCING', moves: forcing };
+  const now = options.now ?? (() => performance.now());
+  const deadline = options.deadline ?? Infinity;
+  if (now() < deadline) {
+    const forcing = forcingMoves(probe, player, rule, base, { now, deadline });
+    if (forcing.length) return { tier: 'FORCING', moves: forcing };
+  }
 
   if (safe.length) return { tier: 'SAFE', moves: safe };
   return { tier: 'ALL_LEGAL', moves: legal };
