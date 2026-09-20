@@ -1,5 +1,5 @@
 import { LINES, otherPlayer, usesLadder } from './constants.js';
-import { getLegalMoves, isLegalMove, applyMove, topPiece } from './rules.js';
+import { getLegalMoves, isLegalMove, topPiece } from './rules.js';
 
 function sameMove(a, b) {
   return !!a && !!b &&
