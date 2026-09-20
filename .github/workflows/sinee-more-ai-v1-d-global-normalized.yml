@@ -1,0 +1,66 @@
+name: Sinee More AI v1 D Global Normalized
+# diagnostic-sample: 1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sinee-more-ai-v1]
+    paths:
+      - '.github/workflows/sinee-more-ai-v1-d-global-normalized.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  d-global-normalized:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: sinee-more
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Test normalized global rank-conflict penalty
+        continue-on-error: true
+        shell: bash
+        run: |
+          cp ai/evaluation.js /tmp/evaluation.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ai/evaluation.js')
+          s=p.read_text()
+          old="""  score += analysis.compatibleActivePlans * profile.ladderGlobalCapacity;
+  score -= Math.max(
+    0,
+    analysis.activeLinePlans - analysis.compatibleActivePlans
+  ) * profile.ladderResourceConflict;
+"""
+          new="""  if (analysis.activeLinePlans > 0) {
+    const conflictingShare = Math.max(
+      0,
+      analysis.activeLinePlans - analysis.compatibleActivePlans
+    ) / analysis.activeLinePlans;
+    score -= conflictingShare * profile.ladderResourceConflict;
+  }
+"""
+          if old not in s:
+              raise SystemExit('global ladder scoring anchor missing')
+          p.write_text(s.replace(old,new))
+          PY
+          node tools/qualification.js --strength-only --rules D --games-per-pair 8 --budget-scale 0.10 --json d-global-normalized.json
+          cp /tmp/evaluation.js ai/evaluation.js
+
+      - name: Restore evaluation
+        if: always()
+        run: git checkout -- ai/evaluation.js
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sinee-more-ai-v1-d-global-normalized
+          path: sinee-more/d-global-normalized.json
+          if-no-files-found: ignore
