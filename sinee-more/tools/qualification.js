@@ -88,6 +88,10 @@ function makeAgent({
         ttHits: result.metrics.ttHits,
         depth: result.metrics.completedDepth,
         deliberateError: result.metrics.deliberateError === true,
+        strategicRegret:
+          typeof result.metrics.strategicRegret === 'number'
+            ? result.metrics.strategicRegret
+            : null,
         forcingSkipped: result.metrics.forcingSkipped === true
       });
       ply += 1;
@@ -525,6 +529,9 @@ function summarizeTiming(timings) {
   const totalHits = timings.reduce((sum, x) => sum + x.ttHits, 0);
   const depth = timings.map(x => x.depth);
   const deliberateErrors = timings.filter(x => x.deliberateError).length;
+  const strategicRegrets = timings
+    .map(x => x.strategicRegret)
+    .filter(value => typeof value === 'number' && Number.isFinite(value));
   const forcingSkipped = timings.filter(x => x.forcingSkipped).length;
   const guardian = timings.map(x => x.guardianMs ?? 0);
   const search = timings.map(x => x.searchMs ?? 0);
@@ -555,6 +562,10 @@ function summarizeTiming(timings) {
     deliberateErrorRate: timings.length
       ? deliberateErrors / timings.length
       : 0,
+    meanStrategicRegret: strategicRegrets.length
+      ? strategicRegrets.reduce((a, b) => a + b, 0) / strategicRegrets.length
+      : 0,
+    p95StrategicRegret: percentile(strategicRegrets, 0.95),
     forcingSkipped,
     forcingSkippedRate: timings.length
       ? forcingSkipped / timings.length
