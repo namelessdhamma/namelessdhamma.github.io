@@ -1,0 +1,34 @@
+name: Sinee More AI v1 CD Strength Probe
+# calibration-sample: 1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sinee-more-ai-v1]
+    paths:
+      - '.github/workflows/sinee-more-ai-v1-cd-strength-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  cd-strength-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    defaults:
+      run:
+        working-directory: sinee-more
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: CD-only difficulty strength probe
+        run: node tools/qualification.js --strength-only --rules CD --games-per-pair 24 --budget-scale 0.04 --json cd-strength-probe.json
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sinee-more-ai-v1-cd-strength-probe
+          path: sinee-more/cd-strength-probe.json
+          if-no-files-found: ignore
