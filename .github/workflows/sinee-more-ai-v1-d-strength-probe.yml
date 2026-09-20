@@ -24,8 +24,10 @@ jobs:
         with:
           node-version: '22'
       - name: D-only difficulty strength diagnostic
+        continue-on-error: true
         run: node tools/qualification.js --strength-only --rules D --games-per-pair 24 --budget-scale 0.10 --json d-strength-probe.json
       - name: D diagnostic with Hard opening shortlist forced to 6
+        continue-on-error: true
         shell: bash
         run: |
           python3 - <<'PY'
