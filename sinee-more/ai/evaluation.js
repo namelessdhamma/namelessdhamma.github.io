@@ -10,6 +10,7 @@ export const BASE_PROFILE = Object.freeze({
   closedCell: 18,
   coverMobility: 1.2,
   resource: 0.08,
+  ladderResource: 0.35,
   linePressure: 7,
   forkPressure: 10,
   ladderPlan: 0.9,
@@ -267,6 +268,10 @@ export function evaluatePosition(
   ) * profile.resource;
 
   if (usesLadder(rule)) {
+    score += (
+      resourceValue(position, rootPlayer) -
+      resourceValue(position, opponent)
+    ) * profile.ladderResource;
     score += ladderPotential(position, rootPlayer, rule, profile);
     score -= ladderPotential(position, opponent, rule, profile);
   } else {
