@@ -25,8 +25,35 @@ def _load_master_token(source: Mapping[str, str], password: str) -> str:
     if plaintext:
         return plaintext
     if not encrypted:
+        # Recovery path: credential may have been reseeded into Railway's
+        # persistent volume by the GitHub OIDC bootstrap workflow.
+        candidates = []
+        runtime_home = source.get("ND_NOTEBOOKLM_RUNTIME_HOME", "").strip()
+        if runtime_home:
+            candidates.append(Path(runtime_home) / "profiles" / "default" / "master_token.json")
+        persist_dir = source.get("ND_NOTEBOOKLM_OAUTH_PERSIST_DIR", "").strip()
+        if persist_dir:
+            candidates.append(Path(persist_dir) / "profiles" / "default" / "master_token.json")
+        candidates.extend(
+            [
+                Path("/data/nd-notebooklm-direct/profiles/default/master_token.json"),
+                Path("/data/nd-notebooklm/profiles/default/master_token.json"),
+            ]
+        )
+        seen = set()
+        for token_file in candidates:
+            key = str(token_file)
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                raw = token_file.read_bytes()
+            except OSError:
+                continue
+            if raw:
+                return base64.b64encode(raw).decode("ascii")
         raise RuntimeError(
-            f"Missing NOTEBOOKLM_MASTER_TOKEN_B64 or {_ENCRYPTED_MASTER_ENV}"
+            f"Missing NOTEBOOKLM_MASTER_TOKEN_B64 or {_ENCRYPTED_MASTER_ENV} or persistent Railway credential"
         )
 
     try:
