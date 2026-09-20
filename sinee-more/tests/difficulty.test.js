@@ -26,6 +26,8 @@ test('difficulty policies increase search budget and tighten regret', () => {
   assert.ok(DIFFICULTY.medium.strategicErrorRate > DIFFICULTY.hard.strategicErrorRate);
   assert.ok(DIFFICULTY.easy.strategicErrorSeverity > DIFFICULTY.medium.strategicErrorSeverity);
   assert.ok(DIFFICULTY.medium.strategicErrorSeverity > DIFFICULTY.hard.strategicErrorSeverity);
+  assert.ok(DIFFICULTY.easy.errorCandidateLimit > DIFFICULTY.medium.errorCandidateLimit);
+  assert.ok(DIFFICULTY.medium.errorCandidateLimit > DIFFICULTY.hard.errorCandidateLimit);
   assert.equal(resolveDifficulty('hard', 17).timeBudgetMs, 17);
   assert.equal(resolveDifficulty('medium', null, RULE_C).strategicErrorRate, DIFFICULTY.medium.strategicErrorRate);
   assert.ok(resolveDifficulty('medium', null, RULE_CD).strategicErrorRate > DIFFICULTY.medium.strategicErrorRate);
@@ -253,7 +255,7 @@ test('CD complexity keeps a clear Easy Medium strategic-error gap', () => {
 });
 
 
-test('deliberate Easy errors in CD carry positive search regret when search completes', () => {
+test('deliberate Easy errors in CD carry positive bounded one-ply regret', () => {
   let p = createInitialPosition(LIGHT);
   p = applyMove(p, { player: LIGHT, rank: 2, cell: 4 }, RULE_CD);
   p = applyMove(p, { player: 'dark', rank: 1, cell: 0 }, RULE_CD);
@@ -282,7 +284,7 @@ test('deliberate Easy errors in CD carry positive search regret when search comp
 });
 
 
-test('CD Easy deliberate errors have larger search regret than Medium', () => {
+test('CD Easy deliberate errors have larger bounded regret than Medium', () => {
   let p = createInitialPosition(LIGHT);
   p = applyMove(p, { player: LIGHT, rank: 2, cell: 4 }, RULE_CD);
   p = applyMove(p, { player: 'dark', rank: 1, cell: 0 }, RULE_CD);
