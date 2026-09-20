@@ -528,6 +528,10 @@ function summarizeTiming(timings) {
     meanSearchMs: search.length
       ? search.reduce((a, b) => a + b, 0) / search.length
       : 0,
+    guardianShare: elapsed.length && elapsed.reduce((a, b) => a + b, 0) > 0
+      ? guardian.reduce((a, b) => a + b, 0) /
+        elapsed.reduce((a, b) => a + b, 0)
+      : 0,
     p95MoveMs: percentile(elapsed, 0.95),
     maxBudgetOverrunMs: overruns.length
       ? Math.max(...overruns)
