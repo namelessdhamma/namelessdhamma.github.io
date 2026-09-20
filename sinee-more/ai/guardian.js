@@ -14,9 +14,9 @@ function visibleTopCount(position, player) {
   return count;
 }
 
-export function getImmediateThreatCells(position, player, rule) {
+function getImmediateThreatLines(position, player) {
   if (!position || position.status !== 'playing') return [];
-  const cells = new Set();
+  const out = [];
 
   for (const line of LINES) {
     let owned = 0;
@@ -28,9 +28,15 @@ export function getImmediateThreatCells(position, player, rule) {
       else target = cell;
     }
 
-    if (owned === 2 && target >= 0) cells.add(target);
+    if (owned === 2 && target >= 0) out.push({ line, target });
   }
+  return out;
+}
 
+export function getImmediateThreatCells(position, player, rule) {
+  const cells = new Set(
+    getImmediateThreatLines(position, player).map(item => item.target)
+  );
   return [...cells].sort((a, b) => a - b);
 }
 
@@ -92,15 +98,25 @@ function forcingMoves(position, player, rule, candidates) {
       continue;
     }
 
+    // If the opponent can win immediately, this is not a forcing attack.
+    if (getImmediateWins(next, next.turn, rule).length) continue;
+
+    // A defensive reply can neutralize our immediate threats only by
+    // changing a cell on one of the supporting threat lines. Restricting
+    // verification to those cells preserves exactness while avoiding scans
+    // of strategically irrelevant replies.
+    const relevantCells = new Set();
+    for (const item of getImmediateThreatLines(next, player)) {
+      for (const cell of item.line) relevantCells.add(cell);
+    }
+
     let forced = true;
-    const replies = getLegalMoves(next, next.turn, rule);
+    const replies = getLegalMoves(next, next.turn, rule)
+      .filter(reply => relevantCells.has(reply.cell));
+
     for (const reply of replies) {
       const afterReply = applyMove(next, reply, rule);
       if (!afterReply) continue;
-      if (afterReply.status === 'win' && afterReply.winner !== player) {
-        forced = false;
-        break;
-      }
       if (
         afterReply.status === 'playing' &&
         getImmediateWins(afterReply, player, rule).length === 0
