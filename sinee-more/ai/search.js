@@ -4,6 +4,8 @@ export const TT_EXACT = 'EXACT';
 export const TT_LOWER = 'LOWER_BOUND';
 export const TT_UPPER = 'UPPER_BOUND';
 
+const TIMEOUT = Symbol('SEARCH_TIMEOUT');
+
 export class TranspositionTable {
   constructor() {
     this.map = new Map();
@@ -33,13 +35,33 @@ function compareMoves(a, b) {
   return a.cell - b.cell || a.rank - b.rank || a.player.localeCompare(b.player);
 }
 
+function sameMove(a, b) {
+  return !!a && !!b &&
+    a.player === b.player && a.rank === b.rank && a.cell === b.cell;
+}
+
+function prioritize(moves, preferred) {
+  if (!preferred) return moves;
+  const index = moves.findIndex(move => sameMove(move, preferred));
+  if (index > 0) {
+    const [move] = moves.splice(index, 1);
+    moves.unshift(move);
+  }
+  return moves;
+}
+
 function classifyBound(score, alphaOriginal, betaOriginal) {
   if (score <= alphaOriginal) return TT_UPPER;
   if (score >= betaOriginal) return TT_LOWER;
   return TT_EXACT;
 }
 
-function node(position, depth, alpha, beta, ctx) {
+function checkDeadline(ctx) {
+  if (ctx.deadline !== Infinity && ctx.now() >= ctx.deadline) throw TIMEOUT;
+}
+
+function node(position, depth, alpha, beta, ctx, ply = 0) {
+  checkDeadline(ctx);
   ctx.nodes += 1;
   if (depth <= 0 || position.status !== 'playing') {
     return { score: ctx.evaluate(position, ctx.rootPlayer), move: null };
@@ -64,7 +86,12 @@ function node(position, depth, alpha, beta, ctx) {
   const maximizing = position.turn === ctx.rootPlayer;
   let bestScore = maximizing ? -Infinity : Infinity;
   let bestMove = null;
-  const moves = getLegalMoves(position, position.turn, ctx.rule).sort(compareMoves);
+  let moves = ply === 0 && ctx.rootCandidates
+    ? [...ctx.rootCandidates]
+    : getLegalMoves(position, position.turn, ctx.rule);
+  moves.sort(compareMoves);
+  if (ply === 0) prioritize(moves, ctx.preferredMove);
+  else if (entry?.move) prioritize(moves, entry.move);
 
   if (!moves.length) {
     return { score: ctx.evaluate(position, ctx.rootPlayer), move: null };
@@ -72,8 +99,11 @@ function node(position, depth, alpha, beta, ctx) {
 
   for (const move of moves) {
     const next = applyMove(position, move, ctx.rule);
-    const child = node(next, depth - 1, alpha, beta, ctx);
+    if (!next) continue;
+    const child = node(next, depth - 1, alpha, beta, ctx, ply + 1);
     const score = child.score;
+
+    if (ply === 0) ctx.rootScores.push({ move, score });
 
     if (
       bestMove === null ||
@@ -89,7 +119,7 @@ function node(position, depth, alpha, beta, ctx) {
     if (alpha >= beta) break;
   }
 
-  if (ctx.useTable) {
+  if (ctx.useTable && bestMove) {
     ctx.table.set(key, {
       depth,
       score: bestScore,
@@ -110,11 +140,16 @@ export function searchFixedDepth(position, {
   table = new TranspositionTable(),
   alpha = -Infinity,
   beta = Infinity,
-  key = makeSearchKey
+  key = makeSearchKey,
+  now = () => performance.now(),
+  deadline = Infinity,
+  preferredMove = null,
+  rootCandidates = null
 }) {
   const ctx = {
     rule, rootPlayer, evaluate, useTable, table, key,
-    nodes: 0, ttHits: 0
+    now, deadline, preferredMove, rootCandidates,
+    nodes: 0, ttHits: 0, rootScores: []
   };
   const result = node(position, depth, alpha, beta, ctx);
   return {
@@ -122,6 +157,78 @@ export function searchFixedDepth(position, {
     nodes: ctx.nodes,
     ttHits: ctx.ttHits,
     completedDepth: depth,
+    rootScores: ctx.rootScores,
     table
+  };
+}
+
+export function searchIterative(position, {
+  rule,
+  rootPlayer = position.turn,
+  evaluate,
+  timeBudgetMs,
+  maxDepth,
+  now = () => performance.now(),
+  useTable = true,
+  table = new TranspositionTable(),
+  key = makeSearchKey,
+  rootCandidates = null
+}) {
+  const legal = rootCandidates?.length
+    ? [...rootCandidates].sort(compareMoves)
+    : getLegalMoves(position, position.turn, rule).sort(compareMoves);
+  const started = now();
+  const deadline = started + Math.max(0, timeBudgetMs);
+  const fallback = legal[0] ?? null;
+  let best = {
+    score: evaluate(position, rootPlayer),
+    move: fallback,
+    nodes: 0,
+    ttHits: 0,
+    completedDepth: 0,
+    rootScores: fallback ? [{ move: fallback, score: evaluate(position, rootPlayer) }] : [],
+    principalVariation: fallback ? [fallback] : [],
+    table
+  };
+  let totalNodes = 0;
+  let totalHits = 0;
+
+  for (let depth = 1; depth <= maxDepth; depth += 1) {
+    try {
+      const current = searchFixedDepth(position, {
+        rule,
+        rootPlayer,
+        depth,
+        evaluate,
+        useTable,
+        table,
+        key,
+        now,
+        deadline,
+        preferredMove: best.move,
+        rootCandidates: legal
+      });
+      totalNodes += current.nodes;
+      totalHits += current.ttHits;
+      best = {
+        ...current,
+        nodes: totalNodes,
+        ttHits: totalHits,
+        principalVariation: current.move ? [current.move] : []
+      };
+    } catch (error) {
+      if (error !== TIMEOUT) throw error;
+      return {
+        ...best,
+        timedOut: true,
+        elapsedMs: now() - started
+      };
+    }
+  }
+
+  return {
+    ...best,
+    timedOut: false,
+    elapsedMs: now() - started
   };
 }
