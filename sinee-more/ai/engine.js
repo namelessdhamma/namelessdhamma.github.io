@@ -1,3 +1,4 @@
+import { LINES } from './constants.js';
 import { evaluatePosition } from './evaluation.js';
 import { searchIterative } from './search.js';
 import { getTacticalCandidates } from './guardian.js';
@@ -27,15 +28,11 @@ const MONOTONIC_TRIPLES = (() => {
   return triples;
 })();
 
-const LINE_POSITIONS = [
-  [[0,0],[3,0],[6,0]], [[0,1],[4,0]], [[0,2],[5,0],[7,0]],
-  [[1,0],[3,1]], [[1,1],[4,1],[5,1],[6,1],[7,1]],
-  [[1,2],[5,2]], [[2,0],[3,2],[7,2]], [[2,1],[4,2]], [[2,2],[5,2],[6,2]]
-];
-
 function ladderRoleFlexibility(cell, rank) {
   let count = 0;
-  for (const [, index] of LINE_POSITIONS[cell]) {
+  for (const line of LINES) {
+    const index = line.indexOf(cell);
+    if (index < 0) continue;
     for (const triple of MONOTONIC_TRIPLES) {
       if (triple[index] === rank) count += 1;
     }
