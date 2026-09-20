@@ -1,4 +1,5 @@
 import { getLegalMoves, applyMove } from './rules.js';
+import { canonicalize, rawPositionKey, transformMove, inverseTransformMove } from './symmetry.js';
 
 export const TT_EXACT = 'EXACT';
 export const TT_LOWER = 'LOWER_BOUND';
@@ -17,18 +18,7 @@ export class TranspositionTable {
 }
 
 export function makeSearchKey(position, rule) {
-  const board = position.board.map(stack =>
-    stack.map(piece => `${piece.player[0]}${piece.rank}`).join('.')
-  ).join('/');
-  return [
-    rule,
-    position.turn,
-    position.status,
-    position.winner ?? '-',
-    board,
-    position.remaining.light.join(','),
-    position.remaining.dark.join(',')
-  ].join('|');
+  return canonicalize(position, rule).key;
 }
 
 function compareMoves(a, b) {
@@ -67,19 +57,28 @@ function node(position, depth, alpha, beta, ctx, ply = 0) {
     return { score: ctx.evaluate(position, ctx.rootPlayer), move: null };
   }
 
-  const key = ctx.key(position, ctx.rule);
+  const canonical = ctx.useSymmetry
+    ? canonicalize(position, ctx.rule)
+    : { key: rawPositionKey(position, ctx.rule), transformId: 0 };
+  const key = canonical.key;
   const alphaOriginal = alpha;
   const betaOriginal = beta;
   let entry = null;
+  let entryLocalMove = null;
 
   if (ctx.useTable) {
     entry = ctx.table.get(key);
+    if (entry?.move) {
+      entryLocalMove = ctx.useSymmetry
+        ? inverseTransformMove(entry.move, canonical.transformId)
+        : entry.move;
+    }
     if (entry && entry.depth >= depth) {
       ctx.ttHits += 1;
-      if (entry.flag === TT_EXACT) return { score: entry.score, move: entry.move };
+      if (entry.flag === TT_EXACT) return { score: entry.score, move: entryLocalMove };
       if (entry.flag === TT_LOWER) alpha = Math.max(alpha, entry.score);
       if (entry.flag === TT_UPPER) beta = Math.min(beta, entry.score);
-      if (alpha >= beta) return { score: entry.score, move: entry.move, bound: entry.flag };
+      if (alpha >= beta) return { score: entry.score, move: entryLocalMove, bound: entry.flag };
     }
   }
 
@@ -91,7 +90,7 @@ function node(position, depth, alpha, beta, ctx, ply = 0) {
     : getLegalMoves(position, position.turn, ctx.rule);
   moves.sort(compareMoves);
   if (ply === 0) prioritize(moves, ctx.preferredMove);
-  else if (entry?.move) prioritize(moves, entry.move);
+  else if (entryLocalMove) prioritize(moves, entryLocalMove);
 
   if (!moves.length) {
     return { score: ctx.evaluate(position, ctx.rootPlayer), move: null };
@@ -123,7 +122,7 @@ function node(position, depth, alpha, beta, ctx, ply = 0) {
     ctx.table.set(key, {
       depth,
       score: bestScore,
-      move: bestMove,
+      move: ctx.useSymmetry ? transformMove(bestMove, canonical.transformId) : bestMove,
       flag: classifyBound(bestScore, alphaOriginal, betaOriginal)
     });
   }
@@ -141,13 +140,14 @@ export function searchFixedDepth(position, {
   alpha = -Infinity,
   beta = Infinity,
   key = makeSearchKey,
+  useSymmetry = true,
   now = () => performance.now(),
   deadline = Infinity,
   preferredMove = null,
   rootCandidates = null
 }) {
   const ctx = {
-    rule, rootPlayer, evaluate, useTable, table, key,
+    rule, rootPlayer, evaluate, useTable, table, key, useSymmetry,
     now, deadline, preferredMove, rootCandidates,
     nodes: 0, ttHits: 0, rootScores: []
   };
@@ -172,6 +172,7 @@ export function searchIterative(position, {
   useTable = true,
   table = new TranspositionTable(),
   key = makeSearchKey,
+  useSymmetry = true,
   rootCandidates = null
 }) {
   const legal = rootCandidates?.length
@@ -203,6 +204,7 @@ export function searchIterative(position, {
         useTable,
         table,
         key,
+        useSymmetry,
         now,
         deadline,
         preferredMove: best.move,
