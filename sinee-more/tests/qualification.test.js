@@ -55,3 +55,23 @@ test('focused strength probe omits unrelated qualification work', () => {
   assert.equal('openings' in report.metrics, false);
   assert.ok(Array.isArray(report.failures));
 });
+
+
+test('focused strength probe can isolate CD calibration', () => {
+  const report = runStrengthProbe({
+    gamesPerPair: 1,
+    seed: 19,
+    qualificationBudgetScale: 0,
+    rules: ['CD']
+  });
+  assert.deepEqual(report.config.rules, ['CD']);
+  assert.equal(report.config.totalGamesPerDifficultyMatchup, 4);
+  assert.deepEqual(
+    Object.keys(report.metrics.strength.hardVsMedium.byRule),
+    ['CD']
+  );
+  assert.deepEqual(
+    Object.keys(report.metrics.strength.mediumVsEasy.byRule),
+    ['CD']
+  );
+});
