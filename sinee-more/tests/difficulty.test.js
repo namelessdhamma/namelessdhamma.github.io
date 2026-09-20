@@ -95,6 +95,7 @@ test('engine always returns a legal coherent move under tiny budget', () => {
     result.metrics.timedOut || result.metrics.deliberateError === true,
     JSON.stringify(result.metrics)
   );
+  assert.equal(typeof result.metrics.forcingSkipped, 'boolean');
 });
 
 
