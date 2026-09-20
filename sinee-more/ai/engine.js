@@ -254,6 +254,16 @@ export function collectDeliberateErrorCandidates(
   }
 
   const bestScore = ranked[0].score;
+  const terminalScoreFloor = BASE_PROFILE.terminal * 0.5;
+
+  if (protectForcedLoss && bestScore >= terminalScoreFloor) {
+    return [{
+      move: ranked[0].move,
+      score: 0,
+      searchRegret: null
+    }];
+  }
+
   const positive = ranked
     .slice(1)
     .map(item => ({
@@ -268,7 +278,7 @@ export function collectDeliberateErrorCandidates(
         !protectForcedLoss ||
         // Medium D may make strategic mistakes, but should not knowingly
         // choose a forced loss already proven by completed search.
-        item.objectiveScore > -BASE_PROFILE.terminal * 0.5
+        item.objectiveScore > -terminalScoreFloor
       )
     )
     .sort((a, b) =>
