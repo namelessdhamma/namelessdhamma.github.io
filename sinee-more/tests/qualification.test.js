@@ -52,6 +52,26 @@ test('focused strength probe omits unrelated qualification work', () => {
   assert.equal(typeof report.ok, 'boolean');
   assert.ok(report.metrics.strength.hardVsMedium);
   assert.ok(report.metrics.strength.mediumVsEasy);
+  assert.equal(
+    typeof report.metrics.strength.hardVsMedium.score95CI.low,
+    'number'
+  );
+  assert.equal(
+    typeof report.metrics.strength.hardVsMedium.score95CI.high,
+    'number'
+  );
+  assert.equal(
+    typeof report.metrics.strength.hardVsMedium.gateMargin,
+    'number'
+  );
+  assert.equal(
+    typeof report.metrics.strength.hardVsMedium.ruleSpread,
+    'number'
+  );
+  assert.equal(
+    typeof report.metrics.strength.mediumVsEasy.gateMargin,
+    'number'
+  );
   assert.ok(report.metrics.timing.byDifficulty);
   assert.equal('personas' in report.metrics, false);
   assert.equal('openings' in report.metrics, false);
