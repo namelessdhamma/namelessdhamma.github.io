@@ -139,6 +139,27 @@ export function extractPersonaFeatures(position, move, rule) {
   };
 }
 
+function openingPersonaBonus(position, move, personaId) {
+  if (position.moves > 1) return 0;
+  const lines = lineCountForCell(move.cell);
+  const middleRank = Math.max(0, 5 - Math.abs(move.rank - 5));
+
+  if (personaId === 'architect') {
+    return (move.cell === 4 ? 28 : lines * 3) + middleRank * 3;
+  }
+  if (personaId === 'hunter') {
+    return move.rank * 5 + lines * 2;
+  }
+  if (personaId === 'sentinel') {
+    return (10 - move.rank) * 5 + lines * 2;
+  }
+  if (personaId === 'trickster') {
+    const offCenter = move.cell === 4 ? -20 : (move.cell % 2 === 0 ? 22 : 32);
+    return offCenter + middleRank * 4;
+  }
+  return 0;
+}
+
 export function scorePersonaMove(position, move, rule, personaId) {
   const profile = PERSONAS[personaId] ?? PERSONAS.architect;
   const f = extractPersonaFeatures(position, move, rule);
@@ -150,7 +171,8 @@ export function scorePersonaMove(position, move, rule, personaId) {
     f.fork * profile.fork +
     f.cover * profile.cover +
     f.conservation * profile.conservation +
-    f.intersection * profile.intersection
+    f.intersection * profile.intersection +
+    openingPersonaBonus(position, move, personaId)
   );
 }
 

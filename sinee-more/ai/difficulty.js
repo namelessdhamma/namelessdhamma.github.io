@@ -7,7 +7,9 @@ export const DIFFICULTY = Object.freeze({
     personaWeight: 0.6,
     openingPersonaWeight: 6,
     openingCandidateLimit: 40,
-    strategicNoise: 0.42,
+    strategicNoise: 0.25,
+    strategicErrorRate: 0.52,
+    strategicErrorSeverity: 0.90,
     guardian: 'full'
   }),
   medium: Object.freeze({
@@ -18,7 +20,9 @@ export const DIFFICULTY = Object.freeze({
     personaWeight: 0.6,
     openingPersonaWeight: 6,
     openingCandidateLimit: 30,
-    strategicNoise: 0.16,
+    strategicNoise: 0.10,
+    strategicErrorRate: 0.18,
+    strategicErrorSeverity: 0.45,
     guardian: 'full'
   }),
   hard: Object.freeze({
@@ -30,6 +34,8 @@ export const DIFFICULTY = Object.freeze({
     openingPersonaWeight: 6,
     openingCandidateLimit: 24,
     strategicNoise: 0,
+    strategicErrorRate: 0,
+    strategicErrorSeverity: 0,
     guardian: 'full'
   })
 });

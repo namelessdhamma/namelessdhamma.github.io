@@ -1,4 +1,5 @@
 import { LINES } from './constants.js';
+import { topPiece } from './rules.js';
 import { evaluatePosition } from './evaluation.js';
 import { searchIterative } from './search.js';
 import { getTacticalCandidates } from './guardian.js';
@@ -47,6 +48,37 @@ function cheapOpeningScore(move, rule) {
     return ladderRoleFlexibility(move.cell, move.rank) * 1.4 + location + rankEconomy;
   }
   return location + rankEconomy;
+}
+
+function cheapMoveQuality(position, move, rule) {
+  const location = move.cell === 4 ? 7 : (move.cell % 2 === 0 ? 4 : 2);
+  const resource = (10 - move.rank) * 0.85;
+  const target = topPiece(position, move.cell);
+  let score = location + resource;
+  if (target) {
+    score += 8 + target.rank * 1.25;
+    if ((rule === 'C' || rule === 'CD') && position.board[move.cell].length === 1) {
+      score += 5;
+    }
+  }
+  if (rule === 'D' || rule === 'CD') {
+    score += ladderRoleFlexibility(move.cell, move.rank) * 0.55;
+  }
+  return score;
+}
+
+function choosePlausibleMistake(position, moves, rule, severity, rng) {
+  if (!moves.length) return null;
+  const ranked = [...moves]
+    .map(move => ({ move, quality: cheapMoveQuality(position, move, rule) }))
+    .sort((a, b) =>
+      a.quality - b.quality ||
+      b.move.rank - a.move.rank ||
+      a.move.cell - b.move.cell
+    );
+  const fraction = Math.max(0.08, Math.min(0.35, severity * 0.32));
+  const span = Math.max(1, Math.ceil(ranked.length * fraction));
+  return ranked[Math.floor(rng() * span)].move;
 }
 
 function openingSearchCandidates(position, moves, rule, policy) {
@@ -180,6 +212,36 @@ export function chooseMove(position, {
         tacticalTier: tactical.tier
       }
     };
+  }
+
+  if (
+    (tactical.tier === 'SAFE' || tactical.tier === 'ALL_LEGAL') &&
+    policy.strategicErrorRate > 0 &&
+    rng() < policy.strategicErrorRate
+  ) {
+    const mistake = choosePlausibleMistake(
+      position,
+      tactical.moves,
+      rule,
+      policy.strategicErrorSeverity,
+      rng
+    );
+    if (mistake) {
+      return {
+        move: mistake,
+        score: evaluatePosition(position, position.turn, rule),
+        persona: personaId,
+        metrics: {
+          elapsedMs: 0,
+          nodes: 0,
+          ttHits: 0,
+          completedDepth: 0,
+          timedOut: false,
+          tacticalTier: tactical.tier,
+          deliberateError: true
+        }
+      };
+    }
   }
 
   const searchCandidates =
