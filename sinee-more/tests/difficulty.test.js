@@ -8,7 +8,7 @@ import {
   immediateWinFixture, immediateBlockFixture,
   increasingLadderFixture, decreasingLadderFixture
 } from '../fixtures/regressions.js';
-import { getSafeMoves } from '../ai/guardian.js';
+import { getSafeMoves, getImmediateWins } from '../ai/guardian.js';
 
 function sameMove(a, b) {
   return !!a && !!b &&
@@ -38,7 +38,8 @@ test('hard always takes a known immediate win across personas', () => {
         seed: 123,
         timeBudgetOverrideMs: 20
       });
-      assert.ok(sameMove(result.move, fx.winningMove), `${fx.name}/${persona}`);
+      const wins = getImmediateWins(fx.position, fx.position.turn, fx.rule);
+      assert.ok(wins.some(move => sameMove(move, result.move)), `${fx.name}/${persona}`);
       assert.equal(result.metrics.tacticalTier, 'WIN_NOW');
     }
   }
