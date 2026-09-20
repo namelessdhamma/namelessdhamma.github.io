@@ -35,5 +35,6 @@ test('fast qualification returns a complete report shape', () => {
   assert.ok(report.metrics.timing.byDifficulty.easy);
   assert.ok(report.metrics.timing.byDifficulty.medium);
   assert.ok(report.metrics.timing.byDifficulty.hard);
+  assert.equal(typeof report.metrics.timing.forcingSkippedRate, 'number');
   assert.ok(Array.isArray(report.failures));
 });
