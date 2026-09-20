@@ -42,21 +42,21 @@ test('guardian removes moves that allow an immediate opponent win when a safe mo
 
 test('guardian identifies an unanswerable locked double threat as FORCING', () => {
   let p = createInitialPosition(LIGHT);
-  p = applyMove(p, { player: LIGHT, rank: 2, cell: 1 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 1, cell: 0 }, RULE_C);
-  p = applyMove(p, { player: LIGHT, rank: 3, cell: 3 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 2, cell: 8 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 1, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 1, cell: 3 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 5 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 2, cell: 7 }, RULE_C);
 
   assert.deepEqual(getImmediateWins(p, LIGHT, RULE_C), []);
 
   const result = getTacticalCandidates(p, p.turn, RULE_C);
   assert.equal(result.tier, 'FORCING');
   assert.ok(
-    result.moves.some(move => move.cell === 0 && move.rank === 9),
+    result.moves.some(move => move.cell === 2 && move.rank === 9),
     JSON.stringify(result.moves)
   );
 
-  const forcingMove = result.moves.find(move => move.cell === 0 && move.rank === 9);
+  const forcingMove = result.moves.find(move => move.cell === 2 && move.rank === 9);
   const next = applyMove(p, forcingMove, RULE_C);
   assert.ok(getImmediateWins(next, LIGHT, RULE_C).length >= 2);
 
@@ -143,10 +143,10 @@ test('expired Guardian budget skips optional forcing scan but never skips immedi
   assert.equal(winResult.tier, 'WIN_NOW');
 
   let p = createInitialPosition(LIGHT);
-  p = applyMove(p, { player: LIGHT, rank: 2, cell: 1 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 1, cell: 0 }, RULE_C);
-  p = applyMove(p, { player: LIGHT, rank: 3, cell: 3 }, RULE_C);
-  p = applyMove(p, { player: DARK, rank: 2, cell: 8 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 1, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 1, cell: 3 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 5 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 2, cell: 7 }, RULE_C);
 
   const bounded = getTacticalCandidates(
     p,
