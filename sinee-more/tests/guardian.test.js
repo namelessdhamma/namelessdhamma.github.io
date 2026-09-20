@@ -126,3 +126,29 @@ test('safe-move scan returns all legal moves when opponent has no line threat', 
   const safe = getSafeMoves(p, p.turn, RULE_C);
   assert.deepEqual(safe, legal);
 });
+
+
+test('expired Guardian budget skips optional forcing scan but never skips immediate wins', () => {
+  const win = immediateWinFixture();
+  const winResult = getTacticalCandidates(
+    win.position,
+    win.position.turn,
+    win.rule,
+    { deadline: 0, now: () => 1 }
+  );
+  assert.equal(winResult.tier, 'WIN_NOW');
+
+  let p = createInitialPosition(LIGHT);
+  p = applyMove(p, { player: LIGHT, rank: 1, cell: 0 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 1, cell: 1 }, RULE_C);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 6 }, RULE_C);
+  p = applyMove(p, { player: DARK, rank: 2, cell: 3 }, RULE_C);
+
+  const bounded = getTacticalCandidates(
+    p,
+    p.turn,
+    RULE_C,
+    { deadline: 0, now: () => 1 }
+  );
+  assert.equal(bounded.tier, 'SAFE');
+});
