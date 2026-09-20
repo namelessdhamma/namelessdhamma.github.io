@@ -38,17 +38,22 @@ function collectNearBestCandidates(rootScores, tacticalMoves, bestMove, regretBa
     .filter(item => item.score != null && item.score >= best - regretBand);
 }
 
-function chooseByPersona(position, rule, personaId, candidates, noise, rng) {
+function chooseByPersona(position, rule, personaId, candidates, personaWeight, noise, rng) {
   if (candidates.length <= 1) return candidates[0]?.move ?? null;
 
-  const scored = candidates.map(item => ({
-    ...item,
-    personaScore: scorePersonaMove(position, item.move, rule, personaId)
-  }));
+  const scored = candidates.map(item => {
+    const personaScore = scorePersonaMove(position, item.move, rule, personaId);
+    return {
+      ...item,
+      personaScore,
+      combinedScore: item.score + personaScore * personaWeight
+    };
+  });
 
   scored.sort((a, b) =>
-    b.personaScore - a.personaScore ||
+    b.combinedScore - a.combinedScore ||
     b.score - a.score ||
+    b.personaScore - a.personaScore ||
     a.move.cell - b.move.cell ||
     a.move.rank - b.move.rank
   );
@@ -125,7 +130,9 @@ export function chooseMove(position, {
       searchResult.rootScores,
       tactical.moves,
       searchResult.move,
-      policy.regretBand
+      position.moves <= 1
+        ? policy.openingRegretBand
+        : policy.regretBand
     );
   }
 
@@ -134,6 +141,7 @@ export function chooseMove(position, {
     rule,
     personaId,
     accepted,
+    policy.personaWeight,
     policy.strategicNoise,
     rng
   ) ?? searchResult.move ?? tactical.moves[0];
