@@ -33,6 +33,16 @@ for (let a = 1; a <= 9; a += 1) {
 }
 Object.freeze(LADDER_TRIPLES);
 
+const LADDER_ROLE_COUNTS = Array.from(
+  { length: 3 },
+  () => Array(10).fill(0)
+);
+for (const triple of LADDER_TRIPLES) {
+  for (let index = 0; index < 3; index += 1) {
+    LADDER_ROLE_COUNTS[index][triple[index]] += 1;
+  }
+}
+
 function available(position, player, rank) {
   return position.remaining[player].includes(rank);
 }
@@ -228,9 +238,7 @@ function ladderStructuralFlexibility(position, player) {
     for (let index = 0; index < line.length; index += 1) {
       const top = topPiece(position, line[index]);
       if (!top || top.player !== player) continue;
-      for (const triple of LADDER_TRIPLES) {
-        if (triple[index] === top.rank) flexibility += 1;
-      }
+      flexibility += LADDER_ROLE_COUNTS[index][top.rank];
     }
   }
   return flexibility;
