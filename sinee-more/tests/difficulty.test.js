@@ -258,8 +258,6 @@ test('deliberate Easy errors in CD are objectively below the best safe one-ply m
   let p = createInitialPosition(LIGHT);
   p = applyMove(p, { player: LIGHT, rank: 2, cell: 4 }, RULE_CD);
   p = applyMove(p, { player: 'dark', rank: 1, cell: 0 }, RULE_CD);
-  p = applyMove(p, { player: LIGHT, rank: 5, cell: 8 }, RULE_CD);
-  p = applyMove(p, { player: 'dark', rank: 3, cell: 2 }, RULE_CD);
 
   const safe = getSafeMoves(p, p.turn, RULE_CD);
   const scores = safe.map(move => {
