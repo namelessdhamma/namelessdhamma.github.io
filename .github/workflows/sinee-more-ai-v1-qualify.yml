@@ -2,6 +2,10 @@ name: Sinee More AI v1 Qualification
 
 on:
   workflow_dispatch:
+  push:
+    branches: [sinee-more-ai-v1]
+    paths:
+      - '.github/sinee-more-ai-v1-full-qualification.trigger'
 
 permissions:
   contents: read
