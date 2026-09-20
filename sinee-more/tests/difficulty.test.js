@@ -115,3 +115,23 @@ test('hard personas do not collapse to one opening script', () => {
     );
   }
 });
+
+
+test('Hard D never opens with an extreme rank in the center', () => {
+  const p = createInitialPosition(LIGHT);
+  for (const persona of ['architect','hunter','sentinel','trickster']) {
+    const result = chooseMove(p, {
+      rule: RULE_D,
+      difficulty: 'hard',
+      persona,
+      seed: 700 + persona.length,
+      timeBudgetOverrideMs: 30
+    });
+    assert.ok(result.move);
+    assert.equal(
+      result.move.cell === 4 && (result.move.rank === 1 || result.move.rank === 9),
+      false,
+      `${persona}: ${JSON.stringify(result.move)}`
+    );
+  }
+});
