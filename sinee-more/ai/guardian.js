@@ -14,6 +14,21 @@ function visibleTopCount(position, player) {
   return count;
 }
 
+
+function getLegalMovesOnCells(position, player, rule, cells) {
+  const probe = position.turn === player
+    ? position
+    : { ...position, turn: player };
+  const out = [];
+  for (const rank of probe.remaining[player]) {
+    for (const cell of cells) {
+      const move = { player, rank, cell };
+      if (isLegalMove(probe, move, rule)) out.push(move);
+    }
+  }
+  return out;
+}
+
 function getImmediateThreatLines(position, player) {
   if (!position || position.status !== 'playing') return [];
   const out = [];
@@ -111,10 +126,10 @@ export function getSafeMoves(position, player, rule) {
   }
 
   return legal.filter(move => {
+    if (!relevantCells.has(move.cell)) return false;
     const next = applyMove(probe, move, rule);
     if (!next) return false;
     if (next.status === 'win') return next.winner === player;
-    if (!relevantCells.has(move.cell)) return false;
     return getImmediateWins(next, opponent, rule).length === 0;
   });
 }
@@ -156,8 +171,12 @@ function forcingMoves(position, player, rule, candidates, options = {}) {
     }
 
     let forced = true;
-    const replies = getLegalMoves(next, next.turn, rule)
-      .filter(reply => relevantCells.has(reply.cell));
+    const replies = getLegalMovesOnCells(
+      next,
+      next.turn,
+      rule,
+      relevantCells
+    );
 
     for (const reply of replies) {
       if (now() >= deadline) {
