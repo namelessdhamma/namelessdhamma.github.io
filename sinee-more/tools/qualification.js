@@ -397,6 +397,12 @@ function strengthMatchup({
     .filter(count => count > 1)
     .reduce((sum, count) => sum + count, 0);
 
+  const weakestRule = rules.length
+    ? [...rules].sort(
+        (a, b) => byRule[a].rate - byRule[b].rate
+      )[0]
+    : null;
+
   return {
     aDifficulty,
     bDifficulty,
@@ -406,6 +412,8 @@ function strengthMatchup({
     repeatedSequenceRate: games
       ? repeatedGames / games
       : 0,
+    weakestRule,
+    weakestRuleRate: weakestRule ? byRule[weakestRule].rate : null,
     byRule
   };
 }
