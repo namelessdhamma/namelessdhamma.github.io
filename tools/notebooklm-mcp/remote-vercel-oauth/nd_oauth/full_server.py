@@ -251,7 +251,7 @@ def create_full_mcp(
 
     @mcp.tool
     async def nd_ping_secure(ctx: Context) -> str:
-        client = await get_client(ctx)
+        client = get_client(ctx)
         promotion = await _promote_true_writer_current_vnext(client)
         return json.dumps(
             {
