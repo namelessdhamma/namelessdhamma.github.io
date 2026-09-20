@@ -313,6 +313,22 @@ function personaMetrics(corpus) {
   };
 }
 
+export function mirroredStrengthPhase(gameIndex, seed) {
+  const phase = gameIndex % 4;
+  const quartet = Math.floor(gameIndex / 4);
+  return {
+    phase,
+    quartet,
+    aIsLight: phase === 0 || phase === 2,
+    firstPlayer: phase < 2 ? LIGHT : DARK,
+    // A mirrored quartet must compare the same stochastic identities while
+    // only color / first-player role changes. Advancing seeds per phase made
+    // the previous harness four independent games rather than true mirrors.
+    agentASeed: seed + quartet * 1009 + 17,
+    agentBSeed: seed + quartet * 1009 + 53
+  };
+}
+
 function playStrengthGame({
   rule,
   persona,
@@ -323,21 +339,20 @@ function playStrengthGame({
   qualificationBudgetScale,
   timings
 }) {
-  const phase = gameIndex % 4;
-  const aIsLight = phase === 0 || phase === 2;
-  const firstPlayer = phase < 2 ? LIGHT : DARK;
+  const mirror = mirroredStrengthPhase(gameIndex, seed);
+  const { phase, aIsLight, firstPlayer } = mirror;
 
   const agentA = makeAgent({
     difficulty: aDifficulty,
     persona,
-    seed: seed + gameIndex * 1009 + 17,
+    seed: mirror.agentASeed,
     qualificationBudgetScale,
     timings
   });
   const agentB = makeAgent({
     difficulty: bDifficulty,
     persona,
-    seed: seed + gameIndex * 1009 + 53,
+    seed: mirror.agentBSeed,
     qualificationBudgetScale,
     timings
   });
@@ -694,6 +709,8 @@ export function runStrengthProbe({
       rules: [...rules],
       totalGamesPerDifficultyMatchup:
         gamesPerPair * rules.length * PERSONA_IDS.length,
+      completeMirrorQuartetsPerPersona: Math.floor(gamesPerPair / 4),
+      incompleteMirrorGamesPerPersona: gamesPerPair % 4,
       seed,
       qualificationBudgetScale
     },
@@ -706,7 +723,7 @@ export function runStrengthProbe({
 }
 
 export function runQualification({
-  gamesPerPair = 34,
+  gamesPerPair = 36,
   seed = 0x51eaea,
   enforceStatisticalGates = true,
   qualificationBudgetScale = 0.04,
@@ -861,7 +878,7 @@ if (
     .filter(value => RULES.includes(value));
   const common = {
     gamesPerPair: Number(
-      cliArg('--games-per-pair', fast ? 1 : 34)
+      cliArg('--games-per-pair', fast ? 1 : 36)
     ),
     seed: Number(cliArg('--seed', 0x51eaea)),
     qualificationBudgetScale: Number(
