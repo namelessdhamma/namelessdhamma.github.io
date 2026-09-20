@@ -381,6 +381,17 @@ export function chooseMove(position, {
     rng
   ) ?? searchResult.move ?? tactical.moves[0];
 
+  const selectedCandidate = accepted.find(item => sameMove(item.move, move));
+  const rawOpeningScores = position.moves <= 1
+    ? accepted
+        .map(item => item.rawScore)
+        .filter(value => typeof value === 'number' && Number.isFinite(value))
+    : [];
+  const openingRegret =
+    rawOpeningScores.length && typeof selectedCandidate?.rawScore === 'number'
+      ? Math.max(...rawOpeningScores) - selectedCandidate.rawScore
+      : null;
+
   return {
     move,
     score: searchResult.score,
@@ -393,7 +404,8 @@ export function chooseMove(position, {
       ttHits: searchResult.ttHits ?? 0,
       completedDepth: searchResult.completedDepth ?? 0,
       timedOut: Boolean(searchResult.timedOut),
-      tacticalTier: tactical.tier
+      tacticalTier: tactical.tier,
+      openingRegret
     }
   };
 }
