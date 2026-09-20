@@ -69,6 +69,25 @@ test('deliberate errors never select a search-proven forced loss', () => {
   );
 });
 
+test('Medium D terminal guard keeps a search-proven forced win', () => {
+  const forcedWin = { player: LIGHT, rank: 5, cell: 4 };
+  const ordinary = { player: LIGHT, rank: 4, cell: 0 };
+  const candidates = collectDeliberateErrorCandidates(
+    [
+      { move: forcedWin, score: 100010 },
+      { move: ordinary, score: 90 }
+    ],
+    [forcedWin, ordinary],
+    forcedWin,
+    1,
+    true
+  );
+
+  assert.equal(candidates.length, 1);
+  assert.ok(sameMove(candidates[0].move, forcedWin));
+  assert.equal(candidates[0].searchRegret, null);
+});
+
 test('deliberate errors fall back to best move when every alternative is a proven loss', () => {
   const best = { player: LIGHT, rank: 5, cell: 4 };
   const forcedLoss = { player: LIGHT, rank: 9, cell: 8 };
