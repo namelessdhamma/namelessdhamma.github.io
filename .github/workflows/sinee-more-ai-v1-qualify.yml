@@ -2,12 +2,6 @@ name: Sinee More AI v1 Qualification
 
 on:
   workflow_dispatch:
-  push:
-    branches: [sinee-more-ai-v1]
-    paths:
-      - 'sinee-more/tools/qualification.js'
-      - 'sinee-more/ai/**'
-      - '.github/workflows/sinee-more-ai-v1-qualify.yml'
 
 permissions:
   contents: read
