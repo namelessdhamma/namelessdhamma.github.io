@@ -82,7 +82,7 @@ mcp_app = build_app_from_environ()
 
 _DRIVE_CANONICAL_TARGETS = {
     "statehead": "1gB6zqJPsQQmv7cT3nxFOtM_EcrUqC3v_MN9ChymclOQ",
-    "registry": "1UqlM3UKzDrBQ_sfFZDvQbg3j39_uLjRV",
+    "registry": "16TCMHEb9erk4rONK9poi6-62hNfSELKt",
     "durable_root": "1cnJSi9cmYV_P-EBP1Hy780s3m1s6ybli",
 }
 
