@@ -2,17 +2,19 @@ import http from 'node:http';
 import { URL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { createHash, createSign } from 'node:crypto';
+import { chromium } from 'playwright-core';
 const PORT=Number(process.env.PORT||5678);
 const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v3-20260916';
 const ND_YANDEX_MUX_CODE_REV='yandex-delete-v3-20260919';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 const ROUTE=String(process.env.ND_YANDEX_MCP_ROUTE_TOKEN||'').trim();
 const YANDEX_MCP_PATH=ROUTE?'/yandex/mcp/'+ROUTE:'';
-const ND_LIGHTPANDA_MUX_CODE_REV='lightpanda-native-mcp-proxy-v2-20260920';
+const ND_LIGHTPANDA_MUX_CODE_REV='lightpanda-cdp-playwright-v3-20260920';
 const LIGHTPANDA_TOKEN=String(process.env.LIGHTPANDA_TOKEN||'').trim();
 const LIGHTPANDA_PATH_TOKEN=String(process.env.ND_LIGHTPANDA_MCP_PATH_TOKEN||'').trim();
 const LIGHTPANDA_MCP_PATH=LIGHTPANDA_PATH_TOKEN?'/nd/lightpanda/mcp/'+LIGHTPANDA_PATH_TOKEN:'';
 const LIGHTPANDA_API='https://euwest.cloud.lightpanda.io/api/fetch';
+const LIGHTPANDA_CDP_URL='wss://euwest.cloud.lightpanda.io/ws?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
 const LIGHTPANDA_MCP_SSE='https://euwest.cloud.lightpanda.io/mcp/sse?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
 let lpUpstream={reader:null,postUrl:'',pending:new Map(),connecting:null,ready:false,seq:1000,lastError:''};
 
@@ -678,31 +680,22 @@ async function runYoutubeQualification(){
 
 
 const LP_TOOLS=[
-  {
-    name:"lightpanda_status",
-    description:"Check whether the ND Lightpanda Cloud adapter is configured. This does not consume a browser session.",
-    inputSchema:{type:"object",properties:{},additionalProperties:false},
-    annotations:RO
-  },
-  {
-    name:"lightpanda_fetch",
-    description:"Render a public HTTP(S) page with Lightpanda Cloud and return post-JavaScript HTML or Markdown. Use this for browser-backed reading/extraction when interaction is not required.",
-    inputSchema:{
-      type:"object",
-      properties:{
-        url:{type:"string",minLength:8},
-        output_format:{type:"string",enum:["markdown","html"],default:"markdown"},
-        wait_ms:{type:"integer",minimum:1,maximum:60000,default:5000},
-        wait_event:{type:"string",enum:["DOMContentLoaded","load","networkAlmostIdle","networkIdle"],default:"networkIdle"},
-        proxy_name:{type:"string",enum:["fast_dc","datacenter"],default:"fast_dc"},
-        country:{type:"string",minLength:2,maxLength:2}
-      },
-      required:["url"],
-      additionalProperties:false
-    },
-    annotations:RO
-  }
-];
+  {name:"lightpanda_status",description:"Check the ND Lightpanda Cloud adapter configuration without opening a browser session.",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:RO},
+  {name:"lightpanda_fetch",description:"Render a public HTTP(S) page with Lightpanda Cloud and return post-JavaScript HTML or Markdown without keeping an interactive session open.",inputSchema:{type:"object",properties:{url:{type:"string",minLength:8},output_format:{type:"string",enum:["markdown","html"],default:"markdown"},wait_ms:{type:"integer",minimum:1,maximum:60000,default:5000},wait_event:{type:"string",enum:["DOMContentLoaded","load","networkAlmostIdle","networkIdle"],default:"networkIdle"},proxy_name:{type:"string",enum:["fast_dc","datacenter"],default:"fast_dc"},country:{type:"string",minLength:2,maxLength:2}},required:["url"],additionalProperties:false},annotations:RO},
+  {name:"lightpanda_goto",description:"Open a URL in a stateful Lightpanda Cloud browser session. The session is retained briefly across subsequent interaction calls.",inputSchema:{type:"object",properties:{url:{type:"string",minLength:8},wait_until:{type:"string",enum:["load","domcontentloaded","networkidle","commit"],default:"domcontentloaded"},timeout_ms:{type:"integer",minimum:1000,maximum:90000,default:30000}},required:["url"],additionalProperties:false},annotations:RO},
+  {name:"lightpanda_get_url",description:"Return the current URL and title of the active Lightpanda browser page.",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:RO},
+  {name:"lightpanda_read_text",description:"Read visible text from the current page or a CSS selector.",inputSchema:{type:"object",properties:{selector:{type:"string",default:"body"},max_chars:{type:"integer",minimum:1,maximum:100000,default:30000}},additionalProperties:false},annotations:RO},
+  {name:"lightpanda_html",description:"Return HTML for the current document or a selected element.",inputSchema:{type:"object",properties:{selector:{type:"string"},max_chars:{type:"integer",minimum:1,maximum:200000,default:60000}},additionalProperties:false},annotations:RO},
+  {name:"lightpanda_click",description:"Click an element in the active Lightpanda browser page using a CSS selector.",inputSchema:{type:"object",properties:{selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector"],additionalProperties:false},annotations:WR},
+  {name:"lightpanda_fill",description:"Fill a text input or textarea in the active Lightpanda browser page.",inputSchema:{type:"object",properties:{selector:{type:"string"},value:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector","value"],additionalProperties:false},annotations:WR},
+  {name:"lightpanda_press",description:"Press a keyboard key on the active page or on a selected element.",inputSchema:{type:"object",properties:{key:{type:"string"},selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["key"],additionalProperties:false},annotations:WR},
+  {name:"lightpanda_hover",description:"Hover over an element in the active Lightpanda browser page.",inputSchema:{type:"object",properties:{selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector"],additionalProperties:false},annotations:WR},
+  {name:"lightpanda_select_option",description:"Select a value from a select element in the active page.",inputSchema:{type:"object",properties:{selector:{type:"string"},value:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector","value"],additionalProperties:false},annotations:WR},
+  {name:"lightpanda_set_checked",description:"Check or uncheck a checkbox/radio input in the active page.",inputSchema:{type:"object",properties:{selector:{type:"string"},checked:{type:"boolean"},timeout_ms:{type:"integer",minimum:1000,maximum:60000,default:15000}},required:["selector","checked"],additionalProperties:false},annotations:WR},
+  {name:"lightpanda_wait_for_selector",description:"Wait until a CSS selector appears in the active page.",inputSchema:{type:"object",properties:{selector:{type:"string"},timeout_ms:{type:"integer",minimum:1000,maximum:90000,default:30000}},required:["selector"],additionalProperties:false},annotations:RO},
+  {name:"lightpanda_evaluate",description:"Evaluate JavaScript in the active page and return the JSON-serializable result.",inputSchema:{type:"object",properties:{script:{type:"string",minLength:1}},required:["script"],additionalProperties:false},annotations:WR},
+  {name:"lightpanda_get_cookies",description:"Read cookies from the active Lightpanda browser context, optionally scoped to a URL.",inputSchema:{type:"object",properties:{url:{type:"string"}},additionalProperties:false},annotations:RO}
+]
 
 function lightpandaStatus(){
   return {
@@ -710,7 +703,7 @@ function lightpandaStatus(){
     service:"nd-lightpanda-cloud-mcp",
     transport:"streamable-http",
     provider:"Lightpanda Cloud",
-    provider_transport:"HTTP API adapter",
+    provider_transport:"CDP/WebSocket via Playwright + HTTP fetch",
     code_rev:ND_LIGHTPANDA_MUX_CODE_REV,
     tools:LP_TOOLS.length
   };
@@ -744,6 +737,98 @@ async function lightpandaFetch(a={}){
     truncated:String(d.data||"").length>250000,
     headers:d.headers||{}
   };
+}
+
+let lpCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:""};
+function lpCdpTouch(){
+  if(lpCdp.idleTimer)clearTimeout(lpCdp.idleTimer);
+  lpCdp.idleTimer=setTimeout(async()=>{
+    try{if(lpCdp.browser)await lpCdp.browser.close();}catch{}
+    lpCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:""};
+  },120000);
+}
+async function ensureLpCdp(){
+  if(lpCdp.browser&&lpCdp.page){
+    lpCdpTouch();
+    return lpCdp;
+  }
+  if(lpCdp.connecting)return await lpCdp.connecting;
+  lpCdp.connecting=(async()=>{
+    if(!LIGHTPANDA_TOKEN)throw new Error("lightpanda_token_missing");
+    const browser=await chromium.connectOverCDP(LIGHTPANDA_CDP_URL,{timeout:25000});
+    browser.on("disconnected",()=>{lpCdp.browser=null;lpCdp.context=null;lpCdp.page=null;lpCdp.connecting=null;});
+    let context=browser.contexts()[0]||null;
+    if(!context)context=await browser.newContext();
+    let page=context.pages()[0]||null;
+    if(!page)page=await context.newPage();
+    lpCdp.browser=browser;lpCdp.context=context;lpCdp.page=page;lpCdp.lastError="";lpCdp.connecting=null;
+    lpCdpTouch();
+    return lpCdp;
+  })().catch(e=>{
+    lpCdp.connecting=null;lpCdp.lastError=String(e?.message||e||"cdp_connect_error");
+    throw e;
+  });
+  return await lpCdp.connecting;
+}
+function lpTimeout(a,def=15000,max=90000){return Math.max(1000,Math.min(max,Number(a?.timeout_ms||def)));}
+async function lpCdpCall(name,a={}){
+  const st=await ensureLpCdp();const page=st.page;lpCdpTouch();
+  if(name==="lightpanda_goto"){
+    let u;try{u=new URL(String(a.url||""));}catch{throw new Error("invalid_url");}
+    if(!["http:","https:"].includes(u.protocol))throw new Error("url_must_be_http_or_https");
+    const waitUntil=["load","domcontentloaded","networkidle","commit"].includes(String(a.wait_until||"domcontentloaded"))?String(a.wait_until||"domcontentloaded"):"domcontentloaded";
+    const response=await page.goto(u.toString(),{waitUntil,timeout:lpTimeout(a,30000,90000)});
+    return {ok:true,url:page.url(),title:await page.title(),status:response?response.status():null};
+  }
+  if(name==="lightpanda_get_url")return {ok:true,url:page.url(),title:await page.title()};
+  if(name==="lightpanda_read_text"){
+    const selector=String(a.selector||"body"),max=Math.max(1,Math.min(100000,Number(a.max_chars||30000)));
+    const text=await page.locator(selector).innerText({timeout:15000});
+    return {ok:true,url:page.url(),selector,text:String(text).slice(0,max),truncated:String(text).length>max};
+  }
+  if(name==="lightpanda_html"){
+    const max=Math.max(1,Math.min(200000,Number(a.max_chars||60000)));
+    const html=a.selector?await page.locator(String(a.selector)).evaluate(el=>el.outerHTML):await page.content();
+    return {ok:true,url:page.url(),html:String(html).slice(0,max),truncated:String(html).length>max};
+  }
+  if(name==="lightpanda_click"){
+    await page.locator(String(a.selector||"")).click({timeout:lpTimeout(a)});
+    return {ok:true,url:page.url(),title:await page.title()};
+  }
+  if(name==="lightpanda_fill"){
+    await page.locator(String(a.selector||"")).fill(String(a.value??""),{timeout:lpTimeout(a)});
+    return {ok:true,url:page.url(),selector:String(a.selector),value:String(a.value??"")};
+  }
+  if(name==="lightpanda_press"){
+    const target=a.selector?page.locator(String(a.selector)):page.locator("body");
+    await target.press(String(a.key||""),{timeout:lpTimeout(a)});
+    return {ok:true,url:page.url(),key:String(a.key||"")};
+  }
+  if(name==="lightpanda_hover"){
+    await page.locator(String(a.selector||"")).hover({timeout:lpTimeout(a)});
+    return {ok:true,url:page.url(),selector:String(a.selector)};
+  }
+  if(name==="lightpanda_select_option"){
+    const selected=await page.locator(String(a.selector||"")).selectOption(String(a.value??""),{timeout:lpTimeout(a)});
+    return {ok:true,url:page.url(),selected};
+  }
+  if(name==="lightpanda_set_checked"){
+    await page.locator(String(a.selector||"")).setChecked(Boolean(a.checked),{timeout:lpTimeout(a)});
+    return {ok:true,url:page.url(),checked:Boolean(a.checked)};
+  }
+  if(name==="lightpanda_wait_for_selector"){
+    await page.locator(String(a.selector||"")).waitFor({state:"attached",timeout:lpTimeout(a,30000,90000)});
+    return {ok:true,url:page.url(),selector:String(a.selector)};
+  }
+  if(name==="lightpanda_evaluate"){
+    const value=await page.evaluate(String(a.script||""));
+    return {ok:true,url:page.url(),value};
+  }
+  if(name==="lightpanda_get_cookies"){
+    const cookies=a.url?await st.context.cookies(String(a.url)):await st.context.cookies();
+    return {ok:true,url:page.url(),cookies};
+  }
+  throw new Error("unknown_lightpanda_cdp_tool:"+String(name));
 }
 
 async function lpProcessSse(reader){
@@ -870,19 +955,11 @@ async function lpNativeTools(){
 
 async function lightpandaCallTool(name,args){
   if(name==="lightpanda_status"){
-    let nativeCount=null,nativeNames=[];
-    try{
-      const tools=await lpNativeTools();
-      nativeCount=tools.length;
-      nativeNames=tools.map(x=>x?.name).filter(Boolean);
-    }catch(e){
-      lpUpstream.lastError=String(e?.message||e||"probe_error");
-    }
-    return {...lightpandaStatus(),native_mcp_connected:lpUpstream.ready,native_tools:nativeCount,native_tool_names:nativeNames,upstream_error:lpUpstream.lastError||null};
+    return {...lightpandaStatus(),cdp_configured:Boolean(LIGHTPANDA_TOKEN),cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:lpCdp.lastError||null,native_sse_status:"provider_endpoint_404"};
   }
   if(name==="lightpanda_fetch")return await lightpandaFetch(args||{});
-  const out=await lpRpc("tools/call",{name,arguments:args||{}},90000);
-  return out?.result;
+  if(LP_TOOLS.some(x=>x.name===name))return await lpCdpCall(name,args||{});
+  throw new Error("unknown_lightpanda_tool:"+String(name));
 }
 
 async function lightpandaMcp(req,res){
@@ -895,19 +972,10 @@ async function lightpandaMcp(req,res){
     protocolVersion:"2025-06-18",
     capabilities:{tools:{listChanged:false}},
     serverInfo:{name:"nd-lightpanda-cloud-mcp",version:"1.0.0"},
-    instructions:"Browser-backed read/fetch through the Nameless Dhamma Lightpanda Cloud adapter. Current v1 is read-only; stateful interaction tools are qualified separately."
+    instructions:"Nameless Dhamma Lightpanda Cloud browser adapter. Read/fetch and stateful browser-control tools are exposed through Streamable HTTP; interactive sessions auto-close after 120 seconds of inactivity to conserve the free quota."
   }});
   if(method==="ping")return j(res,200,{jsonrpc:"2.0",id,result:{}});
-  if(method==="tools/list"){
-    try{
-      const native=await lpNativeTools();
-      const names=new Set(LP_TOOLS.map(x=>x.name));
-      const merged=[...LP_TOOLS,...native.filter(x=>x&&x.name&&!names.has(x.name))];
-      return j(res,200,{jsonrpc:"2.0",id,result:{tools:merged}});
-    }catch(e){
-      return j(res,200,{jsonrpc:"2.0",id,result:{tools:LP_TOOLS}});
-    }
-  }
+  if(method==="tools/list")return j(res,200,{jsonrpc:"2.0",id,result:{tools:LP_TOOLS}});
   if(method==="resources/list"||method==="resources/read"){
     try{
       const out=await lpRpc(method,msg.params||{},60000);
@@ -920,12 +988,11 @@ async function lightpandaMcp(req,res){
     const p=msg.params||{};
     try{
       const name=String(p.name||"");
-      if(name==="lightpanda_status"||name==="lightpanda_fetch"){
+      if(LP_TOOLS.some(x=>x.name===name)){
         const out=await lightpandaCallTool(name,p.arguments||{});
         return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:false}});
       }
-      const out=await lpRpc("tools/call",{name,arguments:p.arguments||{}},90000);
-      return j(res,200,{jsonrpc:"2.0",id,result:out?.result||{content:[{type:"text",text:""}],isError:false}});
+      return j(res,200,{jsonrpc:"2.0",id,error:{code:-32601,message:"Unknown Lightpanda tool"}});
     }catch(e){
       let err=String(e?.message||e||"error");
       if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
@@ -983,13 +1050,14 @@ const muxServer=http.createServer(async(req,res)=>{
 
     if(path==='/lightpanda/diagnostic'){
       try{
-        const tools=await lpNativeTools();
-        return j(res,200,{ok:true,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,native_mcp_connected:lpUpstream.ready,native_tools:tools.length,names:tools.map(x=>x?.name).filter(Boolean)});
+        const st=await ensureLpCdp();
+        const title=await st.page.title();
+        return j(res,200,{ok:true,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_connected:true,url:st.page.url(),title,tools:LP_TOOLS.length,idle_close_seconds:120});
       }catch(e){
         let err=String(e?.message||e||"error");
         if(LIGHTPANDA_TOKEN)err=err.split(LIGHTPANDA_TOKEN).join("[REDACTED]");
         if(LIGHTPANDA_PATH_TOKEN)err=err.split(LIGHTPANDA_PATH_TOKEN).join("[REDACTED]");
-        return j(res,200,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,native_mcp_connected:lpUpstream.ready,error:err.slice(0,1200),last_error:String(lpUpstream.lastError||"").slice(0,1200)});
+        return j(res,200,{ok:false,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_connected:false,error:err.slice(0,1200)});
       }
     }
 
