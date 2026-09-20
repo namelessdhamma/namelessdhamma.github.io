@@ -240,12 +240,13 @@ export function chooseMove(position, {
   const engineStarted = performance.now();
   const personaId = Object.hasOwn(PERSONAS, persona) ? persona : 'architect';
   const policy = resolveDifficulty(difficulty, timeBudgetOverrideMs);
-  const moveDeadline = engineStarted + policy.timeBudgetMs;
+  const forcingDeadline =
+    engineStarted + policy.timeBudgetMs * policy.forcingBudgetShare;
   const tactical = getTacticalCandidates(
     position,
     position.turn,
     rule,
-    { deadline: moveDeadline, now: () => performance.now() }
+    { deadline: forcingDeadline, now: () => performance.now() }
   );
   const rng = createRng(seed);
 
