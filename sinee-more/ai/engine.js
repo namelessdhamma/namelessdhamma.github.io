@@ -1,4 +1,4 @@
-import { LINES } from './constants.js';
+import { LINES, RULE_D } from './constants.js';
 import { topPiece, applyMove } from './rules.js';
 import { evaluatePosition, BASE_PROFILE } from './evaluation.js';
 import { searchIterative } from './search.js';
@@ -235,7 +235,8 @@ export function collectDeliberateErrorCandidates(
   rootScores,
   allowedMoves,
   fallbackMove,
-  severity
+  severity,
+  protectForcedLoss = false
 ) {
   const allowed = new Set(allowedMoves.map(moveKey));
   const ranked = (rootScores ?? [])
@@ -263,9 +264,12 @@ export function collectDeliberateErrorCandidates(
     .filter(item =>
       Number.isFinite(item.searchRegret) &&
       item.searchRegret > 1e-9 &&
-      // A deliberate strategic mistake may be suboptimal, but must not
-      // knowingly choose a forced loss already proven by completed search.
-      item.objectiveScore > -BASE_PROFILE.terminal * 0.5
+      (
+        !protectForcedLoss ||
+        // Medium D may make strategic mistakes, but should not knowingly
+        // choose a forced loss already proven by completed search.
+        item.objectiveScore > -BASE_PROFILE.terminal * 0.5
+      )
     )
     .sort((a, b) =>
       a.searchRegret - b.searchRegret ||
@@ -467,7 +471,8 @@ export function chooseMove(position, {
       searchResult.rootScores,
       searchCandidates,
       searchResult.move,
-      policy.strategicErrorSeverity
+      policy.strategicErrorSeverity,
+      difficulty === 'medium' && rule === RULE_D
     );
 
     if (
