@@ -243,3 +243,36 @@ test('CD complexity keeps a clear Easy Medium strategic-error gap', () => {
     JSON.stringify({ easyErrors, mediumErrors })
   );
 });
+
+
+test('deliberate Easy errors in CD are objectively below the best safe one-ply move', () => {
+  let p = createInitialPosition(LIGHT);
+  p = applyMove(p, { player: LIGHT, rank: 2, cell: 4 }, RULE_CD);
+  p = applyMove(p, { player: 'dark', rank: 1, cell: 0 }, RULE_CD);
+  p = applyMove(p, { player: LIGHT, rank: 5, cell: 8 }, RULE_CD);
+  p = applyMove(p, { player: 'dark', rank: 3, cell: 2 }, RULE_CD);
+
+  const safe = getSafeMoves(p, p.turn, RULE_CD);
+  const scores = safe.map(move => {
+    const next = applyMove(p, move, RULE_CD);
+    return { move, score: (await import('../ai/evaluation.js')).evaluatePosition(next, p.turn, RULE_CD) };
+  });
+  const best = Math.max(...scores.map(x => x.score));
+
+  let checked = 0;
+  for (let seed = 1; seed <= 40; seed += 1) {
+    const result = chooseMove(p, {
+      rule: RULE_CD,
+      difficulty: 'easy',
+      persona: 'architect',
+      seed,
+      timeBudgetOverrideMs: 0
+    });
+    if (result.metrics.deliberateError !== true) continue;
+    const selected = scores.find(x => sameMove(x.move, result.move));
+    assert.ok(selected);
+    assert.ok(selected.score < best, JSON.stringify({ selected, best }));
+    checked += 1;
+  }
+  assert.ok(checked >= 20, `checked=${checked}`);
+});
