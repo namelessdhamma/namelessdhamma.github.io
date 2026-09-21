@@ -1,0 +1,12 @@
+{
+  "format": "nd-notebooklm-x25519-sealed-v1",
+  "target": "render-direct",
+  "source": "vercel-primary",
+  "captured_at": "2026-09-21T00:35:11.202896+00:00",
+  "sha256": "2f7843d2d6ce49019851b56cd567b171227a9da7099eb9877ce9c65ca488fb92",
+  "envelope": {
+    "ephemeral_public_key_b64": "GfYNVJ/wpODHY8aGsjomOkyLR7ARk9qbXfR67q4aXR0=",
+    "nonce_b64": "1Oe/1miZCT+uLlLQ",
+    "ciphertext_b64": "9WWumD19rtDu6M4tfPC71N2nH5MG+1MXqapSJWaDprI2p8kVHc3Cc8z/FNqJSNKu8VsKAHVCOOl0SyMUlL2pwUE92Pb2JS2IZxpVejWo6NVdAyHW1LeeNsv2I+QO5InO2SxmSLvwKoGxJGlglpneadD47zpOuL4Tw+D/4aYQcJb/rCClTDDAxGk5gWkmBiubk4VmcDhC/qu8BZrqxJIzOCNd3iPPX87LbUZYDOm4TyyErlrvV8X8+CDWnMUDQBcOitrQZ3Lwp6XD8GlGu7e94EW5UXTjYpbCavqb65TOh37VNfkWZjBIo/K6wlLge+m7o9LXa+kqGRXbWgSUGmPClJBMas4qpfzkCnptBRKMeaAvwLlSUj1t8laD00q2t6HOuUy0uOA5UXTmNEtR/RcxVqXg8R395q/dRFfLBJTBJ6mGPNecB5TxAWqcgJc6XRqBADPbfaxhIHRPK+N2OqMM/MzW0bY/ghZkk87zi5rXQnhQ4o+1csI77hsxpAg8F/c3qlJDftRTXj/UMpXqiuBsoQ4X1lI3HRTTPsSqGg6Uad0bEuqXIIVFVTsnvB1XQ2uv0j+ESQy69K/adbaZTotUm5bgIpx7cBJu+6UCXsw1cQgPyYFr"
+  }
+}
