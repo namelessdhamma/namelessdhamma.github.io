@@ -65,6 +65,78 @@ button:focus-visible{outline:2px solid var(--neutral-peak);outline-offset:2px}
 @keyframes materialize{from{opacity:.55;transform:translateY(-2px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:430px){.app{padding-left:7px;padding-right:7px;gap:4px}.settingsCard{height:64px;padding-left:3px;padding-right:3px}.settingsCard .label{font-size:11px}.settingsCard .value{font-size:9px}.reserve{height:44px}.pieceBtn{height:42px}}
 @media(max-height:720px){.settingsCard{height:58px}.title{font-size:25px}.reserve{height:40px}.pieceBtn{height:38px}.ph{height:18px;font-size:13px}.msg{min-height:20px;font-size:11px}.btn{padding:7px 4px}}
+/* PIRATE CHART — secondary visual theme. Gameplay/AI remain shared. */
+body[data-theme="pirate"]{
+  --text:#2b170d;--muted:#76553b;--neutral:#3a2113;--neutral-peak:#241208;
+  background:
+    radial-gradient(ellipse at 50% 44%,rgba(8,58,65,.88) 0 31%,rgba(5,35,39,.82) 47%,transparent 70%),
+    repeating-linear-gradient(0deg,#2a160e 0 42px,#3b2114 42px 45px,#24120b 45px 88px);
+  color:#2b170d;
+}
+body[data-theme="pirate"] .app{position:relative;background:radial-gradient(ellipse at 50% 50%,rgba(10,74,81,.16),transparent 62%)}
+body[data-theme="pirate"] .title{color:#7f241b;font-family:Georgia,"Times New Roman",serif;letter-spacing:1.1px;text-shadow:0 1px 0 #d7a36c,0 2px 5px rgba(48,17,8,.42)}
+body[data-theme="pirate"] .settingsCard{
+  border:1px solid #4c2a18;color:#2b170d;
+  background:linear-gradient(135deg,rgba(255,233,188,.16),transparent 34%),repeating-linear-gradient(9deg,rgba(92,54,27,.025) 0 1px,transparent 1px 4px),linear-gradient(#d6a66e,#b97b46);
+  box-shadow:inset 0 0 0 1px rgba(255,224,172,.25),inset 0 0 12px rgba(72,36,16,.15),0 2px 5px rgba(0,0,0,.25);
+}
+body[data-theme="pirate"] .settingsCard .label{font-family:Georgia,"Times New Roman",serif;color:#2d180e}
+body[data-theme="pirate"] .settingsCard .value{color:#6f4528}
+body[data-theme="pirate"] .ph .side{font-family:Georgia,"Times New Roman",serif;text-shadow:0 1px 0 rgba(255,230,188,.22)!important}
+body[data-theme="pirate"] .ph .side.light{color:#d8a36a}
+body[data-theme="pirate"] .ph .side.dark{color:#6a3924}
+body[data-theme="pirate"] .ph .who{color:#d1b28b;text-shadow:0 1px 2px #000}
+body[data-theme="pirate"] .pieceBtn.light{--side:#d8a36a;--peak:#f3c98d;--rgb:216,163,106;--glowrgb:148,88,42;--peakrgb:243,201,141}
+body[data-theme="pirate"] .pieceBtn.dark{--side:#5a2f20;--peak:#c5966d;--rgb:90,47,32;--glowrgb:49,25,18;--peakrgb:197,150,109}
+body[data-theme="pirate"] .pieceBtn .shape{
+  clip-path:polygon(28% 0,72% 0,96% 100%,4% 100%);border:0;border-radius:18% 18% 10% 10%/10% 10% 6% 6%;
+  background:repeating-linear-gradient(82deg,rgba(255,255,255,.035) 0 1px,transparent 1px 5px),radial-gradient(ellipse at 50% 12%,rgba(var(--peakrgb),.35),transparent 24%),linear-gradient(100deg,rgba(0,0,0,.22),rgba(var(--rgb),.97) 33%,rgba(var(--peakrgb),.30) 53%,rgba(var(--rgb),.94) 72%,rgba(0,0,0,.28));
+  box-shadow:inset 0 -4px 7px rgba(34,15,7,.38),inset 0 2px 2px rgba(255,221,174,.16);
+  filter:drop-shadow(0 2px 1px rgba(0,0,0,.45)) drop-shadow(0 5px 5px rgba(0,0,0,.20));
+}
+body[data-theme="pirate"] .pieceBtn .shape:after{left:5%;right:5%;bottom:1px;height:3px;border:0;border-top:1px dashed rgba(249,207,151,.62);border-radius:0;box-shadow:none}
+body[data-theme="pirate"] .pieceBtn span{color:var(--peak);text-shadow:0 1px 1px rgba(38,16,7,.8);font-family:Georgia,"Times New Roman",serif}
+body[data-theme="pirate"] .pieceBtn.sel .shape{filter:drop-shadow(0 0 3px rgba(61,179,195,.92)) drop-shadow(0 0 8px rgba(26,125,143,.52)) drop-shadow(0 3px 2px rgba(0,0,0,.42))}
+body[data-theme="pirate"] .pieceBtn:disabled{opacity:.30}
+body[data-theme="pirate"] .board{
+  background:radial-gradient(circle at 17% 20%,rgba(76,126,103,.10) 0 2%,transparent 2.3%),radial-gradient(circle at 78% 73%,rgba(76,126,103,.08) 0 2%,transparent 2.3%),repeating-linear-gradient(12deg,rgba(85,48,20,.025) 0 1px,transparent 1px 5px),linear-gradient(135deg,#d8aa72,#c38c55 48%,#d1a069);
+  border:2px solid #4b2816;border-radius:12px;box-shadow:inset 0 0 0 2px rgba(250,211,157,.35),inset 0 0 22px rgba(75,38,16,.18),0 4px 10px rgba(0,0,0,.35);
+}
+body[data-theme="pirate"] .board:before{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 300'%3E%3Cg fill='none' stroke='%23452718'%3E%3Cpath d='M100 0V300M200 0V300M0 100H300M0 200H300' stroke-width='2.2'/%3E%3Cpath d='M18 45c18-16 33-13 48-2s31 13 45-4M214 246c21-12 42-6 62 7M229 32c9 2 15 8 19 17M42 239c10-13 22-17 37-12' stroke-width='1.1' stroke-opacity='.32'/%3E%3Cpath d='M35 69c15-9 28-8 41 3M223 267c14-8 26-7 39 2' stroke-dasharray='4 5' stroke-width='1.1' stroke-opacity='.38'/%3E%3C/g%3E%3Cg fill='%23452718' fill-opacity='.30'%3E%3Cpath d='M255 59l4 9 9 4-9 4-4 9-4-9-9-4 9-4z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size:100% 100%;background-repeat:no-repeat;filter:none;opacity:.92;
+}
+body[data-theme="pirate"] .board:after{box-shadow:inset 0 0 14px rgba(74,38,17,.22),inset 0 0 0 1px rgba(255,224,174,.30)}
+body[data-theme="pirate"] .cell{background:radial-gradient(circle at 30% 30%,rgba(83,52,27,.035),transparent 42%),transparent}
+body[data-theme="pirate"] .cell.legal{background:radial-gradient(ellipse at 50% 50%,rgba(43,141,157,.18),rgba(43,141,157,.06) 48%,transparent 62%);box-shadow:inset 0 0 0 2px rgba(40,135,151,.72),inset 0 0 16px rgba(40,135,151,.18)}
+body[data-theme="pirate"] .cell.last{box-shadow:inset 0 0 0 2px rgba(109,70,36,.34),inset 0 0 18px rgba(111,72,38,.12)}
+body[data-theme="pirate"] .cell.win{box-shadow:inset 0 0 0 3px rgba(177,103,28,.92),inset 0 0 25px rgba(210,132,42,.30)}
+body[data-theme="pirate"] .bp{
+  --rgb:120,78,47;--peakrgb:234,192,137;--glowrgb:87,52,30;color:#28140b;
+  clip-path:polygon(28% 0,72% 0,96% 100%,4% 100%);border:0;border-radius:16% 16% 8% 8%/10% 10% 5% 5%;
+  background:repeating-linear-gradient(82deg,rgba(255,255,255,.028) 0 1px,transparent 1px 5px),radial-gradient(ellipse at 50% 12%,rgba(var(--peakrgb),.32),transparent 24%),linear-gradient(100deg,rgba(0,0,0,.25),rgba(var(--rgb),.98) 34%,rgba(var(--peakrgb),.30) 53%,rgba(var(--rgb),.95) 72%,rgba(0,0,0,.30));
+  box-shadow:inset 0 -6px 9px rgba(30,13,6,.38),inset 0 2px 3px rgba(255,219,166,.13);
+  filter:drop-shadow(0 3px 2px rgba(0,0,0,.48)) drop-shadow(0 7px 7px rgba(0,0,0,.22));
+  text-shadow:0 1px 1px rgba(255,224,176,.30);font-family:Georgia,"Times New Roman",serif;
+}
+body[data-theme="pirate"] .bp.light{--rgb:205,143,79;--peakrgb:245,200,137;--glowrgb:132,77,35;color:#3a1d0d}
+body[data-theme="pirate"] .bp.dark{--rgb:72,39,28;--peakrgb:170,117,82;--glowrgb:39,20,14;color:#ead0ad}
+body[data-theme="pirate"] .bp:after{left:4%;right:4%;bottom:1px;height:4px;border:0;border-top:1px dashed rgba(var(--peakrgb),.62);border-radius:0;box-shadow:none}
+body[data-theme="pirate"] .cell.stacked .bp:before{left:-10%;right:-10%;bottom:-7px;height:8px;border:2px solid rgba(var(--rgb),.75);border-radius:50%;box-shadow:0 2px 2px rgba(0,0,0,.32)}
+body[data-theme="pirate"] .depth{color:#4d2a18;text-shadow:0 1px 0 rgba(255,224,177,.32)}
+body[data-theme="pirate"] .msg{color:#e5c69d;text-shadow:0 1px 2px #000}
+body[data-theme="pirate"] .btn,body[data-theme="pirate"] .end{border:1px solid #7b5535;background:linear-gradient(#17120f,#0e0b09);color:#ead8bb;box-shadow:inset 0 0 0 1px rgba(224,181,125,.12),0 2px 5px rgba(0,0,0,.30)}
+body[data-theme="pirate"] .end b{color:#f1d5a8;text-shadow:0 1px 2px #000}
+body[data-theme="pirate"] .modal{background:rgba(20,10,5,.82);backdrop-filter:blur(5px)}
+body[data-theme="pirate"] .card{background:repeating-linear-gradient(8deg,rgba(85,48,20,.03) 0 1px,transparent 1px 5px),linear-gradient(#d2a16b,#b97b46);border:2px solid #4c2816;color:#2d170d;box-shadow:inset 0 0 22px rgba(82,42,18,.17),0 8px 30px rgba(0,0,0,.45)}
+body[data-theme="pirate"] .card h2,body[data-theme="pirate"] .choice b{color:#32190d;font-family:Georgia,"Times New Roman",serif}
+body[data-theme="pirate"] .card p,body[data-theme="pirate"] .choice span{color:#664127}
+body[data-theme="pirate"] .choice{border:1px solid #795035;background:rgba(245,207,151,.20);color:#30180d}
+body[data-theme="pirate"] .choice.selected{border-color:#226f7b;box-shadow:inset 0 0 0 1px rgba(72,171,187,.42),0 0 10px rgba(28,123,140,.20)}
+body[data-theme="pirate"] .choice.selected:after{color:#185967}
+body[data-theme="pirate"] .close{border:1px solid #4d2a18;background:#2b180f;color:#ead0a7}
+body[data-theme="pirate"] button:focus-visible{outline-color:#49a7b7}
+
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -75,7 +147,7 @@ button:focus-visible{outline:2px solid var(--neutral-peak);outline-offset:2px}
     <button id="rules" class="settingsCard"><span class="label">Правила игры</span><span id="rulesValue" class="value">C · стек 2</span></button>
     <button id="opponent" class="settingsCard"><span class="label">С кем играть</span><span id="opponentValue" class="value">ИИ · средний</span></button>
     <button id="strategy" class="settingsCard"><span class="label">Стратегия ИИ</span><span id="strategyValue" class="value">Смешанная</span></button>
-    <button id="theme" class="settingsCard"><span class="label">Тема</span><span class="value">ND Premium</span></button>
+    <button id="theme" class="settingsCard"><span class="label">Тема</span><span id="themeValue" class="value">ND Premium</span></button>
   </div>
   <span id="turn" class="srOnly" aria-live="polite" aria-label="Текущий ход"></span>
   <div class="player"><div class="ph"><span id="dn" class="side dark">ТЁМНЫЕ</span><span id="dh" class="who"></span></div><div id="darkRes" class="reserve"></div></div>
@@ -88,7 +160,7 @@ button:focus-visible{outline:2px solid var(--neutral-peak);outline-offset:2px}
 <div id="rulesM" class="modal" role="dialog" aria-modal="true" aria-labelledby="rulesTitle"><div class="card"><h2 id="rulesTitle">ПРАВИЛА ИГРЫ</h2><button class="choice" data-rule="C"><b>C · СТЕК 2</b><span>В клетке максимум две фигуры. После одного накрытия клетка закрыта.</span></button><button class="choice" data-rule="D"><b>D · ЛЕСТНИЦА</b><span>Победа только если три верхние фигуры в линии идут по размеру строго вверх или строго вниз.</span></button><button class="choice" data-rule="CD"><b>CD · СТЕК 2 + ЛЕСТНИЦА</b><span>Оба правила одновременно.</span></button><p>Ход: выберите неиспользованную фигуру и поставьте её на пустую клетку либо накройте меньшую верхнюю фигуру соперника. Свою фигуру накрывать нельзя.</p><button class="close" data-close="rulesM">ЗАКРЫТЬ</button></div></div>
 <div id="opponentM" class="modal" role="dialog" aria-modal="true" aria-labelledby="opponentTitle"><div class="card"><h2 id="opponentTitle">С КЕМ ИГРАТЬ</h2><button class="choice" data-opponent="two"><b>ДРУГОЙ ИГРОК</b><span>Игра вдвоём на одном устройстве.</span></button><button class="choice" data-opponent="easy"><b>ИИ · ЛЁГКИЙ</b><span>Живой соперник, который допускает заметные ошибки.</span></button><button class="choice" data-opponent="medium"><b>ИИ · СРЕДНИЙ</b><span>Тактически устойчивый соперник с умеренной глубиной расчёта.</span></button><button class="choice" data-opponent="hard"><b>ИИ · СЛОЖНЫЙ</b><span>Глубже считает варианты и избегает грубых промахов.</span></button><button class="close" data-close="opponentM">ЗАКРЫТЬ</button></div></div>
 <div id="strategyM" class="modal" role="dialog" aria-modal="true" aria-labelledby="strategyTitle"><div class="card"><h2 id="strategyTitle">СТРАТЕГИЯ ИИ</h2><button class="choice" data-style="mixed"><b>СМЕШАННАЯ</b><span>В каждой партии новый характер соперника.</span></button><button class="choice" data-style="architect"><b>АРХИТЕКТОР</b><span>Строит долгие комбинации и гибкие лестницы.</span></button><button class="choice" data-style="hunter"><b>ОХОТНИК</b><span>Давит, накрывает и быстро создаёт угрозы.</span></button><button class="choice" data-style="sentinel"><b>СТРАЖ</b><span>Экономит сильные фигуры и разрушает ваши планы.</span></button><button class="choice" data-style="trickster"><b>ЛОВКАЧ</b><span>Ищет вилки, неожиданные линии и менее очевидные ходы.</span></button><button class="close" data-close="strategyM">ЗАКРЫТЬ</button></div></div>
-<div id="themeM" class="modal" role="dialog" aria-modal="true" aria-labelledby="themeTitle"><div class="card"><h2 id="themeTitle">ТЕМА</h2><button class="choice selected" aria-pressed="true"><b>ND PREMIUM</b><span>Нейтральные серебряные лучи поля; выраженно тёплое и холодное серебро фигур.</span></button><button class="close" data-close="themeM">ЗАКРЫТЬ</button></div></div>
+<div id="themeM" class="modal" role="dialog" aria-modal="true" aria-labelledby="themeTitle"><div class="card"><h2 id="themeTitle">ТЕМА</h2><button class="choice" data-theme-choice="nd"><b>ND PREMIUM</b><span>Чёрное поле, нейтральные серебряные лучи и тёплое/холодное серебро фигур.</span></button><button class="choice" data-theme-choice="pirate"><b>PIRATE CHART</b><span>Стол капитана, карта архипелага, пергаментное поле и кожаные пиратские фигуры.</span></button><button class="close" data-close="themeM">ЗАКРЫТЬ</button></div></div>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
