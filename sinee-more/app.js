@@ -1,3 +1,4 @@
+import './app-shell.js';
 import {
   LIGHT as L, DARK as K, otherPlayer, usesStack2, usesLadder
 } from './ai/constants.js';
@@ -76,6 +77,15 @@ var rs=document.querySelectorAll('[data-rule]');for(i=0;i<rs.length;i++)rs[i].on
 var os=document.querySelectorAll('[data-opponent]');for(i=0;i<os.length;i++)os[i].onclick=function(){var v=this.getAttribute('data-opponent');if(v==='two'){mode='two';}else{mode='solo';difficulty=v;}closeM('opponentM');resetSession();};
 var ss=document.querySelectorAll('[data-style]');for(i=0;i<ss.length;i++)ss[i].onclick=function(){styleChoice=this.getAttribute('data-style');closeM('strategyM');resetSession();};
 var ts=document.querySelectorAll('[data-theme-choice]');for(i=0;i<ts.length;i++)ts[i].onclick=function(){themeChoice=this.getAttribute('data-theme-choice');applyTheme();closeM('themeM');fitBoard();};
+
+window.addEventListener('sinee-more:product-config',function(event){
+  var config=event&&event.detail?event.detail:null;
+  if(config&&config.environmentId&&(config.environmentId==='nd'||config.environmentId==='pirate'||config.environmentId==='atlantis')){
+    themeChoice=config.environmentId;
+    applyTheme();
+    fitBoard();
+  }
+});
 
 loadTheme();
 applyTheme();
