@@ -177,6 +177,25 @@ def _schedule_runtime_reload() -> bool:
     threading.Thread(target=_reload, name='nd-notebooklm-runtime-reload', daemon=True).start()
     return True
 
+async def watchdog_status(request: Request) -> JSONResponse:
+    try:
+        if not _WATCHDOG_PATH.exists():
+            return JSONResponse({
+                'ok': False,
+                'state': 'STARTING',
+                'control_plane': 'railway-persistent-watchdog',
+            }, status_code=503)
+        data = json.loads(_WATCHDOG_PATH.read_text(encoding='utf-8'))
+        return JSONResponse({'ok': True, **data})
+    except Exception as exc:
+        return JSONResponse({
+            'ok': False,
+            'state': 'UNKNOWN',
+            'control_plane': 'railway-persistent-watchdog',
+            'error': str(exc)[:300],
+        }, status_code=503)
+
+
 async def bootstrap_import_sealed(request: Request) -> JSONResponse:
     response = await direct_bootstrap_import_sealed(request)
     if response.status_code == 200:
@@ -273,6 +292,7 @@ legacy_app = build_railway_app_from_environ()
 app = Starlette(
     routes=[
         Route('/health', health, methods=['GET']),
+        Route('/watchdog', watchdog_status, methods=['GET']),
         Route('/github', github_relay, methods=['POST']),
         Route('/drive/github', drive_github, methods=['POST']),
         Route('/bootstrap/exchange', bootstrap_exchange, methods=['POST']),
