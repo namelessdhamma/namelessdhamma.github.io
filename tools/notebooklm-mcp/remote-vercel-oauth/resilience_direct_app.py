@@ -38,6 +38,7 @@ RENDER_PUBLIC_KEY_B64 = os.environ.get('ND_NOTEBOOKLM_RENDER_PUBLIC_KEY_B64', ''
 RENDER_PRIVATE_KEY_B64 = os.environ.get('ND_NOTEBOOKLM_RENDER_PRIVATE_KEY_B64', '').strip()
 SEALED_MASTER_TOKEN_B64 = os.environ.get('ND_NOTEBOOKLM_SEALED_TOKEN_B64', '').strip()
 BOOTSTRAP_X25519_PRIVATE_B64 = os.environ.get('ND_NOTEBOOKLM_BOOTSTRAP_X25519_PRIVATE_B64', '').strip()
+X25519_SEALED_ENVELOPE_B64 = os.environ.get('ND_NOTEBOOKLM_X25519_SEALED_ENVELOPE_B64', '').strip()
 
 _ISSUER = 'https://token.actions.githubusercontent.com'
 _AUDIENCE = 'nd-notebooklm-direct'
@@ -51,6 +52,15 @@ def _load_master_token_b64() -> str:
     token_file = HOME / 'profiles' / 'default' / 'master_token.json'
     if token_file.exists():
         return base64.b64encode(token_file.read_bytes()).decode('ascii')
+    if X25519_SEALED_ENVELOPE_B64:
+        try:
+            raw = base64.b64decode(X25519_SEALED_ENVELOPE_B64.encode('ascii'), validate=True)
+            envelope = json.loads(raw.decode('utf-8'))
+            if not isinstance(envelope, dict):
+                raise RuntimeError('sealed_envelope_not_object')
+            return _open_sealed(envelope)
+        except Exception as exc:
+            raise RuntimeError('invalid_x25519_sealed_envelope:' + str(exc)[:300]) from exc
     if SEALED_MASTER_TOKEN_B64 and RENDER_PRIVATE_KEY_B64:
         private_key = serialization.load_pem_private_key(
             base64.b64decode(RENDER_PRIVATE_KEY_B64.encode('ascii')), password=None
