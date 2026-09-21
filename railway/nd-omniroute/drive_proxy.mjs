@@ -768,10 +768,8 @@ async function handleDrive(req,res) {
       return res.end();
     }catch(e){return json(res,503,{ok:false,error:String(e.message||e).slice(0,500)});}
   }
-  if (req.method === 'POST' && req.url === '/drive/oauth/callback') {
-    const chunks=[]; for await(const ch of req) chunks.push(ch);
+  async function completeUserOAuth(body,res) {
     try{
-      const body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');
       if(body.error) return json(res,400,{ok:false,error:'google_oauth_'+String(body.error).slice(0,120)});
       if(!body.code || !validateOAuthState(body.state)) return json(res,400,{ok:false,error:'invalid_oauth_callback'});
       const form=new URLSearchParams({
@@ -790,6 +788,23 @@ async function handleDrive(req,res) {
       const probe=await authContext.run({user:true},()=>driveSearch({query:'',top_n:1}));
       return json(res,200,{ok:true,status:'AUTHORIZED',secret_store_verified:true,store_file_id:fileId,probe_result_count:(probe.results||[]).length});
     }catch(e){return json(res,502,{ok:false,error:String(e.message||e).slice(0,800)});}
+  }
+
+  if (req.method === 'GET' && req.url?.startsWith('/drive/oauth/complete?')) {
+    const u=new URL(req.url,'https://nd-external-intelligence-production.up.railway.app');
+    return completeUserOAuth({
+      code:u.searchParams.get('code'),
+      state:u.searchParams.get('state'),
+      error:u.searchParams.get('error')
+    },res);
+  }
+
+  if (req.method === 'POST' && req.url === '/drive/oauth/callback') {
+    const chunks=[]; for await(const ch of req) chunks.push(ch);
+    let body={};
+    try{body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+    catch{return json(res,400,{ok:false,error:'invalid_json'});}
+    return completeUserOAuth(body,res);
   }
   if (req.method === 'GET' && req.url === '/drive/oauth/status') {
     try{
