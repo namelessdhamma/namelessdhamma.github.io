@@ -37,6 +37,7 @@ _RESTART_SCHEDULED = False
 _WATCHDOG_PATH = Path('/data/nd-notebooklm/watchdog.json')
 _WATCHDOG_INTERVAL_SECONDS = 300
 _RENDER_HEALTH_URL = 'https://nd-notebooklm-direct.onrender.com/health'
+_VERCEL_HEALTH_URL = 'https://nd-notebooklm-oauth-mcp.vercel.app/doctor/health'
 
 
 async def _watchdog_local_semantic() -> dict:
@@ -56,20 +57,30 @@ async def _watchdog_local_semantic() -> dict:
         }
 
 
-def _watchdog_vercel_semantic() -> dict:
+def _watchdog_vercel_provider_health() -> dict:
+    req = urllib.request.Request(
+        _VERCEL_HEALTH_URL,
+        method='GET',
+        headers={
+            'Accept': 'application/json',
+            'User-Agent': 'nd-notebooklm-railway-watchdog/1.1',
+        },
+    )
     try:
-        # This path authenticates to the Vercel MCP with the existing OAuth
-        # password/refresh-token mechanism and therefore does not depend on
-        # GitHub Actions OIDC.
-        from railway_oauth_bridge_app import _mcp_call
-        result = _mcp_call('notebook_list', {'limit': 20})
-        return {
-            'ok': bool(result.get('ok')),
-            'server_info': result.get('serverInfo') or {},
-            'error': None,
-        }
+        with urllib.request.urlopen(req, timeout=30) as response:
+            raw = response.read().decode('utf-8', 'replace')
+            body = json.loads(raw or '{}')
+            configured = bool(body.get('master_token_configured'))
+            return {
+                'ok': response.status == 200 and bool(body.get('ok')) and configured,
+                'status': response.status,
+                'master_token_configured': configured,
+                'service': body.get('service'),
+                'provider': body.get('provider'),
+                'error': None,
+            }
     except Exception as exc:
-        return {'ok': False, 'error': str(exc)[:600]}
+        return {'ok': False, 'status': 0, 'error': str(exc)[:600]}
 
 
 def _watchdog_render_health() -> dict:
@@ -116,11 +127,11 @@ def _watchdog_loop() -> None:
             local = asyncio.run(_watchdog_local_semantic())
         except Exception as exc:
             local = {'ok': False, 'error': str(exc)[:600]}
-        vercel = _watchdog_vercel_semantic()
+        vercel = _watchdog_vercel_provider_health()
         render = _watchdog_render_health()
         checks = {
             'railway-local-semantic': local,
-            'vercel-oauth-semantic': vercel,
+            'vercel-provider-health': vercel,
             'render-health': render,
         }
         healthy = sum(1 for row in checks.values() if row.get('ok'))
