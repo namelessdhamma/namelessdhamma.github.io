@@ -5,6 +5,8 @@ import { spawn } from 'node:child_process';
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
 const BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
+const DEVMODE_TOKEN = String(process.env.ND_DRIVE_DEVMODE_PATH_TOKEN || '').trim();
+const DEVMODE_MCP_PATH = '/mcp/' + DEVMODE_TOKEN;
 const STATEHEAD = String(process.env.ND_GOOGLE_STATEHEAD_ID || '1gB6zqJPsQQmv7cT3nxFOtM_EcrUqC3v_MN9ChymclOQ').trim();
 const WRITE_IDS = new Set(
   [process.env.ND_DRIVE_MCP_WRITABLE_FILE_IDS || '', process.env.ND_DRIVE_WRITABLE_FILE_IDS || '']
@@ -199,6 +201,106 @@ async function invoke(tool, args={}) {
   throw new Error('tool_not_allowed');
 }
 
+function escQ(v) {
+  return String(v || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+}
+
+async function driveSearch(args={}) {
+  const query = String(args.query || '').trim();
+  const top = Math.max(1, Math.min(50, Number(args.top_n || 20)));
+  const clauses = ['trashed = false'];
+  if (query) clauses.push("(name contains '" + escQ(query) + "' or fullText contains '" + escQ(query) + "')");
+  if (args.mime_type) clauses.push("mimeType = '" + escQ(args.mime_type) + "'");
+  if (args.parent_id) clauses.push("'" + escQ(args.parent_id) + "' in parents");
+  const q = new URLSearchParams({
+    q: clauses.join(' and '),
+    pageSize: String(top),
+    orderBy: 'modifiedTime desc',
+    spaces: 'drive',
+    fields: 'files(id,name,mimeType,modifiedTime,createdTime,version,parents,webViewLink,capabilities(canEdit))'
+  });
+  const obj = await gjson('https://www.googleapis.com/drive/v3/files?' + q.toString());
+  return {results:(obj.files || []).map(f => ({
+    id:f.id, name:f.name, mime_type:f.mimeType, modified_time:f.modifiedTime,
+    created_time:f.createdTime, drive_version:f.version, parents:f.parents || [],
+    url:f.webViewLink || null, can_edit:!!f?.capabilities?.canEdit
+  }))};
+}
+
+async function driveFetch(args={}) {
+  const id = String(args.id || args.file_id || args.document_id || '').trim();
+  if (!id) throw new Error('id required');
+  const m = await metadata(id);
+  const meta = {
+    id:m.id, name:m.name, mime_type:m.mimeType, modified_time:m.modifiedTime,
+    drive_version:m.version, parents:m.parents || [], can_edit:!!m?.capabilities?.canEdit
+  };
+  if (m.mimeType === 'application/vnd.google-apps.document') {
+    return {metadata:meta, document:await docSnapshot(id)};
+  }
+  return {metadata:meta, content_note:'Non-Google-Doc content is not hydrated by this backup MCP.'};
+}
+
+const MCP_TOOLS = [
+  {name:'search',description:'Search files and folders accessible to the ND backup Google Drive service account.',inputSchema:{type:'object',properties:{query:{type:'string'},top_n:{type:'integer',minimum:1,maximum:50},mime_type:{type:'string'},parent_id:{type:'string'}},additionalProperties:false}},
+  {name:'fetch',description:'Fetch metadata and current text/revision for a native Google Doc.',inputSchema:{type:'object',properties:{id:{type:'string'}},required:['id'],additionalProperties:false}},
+  {name:'drive_get_currentness_token',description:'Read provider currentness metadata and Docs revision for a file.',inputSchema:{type:'object',properties:{file_id:{type:'string'}},required:['file_id'],additionalProperties:false}},
+  {name:'docs_read',description:'Read current text and revision ID from an accessible native Google Doc.',inputSchema:{type:'object',properties:{document_id:{type:'string'}},required:['document_id'],additionalProperties:false}},
+  {name:'docs_append',description:'Append text to an allowlisted Google Doc with revision CAS.',inputSchema:{type:'object',properties:{document_id:{type:'string'},text:{type:'string'},expected_revision_id:{type:'string'}},required:['document_id','text'],additionalProperties:false}},
+  {name:'docs_replace_exact',description:'Replace exactly one matching text occurrence in an allowlisted Google Doc with revision CAS.',inputSchema:{type:'object',properties:{document_id:{type:'string'},old_text:{type:'string'},new_text:{type:'string'},expected_revision_id:{type:'string'}},required:['document_id','old_text','new_text'],additionalProperties:false}}
+];
+
+function rpcResult(id,result){ return {jsonrpc:'2.0',id,result}; }
+function rpcError(id,code,message,data){ return {jsonrpc:'2.0',id,error:{code,message,...(data?{data}:{})}}; }
+
+async function handleMcpMessage(msg) {
+  const id = msg?.id ?? null;
+  const method = String(msg?.method || '');
+  if (method === 'initialize') {
+    return rpcResult(id,{
+      protocolVersion:String(msg?.params?.protocolVersion || '2025-06-18'),
+      capabilities:{tools:{listChanged:false}},
+      serverInfo:{name:'ND Drive Backup',version:'1.0.0'},
+      instructions:'Backup MCP to the same authoritative Nameless Dhamma Google Drive corpus. Reads are service-account scoped; writes are revision-guarded and allowlisted. This is not a second corpus.'
+    });
+  }
+  if (method === 'ping') return rpcResult(id,{});
+  if (method === 'tools/list') return rpcResult(id,{tools:MCP_TOOLS});
+  if (method === 'tools/call') {
+    const name = String(msg?.params?.name || '');
+    try {
+      let result;
+      if (name === 'search') result = await driveSearch(msg?.params?.arguments || {});
+      else if (name === 'fetch') result = await driveFetch(msg?.params?.arguments || {});
+      else result = await invoke(name,msg?.params?.arguments || {});
+      return rpcResult(id,{content:[{type:'text',text:JSON.stringify(result)}],structuredContent:result,isError:false});
+    } catch (e) {
+      const text = String(e.message || e);
+      return rpcResult(id,{content:[{type:'text',text}],structuredContent:{ok:false,error:text},isError:true});
+    }
+  }
+  if (method.startsWith('notifications/')) return null;
+  return rpcError(id,-32601,'Method not found');
+}
+
+async function handleMcp(req,res) {
+  if (!DEVMODE_TOKEN || req.url !== DEVMODE_MCP_PATH) return false;
+  if (req.method === 'GET') {
+    res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store','connection':'keep-alive'});
+    res.write(': nd-drive-backup\n\n');
+    return res.end();
+  }
+  if (req.method !== 'POST') return json(res,405,{ok:false,error:'method_not_allowed'});
+  const chunks=[];
+  for await (const chunk of req) chunks.push(chunk);
+  let msg;
+  try { msg=JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); }
+  catch { return json(res,400,rpcError(null,-32700,'Parse error')); }
+  const out = await handleMcpMessage(msg);
+  if (out === null) { res.writeHead(202,{'cache-control':'no-store'}); return res.end(); }
+  return json(res,200,out);
+}
+
 function json(res, status, obj) {
   const raw = Buffer.from(JSON.stringify(obj));
   res.writeHead(status, { 'content-type':'application/json', 'content-length':raw.length, 'cache-control':'no-store' });
@@ -256,6 +358,10 @@ child.on('spawn',()=>{ childReady=true; console.log(JSON.stringify({event:'ND_OM
 child.on('exit',(code,signal)=>{ childReady=false; console.error(JSON.stringify({event:'ND_OMNIROUTE_CHILD_EXIT',code,signal})); });
 
 const server = http.createServer(async (req,res) => {
+  if (DEVMODE_TOKEN && req.url === DEVMODE_MCP_PATH) {
+    const handled = await handleMcp(req,res);
+    if (handled !== false) return;
+  }
   if (req.url?.startsWith('/drive/')) {
     const handled = await handleDrive(req,res);
     if (handled !== false) return;
@@ -264,5 +370,5 @@ const server = http.createServer(async (req,res) => {
 });
 
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
-  console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size}));
+  console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN}));
 });
