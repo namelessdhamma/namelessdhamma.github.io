@@ -20,6 +20,7 @@ const USER_OAUTH_CLIENT_SECRET = String(process.env.ND_DRIVE_USER_OAUTH_CLIENT_S
 const USER_OAUTH_REDIRECT_URI = String(process.env.ND_DRIVE_USER_OAUTH_REDIRECT_URI || 'https://nd-notebooklm-remote-mcp.vercel.app/api/social-oauth/youtube/callback').trim();
 const USER_OAUTH_STORE_PARENT = String(process.env.ND_DRIVE_USER_OAUTH_STORE_PARENT || '15CrPbHWMK2LqOYhBM05Hn1cmzOYA8dKC').trim();
 const USER_OAUTH_STORE_NAME = '.nd-drive-user-oauth.enc.json';
+const USER_OAUTH_PORTABLE_STORE_NAME = '.nd-drive-user-oauth-portable.enc.json';
 const authContext = new AsyncLocalStorage();
 
 let tokenCache = null;
@@ -103,6 +104,84 @@ function decryptRefreshToken(obj) {
   const decipher=crypto.createDecipheriv('aes-256-gcm',oauthCryptoKey(),Buffer.from(obj.iv,'base64'));
   decipher.setAuthTag(Buffer.from(obj.tag,'base64'));
   return Buffer.concat([decipher.update(Buffer.from(obj.ciphertext,'base64')),decipher.final()]).toString('utf8');
+}
+
+function encryptPortableBundle(bundle) {
+  const iv=crypto.randomBytes(12);
+  const cipher=crypto.createCipheriv('aes-256-gcm',oauthCryptoKey(),iv);
+  const plain=Buffer.from(JSON.stringify(bundle),'utf8');
+  const ciphertext=Buffer.concat([cipher.update(plain),cipher.final()]);
+  return {
+    schema:'nd-drive-user-oauth-portable-v1',
+    iv:iv.toString('base64'),
+    tag:cipher.getAuthTag().toString('base64'),
+    ciphertext:ciphertext.toString('base64')
+  };
+}
+
+async function persistPortableOAuthBundle() {
+  if(!USER_OAUTH_CLIENT_ID || !USER_OAUTH_CLIENT_SECRET) throw new Error('portable oauth client missing');
+  const refresh=await loadEncryptedRefreshToken();
+  const userToken=await userAccessToken();
+  const payload=Buffer.from(JSON.stringify(encryptPortableBundle({
+    client_id:USER_OAUTH_CLIENT_ID,
+    client_secret:USER_OAUTH_CLIENT_SECRET,
+    refresh_token:refresh,
+    token_uri:'https://oauth2.googleapis.com/token'
+  })),'utf8');
+
+  const q=new URLSearchParams({
+    q:"name = '"+USER_OAUTH_PORTABLE_STORE_NAME.replace(/'/g,"\\'")+"' and '"+USER_OAUTH_STORE_PARENT+"' in parents and trashed = false",
+    pageSize:'10',spaces:'drive',fields:'files(id,name,version,parents)'
+  });
+  const existing=await directFetchJsonWithToken(userToken,'https://www.googleapis.com/drive/v3/files?'+q.toString());
+  let fileId=(existing.files||[])[0]?.id||null;
+  if(fileId){
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(fileId)+'?uploadType=media&supportsAllDrives=true',{
+      method:'PATCH',
+      headers:{authorization:'Bearer '+userToken,'content-type':'application/json'},
+      body:payload
+    });
+    if(!res.ok) throw new Error('portable oauth bundle update HTTP '+res.status);
+  } else {
+    const boundary='ndportable-'+crypto.randomBytes(12).toString('hex');
+    const meta={name:USER_OAUTH_PORTABLE_STORE_NAME,parents:[USER_OAUTH_STORE_PARENT]};
+    const body=Buffer.concat([
+      Buffer.from('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'),
+      payload,
+      Buffer.from('\r\n--'+boundary+'--\r\n')
+    ]);
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id',{
+      method:'POST',
+      headers:{authorization:'Bearer '+userToken,'content-type':'multipart/related; boundary='+boundary},
+      body
+    });
+    const text=await res.text();
+    if(!res.ok) throw new Error('portable oauth bundle create HTTP '+res.status+': '+text.slice(0,500));
+    fileId=JSON.parse(text||'{}').id;
+  }
+
+  const serviceEmail=String(process.env.ND_GOOGLE_CLIENT_EMAIL||'').trim();
+  if(serviceEmail && fileId){
+    try{
+      await directFetchJsonWithToken(userToken,'https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(fileId)+'/permissions?supportsAllDrives=true&sendNotificationEmail=false',{
+        method:'POST',body:{type:'user',role:'reader',emailAddress:serviceEmail}
+      });
+    }catch(e){
+      const msg=String(e?.message||e);
+      if(!msg.includes('already') && !msg.includes('existing')) throw e;
+    }
+  }
+
+  const serviceToken=await serviceAccessToken();
+  const search=new URLSearchParams({
+    q:"name = '"+USER_OAUTH_PORTABLE_STORE_NAME.replace(/'/g,"\\'")+"' and trashed = false",
+    pageSize:'10',spaces:'drive',fields:'files(id,name,version,parents)'
+  });
+  const verify=await directFetchJsonWithToken(serviceToken,'https://www.googleapis.com/drive/v3/files?'+search.toString());
+  const found=(verify.files||[]).find(x=>x.id===fileId);
+  if(!found) throw new Error('portable oauth bundle service-account readback missing');
+  return {file_id:fileId,service_account_readback:true};
 }
 
 async function directFetchJsonWithToken(token,url,{method='GET',body,headers={}}={}) {
@@ -898,4 +977,12 @@ const server = http.createServer(async (req,res) => {
 
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
+  setTimeout(async()=>{
+    try{
+      const r=await persistPortableOAuthBundle();
+      console.log(JSON.stringify({event:'ND_DRIVE_PORTABLE_OAUTH_BUNDLE_READY',file_id:r.file_id,service_account_readback:r.service_account_readback}));
+    }catch(e){
+      console.log(JSON.stringify({event:'ND_DRIVE_PORTABLE_OAUTH_BUNDLE_ERROR',error:String(e?.message||e).slice(0,500)}));
+    }
+  },4000);
 });
