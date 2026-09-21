@@ -107,18 +107,19 @@ body[data-theme="pirate"] .settingsCard{
   border:1px solid #4c2a18;color:#2b170d;
   background:linear-gradient(135deg,rgba(255,233,188,.16),transparent 34%),repeating-linear-gradient(9deg,rgba(92,54,27,.025) 0 1px,transparent 1px 4px),linear-gradient(#d6a66e,#b97b46);
   box-shadow:inset 0 0 0 1px rgba(255,224,172,.25),inset 0 0 12px rgba(72,36,16,.15),0 2px 5px rgba(0,0,0,.25);
-}
-body[data-theme="pirate"] .settingsCard{
   position:relative;
-  padding-top:20px;
-  gap:3px;
+  height:68px;
+  padding:12px 4px 6px;
+  justify-content:center;
+  gap:2px;
+  overflow:hidden;
 }
 body[data-theme="pirate"] .settingsCard:before{
   content:"";
-  position:absolute;top:5px;left:50%;transform:translateX(-50%);
-  width:17px;height:17px;
+  position:absolute;top:3px;left:50%;transform:translateX(-50%);
+  width:11px;height:11px;
   background-size:contain;background-repeat:no-repeat;background-position:center;
-  opacity:.88;
+  opacity:.76;
 }
 body[data-theme="pirate"] #rules:before{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23361b10' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 7c6-3 10-2 15 2v24c-5-4-9-5-15-2zM35 7c-6-3-10-2-15 2v24c5-4 9-5 15-2zM20 9v24'/%3E%3C/g%3E%3C/svg%3E");
@@ -132,8 +133,8 @@ body[data-theme="pirate"] #strategy:before{
 body[data-theme="pirate"] #theme:before{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M8 27c2-9 7-15 12-15s10 6 12 15c-7 4-17 4-24 0z' fill='none' stroke='%23361b10' stroke-width='2.3'/%3E%3Cpath d='M13 13c2 3 12 3 14 0M7 28c7 5 19 5 26 0' fill='none' stroke='%23361b10' stroke-width='2.3'/%3E%3C/svg%3E");
 }
-body[data-theme="pirate"] .settingsCard .label{font-family:Georgia,"Times New Roman",serif;color:#2d180e;line-height:1}
-body[data-theme="pirate"] .settingsCard .value{color:#6f4528}
+body[data-theme="pirate"] .settingsCard .label{font-family:Georgia,"Times New Roman",serif;color:#2d180e;font-size:11px;line-height:.96;min-height:22px;display:flex;align-items:flex-end;justify-content:center;text-align:center}
+body[data-theme="pirate"] .settingsCard .value{color:#6f4528;font-size:9px;line-height:1.05;min-height:10px}
 body[data-theme="pirate"] .ph .side{font-family:Georgia,"Times New Roman",serif;text-shadow:0 1px 0 rgba(255,230,188,.22)!important}
 body[data-theme="pirate"] .ph .side.light{color:#d8a36a}
 body[data-theme="pirate"] .ph .side.dark{color:#6a3924}
@@ -155,28 +156,32 @@ body[data-theme="pirate"] .pieceBtn:disabled{opacity:.30}
 body[data-theme="pirate"] .board{
   isolation:isolate;
   background-image:
-    radial-gradient(circle at 20% 30%,rgba(75,39,17,.14) 0 .7px,transparent .9px),
-    radial-gradient(circle at 70% 65%,rgba(255,222,171,.12) 0 .65px,transparent .9px),
-    radial-gradient(ellipse at 50% 45%,rgba(255,218,159,.13),transparent 57%),
-    repeating-linear-gradient(13deg,rgba(88,50,22,.032) 0 1px,transparent 1px 5px),
-    repeating-linear-gradient(98deg,rgba(255,232,194,.021) 0 1px,transparent 1px 7px),
-    linear-gradient(135deg,#c98f55 0%,#d9ab72 24%,#c58a50 52%,#d4a067 76%,#bb7a42 100%);
-  background-size:17px 19px,23px 21px,100% 100%,100% 100%,100% 100%,100% 100%;
-  background-position:0 0,7px 11px,0 0,0 0,0 0,0 0;
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.62' numOctaves='4' seed='17'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.15'/%3E%3C/svg%3E"),
+    radial-gradient(circle at 16% 24%,rgba(92,55,28,.20) 0 .9px,transparent 1.2px),
+    radial-gradient(circle at 71% 66%,rgba(255,232,191,.16) 0 .75px,transparent 1.05px),
+    radial-gradient(ellipse at 28% 18%,rgba(255,233,197,.17),transparent 34%),
+    radial-gradient(ellipse at 74% 76%,rgba(109,58,28,.16),transparent 38%),
+    repeating-linear-gradient(14deg,rgba(90,53,27,.055) 0 1px,transparent 1px 6px),
+    repeating-linear-gradient(103deg,rgba(255,239,206,.032) 0 1px,transparent 1px 8px),
+    linear-gradient(135deg,#c88950 0%,#dfb27a 18%,#ca8a4f 43%,#d9a66b 71%,#b8733b 100%);
+  background-size:160px 160px,19px 21px,23px 21px,100% 100%,100% 100%,100% 100%,100% 100%,100% 100%;
+  background-position:0 0,0 0,7px 11px,0 0,0 0,0 0,0 0,0 0;
   border:3px solid #4a2716;
   border-radius:14px;
   box-shadow:
-    inset 0 0 0 1px rgba(255,222,172,.34),
-    inset 0 0 0 4px rgba(83,42,18,.20),
-    inset 0 0 22px rgba(61,28,12,.28),
-    inset 0 0 48px rgba(72,35,15,.16),
-    0 5px 12px rgba(0,0,0,.42);
+    inset 0 0 0 1px rgba(255,228,186,.38),
+    inset 0 0 0 4px rgba(84,43,19,.23),
+    inset 0 2px 3px rgba(255,241,214,.16),
+    inset 0 -5px 11px rgba(78,37,16,.22),
+    inset 0 0 28px rgba(61,28,12,.30),
+    inset 0 0 64px rgba(72,35,15,.18),
+    0 6px 14px rgba(0,0,0,.44);
 }
 body[data-theme="pirate"] .board:before{
   z-index:0;
   inset:5px;
   border-radius:9px;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 300'%3E%3Cg fill='none' stroke='%23432316' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M100 0V300M200 0V300M0 100H300M0 200H300' stroke-width='2.1' stroke-opacity='.78'/%3E%3Cpath d='M100 0V300M200 0V300M0 100H300M0 200H300' stroke='%23774727' stroke-width='.65' stroke-opacity='.72'/%3E%3Cpath d='M26 56c17-20 36-28 58-21 16 5 26-6 42-10 22-5 33 8 49 6 19-3 34-15 54-5 20 10 30 32 25 53-5 20 8 29 12 47 5 22-4 35-18 48-14 13-10 29-18 47-8 18-29 26-49 22-18-4-28 10-46 15-19 5-36-3-47-17-12-14-27-9-43-14-18-6-28-22-26-41 2-18-11-29-8-46 4-18 20-27 32-40z' stroke-width='2.2' stroke-opacity='.48'/%3E%3Cpath d='M33 46c15-9 28-7 39 2M48 69c12-7 25-6 36 2M220 236c14-9 29-8 42 1M210 252c11-6 22-6 33 0' stroke-width='1.1' stroke-opacity='.42'/%3E%3Cpath d='M47 242c18-29 37-46 61-56s48-8 67-26 29-42 63-51' stroke-width='1.15' stroke-dasharray='5 6' stroke-opacity='.52'/%3E%3Cpath d='M36 145q12-12 24 0t24 0M218 70q11-11 22 0t22 0M214 266q10-10 20 0t20 0' stroke-width='1.05' stroke-opacity='.42'/%3E%3Cpath d='M63 217l7-13 7 13m-18 0h22M231 116l8-14 8 14m-20 0h24' stroke-width='1.15' stroke-opacity='.48'/%3E%3Cpath d='M249 214c8-6 15-5 22 1l-7 6-8-1-7-6zM253 210l5-13 2 13m-8 3h16' stroke-width='1.1' stroke-opacity='.52'/%3E%3C/g%3E%3Cg fill='none' stroke='%23432316' stroke-opacity='.55'%3E%3Ccircle cx='255' cy='48' r='19' stroke-width='1.2'/%3E%3Ccircle cx='255' cy='48' r='13' stroke-width='.7'/%3E%3Cpath d='M255 25l4 19 17 4-17 4-4 19-4-19-17-4 17-4z' stroke-width='1.1'/%3E%3C/g%3E%3Cg fill='%23432316' fill-opacity='.40'%3E%3Cpath d='M83 86l5 8-5 8-5-8zM177 226l4 7-4 7-4-7z'/%3E%3C/g%3E%3C/svg%3E");
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 300'%3E%3Cg fill='none' stroke='%23432316' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M100 0V300M200 0V300M0 100H300M0 200H300' stroke='%23331a0f' stroke-width='2.2' stroke-opacity='.82'/%3E%3Cpath d='M101 1V299M201 1V299M1 101H299M1 201H299' stroke='%23e3b77f' stroke-width='.7' stroke-opacity='.32'/%3E%3Cpath d='M26 56c17-20 36-28 58-21 16 5 26-6 42-10 22-5 33 8 49 6 19-3 34-15 54-5 20 10 30 32 25 53-5 20 8 29 12 47 5 22-4 35-18 48-14 13-10 29-18 47-8 18-29 26-49 22-18-4-28 10-46 15-19 5-36-3-47-17-12-14-27-9-43-14-18-6-28-22-26-41 2-18-11-29-8-46 4-18 20-27 32-40z' stroke-width='2.2' stroke-opacity='.48'/%3E%3Cpath d='M33 46c15-9 28-7 39 2M48 69c12-7 25-6 36 2M220 236c14-9 29-8 42 1M210 252c11-6 22-6 33 0' stroke-width='1.1' stroke-opacity='.42'/%3E%3Cpath d='M47 242c18-29 37-46 61-56s48-8 67-26 29-42 63-51' stroke-width='1.15' stroke-dasharray='5 6' stroke-opacity='.52'/%3E%3Cpath d='M36 145q12-12 24 0t24 0M218 70q11-11 22 0t22 0M214 266q10-10 20 0t20 0' stroke-width='1.05' stroke-opacity='.42'/%3E%3Cpath d='M63 217l7-13 7 13m-18 0h22M231 116l8-14 8 14m-20 0h24' stroke-width='1.15' stroke-opacity='.48'/%3E%3Cpath d='M249 214c8-6 15-5 22 1l-7 6-8-1-7-6zM253 210l5-13 2 13m-8 3h16' stroke-width='1.1' stroke-opacity='.52'/%3E%3C/g%3E%3Cg fill='none' stroke='%23432316' stroke-opacity='.55'%3E%3Ccircle cx='255' cy='48' r='19' stroke-width='1.2'/%3E%3Ccircle cx='255' cy='48' r='13' stroke-width='.7'/%3E%3Cpath d='M255 25l4 19 17 4-17 4-4 19-4-19-17-4 17-4z' stroke-width='1.1'/%3E%3C/g%3E%3Cg fill='%23432316' fill-opacity='.40'%3E%3Cpath d='M83 86l5 8-5 8-5-8zM177 226l4 7-4 7-4-7z'/%3E%3C/g%3E%3C/svg%3E");
   background-size:100% 100%;
   background-repeat:no-repeat;
   filter:none;
@@ -186,8 +191,8 @@ body[data-theme="pirate"] .board:after{
   z-index:6;
   inset:4px;
   border-radius:9px;
-  border:1px dashed rgba(86,45,23,.48);
-  box-shadow:inset 0 0 12px rgba(70,34,15,.24),inset 0 0 0 1px rgba(255,224,174,.16);
+  border:1px dashed rgba(94,54,28,.44);
+  box-shadow:inset 0 0 0 1px rgba(255,229,184,.14),inset 0 2px 3px rgba(255,239,207,.12),inset 0 -4px 7px rgba(78,37,15,.20),inset 0 0 14px rgba(70,34,15,.18);
 }
 body[data-theme="pirate"] .board{
   outline:1px solid rgba(24,92,99,.22);
