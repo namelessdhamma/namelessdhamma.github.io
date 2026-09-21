@@ -190,7 +190,7 @@ function validateOAuthState(state) {
   const a=Buffer.from(parts[2]),b=Buffer.from(expected);
   if(a.length!==b.length || !crypto.timingSafeEqual(a,b)) return false;
   const ts=Number(parts[0]);
-  return Number.isFinite(ts) && Math.abs(Date.now()-ts)<10*60*1000;
+  return Number.isFinite(ts) && Math.abs(Date.now()-ts)<30*60*1000;
 }
 
 async function persistEncryptedRefreshToken(refreshToken,userToken) {
