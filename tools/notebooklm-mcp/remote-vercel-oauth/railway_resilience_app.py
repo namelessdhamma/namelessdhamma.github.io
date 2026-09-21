@@ -7,6 +7,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -20,6 +21,7 @@ from resilience_direct_app import (
     bootstrap_import_sealed as direct_bootstrap_import_sealed,
     bootstrap_public_key,
     bootstrap_export_sealed,
+    client_factory,
     github as direct_github,
     health,
     verify_oidc,
@@ -31,6 +33,122 @@ VERCEL_GITHUB_URL = 'https://nd-notebooklm-oauth-mcp.vercel.app/doctor/github'
 
 _RESTART_LOCK = threading.Lock()
 _RESTART_SCHEDULED = False
+
+_WATCHDOG_PATH = Path('/data/nd-notebooklm/watchdog.json')
+_WATCHDOG_INTERVAL_SECONDS = 300
+_RENDER_HEALTH_URL = 'https://nd-notebooklm-direct.onrender.com/health'
+
+
+async def _watchdog_local_semantic() -> dict:
+    try:
+        async with client_factory() as client:
+            notebooks = await client.notebooks.list()
+        return {
+            'ok': True,
+            'notebook_count': len(notebooks),
+            'credential_configured': bool(_load_master_token_b64()),
+        }
+    except Exception as exc:
+        return {
+            'ok': False,
+            'credential_configured': bool(_load_master_token_b64()),
+            'error': str(exc)[:600],
+        }
+
+
+def _watchdog_vercel_semantic() -> dict:
+    try:
+        # This path authenticates to the Vercel MCP with the existing OAuth
+        # password/refresh-token mechanism and therefore does not depend on
+        # GitHub Actions OIDC.
+        from railway_oauth_bridge_app import _mcp_call
+        result = _mcp_call('notebook_list', {'limit': 20})
+        return {
+            'ok': bool(result.get('ok')),
+            'server_info': result.get('serverInfo') or {},
+            'error': None,
+        }
+    except Exception as exc:
+        return {'ok': False, 'error': str(exc)[:600]}
+
+
+def _watchdog_render_health() -> dict:
+    req = urllib.request.Request(
+        _RENDER_HEALTH_URL,
+        method='GET',
+        headers={
+            'Accept': 'application/json',
+            'User-Agent': 'nd-notebooklm-railway-watchdog/1.0',
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            raw = response.read().decode('utf-8', 'replace')
+            body = json.loads(raw or '{}')
+            credential = bool(body.get('credential_configured'))
+            return {
+                'ok': response.status == 200 and bool(body.get('ok')) and credential,
+                'status': response.status,
+                'credential_configured': credential,
+                'service': body.get('service'),
+                'backend': body.get('backend'),
+                'error': None,
+            }
+    except Exception as exc:
+        return {'ok': False, 'status': 0, 'error': str(exc)[:600]}
+
+
+def _watchdog_write(report: dict) -> None:
+    try:
+        _WATCHDOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _WATCHDOG_PATH.with_suffix('.tmp')
+        tmp.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        tmp.replace(_WATCHDOG_PATH)
+    except Exception as exc:
+        print('ND_NOTEBOOKLM_WATCHDOG_PERSIST_ERROR ' + str(exc)[:400], flush=True)
+
+
+def _watchdog_loop() -> None:
+    time.sleep(20)
+    while True:
+        captured_at = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        try:
+            local = asyncio.run(_watchdog_local_semantic())
+        except Exception as exc:
+            local = {'ok': False, 'error': str(exc)[:600]}
+        vercel = _watchdog_vercel_semantic()
+        render = _watchdog_render_health()
+        checks = {
+            'railway-local-semantic': local,
+            'vercel-oauth-semantic': vercel,
+            'render-health': render,
+        }
+        healthy = sum(1 for row in checks.values() if row.get('ok'))
+        state = (
+            'HEALTHY' if healthy == 3
+            else 'DEGRADED' if healthy == 2
+            else 'SEVERE' if healthy == 1
+            else 'CRITICAL'
+        )
+        report = {
+            'captured_at': captured_at,
+            'control_plane': 'railway-persistent-watchdog',
+            'github_actions_required': False,
+            'interval_seconds': _WATCHDOG_INTERVAL_SECONDS,
+            'state': state,
+            'healthy_checks': healthy,
+            'checks': checks,
+        }
+        _watchdog_write(report)
+        print('ND_NOTEBOOKLM_WATCHDOG ' + json.dumps(report, ensure_ascii=False), flush=True)
+        time.sleep(_WATCHDOG_INTERVAL_SECONDS)
+
+
+threading.Thread(
+    target=_watchdog_loop,
+    name='nd-notebooklm-independent-watchdog',
+    daemon=True,
+).start()
 
 def _schedule_runtime_reload() -> bool:
     """Restart Railway after a successful credential import so the MCP surface reloads FULL state."""
