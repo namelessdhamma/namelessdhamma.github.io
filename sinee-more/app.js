@@ -30,13 +30,13 @@ function personaName(){return (PERSONAS[aiPersona]||PERSONAS.architect).name;}
 function name(p){return p===L?'СВЕТЛЫЕ':'ТЁМНЫЕ';}
 function el(id){return document.getElementById(id);}
 function msg(x){el('msg').textContent=x;}
-function loadTheme(){try{var v=localStorage.getItem('sinee-more-theme');if(v==='pirate'||v==='nd')themeChoice=v;}catch(e){}}
-function themeLabel(){return themeChoice==='pirate'?'Pirate Chart':'ND Premium';}
+function loadTheme(){try{var v=localStorage.getItem('sinee-more-theme');if(v==='pirate'||v==='atlantis'||v==='nd')themeChoice=v;}catch(e){}}
+function themeLabel(){return themeChoice==='pirate'?'Pirate Chart':themeChoice==='atlantis'?'Atlantis':'ND Premium';}
 function applyTheme(){
   document.body.setAttribute('data-theme',themeChoice);
   var tv=el('themeValue');if(tv)tv.textContent=themeLabel();
   markSelected('theme-choice',themeChoice);
-  var meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.setAttribute('content',themeChoice==='pirate'?'#2a160e':'#000000');
+  var meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.setAttribute('content',themeChoice==='pirate'?'#2a160e':themeChoice==='atlantis'?'#031923':'#000000');
   try{localStorage.setItem('sinee-more-theme',themeChoice);}catch(e){}
 }
 
