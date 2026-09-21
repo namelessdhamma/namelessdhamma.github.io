@@ -828,6 +828,31 @@ async function handleDrive(req,res) {
       return json(res,503,{ok:false,route:'railway_external_direct_google',error:String(e.message || e).slice(0,500),child_ready:childReady});
     }
   }
+  if (req.method === 'GET' && req.url === '/drive/full/health') {
+    try {
+      const token=await userAccessToken();
+      const about=await directFetchJsonWithToken(token,'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress),storageQuota');
+      return json(res,200,{ok:true,route:'railway_external_full_user_oauth',full_rw:true,tools:MCP_TOOLS.length,user:about.user?.emailAddress||null,storage_quota_present:!!about.storageQuota});
+    } catch(e) {
+      return json(res,503,{ok:false,route:'railway_external_full_user_oauth',error:String(e.message||e).slice(0,500)});
+    }
+  }
+  if (req.method === 'POST' && req.url === '/drive/full/invoke') {
+    if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
+    const chunks=[]; for await (const ch of req) chunks.push(ch);
+    let body={};
+    try { body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}'); }
+    catch { return json(res,400,{ok:false,error:'invalid_json'}); }
+    const tool=String(body.tool||''),args=(body.args&&typeof body.args==='object')?body.args:{};
+    try {
+      const result=await authContext.run({user:true},()=>mcpInvoke(tool,args));
+      return json(res,200,{ok:true,tool,result,auth_mode:'user_oauth'});
+    } catch(e) {
+      const msg=String(e.message||e).slice(0,1200);
+      const status=(msg.includes('REVISION_MISMATCH')||msg.includes('DRIVE_VERSION_MISMATCH')||msg.includes('EXACT_MATCH_REQUIRED'))?409:502;
+      return json(res,status,{ok:false,error:msg,auth_mode:'user_oauth'});
+    }
+  }
   if (req.method === 'POST' && req.url === '/drive/invoke') {
     if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
     const chunks = [];
