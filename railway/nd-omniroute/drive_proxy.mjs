@@ -1,6 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
@@ -14,6 +15,12 @@ const WRITE_IDS = new Set(
     .join(',').split(',').map(x => x.trim()).filter(Boolean)
 );
 const SCOPES = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/presentations';
+const USER_OAUTH_CLIENT_ID = String(process.env.ND_DRIVE_USER_OAUTH_CLIENT_ID || '').trim();
+const USER_OAUTH_CLIENT_SECRET = String(process.env.ND_DRIVE_USER_OAUTH_CLIENT_SECRET || '').trim();
+const USER_OAUTH_REDIRECT_URI = String(process.env.ND_DRIVE_USER_OAUTH_REDIRECT_URI || 'https://nd-notebooklm-remote-mcp.vercel.app/api/social-oauth/youtube/callback').trim();
+const USER_OAUTH_STORE_PARENT = String(process.env.ND_DRIVE_USER_OAUTH_STORE_PARENT || '15CrPbHWMK2LqOYhBM05Hn1cmzOYA8dKC').trim();
+const USER_OAUTH_STORE_NAME = '.nd-drive-user-oauth.enc.json';
+const authContext = new AsyncLocalStorage();
 
 let tokenCache = null;
 let childReady = false;
@@ -38,7 +45,7 @@ function credential() {
   return { email, key };
 }
 
-async function accessToken() {
+async function serviceAccessToken() {
   const { email, key } = credential();
   const now = Math.floor(Date.now() / 1000);
   if (tokenCache && tokenCache.email === email && tokenCache.exp > now + 90) return tokenCache.token;
@@ -68,6 +75,169 @@ async function accessToken() {
   if (!obj.access_token) throw new Error('google access token missing');
   tokenCache = { email, token: obj.access_token, exp: now + Number(obj.expires_in || 3500) };
   return obj.access_token;
+}
+
+let userTokenCache = null;
+let userRefreshCache = null;
+
+function oauthCryptoKey() {
+  const material = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
+  if (!material) throw new Error('drive oauth encryption key missing');
+  return crypto.createHash('sha256').update('nd-drive-user-oauth-v1\0' + material).digest();
+}
+
+function encryptRefreshToken(refreshToken) {
+  const iv=crypto.randomBytes(12);
+  const cipher=crypto.createCipheriv('aes-256-gcm',oauthCryptoKey(),iv);
+  const ciphertext=Buffer.concat([cipher.update(String(refreshToken),'utf8'),cipher.final()]);
+  return {
+    schema:'nd-drive-user-oauth-secret-v1',
+    iv:iv.toString('base64'),
+    tag:cipher.getAuthTag().toString('base64'),
+    ciphertext:ciphertext.toString('base64')
+  };
+}
+
+function decryptRefreshToken(obj) {
+  if (!obj || obj.schema!=='nd-drive-user-oauth-secret-v1') throw new Error('drive oauth secret schema invalid');
+  const decipher=crypto.createDecipheriv('aes-256-gcm',oauthCryptoKey(),Buffer.from(obj.iv,'base64'));
+  decipher.setAuthTag(Buffer.from(obj.tag,'base64'));
+  return Buffer.concat([decipher.update(Buffer.from(obj.ciphertext,'base64')),decipher.final()]).toString('utf8');
+}
+
+async function directFetchJsonWithToken(token,url,{method='GET',body,headers={}}={}) {
+  const h={authorization:'Bearer '+token,accept:'application/json',...headers};
+  let payload=body;
+  if (body!==undefined && !Buffer.isBuffer(body) && typeof body!=='string') {
+    payload=JSON.stringify(body); h['content-type']='application/json';
+  }
+  const res=await fetch(url,{method,headers:h,body:payload});
+  const text=await res.text();
+  let obj={};
+  try{obj=text?JSON.parse(text):{};}catch{obj={raw:text.slice(0,800)};}
+  if(!res.ok){const e=new Error('google HTTP '+res.status+': '+text.slice(0,800));e.status=res.status;throw e;}
+  return obj;
+}
+
+async function findOAuthStoreFile(serviceToken) {
+  const q=new URLSearchParams({
+    q:"name = '"+USER_OAUTH_STORE_NAME.replace(/'/g,"\\'")+"' and '"+USER_OAUTH_STORE_PARENT+"' in parents and trashed = false",
+    pageSize:'10',
+    spaces:'drive',
+    fields:'files(id,name,mimeType,version,parents)'
+  });
+  const obj=await directFetchJsonWithToken(serviceToken,'https://www.googleapis.com/drive/v3/files?'+q.toString());
+  return (obj.files||[])[0]||null;
+}
+
+async function loadEncryptedRefreshToken() {
+  if (userRefreshCache) return userRefreshCache;
+  const serviceToken=await serviceAccessToken();
+  const file=await findOAuthStoreFile(serviceToken);
+  if(!file) throw new Error('drive user oauth not authorized');
+  const res=await fetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media&supportsAllDrives=true',{
+    headers:{authorization:'Bearer '+serviceToken,accept:'application/json'}
+  });
+  const text=await res.text();
+  if(!res.ok) throw new Error('drive oauth secret read HTTP '+res.status);
+  userRefreshCache=decryptRefreshToken(JSON.parse(text));
+  return userRefreshCache;
+}
+
+async function userAccessToken() {
+  if(!USER_OAUTH_CLIENT_ID || !USER_OAUTH_CLIENT_SECRET) throw new Error('drive user oauth client missing');
+  const now=Math.floor(Date.now()/1000);
+  if(userTokenCache && userTokenCache.exp>now+90) return userTokenCache.token;
+  const refresh=await loadEncryptedRefreshToken();
+  const body=new URLSearchParams({
+    client_id:USER_OAUTH_CLIENT_ID,
+    client_secret:USER_OAUTH_CLIENT_SECRET,
+    refresh_token:refresh,
+    grant_type:'refresh_token'
+  });
+  const res=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
+  const text=await res.text();
+  if(!res.ok) throw new Error('drive user oauth refresh HTTP '+res.status+': '+text.slice(0,500));
+  const obj=JSON.parse(text||'{}');
+  if(!obj.access_token) throw new Error('drive user oauth access token missing');
+  userTokenCache={token:obj.access_token,exp:now+Number(obj.expires_in||3500)};
+  return obj.access_token;
+}
+
+async function accessToken() {
+  if(authContext.getStore()?.user===true) return userAccessToken();
+  return serviceAccessToken();
+}
+
+function oauthStateSign(payload) {
+  const key=String(process.env.ND_DRIVE_BRIDGE_TOKEN||'').trim();
+  if(!key) throw new Error('drive oauth state key missing');
+  return crypto.createHmac('sha256',key).update(payload).digest('base64url');
+}
+
+function createOAuthState() {
+  const ts=Date.now().toString();
+  const nonce=crypto.randomBytes(18).toString('base64url');
+  const payload=ts+'.'+nonce;
+  return payload+'.'+oauthStateSign(payload);
+}
+
+function validateOAuthState(state) {
+  const parts=String(state||'').split('.');
+  if(parts.length!==3) return false;
+  const payload=parts[0]+'.'+parts[1];
+  const expected=oauthStateSign(payload);
+  const a=Buffer.from(parts[2]),b=Buffer.from(expected);
+  if(a.length!==b.length || !crypto.timingSafeEqual(a,b)) return false;
+  const ts=Number(parts[0]);
+  return Number.isFinite(ts) && Math.abs(Date.now()-ts)<10*60*1000;
+}
+
+async function persistEncryptedRefreshToken(refreshToken,userToken) {
+  const blob=Buffer.from(JSON.stringify(encryptRefreshToken(refreshToken)),'utf8');
+  const q=new URLSearchParams({
+    q:"name = '"+USER_OAUTH_STORE_NAME.replace(/'/g,"\\'")+"' and '"+USER_OAUTH_STORE_PARENT+"' in parents and trashed = false",
+    pageSize:'10',spaces:'drive',fields:'files(id,name,version)'
+  });
+  const existing=await directFetchJsonWithToken(userToken,'https://www.googleapis.com/drive/v3/files?'+q.toString());
+  let fileId=(existing.files||[])[0]?.id||null;
+  if(fileId){
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(fileId)+'?uploadType=media&supportsAllDrives=true',{
+      method:'PATCH',headers:{authorization:'Bearer '+userToken,'content-type':'application/json'},body:blob
+    });
+    if(!res.ok) throw new Error('drive oauth secret update HTTP '+res.status);
+  }else{
+    const boundary='ndoauth-'+crypto.randomBytes(12).toString('hex');
+    const meta={name:USER_OAUTH_STORE_NAME,parents:[USER_OAUTH_STORE_PARENT]};
+    const body=Buffer.concat([
+      Buffer.from('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'),
+      blob,
+      Buffer.from('\r\n--'+boundary+'--\r\n')
+    ]);
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id',{
+      method:'POST',headers:{authorization:'Bearer '+userToken,'content-type':'multipart/related; boundary='+boundary},body
+    });
+    const text=await res.text();
+    if(!res.ok) throw new Error('drive oauth secret create HTTP '+res.status+': '+text.slice(0,500));
+    fileId=JSON.parse(text||'{}').id;
+  }
+  const serviceEmail=String(process.env.ND_GOOGLE_CLIENT_EMAIL||'').trim();
+  if(serviceEmail && fileId){
+    try{
+      await directFetchJsonWithToken(userToken,'https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(fileId)+'/permissions?supportsAllDrives=true&sendNotificationEmail=false',{
+        method:'POST',body:{type:'user',role:'reader',emailAddress:serviceEmail}
+      });
+    }catch(e){
+      if(!String(e.message||e).includes('already')) throw e;
+    }
+  }
+  userRefreshCache=String(refreshToken);
+  userTokenCache=null;
+  // Verify the service account can recover the ciphertext after restart.
+  const serviceToken=await serviceAccessToken();
+  const found=await findOAuthStoreFile(serviceToken);
+  if(!found || found.id!==fileId) throw new Error('drive oauth secret service-account readback missing');
+  return fileId;
 }
 
 async function gjson(url, { method='GET', body }={}) {
@@ -562,7 +732,7 @@ async function handleMcp(req,res) {
   let msg;
   try { msg=JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'); }
   catch { return json(res,400,rpcError(null,-32700,'Parse error')); }
-  const out = await handleMcpMessage(msg);
+  const out = await authContext.run({user:true},()=>handleMcpMessage(msg));
   if (out === null) { res.writeHead(202,{'cache-control':'no-store'}); return res.end(); }
   return json(res,200,out);
 }
@@ -579,6 +749,57 @@ function safeEqual(a,b) {
 }
 
 async function handleDrive(req,res) {
+  if (req.method === 'GET' && req.url === '/drive/oauth/start') {
+    try{
+      if(!USER_OAUTH_CLIENT_ID || !USER_OAUTH_CLIENT_SECRET) return json(res,503,{ok:false,error:'drive user oauth client missing'});
+      const state=createOAuthState();
+      const q=new URLSearchParams({
+        client_id:USER_OAUTH_CLIENT_ID,
+        redirect_uri:USER_OAUTH_REDIRECT_URI,
+        response_type:'code',
+        access_type:'offline',
+        prompt:'consent',
+        include_granted_scopes:'true',
+        login_hint:'namelessdhamma@gmail.com',
+        scope:SCOPES,
+        state
+      });
+      res.writeHead(302,{location:'https://accounts.google.com/o/oauth2/v2/auth?'+q.toString(),'cache-control':'no-store'});
+      return res.end();
+    }catch(e){return json(res,503,{ok:false,error:String(e.message||e).slice(0,500)});}
+  }
+  if (req.method === 'POST' && req.url === '/drive/oauth/callback') {
+    const chunks=[]; for await(const ch of req) chunks.push(ch);
+    try{
+      const body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');
+      if(body.error) return json(res,400,{ok:false,error:'google_oauth_'+String(body.error).slice(0,120)});
+      if(!body.code || !validateOAuthState(body.state)) return json(res,400,{ok:false,error:'invalid_oauth_callback'});
+      const form=new URLSearchParams({
+        client_id:USER_OAUTH_CLIENT_ID,
+        client_secret:USER_OAUTH_CLIENT_SECRET,
+        code:String(body.code),
+        redirect_uri:USER_OAUTH_REDIRECT_URI,
+        grant_type:'authorization_code'
+      });
+      const tr=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
+      const tt=await tr.text();
+      if(!tr.ok) return json(res,502,{ok:false,error:'google_token_exchange_'+tr.status,detail:tt.slice(0,500)});
+      const tok=JSON.parse(tt||'{}');
+      if(!tok.refresh_token || !tok.access_token) return json(res,502,{ok:false,error:'refresh_token_missing'});
+      const fileId=await persistEncryptedRefreshToken(tok.refresh_token,tok.access_token);
+      const probe=await authContext.run({user:true},()=>driveSearch({query:'',top_n:1}));
+      return json(res,200,{ok:true,status:'AUTHORIZED',secret_store_verified:true,store_file_id:fileId,probe_result_count:(probe.results||[]).length});
+    }catch(e){return json(res,502,{ok:false,error:String(e.message||e).slice(0,800)});}
+  }
+  if (req.method === 'GET' && req.url === '/drive/oauth/status') {
+    try{
+      const token=await userAccessToken();
+      const about=await directFetchJsonWithToken(token,'https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress),storageQuota');
+      return json(res,200,{ok:true,authorized:true,user:about.user||null,storage_quota_present:!!about.storageQuota});
+    }catch(e){
+      return json(res,200,{ok:true,authorized:false,error:String(e.message||e).slice(0,300)});
+    }
+  }
   if (req.method === 'GET' && req.url === '/drive/health') {
     try {
       const r = await invoke('drive_get_currentness_token', { file_id:STATEHEAD });
