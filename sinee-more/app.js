@@ -11,7 +11,7 @@ import { PERSONAS, selectPersonaAtGameStart } from './ai/personas.js';
 
 var rule='C',mode='solo',difficulty='medium',styleChoice='mixed',
     aiPersona='architect',lastPersona='',human=L,computer=K,state,sel=null,
-    gameNo=1,gameSeed=1,aiBusy=false;
+    gameNo=1,gameSeed=1,aiBusy=false,themeChoice='nd';
 var history=[],gameFirst=L,lastFocus=null;
 
 function empty(first){return createInitialPosition(first||L);}
@@ -30,6 +30,15 @@ function personaName(){return (PERSONAS[aiPersona]||PERSONAS.architect).name;}
 function name(p){return p===L?'СВЕТЛЫЕ':'ТЁМНЫЕ';}
 function el(id){return document.getElementById(id);}
 function msg(x){el('msg').textContent=x;}
+function loadTheme(){try{var v=localStorage.getItem('sinee-more-theme');if(v==='pirate'||v==='nd')themeChoice=v;}catch(e){}}
+function themeLabel(){return themeChoice==='pirate'?'Pirate Chart':'ND Premium';}
+function applyTheme(){
+  document.body.setAttribute('data-theme',themeChoice);
+  var tv=el('themeValue');if(tv)tv.textContent=themeLabel();
+  markSelected('theme-choice',themeChoice);
+  var meta=document.querySelector('meta[name="theme-color"]');if(meta)meta.setAttribute('content',themeChoice==='pirate'?'#2a160e':'#000000');
+  try{localStorage.setItem('sinee-more-theme',themeChoice);}catch(e){}
+}
 
 function openM(id){lastFocus=document.activeElement;var m=el(id);m.className='modal open';var f=m.querySelector('.selected,.choice,.close');if(f)f.focus();}
 function closeM(id){el(id).className='modal';if(lastFocus&&lastFocus.focus)lastFocus.focus();}
@@ -38,7 +47,7 @@ function opponentKey(){return mode==='two'?'two':difficulty;}
 function opponentLabel(){if(mode==='two')return 'Другой игрок';return 'ИИ · '+(difficulty==='easy'?'лёгкий':difficulty==='hard'?'сложный':'средний');}
 function ruleLabel(){return rule==='C'?'C · стек 2':rule==='D'?'D · лестница':'CD · стек 2 + лестница';}
 function styleLabel(){return styleChoice==='mixed'?'Смешанная':styleChoice==='architect'?'Архитектор':styleChoice==='hunter'?'Охотник':styleChoice==='sentinel'?'Страж':'Ловкач';}
-function updateSettingsUI(){el('rulesValue').textContent=ruleLabel();el('opponentValue').textContent=opponentLabel();el('strategyValue').textContent=mode==='solo'?styleLabel():'—';el('strategy').disabled=mode!=='solo';markSelected('rule',rule);markSelected('opponent',opponentKey());markSelected('style',styleChoice);}
+function updateSettingsUI(){el('rulesValue').textContent=ruleLabel();el('opponentValue').textContent=opponentLabel();el('strategyValue').textContent=mode==='solo'?styleLabel():'—';el('strategy').disabled=mode!=='solo';markSelected('rule',rule);markSelected('opponent',opponentKey());markSelected('style',styleChoice);if(el('themeValue'))el('themeValue').textContent=themeLabel();markSelected('theme-choice',themeChoice);}
 
 function start(first){gameFirst=first||L;state=empty(gameFirst);history=[];sel=null;aiBusy=false;gameSeed=((Date.now()^(gameNo*2654435761))>>>0)||1;choosePersona();render();if(mode==='solo'&&state.turn===computer)setTimeout(aiTurn,180);}
 function resetSession(){gameNo=1;start(L);}
@@ -66,7 +75,10 @@ var cs=document.querySelectorAll('[data-close]');for(var i=0;i<cs.length;i++)cs[
 var rs=document.querySelectorAll('[data-rule]');for(i=0;i<rs.length;i++)rs[i].onclick=function(){rule=this.getAttribute('data-rule');closeM('rulesM');resetSession();};
 var os=document.querySelectorAll('[data-opponent]');for(i=0;i<os.length;i++)os[i].onclick=function(){var v=this.getAttribute('data-opponent');if(v==='two'){mode='two';}else{mode='solo';difficulty=v;}closeM('opponentM');resetSession();};
 var ss=document.querySelectorAll('[data-style]');for(i=0;i<ss.length;i++)ss[i].onclick=function(){styleChoice=this.getAttribute('data-style');closeM('strategyM');resetSession();};
+var ts=document.querySelectorAll('[data-theme-choice]');for(i=0;i<ts.length;i++)ts[i].onclick=function(){themeChoice=this.getAttribute('data-theme-choice');applyTheme();closeM('themeM');fitBoard();};
 
+loadTheme();
+applyTheme();
 start(L);
 window.addEventListener('resize',fitBoard);
 setTimeout(fitBoard,0);
