@@ -305,10 +305,10 @@ function requireWritable(id) {
   if (!WRITE_IDS.has(id)) throw new Error('drive docs write denied');
 }
 
-async function requireMcpWritable(id) {
+async function requireMcpWritable(id,{allowTrashed=false}={}) {
   const m = await metadata(id);
   if (DEVMODE_FULL_WRITE) {
-    if (!m?.capabilities?.canEdit || m.trashed) throw new Error('drive write denied: service account cannot edit target');
+    if (!m?.capabilities?.canEdit || (!allowTrashed && m.trashed)) throw new Error('drive write denied: active user cannot edit target');
     return m;
   }
   requireWritable(id);
@@ -406,7 +406,7 @@ async function driveReplaceContent(args={}) {
 async function driveUpdateMetadata(args={}) {
   const id=String(args.file_id||'').trim();
   if(!id) throw new Error('file_id required');
-  const before=await requireMcpWritable(id);
+  const before=await requireMcpWritable(id,{allowTrashed:args.trashed===false});
   const expected=args.expected_drive_version==null?null:String(args.expected_drive_version);
   if(expected && String(before.version)!==expected) throw new Error('DRIVE_VERSION_MISMATCH: expected '+expected+' got '+before.version);
   const params=new URLSearchParams({supportsAllDrives:'true',fields:'id,name,mimeType,size,createdTime,modifiedTime,version,trashed,parents,driveId,webViewLink,capabilities(canEdit,canDelete,canTrash,canMoveItemWithinDrive)'});
@@ -425,7 +425,7 @@ async function driveUpdateMetadata(args={}) {
 async function driveDelete(args={}) {
   const id=String(args.file_id||'').trim();
   if(!id) throw new Error('file_id required');
-  const before=await requireMcpWritable(id);
+  const before=await requireMcpWritable(id,{allowTrashed:true});
   if(!before?.capabilities?.canDelete) throw new Error('drive delete denied by provider capability');
   await gjson('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(id)+'?supportsAllDrives=true',{method:'DELETE'});
   return {file_id:id,deleted:true};
