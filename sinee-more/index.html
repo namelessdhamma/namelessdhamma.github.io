@@ -279,12 +279,13 @@ body[data-theme="atlantis"] .title:before{left:3px}
 body[data-theme="atlantis"] .title:after{right:3px;transform:translateY(-50%) scaleX(-1)}
 body[data-theme="atlantis"] .settingsCard{
   position:relative;height:66px;padding:15px 4px 6px;gap:2px;
-  border:1px solid rgba(184,204,179,.68);border-radius:5px;
-  background:
-    radial-gradient(ellipse at 50% 0%,rgba(91,218,237,.08),transparent 44%),
-    linear-gradient(180deg,#08394b,#032330 74%,#021820);
-  color:#f3fafb;
-  box-shadow:inset 0 0 0 1px rgba(58,197,219,.34),inset 0 0 18px rgba(14,103,127,.24),0 2px 5px rgba(0,0,0,.48),0 0 8px rgba(53,196,219,.16);
+  border:0;border-radius:6px;
+  background-color:#032431;
+  background-image:url("https://cdn.creativeclaw.co/u/3ce53768/images/f73d6802-230d-454d-9e03-bf4e63a5db32.jpg");
+  background-size:118% 138%;background-repeat:no-repeat;background-position:center;
+  color:#f7fbfb;
+  box-shadow:0 2px 5px rgba(0,0,0,.48),0 0 8px rgba(52,194,216,.16);
+  overflow:hidden;
 }
 body[data-theme="atlantis"] .settingsCard:before{
   content:"";position:absolute;top:3px;left:50%;transform:translateX(-50%);
@@ -298,15 +299,18 @@ body[data-theme="atlantis"] .settingsCard .label{font-size:11px;line-height:.98;
 body[data-theme="atlantis"] .settingsCard .value{font-size:9px;color:#acd1d6}
 body[data-theme="atlantis"] .player{
   position:relative;overflow:hidden;
-  border:1px solid rgba(176,201,179,.56);border-radius:12px;
+  border:0;border-radius:11px;
   padding:4px 10px 6px;
-  background:
-    radial-gradient(ellipse at 50% 0%,rgba(65,207,229,.08),transparent 45%),
-    linear-gradient(180deg,rgba(3,37,50,.96),rgba(1,18,27,.98));
-  box-shadow:inset 0 0 0 1px rgba(46,171,192,.23),inset 0 0 22px rgba(30,122,146,.16),0 3px 8px rgba(0,0,0,.42);
+  background-color:#031923;
+  background-image:
+    linear-gradient(rgba(1,17,25,.12),rgba(1,17,25,.12)),
+    url("https://cdn.creativeclaw.co/u/3ce53768/images/39352f53-f3f9-425f-bb9c-16f0cf1276fd.jpg");
+  background-size:100% 172%;background-repeat:no-repeat;background-position:center;
+  box-shadow:0 3px 8px rgba(0,0,0,.46),0 0 10px rgba(55,201,221,.16);
 }
 body[data-theme="atlantis"] .player:before{
-  content:"";position:absolute;inset:4px;border:1px solid rgba(180,190,163,.18);border-radius:8px;pointer-events:none
+  content:"";position:absolute;inset:3px;border:1px solid rgba(211,193,137,.20);border-radius:8px;pointer-events:none;
+  box-shadow:inset 0 0 7px rgba(87,223,239,.08)
 }
 body[data-theme="atlantis"] .ph{position:relative;height:23px;align-items:center;justify-content:center}
 body[data-theme="atlantis"] .ph .side{
@@ -444,12 +448,24 @@ body[data-theme="atlantis"] .cell.stacked .bp:before{
 }
 body[data-theme="atlantis"] .depth{z-index:5;color:#9bf7ff;text-shadow:0 0 5px #4bdcee}
 body[data-theme="atlantis"] .msg{color:#e4f2f3;text-shadow:0 0 4px rgba(74,220,238,.30)}
-body[data-theme="atlantis"] .btn,
+body[data-theme="atlantis"] .btn{
+  border:0;border-radius:6px;
+  background-color:#032431;
+  background-image:url("https://cdn.creativeclaw.co/u/3ce53768/images/ba287813-c81e-4fa8-a4b3-238ec3f0028a.jpg");
+  background-size:122% 158%;background-repeat:no-repeat;background-position:center;
+  color:#f6fbfb;
+  text-shadow:0 1px 1px rgba(0,0,0,.72);
+  box-shadow:0 2px 5px rgba(0,0,0,.46),0 0 7px rgba(53,200,221,.15)
+}
 body[data-theme="atlantis"] .end{
-  border:1px solid rgba(181,201,174,.56);border-radius:5px;
-  background:linear-gradient(180deg,#073445,#031d29);
+  border:0;border-radius:7px;
+  background-color:#031923;
+  background-image:
+    linear-gradient(rgba(1,17,25,.16),rgba(1,17,25,.16)),
+    url("https://cdn.creativeclaw.co/u/3ce53768/images/39352f53-f3f9-425f-bb9c-16f0cf1276fd.jpg");
+  background-size:100% 190%;background-repeat:no-repeat;background-position:center;
   color:#f1f8f8;
-  box-shadow:inset 0 0 0 1px rgba(50,194,216,.27),inset 0 0 16px rgba(29,119,142,.17),0 2px 5px rgba(0,0,0,.44)
+  box-shadow:0 2px 6px rgba(0,0,0,.48),0 0 8px rgba(54,201,222,.12)
 }
 body[data-theme="atlantis"] .end b{color:#ffffff;text-shadow:0 0 5px rgba(89,225,242,.40)}
 body[data-theme="atlantis"] .modal{background:rgba(1,11,17,.88);backdrop-filter:blur(7px)}
