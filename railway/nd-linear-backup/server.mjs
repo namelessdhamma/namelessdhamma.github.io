@@ -123,47 +123,47 @@ async function providerCapabilities(auth='api_key'){
   const missing=REQUIRED_DESTRUCTIVE.filter(x=>!names.includes(x));
   return {auth,viewer_id:d.viewer?.id||null,viewer_admin:d.viewer?.admin===true,missing_destructive:missing,full_destructive_surface:missing.length===0};
 }
-async function gqlFallback(tool,args,primaryError){
+async function gqlFallback(tool,args,primaryError,auth='api_key'){
   if(tool==='get_issue'){
     const id=String(args.id||args.issueId||'').trim();
-    const d=await gql('query($id:String!){issue(id:$id){id identifier title description updatedAt state{id name type}}}',{id});
+    const d=await gql('query($id:String!){issue(id:$id){id identifier title description updatedAt state{id name type}}}',{id},auth);
     return {transport:'linear_graphql_fallback',primary_error:cleanError(primaryError),result:d.issue||null};
   }
   if(tool==='list_comments'){
     const id=String(args.issueId||'').trim();
-    const d=await gql('query($id:String!){issue(id:$id){id identifier comments(first:100){nodes{id body createdAt updatedAt}}}}',{id});
+    const d=await gql('query($id:String!){issue(id:$id){id identifier comments(first:100){nodes{id body createdAt updatedAt}}}}',{id},auth);
     const issue=d.issue||{};
     return {transport:'linear_graphql_fallback',primary_error:cleanError(primaryError),result:{issue_id:issue.id,identifier:issue.identifier,comments:issue.comments?.nodes||[]}};
   }
   if(tool==='save_comment'){
     const body=String(args.body||'');
     if(args.id){
-      const d=await gql('mutation($id:String!,$body:String!){commentUpdate(id:$id,input:{body:$body}){success comment{id body updatedAt}}}',{id:String(args.id),body});
+      const d=await gql('mutation($id:String!,$body:String!){commentUpdate(id:$id,input:{body:$body}){success comment{id body updatedAt}}}',{id:String(args.id),body},auth);
       return {transport:'linear_graphql_fallback',primary_error:cleanError(primaryError),result:d.commentUpdate};
     }
     const ref=String(args.issueId||'').trim();
-    const d0=await gql('query($id:String!){issue(id:$id){id}}',{id:ref});
+    const d0=await gql('query($id:String!){issue(id:$id){id}}',{id:ref},auth);
     const issueId=String(d0.issue?.id||'');
     if(!issueId)throw new Error('issue_not_found');
-    const d=await gql('mutation($issueId:String!,$body:String!){commentCreate(input:{issueId:$issueId,body:$body}){success comment{id body updatedAt}}}',{issueId,body});
+    const d=await gql('mutation($issueId:String!,$body:String!){commentCreate(input:{issueId:$issueId,body:$body}){success comment{id body updatedAt}}}',{issueId,body},auth);
     return {transport:'linear_graphql_fallback',primary_error:cleanError(primaryError),result:d.commentCreate};
   }
   if(tool==='delete_comment'){
-    const d=await gql('mutation($id:String!){commentDelete(id:$id){success}}',{id:String(args.id||'')});
+    const d=await gql('mutation($id:String!){commentDelete(id:$id){success}}',{id:String(args.id||'')},auth);
     return {transport:'linear_graphql_fallback',primary_error:cleanError(primaryError),result:d.commentDelete};
   }
   if(tool==='save_issue' && args.id && !args.patch){
     const id=String(args.id);
     if('title' in args && 'description' in args){
-      const d=await gql('mutation($id:String!,$title:String!,$description:String!){issueUpdate(id:$id,input:{title:$title,description:$description}){success issue{id identifier title description updatedAt}}}',{id,title:String(args.title||''),description:String(args.description||'')});
+      const d=await gql('mutation($id:String!,$title:String!,$description:String!){issueUpdate(id:$id,input:{title:$title,description:$description}){success issue{id identifier title description updatedAt}}}',{id,title:String(args.title||''),description:String(args.description||'')},auth);
       return {transport:'linear_graphql_fallback',primary_error:cleanError(primaryError),result:d.issueUpdate};
     }
     if('description' in args){
-      const d=await gql('mutation($id:String!,$description:String!){issueUpdate(id:$id,input:{description:$description}){success issue{id identifier title description updatedAt}}}',{id,description:String(args.description||'')});
+      const d=await gql('mutation($id:String!,$description:String!){issueUpdate(id:$id,input:{description:$description}){success issue{id identifier title description updatedAt}}}',{id,description:String(args.description||'')},auth);
       return {transport:'linear_graphql_fallback',primary_error:cleanError(primaryError),result:d.issueUpdate};
     }
     if('title' in args){
-      const d=await gql('mutation($id:String!,$title:String!){issueUpdate(id:$id,input:{title:$title}){success issue{id identifier title description updatedAt}}}',{id,title:String(args.title||'')});
+      const d=await gql('mutation($id:String!,$title:String!){issueUpdate(id:$id,input:{title:$title}){success issue{id identifier title description updatedAt}}}',{id,title:String(args.title||'')},auth);
       return {transport:'linear_graphql_fallback',primary_error:cleanError(primaryError),result:d.issueUpdate};
     }
   }
@@ -171,12 +171,13 @@ async function gqlFallback(tool,args,primaryError){
 }
 const MUTATING_TOOLS=new Set(['save_comment','delete_comment','save_issue']);
 async function toolCall(tool,args={},options={}){
+  const auth=options.auth==='oauth'?'oauth':'api_key';
   if(options.forceGraphql===true){
     if(MUTATING_TOOLS.has(tool) && options.providerReadbackVerified!==true) throw new Error('provider_readback_required_before_forced_graphql_mutation');
-    return gqlFallback(tool,args,new Error('forced_graphql_fallback_after_readback'));
+    return gqlFallback(tool,args,new Error('forced_graphql_fallback_after_readback'),auth);
   }
   try{
-    const r=await sessionCall('tools/call',{name:tool,arguments:args});
+    const r=await sessionCall('tools/call',{name:tool,arguments:args},auth);
     return {transport:'official_linear_mcp',serverInfo:r.serverInfo,response:r.response};
   }catch(e){
     if(MUTATING_TOOLS.has(tool)){
@@ -185,19 +186,20 @@ async function toolCall(tool,args={},options={}){
         'perform provider readback before any retry, then force GraphQL only after verified absence. primary='+cleanError(e)
       );
     }
-    return gqlFallback(tool,args,e);
+    return gqlFallback(tool,args,e,auth);
   }
 }
-async function health(){
-  const tl=await sessionCall('tools/list',{});
+async function health(auth='api_key'){
+  if(auth==='oauth'&&!oauthConfigured()) return {ok:false,configured:false,auth,service:'ND Linear Backup',route:'dedicated_railway_oauth_full_linear_api'};
+  const tl=await sessionCall('tools/list',{},auth);
   const tools=tl.response?.result?.tools||[];
-  const ws=await sessionCall('tools/call',{name:'get_workspace',arguments:{}});
+  const ws=await sessionCall('tools/call',{name:'get_workspace',arguments:{}},auth);
   const workspace=toolPayload(ws.response);
-  const caps=await providerCapabilities();
+  const caps=await providerCapabilities(auth);
   return {
     ok:tools.length>0 && !!workspace && caps.full_destructive_surface===true,
     service:'ND Linear Backup',
-    route:'dedicated_railway_full_linear_api',
+    auth,\n    route:auth==='oauth'?'dedicated_railway_oauth_full_linear_api':'dedicated_railway_api_key_full_linear_api',
     official_mcp:true,
     graphql_full_api:true,
     destructive_capabilities:caps,
