@@ -27,6 +27,12 @@ const LINEAR_BRIDGE_KEY = String(process.env.ND_LINEAR_BRIDGE_TOKEN || '').trim(
 const LINEAR_DEVMODE_TOKEN = String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN || '').trim();
 const LINEAR_DEVMODE_MCP_PATH = '/linear-mcp/' + LINEAR_DEVMODE_TOKEN;
 const LINEAR_MCP_URL = 'https://mcp.linear.app/mcp';
+const LINEAR_GQL_URL = 'https://api.linear.app/graphql';
+const LINEAR_REQUIRED_DESTRUCTIVE = [
+  'issueDelete','documentDelete','projectDelete','initiativeDelete',
+  'projectMilestoneDelete','issueLabelDelete','projectLabelDelete',
+  'initiativeLabelDelete','releaseDelete','attachmentDelete','commentDelete'
+];
 let linearSelftestState={last_run:null,ok:null,error:null};
 
 let tokenCache = null;
@@ -777,6 +783,50 @@ async function linearPost(payload, sid=null, timeoutMs=60000) {
   } finally { clearTimeout(timer); }
 }
 
+async function linearGraphql(query, variables={}, timeoutMs=60000) {
+  if (!LINEAR_API_KEY) throw new Error('linear_not_configured');
+  const q=String(query||'').trim();
+  if(!q) throw new Error('linear_graphql_query_required');
+  if(q.length>100000) throw new Error('linear_graphql_query_too_large');
+  if(!variables || typeof variables!=='object' || Array.isArray(variables)) throw new Error('linear_graphql_variables_must_be_object');
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const r=await fetch(LINEAR_GQL_URL,{
+      method:'POST',
+      headers:{
+        authorization:LINEAR_API_KEY,
+        'content-type':'application/json',
+        accept:'application/json',
+        'user-agent':'ND-External-Linear-GraphQL/1.0'
+      },
+      body:JSON.stringify({query:q,variables}),
+      signal:controller.signal
+    });
+    const raw=await r.text();
+    if(!r.ok) throw new Error('Linear GraphQL HTTP '+r.status+': '+raw.slice(0,1000));
+    const obj=JSON.parse(raw||'{}');
+    if(obj.errors?.length) throw new Error('Linear GraphQL errors: '+JSON.stringify(obj.errors).slice(0,1200));
+    return obj.data||{};
+  } finally { clearTimeout(timer); }
+}
+
+async function linearProviderCapabilities() {
+  const data=await linearGraphql(`query {
+    viewer { id admin }
+    __schema { mutationType { fields { name } } }
+  }`);
+  const names=(((data.__schema||{}).mutationType||{}).fields||[]).map(x=>x?.name).filter(Boolean);
+  const missing=LINEAR_REQUIRED_DESTRUCTIVE.filter(x=>!names.includes(x));
+  return {
+    viewer_id:data.viewer?.id||null,
+    viewer_admin:data.viewer?.admin===true,
+    required_destructive:LINEAR_REQUIRED_DESTRUCTIVE,
+    missing_destructive:missing,
+    full_destructive_surface:missing.length===0 && data.viewer?.admin===true
+  };
+}
+
 async function linearSessionCall(method, params={}) {
   const init=await linearPost({
     jsonrpc:'2.0',id:1,method:'initialize',
@@ -793,12 +843,15 @@ async function linearHealth() {
   const list=tools.response?.result?.tools||[];
   const ws=await linearSessionCall('tools/call',{name:'get_workspace',arguments:{}});
   const content=ws.response?.result?.content||[];
+  const caps=await linearProviderCapabilities();
   return {
-    ok:list.length>0 && content.length>0 && linearSelftestState.ok===true,
-    route:'railway_external_official_linear_mcp',
+    ok:list.length>0 && content.length>0 && caps.full_destructive_surface===true && linearSelftestState.ok===true,
+    route:'railway_external_full_linear_api',
     official_mcp:true,
+    graphql_full_api:true,
     tools_count:list.length,
     workspace_read:content.length>0,
+    destructive_capabilities:caps,
     serverInfo:ws.serverInfo||tools.serverInfo||{},
     write_selftest:linearSelftestState
   };
@@ -824,6 +877,10 @@ async function linearFullSelftest() {
     const tools=tl.response?.result?.tools||[];
     rec.tools_count=tools.length;
     rec.tools_catalog=tools.length>0;
+    const caps=await linearProviderCapabilities();
+    rec.viewer_admin=caps.viewer_admin;
+    rec.missing_destructive=caps.missing_destructive;
+    rec.full_destructive_surface=caps.full_destructive_surface;
     for(const name of ['get_issue','save_issue','save_document','save_project','save_comment','delete_comment','list_comments']){
       rec['has_'+name]=tools.some(x=>x?.name===name);
     }
@@ -851,7 +908,7 @@ async function linearFullSelftest() {
       rec.cleanup_readback=!(listed2.comments||[]).some(x=>x?.id===commentId);
     }
 
-    const required=['tools_catalog','has_get_issue','has_save_issue','has_save_document','has_save_project','has_save_comment','has_delete_comment','has_list_comments','issue_read','write','readback','delete','cleanup_readback'];
+    const required=['tools_catalog','viewer_admin','full_destructive_surface','has_get_issue','has_save_issue','has_save_document','has_save_project','has_save_comment','has_delete_comment','has_list_comments','issue_read','write','readback','delete','cleanup_readback'];
     rec.ok=required.every(k=>rec[k]===true);
   }catch(e){
     rec.error=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,1000);
@@ -890,7 +947,14 @@ async function handleLinearInvoke(req,res) {
       const r=await linearSessionCall('tools/call',{name:tool,arguments:args});
       return json(res,200,{ok:true,provider:'linear',transport:'railway_external_to_official_linear_mcp',serverInfo:r.serverInfo,response:r.response});
     }
-    return json(res,400,{ok:false,error:'operation_must_be_tools_list_or_tool_call'});
+    if(op==='graphql'){
+      const query=String(body.query||'');
+      const variables=(body.variables&&typeof body.variables==='object'&&!Array.isArray(body.variables))?body.variables:{};
+      const result=await linearGraphql(query,variables);
+      const kind=query.trim().toLowerCase().startsWith('mutation')?'mutation':'query';
+      return json(res,200,{ok:true,provider:'linear',transport:'railway_external_to_linear_graphql_full',graphql_kind:kind,result});
+    }
+    return json(res,400,{ok:false,error:'operation_must_be_tools_list_tool_call_or_graphql'});
   }catch(e){
     const msg=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,1200);
     return json(res,502,{ok:false,provider:'linear',error:msg});
@@ -916,8 +980,36 @@ async function handleLinearMcp(req,res) {
     }
     if(method==='ping') return json(res,200,{jsonrpc:'2.0',id,result:{}});
     if(method.startsWith('notifications/')) {res.writeHead(202,{'cache-control':'no-store'}); return res.end();}
-    if(method==='tools/list' || method==='tools/call'){
-      const r=await linearSessionCall(method,msg.params||{});
+    if(method==='tools/list'){
+      const r=await linearSessionCall('tools/list',msg.params||{});
+      const out=r.response||{};
+      const tools=out?.result?.tools||[];
+      if(!tools.some(x=>x?.name==='nd_linear_graphql')){
+        tools.push({
+          name:'nd_linear_graphql',
+          description:'Direct full Linear GraphQL provider API. Use when official MCP lacks an operation such as delete/archive/unarchive. Mutations are never auto-retried; on ambiguous failure perform provider readback before retry.',
+          inputSchema:{
+            type:'object',
+            properties:{
+              query:{type:'string'},
+              variables:{type:'object',additionalProperties:true}
+            },
+            required:['query'],
+            additionalProperties:false
+          }
+        });
+      }
+      if(out.id!==id && id!==null) out.id=id;
+      return json(res,200,out);
+    }
+    if(method==='tools/call'){
+      const name=String(msg?.params?.name||'');
+      if(name==='nd_linear_graphql'){
+        const args=msg?.params?.arguments||{};
+        const result=await linearGraphql(String(args.query||''),(args.variables&&typeof args.variables==='object'&&!Array.isArray(args.variables))?args.variables:{});
+        return json(res,200,{jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(result)}],structuredContent:result,isError:false}});
+      }
+      const r=await linearSessionCall('tools/call',msg.params||{});
       const out=r.response||{};
       if(out.id!==id && id!==null) out.id=id;
       return json(res,200,out);
