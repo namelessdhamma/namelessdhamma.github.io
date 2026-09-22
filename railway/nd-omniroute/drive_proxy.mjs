@@ -1471,6 +1471,77 @@ const server = http.createServer(async (req,res) => {
     const handled = await handleLinearMcp(req,res);
     if (handled !== false) return;
   }
+  if (req.method === 'GET' && req.url === '/linear/user-oauth/start') {
+    try{
+      if(!linearUserOauthConfigured()) return json(res,503,{ok:false,error:'linear_user_oauth_not_configured'});
+      const verifier=crypto.randomBytes(48).toString('base64url');
+      const challenge=crypto.createHash('sha256').update(verifier).digest('base64url');
+      const state=linearPkceState(verifier);
+      const q=new URLSearchParams({
+        client_id:LINEAR_USER_OAUTH_CLIENT_ID,
+        redirect_uri:LINEAR_USER_OAUTH_REDIRECT_URI,
+        response_type:'code',
+        scope:'read,write',
+        actor:'user',
+        code_challenge:challenge,
+        code_challenge_method:'S256',
+        state
+      });
+      res.writeHead(302,{location:'https://linear.app/oauth/authorize?'+q.toString(),'cache-control':'no-store'});
+      return res.end();
+    }catch(e){
+      return json(res,503,{ok:false,error:linearRedact(e?.message||e).slice(0,700)});
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/linear/oauth/callback?')) {
+    const u=new URL(req.url,'https://nd-external-intelligence-production.up.railway.app');
+    try{
+      if(u.searchParams.get('error')) return json(res,400,{ok:false,error:'linear_oauth_'+String(u.searchParams.get('error')).slice(0,160)});
+      const code=u.searchParams.get('code'),state=u.searchParams.get('state');
+      if(!code||!state) return json(res,400,{ok:false,error:'linear_oauth_callback_missing_code_or_state'});
+      await linearUserOauthExchange(code,state);
+      const qualification=await linearFullSelftest('user_oauth');
+      return json(res,qualification.ok?200:503,{
+        ok:qualification.ok===true,
+        status:qualification.ok?'AUTHORIZED_FULL_CRUD':'AUTHORIZED_QUALIFICATION_FAILED',
+        auth:'user_oauth',
+        encrypted_store:'github',
+        qualification:{
+          full_destructive_surface:qualification.full_destructive_surface===true,
+          issue_create:qualification.issue_create===true,
+          issue_update:qualification.issue_update===true,
+          issue_update_readback:qualification.issue_update_readback===true,
+          issue_permanent_delete:qualification.issue_permanent_delete===true,
+          issue_delete_readback:qualification.issue_delete_readback===true
+        }
+      });
+    }catch(e){
+      return json(res,502,{ok:false,auth:'user_oauth',error:linearRedact(e?.message||e).slice(0,900)});
+    }
+  }
+  if (req.method === 'GET' && req.url === '/linear/user-oauth/status') {
+    try{
+      if(!linearUserOauthConfigured()) return json(res,200,{ok:true,configured:false,authorized:false});
+      await linearUserOauthAccessToken();
+      const caps=await linearProviderCapabilities('user_oauth');
+      return json(res,200,{
+        ok:true,configured:true,authorized:true,auth:'user_oauth',
+        full_destructive_surface:caps.full_destructive_surface,
+        missing_destructive:caps.missing_destructive,
+        write_selftest:linearUserOauthSelftestState
+      });
+    }catch(e){
+      return json(res,200,{ok:true,configured:linearUserOauthConfigured(),authorized:false,error:linearRedact(e?.message||e).slice(0,500)});
+    }
+  }
+  if (req.method === 'GET' && req.url === '/linear/user-oauth/health') {
+    try{
+      const h=await linearHealth('user_oauth');
+      return json(res,h.ok?200:503,h);
+    }catch(e){
+      return json(res,503,{ok:false,auth:'user_oauth',configured:linearUserOauthConfigured(),route:'railway_external_user_oauth_full_linear_api',error:linearRedact(e?.message||e).slice(0,800)});
+    }
+  }
   if (req.method === 'GET' && req.url === '/linear/health') {
     try {
       const h=await linearHealth('api_key');
@@ -1501,12 +1572,27 @@ const server = http.createServer(async (req,res) => {
 
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
-  console.log(JSON.stringify({event:'ND_LINEAR_PROXY_READY',api_key_configured:!!LINEAR_API_KEY,oauth_configured:linearOauthConfigured(),bridge_configured:!!LINEAR_BRIDGE_KEY,devmode_mcp_configured:!!LINEAR_DEVMODE_TOKEN,direct_preferred_auth:linearOauthConfigured()?'oauth':'api_key'}));
+  console.log(JSON.stringify({
+    event:'ND_LINEAR_PROXY_READY',
+    api_key_configured:!!LINEAR_API_KEY,
+    client_credentials_configured:linearOauthConfigured(),
+    user_oauth_configured:linearUserOauthConfigured(),
+    bridge_configured:!!LINEAR_BRIDGE_KEY,
+    devmode_mcp_configured:!!LINEAR_DEVMODE_TOKEN
+  }));
   setTimeout(()=>linearFullSelftest('api_key').catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION_CRASH',auth:'api_key',error:linearRedact(e?.message||e).slice(0,500)}))),5000);
   if(linearOauthConfigured()) setTimeout(()=>linearFullSelftest('oauth').catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION_CRASH',auth:'oauth',error:linearRedact(e?.message||e).slice(0,500)}))),8000);
-  const linearSelftestTimer=setInterval(()=>{
+  if(linearUserOauthConfigured()) setTimeout(async()=>{
+    try{await linearUserOauthAccessToken(); await linearFullSelftest('user_oauth');}
+    catch(e){linearUserOauthSelftestState={last_run:new Date().toISOString(),ok:false,error:linearRedact(e?.message||e).slice(0,500),auth:'user_oauth'};}
+  },11000);
+  const linearSelftestTimer=setInterval(async()=>{
     linearFullSelftest('api_key').catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION_CRASH',auth:'api_key',error:linearRedact(e?.message||e).slice(0,500)})));
     if(linearOauthConfigured()) linearFullSelftest('oauth').catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION_CRASH',auth:'oauth',error:linearRedact(e?.message||e).slice(0,500)})));
+    if(linearUserOauthConfigured()){
+      try{await linearUserOauthAccessToken(); await linearFullSelftest('user_oauth');}
+      catch(e){linearUserOauthSelftestState={last_run:new Date().toISOString(),ok:false,error:linearRedact(e?.message||e).slice(0,500),auth:'user_oauth'};}
+    }
   },24*60*60*1000);
   linearSelftestTimer.unref();
 });
