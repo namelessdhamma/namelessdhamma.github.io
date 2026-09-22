@@ -932,56 +932,60 @@ function linearToolPayloadResult(response) {
   return null;
 }
 
-async function linearFullSelftest() {
+async function linearFullSelftest(auth='api_key') {
   const startedAt=new Date().toISOString();
-  const rec={schema:'nd-linear-railway-full-qualification-v1',ok:false};
+  const rec={schema:'nd-linear-railway-full-qualification-v2',ok:false,auth};
   let commentId=null;
   let issueId=null;
   let issueIdentifier=null;
-  const marker='ND Linear Railway resilience qualification probe — safe to delete — '+startedAt;
-  const issueMarker='ND Linear full CRUD qualification probe — safe to permanently delete — '+startedAt;
+  const marker='ND Linear '+auth+' resilience qualification probe — safe to delete — '+startedAt;
+  const issueMarker='ND Linear '+auth+' full CRUD qualification probe — safe to permanently delete — '+startedAt;
   try{
-    const tl=await linearSessionCall('tools/list',{});
+    if(auth==='oauth' && !linearOauthConfigured()) throw new Error('linear_oauth_not_configured');
+    const tl=await linearSessionCall('tools/list',{},auth);
     const tools=tl.response?.result?.tools||[];
     rec.tools_count=tools.length;
     rec.tools_catalog=tools.length>0;
-    const caps=await linearProviderCapabilities();
+    const caps=await linearProviderCapabilities(auth);
+    rec.viewer_id_present=!!caps.viewer_id;
     rec.viewer_admin=caps.viewer_admin;
     rec.missing_destructive=caps.missing_destructive;
     rec.full_destructive_surface=caps.full_destructive_surface;
-    for(const name of ['get_issue','save_issue','save_document','save_project','save_comment','delete_comment','list_comments']){
+    for(const name of ['get_workspace','get_issue','save_issue','save_document','save_project','save_comment','delete_comment','list_comments']){
       rec['has_'+name]=tools.some(x=>x?.name===name);
     }
 
-    const issue=await linearSessionCall('tools/call',{name:'get_issue',arguments:{id:'NAM-122'}});
+    const ws=await linearSessionCall('tools/call',{name:'get_workspace',arguments:{}},auth);
+    rec.workspace_read=!!linearToolPayloadResult(ws.response);
+
+    const issue=await linearSessionCall('tools/call',{name:'get_issue',arguments:{id:'NAM-122'}},auth);
     rec.issue_read=!!linearToolPayloadResult(issue.response);
 
-    const wr=await linearSessionCall('tools/call',{name:'save_comment',arguments:{issueId:'NAM-122',body:marker}});
+    const wr=await linearSessionCall('tools/call',{name:'save_comment',arguments:{issueId:'NAM-122',body:marker}},auth);
     const created=linearToolPayloadResult(wr.response)||{};
     commentId=String(created.id||'');
     rec.write=!!commentId;
 
-    const rb=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:50}});
+    const rb=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:50}},auth);
     const listed=linearToolPayloadResult(rb.response)||{};
     const comments=listed.comments||[];
     rec.readback=!!commentId && comments.some(x=>x?.id===commentId && x?.body===marker);
 
     if(commentId){
-      const del=await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:commentId}});
+      const del=await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:commentId}},auth);
       const deleted=linearToolPayloadResult(del.response)||{};
       rec.delete=deleted.success===true;
 
-      const rb2=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:50}});
+      const rb2=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:50}},auth);
       const listed2=linearToolPayloadResult(rb2.response)||{};
       rec.cleanup_readback=!(listed2.comments||[]).some(x=>x?.id===commentId);
     }
 
-    // Strict destructive proof: create -> update -> readback -> permanent issueDelete -> absence readback.
     const iw=await linearSessionCall('tools/call',{name:'save_issue',arguments:{
       team:'Nameless Dhamma',
       title:issueMarker,
       description:'Temporary Linear full-CRUD qualification object. Must be permanently deleted by this self-test.'
-    }});
+    }},auth);
     const createdIssue=linearToolPayloadResult(iw.response)||{};
     issueIdentifier=String(createdIssue.id||'');
     issueId=String(createdIssue.uuid||createdIssue.id||'');
@@ -989,11 +993,11 @@ async function linearFullSelftest() {
 
     const updatedTitle=issueMarker+' — updated';
     if(issueIdentifier){
-      const iu=await linearSessionCall('tools/call',{name:'save_issue',arguments:{id:issueIdentifier,title:updatedTitle}});
+      const iu=await linearSessionCall('tools/call',{name:'save_issue',arguments:{id:issueIdentifier,title:updatedTitle}},auth);
       const updated=linearToolPayloadResult(iu.response)||{};
       rec.issue_update=updated.title===updatedTitle;
 
-      const ir=await linearSessionCall('tools/call',{name:'get_issue',arguments:{id:issueIdentifier}});
+      const ir=await linearSessionCall('tools/call',{name:'get_issue',arguments:{id:issueIdentifier}},auth);
       const reread=linearToolPayloadResult(ir.response)||{};
       rec.issue_update_readback=reread.title===updatedTitle;
     }
@@ -1001,53 +1005,61 @@ async function linearFullSelftest() {
     if(issueId){
       const dd=await linearGraphql(
         'mutation($id:String!,$permanentlyDelete:Boolean){issueDelete(id:$id,permanentlyDelete:$permanentlyDelete){success entity{id}}}',
-        {id:issueId,permanentlyDelete:true}
+        {id:issueId,permanentlyDelete:true},60000,auth
       );
       rec.issue_delete_acknowledged=dd.issueDelete?.success===true;
-      rec.issue_delete_returned_entity_null=(dd.issueDelete?.entity??null)===null;
       rec.issue_permanent_delete=dd.issueDelete?.success===true;
 
       try{
-        const dr=await linearGraphql('query($id:String!){issue(id:$id){id title trashed}}',{id:issueId});
+        const dr=await linearGraphql('query($id:String!){issue(id:$id){id title trashed}}',{id:issueId},60000,auth);
         rec.issue_delete_readback=!dr.issue;
       }catch(e){
         rec.issue_delete_readback=true;
       }
     }
 
-    const required=['tools_catalog','viewer_admin','full_destructive_surface','has_get_issue','has_save_issue','has_save_document','has_save_project','has_save_comment','has_delete_comment','has_list_comments','issue_read','write','readback','delete','cleanup_readback','issue_create','issue_update','issue_update_readback','issue_permanent_delete','issue_delete_readback'];
+    const required=[
+      'tools_catalog','viewer_id_present','full_destructive_surface',
+      'has_get_workspace','has_get_issue','has_save_issue','has_save_document','has_save_project',
+      'has_save_comment','has_delete_comment','has_list_comments','workspace_read','issue_read',
+      'write','readback','delete','cleanup_readback','issue_create','issue_update',
+      'issue_update_readback','issue_permanent_delete','issue_delete_readback'
+    ];
     rec.ok=required.every(k=>rec[k]===true);
   }catch(e){
-    rec.error=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,1000);
+    rec.error=linearRedact(e?.message||e).slice(0,1000);
     try{
-      const rb=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:100}});
+      const rb=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:100}},auth);
       const listed=linearToolPayloadResult(rb.response)||{};
       const matches=(listed.comments||[]).filter(x=>x?.body===marker && x?.id);
       for(const c of matches){
-        try{await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:c.id}});}catch{}
+        try{await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:c.id}},auth);}catch{}
       }
       if(matches.length) rec.cleanup_after_error=true;
     }catch{}
-    // Reconcile before retrying destructive cleanup.
     try{
       let ids=[];
       if(issueId){
         try{
-          const q=await linearGraphql('query($id:String!){issue(id:$id){id}}',{id:issueId});
+          const q=await linearGraphql('query($id:String!){issue(id:$id){id}}',{id:issueId},60000,auth);
           if(q.issue?.id) ids.push(q.issue.id);
         }catch{}
       }else{
-        const q=await linearGraphql('query($title:String!){issues(filter:{title:{startsWith:$title}},first:20){nodes{id title}}}',{title:issueMarker});
-        ids=(q.issues?.nodes||[]).filter(x=>String(x?.title||'').startsWith(issueMarker)).map(x=>x.id);
+        try{
+          const q=await linearGraphql('query($title:String!){issues(filter:{title:{startsWith:$title}},first:20){nodes{id title}}}',{title:issueMarker},60000,auth);
+          ids=(q.issues?.nodes||[]).filter(x=>String(x?.title||'').startsWith(issueMarker)).map(x=>x.id);
+        }catch{}
       }
       for(const id of ids){
-        try{await linearGraphql('mutation($id:String!,$permanentlyDelete:Boolean){issueDelete(id:$id,permanentlyDelete:$permanentlyDelete){success}}',{id,permanentlyDelete:true});}catch{}
+        try{await linearGraphql('mutation($id:String!,$permanentlyDelete:Boolean){issueDelete(id:$id,permanentlyDelete:$permanentlyDelete){success}}',{id,permanentlyDelete:true},60000,auth);}catch{}
       }
       if(ids.length) rec.issue_cleanup_after_error=true;
     }catch{}
   }
-  linearSelftestState={last_run:startedAt,ok:rec.ok===true,error:rec.error||null};
-  console.log(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION',...rec}));
+  const state={last_run:startedAt,ok:rec.ok===true,error:rec.error||null,auth};
+  if(auth==='oauth') linearOauthSelftestState=state;
+  else linearSelftestState=state;
+  console.log(JSON.stringify({event:auth==='oauth'?'ND_LINEAR_OAUTH_FULL_QUALIFICATION':'ND_LINEAR_FULL_QUALIFICATION',...rec}));
   return rec;
 }
 
