@@ -871,7 +871,10 @@ async function linearFullSelftest() {
   const startedAt=new Date().toISOString();
   const rec={schema:'nd-linear-railway-full-qualification-v1',ok:false};
   let commentId=null;
+  let issueId=null;
+  let issueIdentifier=null;
   const marker='ND Linear Railway resilience qualification probe — safe to delete — '+startedAt;
+  const issueMarker='ND Linear full CRUD qualification probe — safe to permanently delete — '+startedAt;
   try{
     const tl=await linearSessionCall('tools/list',{});
     const tools=tl.response?.result?.tools||[];
@@ -908,7 +911,44 @@ async function linearFullSelftest() {
       rec.cleanup_readback=!(listed2.comments||[]).some(x=>x?.id===commentId);
     }
 
-    const required=['tools_catalog','viewer_admin','full_destructive_surface','has_get_issue','has_save_issue','has_save_document','has_save_project','has_save_comment','has_delete_comment','has_list_comments','issue_read','write','readback','delete','cleanup_readback'];
+    // Strict destructive proof: create -> update -> readback -> permanent issueDelete -> absence readback.
+    const iw=await linearSessionCall('tools/call',{name:'save_issue',arguments:{
+      team:'Nameless Dhamma',
+      title:issueMarker,
+      description:'Temporary Linear full-CRUD qualification object. Must be permanently deleted by this self-test.'
+    }});
+    const createdIssue=linearToolPayloadResult(iw.response)||{};
+    issueIdentifier=String(createdIssue.id||'');
+    issueId=String(createdIssue.uuid||createdIssue.id||'');
+    rec.issue_create=!!issueId;
+
+    const updatedTitle=issueMarker+' — updated';
+    if(issueIdentifier){
+      const iu=await linearSessionCall('tools/call',{name:'save_issue',arguments:{id:issueIdentifier,title:updatedTitle}});
+      const updated=linearToolPayloadResult(iu.response)||{};
+      rec.issue_update=updated.title===updatedTitle;
+
+      const ir=await linearSessionCall('tools/call',{name:'get_issue',arguments:{id:issueIdentifier}});
+      const reread=linearToolPayloadResult(ir.response)||{};
+      rec.issue_update_readback=reread.title===updatedTitle;
+    }
+
+    if(issueId){
+      const dd=await linearGraphql(
+        'mutation($id:String!,$permanentlyDelete:Boolean){issueDelete(id:$id,permanentlyDelete:$permanentlyDelete){success entity{id}}}',
+        {id:issueId,permanentlyDelete:true}
+      );
+      rec.issue_permanent_delete=dd.issueDelete?.success===true && (dd.issueDelete?.entity??null)===null;
+
+      try{
+        const dr=await linearGraphql('query($id:String!){issue(id:$id){id title trashed}}',{id:issueId});
+        rec.issue_delete_readback=!dr.issue;
+      }catch(e){
+        rec.issue_delete_readback=true;
+      }
+    }
+
+    const required=['tools_catalog','viewer_admin','full_destructive_surface','has_get_issue','has_save_issue','has_save_document','has_save_project','has_save_comment','has_delete_comment','has_list_comments','issue_read','write','readback','delete','cleanup_readback','issue_create','issue_update','issue_update_readback','issue_permanent_delete','issue_delete_readback'];
     rec.ok=required.every(k=>rec[k]===true);
   }catch(e){
     rec.error=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,1000);
@@ -920,6 +960,23 @@ async function linearFullSelftest() {
         try{await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:c.id}});}catch{}
       }
       if(matches.length) rec.cleanup_after_error=true;
+    }catch{}
+    // Reconcile before retrying destructive cleanup.
+    try{
+      let ids=[];
+      if(issueId){
+        try{
+          const q=await linearGraphql('query($id:String!){issue(id:$id){id}}',{id:issueId});
+          if(q.issue?.id) ids.push(q.issue.id);
+        }catch{}
+      }else{
+        const q=await linearGraphql('query($title:String!){issues(filter:{title:{startsWith:$title}},first:20){nodes{id title}}}',{title:issueMarker});
+        ids=(q.issues?.nodes||[]).filter(x=>String(x?.title||'').startsWith(issueMarker)).map(x=>x.id);
+      }
+      for(const id of ids){
+        try{await linearGraphql('mutation($id:String!,$permanentlyDelete:Boolean){issueDelete(id:$id,permanentlyDelete:$permanentlyDelete){success}}',{id,permanentlyDelete:true});}catch{}
+      }
+      if(ids.length) rec.issue_cleanup_after_error=true;
     }catch{}
   }
   linearSelftestState={last_run:startedAt,ok:rec.ok===true,error:rec.error||null};
