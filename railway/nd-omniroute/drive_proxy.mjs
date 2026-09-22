@@ -767,13 +767,63 @@ function parseLinearMcpText(raw) {
   try { return JSON.parse(String(raw||'{}')); } catch { return {raw:String(raw||'').slice(0,6000)}; }
 }
 
-async function linearPost(payload, sid=null, timeoutMs=60000) {
-  if (!LINEAR_API_KEY) throw new Error('linear_not_configured');
+function linearOauthConfigured(){
+  return !!(LINEAR_OAUTH_CLIENT_ID && LINEAR_OAUTH_CLIENT_SECRET);
+}
+
+function linearRedact(value){
+  let out=String(value??'');
+  for(const secret of [LINEAR_API_KEY,LINEAR_OAUTH_CLIENT_ID,LINEAR_OAUTH_CLIENT_SECRET,linearOauthTokenCache?.token]){
+    if(secret) out=out.replaceAll(String(secret),'[REDACTED]');
+  }
+  return out;
+}
+
+async function linearOauthAccessToken(force=false){
+  if(!linearOauthConfigured()) throw new Error('linear_oauth_not_configured');
+  const now=Math.floor(Date.now()/1000);
+  if(!force && linearOauthTokenCache?.token && linearOauthTokenCache.exp>now+120) return linearOauthTokenCache.token;
+  const body=new URLSearchParams({
+    grant_type:'client_credentials',
+    scope:LINEAR_OAUTH_SCOPE,
+    client_id:LINEAR_OAUTH_CLIENT_ID,
+    client_secret:LINEAR_OAUTH_CLIENT_SECRET
+  });
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),60000);
+  try{
+    const r=await fetch(LINEAR_OAUTH_TOKEN_URL,{
+      method:'POST',
+      headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-External-Linear-OAuth/1.0'},
+      body,signal:controller.signal
+    });
+    const raw=await r.text();
+    if(!r.ok) throw new Error('Linear OAuth token HTTP '+r.status+': '+linearRedact(raw).slice(0,700));
+    const obj=JSON.parse(raw||'{}');
+    const token=String(obj.access_token||'');
+    if(!token) throw new Error('linear_oauth_access_token_missing');
+    linearOauthTokenCache={token,exp:now+Number(obj.expires_in||3500),scope:String(obj.scope||LINEAR_OAUTH_SCOPE)};
+    return token;
+  }finally{clearTimeout(timer);}
+}
+
+async function linearAuth(auth='api_key'){
+  const mode=auth==='oauth'?'oauth':'api_key';
+  if(mode==='oauth'){
+    const token=await linearOauthAccessToken();
+    return {mode,mcpAuthorization:'Bearer '+token,graphqlAuthorization:'Bearer '+token};
+  }
+  if(!LINEAR_API_KEY) throw new Error('linear_api_key_not_configured');
+  return {mode,mcpAuthorization:'Bearer '+LINEAR_API_KEY,graphqlAuthorization:LINEAR_API_KEY};
+}
+
+async function linearPost(payload, sid=null, timeoutMs=60000, auth='api_key') {
+  const cred=await linearAuth(auth);
   const headers={
-    authorization:'Bearer '+LINEAR_API_KEY,
+    authorization:cred.mcpAuthorization,
     'content-type':'application/json',
     accept:'application/json, text/event-stream',
-    'user-agent':'ND-External-Linear-MCP/2.0'
+    'user-agent':'ND-External-Linear-MCP/3.0'
   };
   if (sid) {
     headers['mcp-session-id']=sid;
@@ -784,13 +834,14 @@ async function linearPost(payload, sid=null, timeoutMs=60000) {
   try {
     const r=await fetch(LINEAR_MCP_URL,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
     const raw=await r.text();
-    if(!r.ok) throw new Error('Linear MCP HTTP '+r.status+': '+raw.slice(0,1000));
-    return {status:r.status,sid:r.headers.get('mcp-session-id'),body:parseLinearMcpText(raw)};
+    if(r.status===401 && auth==='oauth') linearOauthTokenCache=null;
+    if(!r.ok) throw new Error('Linear MCP HTTP '+r.status+': '+linearRedact(raw).slice(0,1000));
+    return {status:r.status,sid:r.headers.get('mcp-session-id'),body:parseLinearMcpText(raw),auth:cred.mode};
   } finally { clearTimeout(timer); }
 }
 
-async function linearGraphql(query, variables={}, timeoutMs=60000) {
-  if (!LINEAR_API_KEY) throw new Error('linear_not_configured');
+async function linearGraphql(query, variables={}, timeoutMs=60000, auth='api_key') {
+  const cred=await linearAuth(auth);
   const q=String(query||'').trim();
   if(!q) throw new Error('linear_graphql_query_required');
   if(q.length>100000) throw new Error('linear_graphql_query_too_large');
@@ -801,65 +852,73 @@ async function linearGraphql(query, variables={}, timeoutMs=60000) {
     const r=await fetch(LINEAR_GQL_URL,{
       method:'POST',
       headers:{
-        authorization:LINEAR_API_KEY,
+        authorization:cred.graphqlAuthorization,
         'content-type':'application/json',
         accept:'application/json',
-        'user-agent':'ND-External-Linear-GraphQL/1.0'
+        'user-agent':'ND-External-Linear-GraphQL/2.0'
       },
       body:JSON.stringify({query:q,variables}),
       signal:controller.signal
     });
     const raw=await r.text();
-    if(!r.ok) throw new Error('Linear GraphQL HTTP '+r.status+': '+raw.slice(0,1000));
+    if(r.status===401 && auth==='oauth') linearOauthTokenCache=null;
+    if(!r.ok) throw new Error('Linear GraphQL HTTP '+r.status+': '+linearRedact(raw).slice(0,1000));
     const obj=JSON.parse(raw||'{}');
-    if(obj.errors?.length) throw new Error('Linear GraphQL errors: '+JSON.stringify(obj.errors).slice(0,1200));
+    if(obj.errors?.length) throw new Error('Linear GraphQL errors: '+linearRedact(JSON.stringify(obj.errors)).slice(0,1200));
     return obj.data||{};
   } finally { clearTimeout(timer); }
 }
 
-async function linearProviderCapabilities() {
+async function linearProviderCapabilities(auth='api_key') {
   const data=await linearGraphql(`query {
     viewer { id admin }
     __schema { mutationType { fields { name } } }
-  }`);
+  }`,{},60000,auth);
   const names=(((data.__schema||{}).mutationType||{}).fields||[]).map(x=>x?.name).filter(Boolean);
   const missing=LINEAR_REQUIRED_DESTRUCTIVE.filter(x=>!names.includes(x));
   return {
+    auth,
     viewer_id:data.viewer?.id||null,
     viewer_admin:data.viewer?.admin===true,
     required_destructive:LINEAR_REQUIRED_DESTRUCTIVE,
     missing_destructive:missing,
-    full_destructive_surface:missing.length===0 && data.viewer?.admin===true
+    full_destructive_surface:missing.length===0
   };
 }
 
-async function linearSessionCall(method, params={}) {
+async function linearSessionCall(method, params={}, auth='api_key') {
   const init=await linearPost({
     jsonrpc:'2.0',id:1,method:'initialize',
-    params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'ND External Linear',version:'2.0'}}
-  });
+    params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'ND External Linear',version:'3.0'}}
+  },null,60000,auth);
   if(init.status!==200) throw new Error('linear_initialize_failed');
-  await linearPost({jsonrpc:'2.0',method:'notifications/initialized',params:{}},init.sid);
-  const call=await linearPost({jsonrpc:'2.0',id:2,method,params},init.sid);
-  return {serverInfo:init.body?.result?.serverInfo||{},response:call.body};
+  await linearPost({jsonrpc:'2.0',method:'notifications/initialized',params:{}},init.sid,60000,auth);
+  const call=await linearPost({jsonrpc:'2.0',id:2,method,params},init.sid,60000,auth);
+  return {serverInfo:init.body?.result?.serverInfo||{},response:call.body,auth};
 }
 
-async function linearHealth() {
-  const tools=await linearSessionCall('tools/list',{});
+async function linearHealth(auth='api_key') {
+  const state=auth==='oauth'?linearOauthSelftestState:linearSelftestState;
+  if(auth==='oauth' && !linearOauthConfigured()){
+    return {ok:false,configured:false,auth,route:'railway_external_oauth_full_linear_api',error:'linear_oauth_not_configured'};
+  }
+  const tools=await linearSessionCall('tools/list',{},auth);
   const list=tools.response?.result?.tools||[];
-  const ws=await linearSessionCall('tools/call',{name:'get_workspace',arguments:{}});
+  const ws=await linearSessionCall('tools/call',{name:'get_workspace',arguments:{}},auth);
   const content=ws.response?.result?.content||[];
-  const caps=await linearProviderCapabilities();
+  const caps=await linearProviderCapabilities(auth);
   return {
-    ok:list.length>0 && content.length>0 && caps.full_destructive_surface===true && linearSelftestState.ok===true,
-    route:'railway_external_full_linear_api',
+    ok:list.length>0 && content.length>0 && caps.full_destructive_surface===true && state.ok===true,
+    configured:true,
+    auth,
+    route:auth==='oauth'?'railway_external_oauth_full_linear_api':'railway_external_api_key_full_linear_api',
     official_mcp:true,
     graphql_full_api:true,
     tools_count:list.length,
     workspace_read:content.length>0,
     destructive_capabilities:caps,
     serverInfo:ws.serverInfo||tools.serverInfo||{},
-    write_selftest:linearSelftestState
+    write_selftest:state
   };
 }
 
