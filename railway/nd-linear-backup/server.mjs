@@ -8,6 +8,11 @@ const DEVMODE_TOKEN=String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN||'').trim();
 const DEVMODE_PATH='/mcp/'+DEVMODE_TOKEN;
 const MCP_URL='https://mcp.linear.app/mcp';
 const GQL_URL='https://api.linear.app/graphql';
+const REQUIRED_DESTRUCTIVE=[
+  'issueDelete','documentDelete','projectDelete','initiativeDelete',
+  'projectMilestoneDelete','issueLabelDelete','projectLabelDelete',
+  'initiativeLabelDelete','releaseDelete','attachmentDelete','commentDelete'
+];
 
 function safeEqual(a,b){
   const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));
@@ -81,6 +86,12 @@ async function gql(query,variables={}){
   if(obj.errors?.length)throw new Error('Linear GraphQL errors: '+JSON.stringify(obj.errors).slice(0,1000));
   return obj.data||{};
 }
+async function providerCapabilities(){
+  const d=await gql(`query { viewer { id admin } __schema { mutationType { fields { name } } } }`);
+  const names=(((d.__schema||{}).mutationType||{}).fields||[]).map(x=>x?.name).filter(Boolean);
+  const missing=REQUIRED_DESTRUCTIVE.filter(x=>!names.includes(x));
+  return {viewer_admin:d.viewer?.admin===true,missing_destructive:missing,full_destructive_surface:d.viewer?.admin===true&&missing.length===0};
+}
 async function gqlFallback(tool,args,primaryError){
   if(tool==='get_issue'){
     const id=String(args.id||args.issueId||'').trim();
@@ -130,6 +141,7 @@ async function gqlFallback(tool,args,primaryError){
 const MUTATING_TOOLS=new Set(['save_comment','delete_comment','save_issue']);
 async function toolCall(tool,args={},options={}){
   if(options.forceGraphql===true){
+    if(MUTATING_TOOLS.has(tool) && options.providerReadbackVerified!==true) throw new Error('provider_readback_required_before_forced_graphql_mutation');
     return gqlFallback(tool,args,new Error('forced_graphql_fallback_after_readback'));
   }
   try{
@@ -150,12 +162,14 @@ async function health(){
   const tools=tl.response?.result?.tools||[];
   const ws=await sessionCall('tools/call',{name:'get_workspace',arguments:{}});
   const workspace=toolPayload(ws.response);
+  const caps=await providerCapabilities();
   return {
-    ok:tools.length>0 && !!workspace,
+    ok:tools.length>0 && !!workspace && caps.full_destructive_surface===true,
     service:'ND Linear Backup',
-    route:'dedicated_railway_official_linear_mcp',
+    route:'dedicated_railway_full_linear_api',
     official_mcp:true,
-    graphql_fallback:true,
+    graphql_full_api:true,
+    destructive_capabilities:caps,
     tools_count:tools.length,
     workspace_read:!!workspace,
     serverInfo:tl.serverInfo||ws.serverInfo||{}
@@ -231,10 +245,19 @@ const server=http.createServer(async(req,res)=>{
       if(op==='tool_call'){
         const tool=String(body.tool||'').trim();
         if(!tool)return send(res,400,{ok:false,error:'tool_required'});
-        const r=await toolCall(tool,body.arguments||{},{forceGraphql:body.force_graphql_fallback===true});
+        const r=await toolCall(tool,body.arguments||{},{
+          forceGraphql:body.force_graphql_fallback===true,
+          providerReadbackVerified:body.provider_readback_verified===true
+        });
         return send(res,200,{ok:true,provider:'linear',...r});
       }
-      return send(res,400,{ok:false,error:'operation_must_be_tools_list_or_tool_call'});
+      if(op==='graphql'){
+        const query=String(body.query||'').trim();
+        const variables=(body.variables&&typeof body.variables==='object'&&!Array.isArray(body.variables))?body.variables:{};
+        const result=await gql(query,variables);
+        return send(res,200,{ok:true,provider:'linear',transport:'dedicated_railway_to_linear_graphql_full',graphql_kind:query.toLowerCase().startsWith('mutation')?'mutation':'query',result});
+      }
+      return send(res,400,{ok:false,error:'operation_must_be_tools_list_tool_call_or_graphql'});
     }
     if(DEVMODE_TOKEN&&path===DEVMODE_PATH){
       if(req.method==='GET'){
@@ -252,11 +275,22 @@ const server=http.createServer(async(req,res)=>{
       if(method.startsWith('notifications/')){res.writeHead(202,{'cache-control':'no-store'});return res.end();}
       if(method==='tools/list'){
         const r=await sessionCall('tools/list',msg.params||{});
-        const out=r.response||{};if(id!==null)out.id=id;return send(res,200,out);
+        const out=r.response||{};
+        const tools=out?.result?.tools||[];
+        if(!tools.some(x=>x?.name==='nd_linear_graphql')) tools.push({
+          name:'nd_linear_graphql',
+          description:'Direct full Linear GraphQL provider API for operations missing from official MCP, including destructive CRUD. Mutations are never auto-retried.',
+          inputSchema:{type:'object',properties:{query:{type:'string'},variables:{type:'object',additionalProperties:true}},required:['query'],additionalProperties:false}
+        });
+        if(id!==null)out.id=id;return send(res,200,out);
       }
       if(method==='tools/call'){
         const tool=String(msg?.params?.name||'');
         const args=msg?.params?.arguments||{};
+        if(tool==='nd_linear_graphql'){
+          const result=await gql(String(args.query||''),(args.variables&&typeof args.variables==='object'&&!Array.isArray(args.variables))?args.variables:{});
+          return send(res,200,{jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(result)}],structuredContent:result,isError:false}});
+        }
         const r=await toolCall(tool,args);
         if(r.response){const out=r.response;if(id!==null)out.id=id;return send(res,200,out);}
         return send(res,200,{jsonrpc:'2.0',id,result:{content:[{type:'text',text:JSON.stringify(r.result)}],structuredContent:r.result,isError:false}});
