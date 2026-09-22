@@ -127,11 +127,21 @@ async function gqlFallback(tool,args,primaryError){
   }
   throw primaryError;
 }
-async function toolCall(tool,args={}){
+const MUTATING_TOOLS=new Set(['save_comment','delete_comment','save_issue']);
+async function toolCall(tool,args={},options={}){
+  if(options.forceGraphql===true){
+    return gqlFallback(tool,args,new Error('forced_graphql_fallback_after_readback'));
+  }
   try{
     const r=await sessionCall('tools/call',{name:tool,arguments:args});
     return {transport:'official_linear_mcp',serverInfo:r.serverInfo,response:r.response};
   }catch(e){
+    if(MUTATING_TOOLS.has(tool)){
+      throw new Error(
+        'AMBIGUOUS_LINEAR_MUTATION: official MCP mutation failed without provider acknowledgement; '+
+        'perform provider readback before any retry, then force GraphQL only after verified absence. primary='+cleanError(e)
+      );
+    }
     return gqlFallback(tool,args,e);
   }
 }
@@ -221,7 +231,7 @@ const server=http.createServer(async(req,res)=>{
       if(op==='tool_call'){
         const tool=String(body.tool||'').trim();
         if(!tool)return send(res,400,{ok:false,error:'tool_required'});
-        const r=await toolCall(tool,body.arguments||{});
+        const r=await toolCall(tool,body.arguments||{},{forceGraphql:body.force_graphql_fallback===true});
         return send(res,200,{ok:true,provider:'linear',...r});
       }
       return send(res,400,{ok:false,error:'operation_must_be_tools_list_or_tool_call'});
