@@ -27,6 +27,7 @@ const LINEAR_BRIDGE_KEY = String(process.env.ND_LINEAR_BRIDGE_TOKEN || '').trim(
 const LINEAR_DEVMODE_TOKEN = String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN || '').trim();
 const LINEAR_DEVMODE_MCP_PATH = '/linear-mcp/' + LINEAR_DEVMODE_TOKEN;
 const LINEAR_MCP_URL = 'https://mcp.linear.app/mcp';
+let linearSelftestState={last_run:null,ok:null,error:null};
 
 let tokenCache = null;
 let childReady = false;
@@ -793,12 +794,13 @@ async function linearHealth() {
   const ws=await linearSessionCall('tools/call',{name:'get_workspace',arguments:{}});
   const content=ws.response?.result?.content||[];
   return {
-    ok:list.length>0 && content.length>0,
+    ok:list.length>0 && content.length>0 && linearSelftestState.ok===true,
     route:'railway_external_official_linear_mcp',
     official_mcp:true,
     tools_count:list.length,
     workspace_read:content.length>0,
-    serverInfo:ws.serverInfo||tools.serverInfo||{}
+    serverInfo:ws.serverInfo||tools.serverInfo||{},
+    write_selftest:linearSelftestState
   };
 }
 
@@ -813,9 +815,10 @@ function linearToolPayloadResult(response) {
 }
 
 async function linearFullSelftest() {
+  const startedAt=new Date().toISOString();
   const rec={schema:'nd-linear-railway-full-qualification-v1',ok:false};
   let commentId=null;
-  const marker='ND Linear Railway resilience qualification probe — safe to delete — '+new Date().toISOString();
+  const marker='ND Linear Railway resilience qualification probe — safe to delete — '+startedAt;
   try{
     const tl=await linearSessionCall('tools/list',{});
     const tools=tl.response?.result?.tools||[];
@@ -852,10 +855,17 @@ async function linearFullSelftest() {
     rec.ok=required.every(k=>rec[k]===true);
   }catch(e){
     rec.error=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,1000);
-    if(commentId){
-      try{await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:commentId}});rec.cleanup_after_error=true;}catch{}
-    }
+    try{
+      const rb=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:100}});
+      const listed=linearToolPayloadResult(rb.response)||{};
+      const matches=(listed.comments||[]).filter(x=>x?.body===marker && x?.id);
+      for(const c of matches){
+        try{await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:c.id}});}catch{}
+      }
+      if(matches.length) rec.cleanup_after_error=true;
+    }catch{}
   }
+  linearSelftestState={last_run:startedAt,ok:rec.ok===true,error:rec.error||null};
   console.log(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION',...rec}));
   return rec;
 }
@@ -1096,4 +1106,6 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
   console.log(JSON.stringify({event:'ND_LINEAR_PROXY_READY',configured:!!LINEAR_API_KEY,bridge_configured:!!LINEAR_BRIDGE_KEY,devmode_mcp_configured:!!LINEAR_DEVMODE_TOKEN}));
   setTimeout(()=>linearFullSelftest().catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION_CRASH',error:String(e?.message||e).slice(0,500)}))),5000);
+  const linearSelftestTimer=setInterval(()=>linearFullSelftest().catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION_CRASH',error:String(e?.message||e).slice(0,500)}))),24*60*60*1000);
+  linearSelftestTimer.unref();
 });
