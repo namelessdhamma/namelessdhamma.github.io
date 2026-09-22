@@ -28,6 +28,12 @@ jobs:
           parts=re.split(r'^===== FILE: (.+?) =====\n',p,flags=re.M)
           for i in range(1,len(parts),2):
               path=root/parts[i]; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(parts[i+1].rstrip()+"\n")
+          css_path=root/'client/styles.css'
+          css=css_path.read_text()
+          css=css.replace('.card-choice strong{font-size:10px;', '.card-choice strong{font-size:12px;')
+          css=css.replace('.card-choice span{font-size:8px;', '.card-choice span{font-size:10px;')
+          css=css.replace('inset:4px 4px 35%;', 'inset:4px 4px 43%;')
+          css_path.write_text(css)
           entry=root/'client/app.js'; seen=set(); order=[]
           def visit(path):
               path=path.resolve()
@@ -41,14 +47,16 @@ jobs:
           out=[]
           for path in order:
               t=path.read_text(); t=re.sub(r'^import\s+[^;]*?from\s+["\'][^"\']+["\'];?\s*','',t,flags=re.M); t=re.sub(r'^export\s+','',t,flags=re.M); out.append(t)
-          js='\n'.join(out); idx=(root/'client/index.html').read_text(); css=(root/'client/styles.css').read_text()
+          js='\n'.join(out); idx=(root/'client/index.html').read_text(); css=css_path.read_text()
           idx=re.sub(r'<link rel="stylesheet" href="/client/styles.css"\s*/>',lambda m:'<style>'+css+'</style>',idx)
           idx=re.sub(r'<script type="module" src="/client/app.js"></script>',lambda m:'<script>'+js+'</script>',idx)
+          assert 'Заменить карту' not in idx
+          assert '.card-choice strong{font-size:12px;' in idx
+          assert '.card-choice span{font-size:10px;' in idx
+          assert 'inset:4px 4px 43%;' in idx
           b64=base64.b64encode(gzip.compress(idx.encode(),9)).decode()
           loader='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mind Tides — PASS 7C</title></head><body><script>(async()=>{const b=Uint8Array.from(atob("'+b64+'"),c=>c.charCodeAt(0));const ds=new DecompressionStream("gzip");const html=await new Response(new Blob([b]).stream().pipeThrough(ds)).text();document.open();document.write(html);document.close()})().catch(e=>{document.body.textContent="Mind Tides load failed: "+e})</script></body></html>'
           Path('mind-tides/index.html').write_text(loader)
-          assert 'Заменить карту' not in idx
-          assert 'font-size: 12px' in idx and 'font-size: 10px' in idx
           PY
       - name: Commit deployed PASS 7C surface
         run: |
