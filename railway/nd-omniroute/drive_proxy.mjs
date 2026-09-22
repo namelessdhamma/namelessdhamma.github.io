@@ -987,6 +987,7 @@ async function linearPost(payload, sid=null, timeoutMs=60000, auth='api_key') {
     const r=await fetch(LINEAR_MCP_URL,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
     const raw=await r.text();
     if(r.status===401 && auth==='oauth') linearOauthTokenCache=null;
+    if(r.status===401 && auth==='user_oauth') linearUserOauthTokenCache=null;
     if(!r.ok) throw new Error('Linear MCP HTTP '+r.status+': '+linearRedact(raw).slice(0,1000));
     return {status:r.status,sid:r.headers.get('mcp-session-id'),body:parseLinearMcpText(raw),auth:cred.mode};
   } finally { clearTimeout(timer); }
@@ -1014,6 +1015,7 @@ async function linearGraphql(query, variables={}, timeoutMs=60000, auth='api_key
     });
     const raw=await r.text();
     if(r.status===401 && auth==='oauth') linearOauthTokenCache=null;
+    if(r.status===401 && auth==='user_oauth') linearUserOauthTokenCache=null;
     if(!r.ok) throw new Error('Linear GraphQL HTTP '+r.status+': '+linearRedact(raw).slice(0,1000));
     const obj=JSON.parse(raw||'{}');
     if(obj.errors?.length) throw new Error('Linear GraphQL errors: '+linearRedact(JSON.stringify(obj.errors)).slice(0,1200));
@@ -1050,7 +1052,10 @@ async function linearSessionCall(method, params={}, auth='api_key') {
 }
 
 async function linearHealth(auth='api_key') {
-  const state=auth==='oauth'?linearOauthSelftestState:linearSelftestState;
+  const state=auth==='user_oauth'?linearUserOauthSelftestState:auth==='oauth'?linearOauthSelftestState:linearSelftestState;
+  if(auth==='user_oauth' && !linearUserOauthConfigured()){
+    return {ok:false,configured:false,auth,route:'railway_external_user_oauth_full_linear_api',error:'linear_user_oauth_not_configured'};
+  }
   if(auth==='oauth' && !linearOauthConfigured()){
     return {ok:false,configured:false,auth,route:'railway_external_oauth_full_linear_api',error:'linear_oauth_not_configured'};
   }
@@ -1063,7 +1068,7 @@ async function linearHealth(auth='api_key') {
     ok:list.length>0 && content.length>0 && caps.full_destructive_surface===true && state.ok===true,
     configured:true,
     auth,
-    route:auth==='oauth'?'railway_external_oauth_full_linear_api':'railway_external_api_key_full_linear_api',
+    route:auth==='user_oauth'?'railway_external_user_oauth_full_linear_api':auth==='oauth'?'railway_external_oauth_full_linear_api':'railway_external_api_key_full_linear_api',
     official_mcp:true,
     graphql_full_api:true,
     tools_count:list.length,
@@ -1093,6 +1098,7 @@ async function linearFullSelftest(auth='api_key') {
   const marker='ND Linear '+auth+' resilience qualification probe — safe to delete — '+startedAt;
   const issueMarker='ND Linear '+auth+' full CRUD qualification probe — safe to permanently delete — '+startedAt;
   try{
+    if(auth==='user_oauth' && !linearUserOauthConfigured()) throw new Error('linear_user_oauth_not_configured');
     if(auth==='oauth' && !linearOauthConfigured()) throw new Error('linear_oauth_not_configured');
     const tl=await linearSessionCall('tools/list',{},auth);
     const tools=tl.response?.result?.tools||[];
@@ -1209,9 +1215,11 @@ async function linearFullSelftest(auth='api_key') {
     }catch{}
   }
   const state={last_run:startedAt,ok:rec.ok===true,error:rec.error||null,auth};
-  if(auth==='oauth') linearOauthSelftestState=state;
+  if(auth==='user_oauth') linearUserOauthSelftestState=state;
+  else if(auth==='oauth') linearOauthSelftestState=state;
   else linearSelftestState=state;
-  console.log(JSON.stringify({event:auth==='oauth'?'ND_LINEAR_OAUTH_FULL_QUALIFICATION':'ND_LINEAR_FULL_QUALIFICATION',...rec}));
+  const event=auth==='user_oauth'?'ND_LINEAR_USER_OAUTH_FULL_QUALIFICATION':auth==='oauth'?'ND_LINEAR_OAUTH_FULL_QUALIFICATION':'ND_LINEAR_FULL_QUALIFICATION';
+  console.log(JSON.stringify({event,...rec}));
   return rec;
 }
 
@@ -1224,7 +1232,8 @@ async function handleLinearInvoke(req,res) {
   catch{return json(res,400,{ok:false,error:'invalid_json'});}
   try{
     const op=String(body.operation||'').trim();
-    const auth=body.auth==='oauth'?'oauth':'api_key';
+    const auth=body.auth==='user_oauth'?'user_oauth':body.auth==='oauth'?'oauth':'api_key';
+    if(auth==='user_oauth' && !linearUserOauthConfigured()) return json(res,503,{ok:false,provider:'linear',auth,error:'linear_user_oauth_not_configured'});
     if(auth==='oauth' && !linearOauthConfigured()) return json(res,503,{ok:false,provider:'linear',auth,error:'linear_oauth_not_configured'});
     if(op==='tools_list'){
       const r=await linearSessionCall('tools/list',{},auth);
@@ -1252,7 +1261,7 @@ async function handleLinearInvoke(req,res) {
 
 async function handleLinearMcp(req,res) {
   if(!LINEAR_DEVMODE_TOKEN || req.url!==LINEAR_DEVMODE_MCP_PATH) return false;
-  const auth=linearOauthConfigured()?'oauth':'api_key';
+  const auth=await linearDirectAuth();
   if(req.method==='GET'){
     res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store','connection':'keep-alive'});
     res.write(': nd-linear-full-direct auth='+auth+'\n\n'); return res.end();
