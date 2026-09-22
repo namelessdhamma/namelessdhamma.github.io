@@ -802,6 +802,64 @@ async function linearHealth() {
   };
 }
 
+
+function linearToolPayloadResult(response) {
+  const content=response?.result?.content||[];
+  for(const part of content){
+    if(part?.type!=='text' || !part?.text) continue;
+    try{return JSON.parse(part.text);}catch{}
+  }
+  return null;
+}
+
+async function linearFullSelftest() {
+  const rec={schema:'nd-linear-railway-full-qualification-v1',ok:false};
+  let commentId=null;
+  const marker='ND Linear Railway resilience qualification probe — safe to delete — '+new Date().toISOString();
+  try{
+    const tl=await linearSessionCall('tools/list',{});
+    const tools=tl.response?.result?.tools||[];
+    rec.tools_count=tools.length;
+    rec.tools_catalog=tools.length>0;
+    for(const name of ['get_issue','save_issue','save_document','save_project','save_comment','delete_comment','list_comments']){
+      rec['has_'+name]=tools.some(x=>x?.name===name);
+    }
+
+    const issue=await linearSessionCall('tools/call',{name:'get_issue',arguments:{id:'NAM-122'}});
+    rec.issue_read=!!linearToolPayloadResult(issue.response);
+
+    const wr=await linearSessionCall('tools/call',{name:'save_comment',arguments:{issueId:'NAM-122',body:marker}});
+    const created=linearToolPayloadResult(wr.response)||{};
+    commentId=String(created.id||'');
+    rec.write=!!commentId;
+
+    const rb=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:50}});
+    const listed=linearToolPayloadResult(rb.response)||{};
+    const comments=listed.comments||[];
+    rec.readback=!!commentId && comments.some(x=>x?.id===commentId && x?.body===marker);
+
+    if(commentId){
+      const del=await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:commentId}});
+      const deleted=linearToolPayloadResult(del.response)||{};
+      rec.delete=deleted.success===true;
+
+      const rb2=await linearSessionCall('tools/call',{name:'list_comments',arguments:{issueId:'NAM-122',limit:50}});
+      const listed2=linearToolPayloadResult(rb2.response)||{};
+      rec.cleanup_readback=!(listed2.comments||[]).some(x=>x?.id===commentId);
+    }
+
+    const required=['tools_catalog','has_get_issue','has_save_issue','has_save_document','has_save_project','has_save_comment','has_delete_comment','has_list_comments','issue_read','write','readback','delete','cleanup_readback'];
+    rec.ok=required.every(k=>rec[k]===true);
+  }catch(e){
+    rec.error=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,1000);
+    if(commentId){
+      try{await linearSessionCall('tools/call',{name:'delete_comment',arguments:{id:commentId}});rec.cleanup_after_error=true;}catch{}
+    }
+  }
+  console.log(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION',...rec}));
+  return rec;
+}
+
 async function handleLinearInvoke(req,res) {
   const key=req.headers['x-nd-linear-key'] || req.headers['x-nd-bridge-key'];
   if(!safeEqual(key,LINEAR_BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
@@ -1037,4 +1095,5 @@ const server = http.createServer(async (req,res) => {
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
   console.log(JSON.stringify({event:'ND_LINEAR_PROXY_READY',configured:!!LINEAR_API_KEY,bridge_configured:!!LINEAR_BRIDGE_KEY,devmode_mcp_configured:!!LINEAR_DEVMODE_TOKEN}));
+  setTimeout(()=>linearFullSelftest().catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION_CRASH',error:String(e?.message||e).slice(0,500)}))),5000);
 });
