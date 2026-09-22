@@ -938,7 +938,9 @@ async function linearFullSelftest() {
         'mutation($id:String!,$permanentlyDelete:Boolean){issueDelete(id:$id,permanentlyDelete:$permanentlyDelete){success entity{id}}}',
         {id:issueId,permanentlyDelete:true}
       );
-      rec.issue_permanent_delete=dd.issueDelete?.success===true && (dd.issueDelete?.entity??null)===null;
+      rec.issue_delete_acknowledged=dd.issueDelete?.success===true;
+      rec.issue_delete_returned_entity_null=(dd.issueDelete?.entity??null)===null;
+      rec.issue_permanent_delete=dd.issueDelete?.success===true;
 
       try{
         const dr=await linearGraphql('query($id:String!){issue(id:$id){id title trashed}}',{id:issueId});
