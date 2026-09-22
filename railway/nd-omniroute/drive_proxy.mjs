@@ -26,6 +26,11 @@ const LINEAR_API_KEY = String(process.env.ND_LINEAR_API_KEY || '').trim();
 const LINEAR_OAUTH_CLIENT_ID = String(process.env.ND_LINEAR_OAUTH_CLIENT_ID || '').trim();
 const LINEAR_OAUTH_CLIENT_SECRET = String(process.env.ND_LINEAR_OAUTH_CLIENT_SECRET || '').trim();
 const LINEAR_OAUTH_SCOPE = String(process.env.ND_LINEAR_OAUTH_SCOPE || 'read,write').trim();
+const LINEAR_USER_OAUTH_CLIENT_ID = String(process.env.ND_LINEAR_USER_OAUTH_CLIENT_ID || '').trim();
+const LINEAR_USER_OAUTH_REDIRECT_URI = String(process.env.ND_LINEAR_USER_OAUTH_REDIRECT_URI || 'https://nd-external-intelligence-production.up.railway.app/linear/oauth/callback').trim();
+const LINEAR_GITHUB_PAT = String(process.env.ND_GITHUB_PAT || '').trim();
+const LINEAR_SECRET_REPO = 'namelessdhamma/nameless-dhamma-vault';
+const LINEAR_USER_OAUTH_STORE_PATH = '.nd-secrets/linear-user-oauth.enc.json';
 const LINEAR_BRIDGE_KEY = String(process.env.ND_LINEAR_BRIDGE_TOKEN || '').trim();
 const LINEAR_DEVMODE_TOKEN = String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN || '').trim();
 const LINEAR_DEVMODE_MCP_PATH = '/linear-mcp/' + LINEAR_DEVMODE_TOKEN;
@@ -39,7 +44,10 @@ const LINEAR_REQUIRED_DESTRUCTIVE = [
 ];
 let linearSelftestState={last_run:null,ok:null,error:null,auth:'api_key'};
 let linearOauthSelftestState={last_run:null,ok:null,error:null,auth:'oauth'};
+let linearUserOauthSelftestState={last_run:null,ok:null,error:null,auth:'user_oauth'};
 let linearOauthTokenCache=null;
+let linearUserOauthTokenCache=null;
+let linearUserOauthRefreshCache=null;
 
 let tokenCache = null;
 let childReady = false;
