@@ -23,17 +23,23 @@ const USER_OAUTH_STORE_NAME = '.nd-drive-user-oauth.enc.json';
 const authContext = new AsyncLocalStorage();
 
 const LINEAR_API_KEY = String(process.env.ND_LINEAR_API_KEY || '').trim();
+const LINEAR_OAUTH_CLIENT_ID = String(process.env.ND_LINEAR_OAUTH_CLIENT_ID || '').trim();
+const LINEAR_OAUTH_CLIENT_SECRET = String(process.env.ND_LINEAR_OAUTH_CLIENT_SECRET || '').trim();
+const LINEAR_OAUTH_SCOPE = String(process.env.ND_LINEAR_OAUTH_SCOPE || 'read,write').trim();
 const LINEAR_BRIDGE_KEY = String(process.env.ND_LINEAR_BRIDGE_TOKEN || '').trim();
 const LINEAR_DEVMODE_TOKEN = String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN || '').trim();
 const LINEAR_DEVMODE_MCP_PATH = '/linear-mcp/' + LINEAR_DEVMODE_TOKEN;
 const LINEAR_MCP_URL = 'https://mcp.linear.app/mcp';
 const LINEAR_GQL_URL = 'https://api.linear.app/graphql';
+const LINEAR_OAUTH_TOKEN_URL = 'https://api.linear.app/oauth/token';
 const LINEAR_REQUIRED_DESTRUCTIVE = [
   'issueDelete','documentDelete','projectDelete','initiativeDelete',
   'projectMilestoneDelete','issueLabelDelete','projectLabelDelete',
   'initiativeLabelDelete','releaseDelete','attachmentDelete','commentDelete'
 ];
-let linearSelftestState={last_run:null,ok:null,error:null};
+let linearSelftestState={last_run:null,ok:null,error:null,auth:'api_key'};
+let linearOauthSelftestState={last_run:null,ok:null,error:null,auth:'oauth'};
+let linearOauthTokenCache=null;
 
 let tokenCache = null;
 let childReady = false;
