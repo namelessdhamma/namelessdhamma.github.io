@@ -781,7 +781,10 @@ function linearOauthConfigured(){
 
 function linearRedact(value){
   let out=String(value??'');
-  for(const secret of [LINEAR_API_KEY,LINEAR_OAUTH_CLIENT_ID,LINEAR_OAUTH_CLIENT_SECRET,linearOauthTokenCache?.token]){
+  for(const secret of [
+    LINEAR_API_KEY,LINEAR_OAUTH_CLIENT_ID,LINEAR_OAUTH_CLIENT_SECRET,LINEAR_GITHUB_PAT,
+    linearOauthTokenCache?.token,linearUserOauthTokenCache?.token,linearUserOauthRefreshCache
+  ]){
     if(secret) out=out.replaceAll(String(secret),'[REDACTED]');
   }
   return out;
@@ -815,8 +818,149 @@ async function linearOauthAccessToken(force=false){
   }finally{clearTimeout(timer);}
 }
 
+function linearUserOauthConfigured(){
+  return !!(LINEAR_USER_OAUTH_CLIENT_ID && LINEAR_GITHUB_PAT && LINEAR_BRIDGE_KEY);
+}
+
+function linearUserOauthCryptoKey(purpose){
+  if(!LINEAR_BRIDGE_KEY) throw new Error('linear_bridge_key_missing');
+  return crypto.createHash('sha256').update('nd-linear-user-oauth-v1\0'+purpose+'\0'+LINEAR_BRIDGE_KEY).digest();
+}
+
+function linearEncryptObject(obj,purpose){
+  const iv=crypto.randomBytes(12);
+  const key=linearUserOauthCryptoKey(purpose);
+  const cipher=crypto.createCipheriv('aes-256-gcm',key,iv);
+  cipher.setAAD(Buffer.from(purpose,'utf8'));
+  const ciphertext=Buffer.concat([cipher.update(JSON.stringify(obj),'utf8'),cipher.final()]);
+  return {schema:'nd-linear-encrypted-v1',purpose,iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),ciphertext:ciphertext.toString('base64')};
+}
+
+function linearDecryptObject(blob,purpose){
+  if(!blob||blob.schema!=='nd-linear-encrypted-v1'||blob.purpose!==purpose) throw new Error('linear_encrypted_state_invalid');
+  const decipher=crypto.createDecipheriv('aes-256-gcm',linearUserOauthCryptoKey(purpose),Buffer.from(blob.iv,'base64'));
+  decipher.setAAD(Buffer.from(purpose,'utf8'));
+  decipher.setAuthTag(Buffer.from(blob.tag,'base64'));
+  const raw=Buffer.concat([decipher.update(Buffer.from(blob.ciphertext,'base64')),decipher.final()]).toString('utf8');
+  return JSON.parse(raw);
+}
+
+function linearPkceState(verifier){
+  const blob=linearEncryptObject({ts:Date.now(),nonce:crypto.randomBytes(18).toString('base64url'),verifier},'pkce-state');
+  return Buffer.from(JSON.stringify(blob),'utf8').toString('base64url');
+}
+
+function linearPkceStateRead(state){
+  const blob=JSON.parse(Buffer.from(String(state||''),'base64url').toString('utf8'));
+  const obj=linearDecryptObject(blob,'pkce-state');
+  if(!Number.isFinite(Number(obj.ts))||Math.abs(Date.now()-Number(obj.ts))>30*60*1000) throw new Error('linear_oauth_state_expired');
+  if(!obj.verifier) throw new Error('linear_oauth_verifier_missing');
+  return obj;
+}
+
+async function linearGithubStoreRead(){
+  if(!LINEAR_GITHUB_PAT) throw new Error('linear_github_store_not_configured');
+  const url='https://api.github.com/repos/'+LINEAR_SECRET_REPO+'/contents/'+LINEAR_USER_OAUTH_STORE_PATH.split('/').map(encodeURIComponent).join('/')+'?ref=main';
+  const r=await fetch(url,{headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'}});
+  if(r.status===404) return null;
+  const raw=await r.text();
+  if(!r.ok) throw new Error('linear oauth GitHub store read HTTP '+r.status+': '+linearRedact(raw).slice(0,500));
+  const obj=JSON.parse(raw||'{}');
+  const content=Buffer.from(String(obj.content||'').replace(/\n/g,''),'base64').toString('utf8');
+  return {sha:String(obj.sha||''),blob:JSON.parse(content)};
+}
+
+async function linearGithubStoreWrite(refreshToken){
+  if(!refreshToken) throw new Error('linear_refresh_token_missing');
+  const existing=await linearGithubStoreRead();
+  const encrypted=linearEncryptObject({
+    refresh_token:String(refreshToken),
+    client_id:LINEAR_USER_OAUTH_CLIENT_ID,
+    updated_at:new Date().toISOString()
+  },'refresh-store');
+  const body={
+    message:'runtime(linear): rotate encrypted user OAuth refresh state',
+    content:Buffer.from(JSON.stringify(encrypted,null,2)+'\n','utf8').toString('base64'),
+    branch:'main'
+  };
+  if(existing?.sha) body.sha=existing.sha;
+  const url='https://api.github.com/repos/'+LINEAR_SECRET_REPO+'/contents/'+LINEAR_USER_OAUTH_STORE_PATH.split('/').map(encodeURIComponent).join('/');
+  const r=await fetch(url,{method:'PUT',headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','content-type':'application/json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'},body:JSON.stringify(body)});
+  const raw=await r.text();
+  if(!r.ok) throw new Error('linear oauth GitHub store write HTTP '+r.status+': '+linearRedact(raw).slice(0,500));
+  linearUserOauthRefreshCache=String(refreshToken);
+  return true;
+}
+
+async function linearUserOauthRefreshToken(){
+  if(linearUserOauthRefreshCache) return linearUserOauthRefreshCache;
+  const stored=await linearGithubStoreRead();
+  if(!stored?.blob) throw new Error('linear_user_oauth_not_authorized');
+  const obj=linearDecryptObject(stored.blob,'refresh-store');
+  if(obj.client_id!==LINEAR_USER_OAUTH_CLIENT_ID) throw new Error('linear_user_oauth_client_mismatch');
+  const token=String(obj.refresh_token||'');
+  if(!token) throw new Error('linear_user_oauth_refresh_missing');
+  linearUserOauthRefreshCache=token;
+  return token;
+}
+
+async function linearUserOauthAccessToken(force=false){
+  if(!linearUserOauthConfigured()) throw new Error('linear_user_oauth_not_configured');
+  const now=Math.floor(Date.now()/1000);
+  if(!force && linearUserOauthTokenCache?.token && linearUserOauthTokenCache.exp>now+120) return linearUserOauthTokenCache.token;
+  const refresh=await linearUserOauthRefreshToken();
+  const body=new URLSearchParams({grant_type:'refresh_token',refresh_token:refresh,client_id:LINEAR_USER_OAUTH_CLIENT_ID});
+  const r=await fetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
+  const raw=await r.text();
+  if(!r.ok) throw new Error('Linear user OAuth refresh HTTP '+r.status+': '+linearRedact(raw).slice(0,700));
+  const obj=JSON.parse(raw||'{}');
+  const access=String(obj.access_token||'');
+  const nextRefresh=String(obj.refresh_token||'');
+  if(!access||!nextRefresh) throw new Error('linear_user_oauth_rotating_token_missing');
+  // Persist the rotated refresh token before accepting the new access token.
+  await linearGithubStoreWrite(nextRefresh);
+  linearUserOauthTokenCache={token:access,exp:now+Number(obj.expires_in||86399),scope:String(obj.scope||'read write')};
+  return access;
+}
+
+async function linearUserOauthExchange(code,state){
+  if(!linearUserOauthConfigured()) throw new Error('linear_user_oauth_not_configured');
+  const st=linearPkceStateRead(state);
+  const body=new URLSearchParams({
+    code:String(code||''),
+    redirect_uri:LINEAR_USER_OAUTH_REDIRECT_URI,
+    client_id:LINEAR_USER_OAUTH_CLIENT_ID,
+    code_verifier:String(st.verifier),
+    grant_type:'authorization_code'
+  });
+  const r=await fetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
+  const raw=await r.text();
+  if(!r.ok) throw new Error('Linear user OAuth exchange HTTP '+r.status+': '+linearRedact(raw).slice(0,700));
+  const obj=JSON.parse(raw||'{}');
+  const access=String(obj.access_token||'');
+  const refresh=String(obj.refresh_token||'');
+  if(!access||!refresh) throw new Error('linear_user_oauth_exchange_token_missing');
+  await linearGithubStoreWrite(refresh);
+  linearUserOauthTokenCache={token:access,exp:Math.floor(Date.now()/1000)+Number(obj.expires_in||86399),scope:String(obj.scope||'read write')};
+  return access;
+}
+
+async function linearDirectAuth(){
+  if(linearUserOauthConfigured()){
+    try{await linearUserOauthAccessToken(); return 'user_oauth';}catch{}
+  }
+  if(linearOauthConfigured()){
+    try{await linearOauthAccessToken(); return 'oauth';}catch{}
+  }
+  return 'api_key';
+}
+
 async function linearAuth(auth='api_key'){
-  const mode=auth==='oauth'?'oauth':'api_key';
+  const mode=auth==='user_oauth'?'user_oauth':auth==='oauth'?'oauth':'api_key';
+  if(mode==='user_oauth'){
+    const token=await linearUserOauthAccessToken();
+    return {mode,mcpAuthorization:'Bearer '+token,graphqlAuthorization:'Bearer '+token};
+  }
   if(mode==='oauth'){
     const token=await linearOauthAccessToken();
     return {mode,mcpAuthorization:'Bearer '+token,graphqlAuthorization:'Bearer '+token};
