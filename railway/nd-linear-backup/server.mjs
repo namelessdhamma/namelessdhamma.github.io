@@ -3,11 +3,16 @@ import crypto from 'node:crypto';
 
 const PORT=Number(process.env.PORT||3000);
 const API_KEY=String(process.env.ND_LINEAR_API_KEY||'').trim();
+const OAUTH_CLIENT_ID=String(process.env.ND_LINEAR_OAUTH_CLIENT_ID||'').trim();
+const OAUTH_CLIENT_SECRET=String(process.env.ND_LINEAR_OAUTH_CLIENT_SECRET||'').trim();
+const OAUTH_SCOPE=String(process.env.ND_LINEAR_OAUTH_SCOPE||'read,write').trim();
 const BRIDGE_KEY=String(process.env.ND_LINEAR_BRIDGE_TOKEN||'').trim();
 const DEVMODE_TOKEN=String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN||'').trim();
 const DEVMODE_PATH='/mcp/'+DEVMODE_TOKEN;
 const MCP_URL='https://mcp.linear.app/mcp';
 const GQL_URL='https://api.linear.app/graphql';
+const OAUTH_TOKEN_URL='https://api.linear.app/oauth/token';
+let oauthTokenCache=null;
 const REQUIRED_DESTRUCTIVE=[
   'issueDelete','documentDelete','projectDelete','initiativeDelete',
   'projectMilestoneDelete','issueLabelDelete','projectLabelDelete',
@@ -21,6 +26,9 @@ function safeEqual(a,b){
 function cleanError(e){
   let s=String(e?.message||e);
   if(API_KEY)s=s.replaceAll(API_KEY,'[REDACTED]');
+  if(OAUTH_CLIENT_ID)s=s.replaceAll(OAUTH_CLIENT_ID,'[REDACTED]');
+  if(OAUTH_CLIENT_SECRET)s=s.replaceAll(OAUTH_CLIENT_SECRET,'[REDACTED]');
+  if(oauthTokenCache?.token)s=s.replaceAll(oauthTokenCache.token,'[REDACTED]');
   if(BRIDGE_KEY)s=s.replaceAll(BRIDGE_KEY,'[REDACTED]');
   if(DEVMODE_TOKEN)s=s.replaceAll(DEVMODE_TOKEN,'[REDACTED]');
   return s.slice(0,1200);
@@ -34,13 +42,35 @@ function parseMcp(raw){
   if(vals.length)return vals[vals.length-1];
   try{return JSON.parse(String(raw||'{}'));}catch{return {raw:String(raw||'').slice(0,6000)};}
 }
-async function linearPost(payload,sid=null,timeoutMs=60000){
-  if(!API_KEY)throw new Error('linear_not_configured');
+function oauthConfigured(){return !!(OAUTH_CLIENT_ID&&OAUTH_CLIENT_SECRET);}
+async function oauthToken(){
+  if(!oauthConfigured())throw new Error('linear_oauth_not_configured');
+  const now=Math.floor(Date.now()/1000);
+  if(oauthTokenCache?.token&&oauthTokenCache.exp>now+120)return oauthTokenCache.token;
+  const body=new URLSearchParams({grant_type:'client_credentials',scope:OAUTH_SCOPE,client_id:OAUTH_CLIENT_ID,client_secret:OAUTH_CLIENT_SECRET});
+  const r=await fetch(OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-Backup-OAuth/1.0'},body});
+  const raw=await r.text();
+  if(!r.ok)throw new Error('Linear OAuth token HTTP '+r.status+': '+cleanError(raw));
+  const obj=JSON.parse(raw||'{}');
+  if(!obj.access_token)throw new Error('linear_oauth_access_token_missing');
+  oauthTokenCache={token:String(obj.access_token),exp:now+Number(obj.expires_in||3500)};
+  return oauthTokenCache.token;
+}
+async function authMaterial(auth='api_key'){
+  if(auth==='oauth'){
+    const t=await oauthToken();
+    return {mcp:'Bearer '+t,gql:'Bearer '+t};
+  }
+  if(!API_KEY)throw new Error('linear_api_key_not_configured');
+  return {mcp:'Bearer '+API_KEY,gql:API_KEY};
+}
+async function linearPost(payload,sid=null,timeoutMs=60000,auth='api_key'){
+  const cred=await authMaterial(auth);
   const headers={
-    authorization:'Bearer '+API_KEY,
+    authorization:cred.mcp,
     'content-type':'application/json',
     accept:'application/json, text/event-stream',
-    'user-agent':'ND-Linear-Backup/1.0'
+    'user-agent':'ND-Linear-Backup/2.0'
   };
   if(sid){
     headers['mcp-session-id']=sid;
@@ -51,18 +81,19 @@ async function linearPost(payload,sid=null,timeoutMs=60000){
   try{
     const r=await fetch(MCP_URL,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
     const raw=await r.text();
-    if(!r.ok)throw new Error('Linear MCP HTTP '+r.status+': '+raw.slice(0,900));
+    if(r.status===401&&auth==='oauth')oauthTokenCache=null;
+    if(!r.ok)throw new Error('Linear MCP HTTP '+r.status+': '+cleanError(raw));
     return {status:r.status,sid:r.headers.get('mcp-session-id'),body:parseMcp(raw)};
   } finally {clearTimeout(timer);}
 }
-async function sessionCall(method,params={}){
+async function sessionCall(method,params={},auth='api_key'){
   const init=await linearPost({
     jsonrpc:'2.0',id:1,method:'initialize',
-    params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'ND Linear Backup',version:'1.0'}}
-  });
+    params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'ND Linear Backup',version:'2.0'}}
+  },null,60000,auth);
   if(init.status!==200)throw new Error('linear_initialize_failed');
-  await linearPost({jsonrpc:'2.0',method:'notifications/initialized',params:{}},init.sid);
-  const call=await linearPost({jsonrpc:'2.0',id:2,method,params},init.sid);
+  await linearPost({jsonrpc:'2.0',method:'notifications/initialized',params:{}},init.sid,60000,auth);
+  const call=await linearPost({jsonrpc:'2.0',id:2,method,params},init.sid,60000,auth);
   return {serverInfo:init.body?.result?.serverInfo||{},response:call.body};
 }
 function toolPayload(resp){
@@ -73,11 +104,11 @@ function toolPayload(resp){
   }
   return null;
 }
-async function gql(query,variables={}){
-  if(!API_KEY)throw new Error('linear_not_configured');
+async function gql(query,variables={},auth='api_key'){
+  const cred=await authMaterial(auth);
   const r=await fetch(GQL_URL,{
     method:'POST',
-    headers:{Authorization:API_KEY,'Content-Type':'application/json',Accept:'application/json','User-Agent':'ND-Linear-Backup-GraphQL/1.0'},
+    headers:{Authorization:cred.gql,'Content-Type':'application/json',Accept:'application/json','User-Agent':'ND-Linear-Backup-GraphQL/2.0'},
     body:JSON.stringify({query,variables})
   });
   const text=await r.text();
@@ -86,11 +117,11 @@ async function gql(query,variables={}){
   if(obj.errors?.length)throw new Error('Linear GraphQL errors: '+JSON.stringify(obj.errors).slice(0,1000));
   return obj.data||{};
 }
-async function providerCapabilities(){
-  const d=await gql(`query { viewer { id admin } __schema { mutationType { fields { name } } } }`);
+async function providerCapabilities(auth='api_key'){
+  const d=await gql(`query { viewer { id admin } __schema { mutationType { fields { name } } } }`,{},auth);
   const names=(((d.__schema||{}).mutationType||{}).fields||[]).map(x=>x?.name).filter(Boolean);
   const missing=REQUIRED_DESTRUCTIVE.filter(x=>!names.includes(x));
-  return {viewer_admin:d.viewer?.admin===true,missing_destructive:missing,full_destructive_surface:d.viewer?.admin===true&&missing.length===0};
+  return {auth,viewer_id:d.viewer?.id||null,viewer_admin:d.viewer?.admin===true,missing_destructive:missing,full_destructive_surface:missing.length===0};
 }
 async function gqlFallback(tool,args,primaryError){
   if(tool==='get_issue'){
