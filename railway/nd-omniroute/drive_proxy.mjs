@@ -22,6 +22,12 @@ const USER_OAUTH_STORE_PARENT = String(process.env.ND_DRIVE_USER_OAUTH_STORE_PAR
 const USER_OAUTH_STORE_NAME = '.nd-drive-user-oauth.enc.json';
 const authContext = new AsyncLocalStorage();
 
+const LINEAR_API_KEY = String(process.env.ND_LINEAR_API_KEY || '').trim();
+const LINEAR_BRIDGE_KEY = String(process.env.ND_LINEAR_BRIDGE_TOKEN || '').trim();
+const LINEAR_DEVMODE_TOKEN = String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN || '').trim();
+const LINEAR_DEVMODE_MCP_PATH = '/linear-mcp/' + LINEAR_DEVMODE_TOKEN;
+const LINEAR_MCP_URL = 'https://mcp.linear.app/mcp';
+
 let tokenCache = null;
 let childReady = false;
 
@@ -737,6 +743,124 @@ async function handleMcp(req,res) {
   return json(res,200,out);
 }
 
+
+function parseLinearMcpText(raw) {
+  const vals=[];
+  for (const line of String(raw||'').split(/\r?\n/)) {
+    if (!line.startsWith('data: ')) continue;
+    try { vals.push(JSON.parse(line.slice(6))); } catch {}
+  }
+  if (vals.length) return vals[vals.length-1];
+  try { return JSON.parse(String(raw||'{}')); } catch { return {raw:String(raw||'').slice(0,6000)}; }
+}
+
+async function linearPost(payload, sid=null, timeoutMs=60000) {
+  if (!LINEAR_API_KEY) throw new Error('linear_not_configured');
+  const headers={
+    authorization:'Bearer '+LINEAR_API_KEY,
+    'content-type':'application/json',
+    accept:'application/json, text/event-stream',
+    'user-agent':'ND-External-Linear-MCP/2.0'
+  };
+  if (sid) {
+    headers['mcp-session-id']=sid;
+    headers['mcp-protocol-version']='2025-06-18';
+  }
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try {
+    const r=await fetch(LINEAR_MCP_URL,{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal});
+    const raw=await r.text();
+    if(!r.ok) throw new Error('Linear MCP HTTP '+r.status+': '+raw.slice(0,1000));
+    return {status:r.status,sid:r.headers.get('mcp-session-id'),body:parseLinearMcpText(raw)};
+  } finally { clearTimeout(timer); }
+}
+
+async function linearSessionCall(method, params={}) {
+  const init=await linearPost({
+    jsonrpc:'2.0',id:1,method:'initialize',
+    params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'ND External Linear',version:'2.0'}}
+  });
+  if(init.status!==200) throw new Error('linear_initialize_failed');
+  await linearPost({jsonrpc:'2.0',method:'notifications/initialized',params:{}},init.sid);
+  const call=await linearPost({jsonrpc:'2.0',id:2,method,params},init.sid);
+  return {serverInfo:init.body?.result?.serverInfo||{},response:call.body};
+}
+
+async function linearHealth() {
+  const tools=await linearSessionCall('tools/list',{});
+  const list=tools.response?.result?.tools||[];
+  const ws=await linearSessionCall('tools/call',{name:'get_workspace',arguments:{}});
+  const content=ws.response?.result?.content||[];
+  return {
+    ok:list.length>0 && content.length>0,
+    route:'railway_external_official_linear_mcp',
+    official_mcp:true,
+    tools_count:list.length,
+    workspace_read:content.length>0,
+    serverInfo:ws.serverInfo||tools.serverInfo||{}
+  };
+}
+
+async function handleLinearInvoke(req,res) {
+  const key=req.headers['x-nd-linear-key'] || req.headers['x-nd-bridge-key'];
+  if(!safeEqual(key,LINEAR_BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
+  const chunks=[]; for await(const ch of req) chunks.push(ch);
+  let body={};
+  try{body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+  catch{return json(res,400,{ok:false,error:'invalid_json'});}
+  try{
+    const op=String(body.operation||'').trim();
+    if(op==='tools_list'){
+      const r=await linearSessionCall('tools/list',{});
+      return json(res,200,{ok:true,provider:'linear',transport:'railway_external_to_official_linear_mcp',serverInfo:r.serverInfo,response:r.response});
+    }
+    if(op==='tool_call'){
+      const tool=String(body.tool||'').trim();
+      const args=(body.arguments&&typeof body.arguments==='object')?body.arguments:{};
+      if(!tool) return json(res,400,{ok:false,error:'tool_required'});
+      const r=await linearSessionCall('tools/call',{name:tool,arguments:args});
+      return json(res,200,{ok:true,provider:'linear',transport:'railway_external_to_official_linear_mcp',serverInfo:r.serverInfo,response:r.response});
+    }
+    return json(res,400,{ok:false,error:'operation_must_be_tools_list_or_tool_call'});
+  }catch(e){
+    const msg=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,1200);
+    return json(res,502,{ok:false,provider:'linear',error:msg});
+  }
+}
+
+async function handleLinearMcp(req,res) {
+  if(!LINEAR_DEVMODE_TOKEN || req.url!==LINEAR_DEVMODE_MCP_PATH) return false;
+  if(req.method==='GET'){
+    res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store','connection':'keep-alive'});
+    res.write(': nd-linear-backup\n\n'); return res.end();
+  }
+  if(req.method!=='POST') return json(res,405,{ok:false,error:'method_not_allowed'});
+  const chunks=[]; for await(const ch of req) chunks.push(ch);
+  let msg={};
+  try{msg=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+  catch{return json(res,400,{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}});}
+  const id=msg.id??null, method=String(msg.method||'');
+  try{
+    if(method==='initialize'){
+      const init=await linearPost(msg);
+      return json(res,200,init.body);
+    }
+    if(method==='ping') return json(res,200,{jsonrpc:'2.0',id,result:{}});
+    if(method.startsWith('notifications/')) {res.writeHead(202,{'cache-control':'no-store'}); return res.end();}
+    if(method==='tools/list' || method==='tools/call'){
+      const r=await linearSessionCall(method,msg.params||{});
+      const out=r.response||{};
+      if(out.id!==id && id!==null) out.id=id;
+      return json(res,200,out);
+    }
+    return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Method not found'}});
+  }catch(e){
+    const msgText=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,1200);
+    return json(res,200,{jsonrpc:'2.0',id,error:{code:-32000,message:msgText}});
+  }
+}
+
 function json(res, status, obj) {
   const raw = Buffer.from(JSON.stringify(obj));
   res.writeHead(status, { 'content-type':'application/json', 'content-length':raw.length, 'cache-control':'no-store' });
@@ -885,6 +1009,20 @@ child.on('spawn',()=>{ childReady=true; console.log(JSON.stringify({event:'ND_OM
 child.on('exit',(code,signal)=>{ childReady=false; console.error(JSON.stringify({event:'ND_OMNIROUTE_CHILD_EXIT',code,signal})); });
 
 const server = http.createServer(async (req,res) => {
+  if (LINEAR_DEVMODE_TOKEN && req.url === LINEAR_DEVMODE_MCP_PATH) {
+    const handled = await handleLinearMcp(req,res);
+    if (handled !== false) return;
+  }
+  if (req.method === 'GET' && req.url === '/linear/health') {
+    try {
+      const h=await linearHealth();
+      return json(res,h.ok?200:503,h);
+    } catch(e) {
+      const msg=String(e?.message||e).replaceAll(LINEAR_API_KEY,'[REDACTED]').slice(0,800);
+      return json(res,503,{ok:false,route:'railway_external_official_linear_mcp',error:msg});
+    }
+  }
+  if (req.method === 'POST' && req.url === '/linear/invoke') return handleLinearInvoke(req,res);
   if (DEVMODE_TOKEN && req.url === DEVMODE_MCP_PATH) {
     const handled = await handleMcp(req,res);
     if (handled !== false) return;
@@ -898,4 +1036,5 @@ const server = http.createServer(async (req,res) => {
 
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
+  console.log(JSON.stringify({event:'ND_LINEAR_PROXY_READY',configured:!!LINEAR_API_KEY,bridge_configured:!!LINEAR_BRIDGE_KEY,devmode_mcp_configured:!!LINEAR_DEVMODE_TOKEN}));
 });
