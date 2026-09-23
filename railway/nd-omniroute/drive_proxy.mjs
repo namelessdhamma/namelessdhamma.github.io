@@ -1,10 +1,10 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { AsyncLocalStorage } from 'node:async_hooks';
+import { AsyncLocalStorage } from 'node:async_hooks';\nimport { createWanMcpHandler, wanHealth } from './wan_mcp.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
-const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
+const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);\nconst WAN_MCP_TOKEN = String(process.env.ND_WAN_MCP_PATH_TOKEN || '').trim();\nconst WAN_MCP_PATH = '/wan-mcp/' + WAN_MCP_TOKEN;\nconst wanMcpHandler = createWanMcpHandler();
 const BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
 const DEVMODE_TOKEN = String(process.env.ND_DRIVE_DEVMODE_PATH_TOKEN || '').trim();
 const DEVMODE_MCP_PATH = '/mcp/' + DEVMODE_TOKEN;
@@ -1467,6 +1467,18 @@ child.on('spawn',()=>{ childReady=true; console.log(JSON.stringify({event:'ND_OM
 child.on('exit',(code,signal)=>{ childReady=false; console.error(JSON.stringify({event:'ND_OMNIROUTE_CHILD_EXIT',code,signal})); });
 
 const server = http.createServer(async (req,res) => {
+  if (req.method === 'GET' && req.url === '/wan/health') {
+    try {
+      const h = await wanHealth();
+      return json(res,200,{...h,mcp_path_configured:!!WAN_MCP_TOKEN});
+    } catch(e) {
+      return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
+  if (WAN_MCP_TOKEN && req.url === WAN_MCP_PATH) {
+    const handled = await wanMcpHandler(req,res);
+    if (handled !== false) return;
+  }
   if (LINEAR_DEVMODE_TOKEN && req.url === LINEAR_DEVMODE_MCP_PATH) {
     const handled = await handleLinearMcp(req,res);
     if (handled !== false) return;
@@ -1571,7 +1583,7 @@ const server = http.createServer(async (req,res) => {
 });
 
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
-  console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
+  console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));\n  console.log(JSON.stringify({event:'ND_WAN_VIDEO_MCP_READY',mcp_path_configured:!!WAN_MCP_TOKEN,mode:'full'}));
   console.log(JSON.stringify({
     event:'ND_LINEAR_PROXY_READY',
     api_key_configured:!!LINEAR_API_KEY,
