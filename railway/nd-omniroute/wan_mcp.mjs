@@ -2,6 +2,13 @@ import { Client, handle_file } from '@gradio/client';
 
 const DEFAULT_SPACE = process.env.ND_WAN_DEFAULT_SPACE || 'Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom';
 const HF_TOKEN = String(process.env.HF_TOKEN || '').trim();
+const DEFAULT_LTX_SPACE = String(process.env.ND_LTX_PRIMARY_SPACE || 'Lightricks/ltx-video-distilled').trim();
+const DEFAULT_LTX_RESERVES = String(process.env.ND_LTX_RESERVE_SPACES || 'DeepRat/LTX-Video-ZeroGPU-Optimized')
+  .split(',').map(x => x.trim()).filter(Boolean);
+
+function configuredLtxSpaces(){
+  return [...new Set([DEFAULT_LTX_SPACE, ...DEFAULT_LTX_RESERVES].filter(Boolean))];
+}
 
 function json(res,status,obj){
   const raw=Buffer.from(JSON.stringify(obj));
@@ -71,6 +78,16 @@ async function generateVideo(args={}){
   return {space_id:spaceId,api_name:endpoint,...normalizeResult(result)};
 }
 
+async function ltxCapabilities(args={}){
+  const spaceId=String(args.space_id||DEFAULT_LTX_SPACE).trim();
+  if(!spaceId) throw new Error('LTX space_id required');
+  return capabilities(spaceId);
+}
+
+async function ltxRawCall(args={}){
+  return rawCall({...args,space_id:String(args.space_id||DEFAULT_LTX_SPACE)});
+}
+
 async function rawCall(args={}){
   const spaceId=String(args.space_id||DEFAULT_SPACE);
   const endpoint=String(args.api_name||'').trim();
@@ -85,6 +102,25 @@ async function rawCall(args={}){
 }
 
 const TOOLS=[
+  {
+    name:'ltx_list_routes',
+    description:'List configured free LTX Hugging Face Space routes. This is configuration exposure only; live operation must be qualified separately.',
+    inputSchema:{type:'object',properties:{},additionalProperties:false}
+  },
+  {
+    name:'ltx_get_capabilities',
+    description:'Return the complete Gradio API schema for the configured primary LTX Space or an explicitly selected LTX reserve Space.',
+    inputSchema:{type:'object',properties:{space_id:{type:'string',default:DEFAULT_LTX_SPACE}},additionalProperties:false}
+  },
+  {
+    name:'ltx_call_space_raw',
+    description:'Direct full Gradio call to the primary or selected reserve LTX Space. Pass arbitrary endpoint payload; prefix file URL/path strings with @file: for Gradio file handling.',
+    inputSchema:{
+      type:'object',
+      properties:{space_id:{type:'string',default:DEFAULT_LTX_SPACE},api_name:{type:'string'},payload:{},payload_json:{type:'string'}},
+      required:['api_name'],additionalProperties:false
+    }
+  },
   {
     name:'wan_get_capabilities',
     description:'Return the complete Gradio API schema for any public Hugging Face Space. No capability allowlist is applied.',
@@ -172,7 +208,10 @@ export function createWanMcpHandler(){
         const name=String(msg?.params?.name||'');
         const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
         let result;
-        if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
+        if(name==='ltx_list_routes') result={primary:DEFAULT_LTX_SPACE,reserves:DEFAULT_LTX_RESERVES,all:configuredLtxSpaces(),state:'CONFIGURED / VERIFY_AT_USE'};
+        else if(name==='ltx_get_capabilities') result=await ltxCapabilities(args);
+        else if(name==='ltx_call_space_raw') result=await ltxRawCall(args);
+        else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
         else return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Unknown tool'}});
@@ -187,4 +226,18 @@ export function createWanMcpHandler(){
 
 export async function wanHealth(){
   return {ok:true,mode:'full',default_space:DEFAULT_SPACE,hf_token_configured:!!HF_TOKEN,tools:TOOLS.map(x=>x.name)};
+}
+
+export async function ltxHealth({probe=false,spaceId}={}){
+  const selected=String(spaceId||DEFAULT_LTX_SPACE).trim();
+  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,reserve_spaces:DEFAULT_LTX_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
+  if(!probe) return {...base,upstream:'VERIFY_AT_USE'};
+  try{
+    const cap=await capabilities(selected);
+    const named=cap?.api?.named_endpoints && typeof cap.api.named_endpoints==='object' ? Object.keys(cap.api.named_endpoints) : [];
+    const unnamed=cap?.api?.unnamed_endpoints && typeof cap.api.unnamed_endpoints==='object' ? Object.keys(cap.api.unnamed_endpoints) : [];
+    return {...base,upstream:'EXPOSED',api_names:[...named,...unnamed],api:cap.api};
+  }catch(e){
+    return {...base,ok:false,upstream:'DEGRADED_OR_BLOCKED',error:errorText(e)};
+  }
 }
