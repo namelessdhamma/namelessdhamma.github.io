@@ -8,6 +8,8 @@ const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
 const WAN_MCP_TOKEN = String(process.env.ND_WAN_MCP_PATH_TOKEN || '').trim();
 const WAN_MCP_PATH = '/wan-mcp/' + WAN_MCP_TOKEN;
+const LTX_MCP_TOKEN = String(process.env.ND_LTX_MCP_PATH_TOKEN || '').trim();
+const LTX_MCP_PATH = '/ltx-mcp/' + LTX_MCP_TOKEN;
 const wanMcpHandler = createWanMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
 const BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
@@ -1478,7 +1480,7 @@ const server = http.createServer(async (req,res) => {
   if (req.method === 'GET' && req.url === '/ltx/health') {
     try {
       const h = await ltxHealth();
-      return json(res,200,{...h,mcp_path_configured:!!WAN_MCP_TOKEN});
+      return json(res,200,{...h,mcp_path_configured:!!LTX_MCP_TOKEN,dedicated_mcp:true});
     } catch(e) {
       return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
     }
@@ -1499,6 +1501,10 @@ const server = http.createServer(async (req,res) => {
     } catch(e) {
       return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
     }
+  }
+  if (LTX_MCP_TOKEN && req.url === LTX_MCP_PATH) {
+    const handled = await wanMcpHandler(req,res);
+    if (handled !== false) return;
   }
   if (WAN_MCP_TOKEN && req.url === WAN_MCP_PATH) {
     const handled = await wanMcpHandler(req,res);
