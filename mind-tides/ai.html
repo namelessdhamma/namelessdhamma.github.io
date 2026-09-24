@@ -2,37 +2,22 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mind Tides — против ИИ</title>
-<meta name="theme-color" content="#111111">
-<style>
-html,body{margin:0;background:#0d0d0d;color:#eee;font-family:system-ui,sans-serif;height:100%}body{display:grid;grid-template-rows:auto 1fr}.bar{display:flex;gap:.75rem;align-items:center;justify-content:space-between;padding:.7rem 1rem;background:#171717;border-bottom:1px solid #333}.bar strong{font-size:.95rem}.status{font-size:.82rem;color:#bbb}.actions{display:flex;gap:.5rem}.actions a,.actions button{background:#262626;color:#eee;border:1px solid #444;border-radius:.55rem;padding:.45rem .7rem;text-decoration:none;cursor:pointer}.actions button:focus,.actions a:focus{outline:2px solid #ddd;outline-offset:2px}iframe{width:100%;height:100%;border:0;background:#111}.thinking{color:#ddd}.error{color:#ffb4b4}
-</style>
-</head>
-<body>
+<title>Mind Tides — против ИИ</title><meta name="theme-color" content="#111111">
+<style>html,body{margin:0;background:#0d0d0d;color:#eee;font-family:system-ui,sans-serif;height:100%}body{display:grid;grid-template-rows:auto 1fr}.bar{display:flex;gap:.75rem;align-items:center;justify-content:space-between;padding:.7rem 1rem;background:#171717;border-bottom:1px solid #333}.bar strong{font-size:.95rem}.status{font-size:.82rem;color:#bbb}.actions{display:flex;gap:.5rem}.actions a,.actions button{background:#262626;color:#eee;border:1px solid #444;border-radius:.55rem;padding:.45rem .7rem;text-decoration:none;cursor:pointer}.actions button:focus,.actions a:focus{outline:2px solid #ddd;outline-offset:2px}iframe{width:100%;height:100%;border:0;background:#111}.thinking{color:#ddd}.error{color:#ffb4b4}</style>
+</head><body>
 <header class="bar"><div><strong>Mind Tides · одиночная игра</strong><div id="ai-status" class="status">Вы — Becoming. ИИ играет Fading.</div></div><div class="actions"><button id="restart" type="button">Новая партия</button><a href="/mind-tides/">Hot-seat</a></div></header>
 <iframe id="game" src="/mind-tides/index.html" title="Mind Tides game"></iframe>
 <script>
 (()=>{
-const frame=document.getElementById('game');const status=document.getElementById('ai-status');let busy=false;let timer;
-const ROLE_SCORE={
- 'wise-recognition':100,'non-grasping-root':95,'non-aversion-root':90,'mindful-observation':85,
- 'object-direction':55,'object-sustain':50,'one-pointedness':48,'pleasant-feeling':42,'rapture':40,
- 'doubt':35,'remorse-worry':30,'sloth-torpor-pair':25,'attachment-root':10,'aversion-root':8
-};
-function doc(){try{return frame.contentDocument}catch{return null}}
-function text(el){return (el?.textContent||'').trim()}
-function setStatus(message,kind=''){status.textContent=message;status.className='status '+kind}
-function chooseCard(d){const cards=[...d.querySelectorAll('#hand .card-choice')];if(!cards.length)return null;return cards.map((el,index)=>{const role=text(el.querySelector('span'));return{el,index,score:ROLE_SCORE[role]??20}}).sort((a,b)=>b.score-a.score||a.index-b.index)[0].el}
-function chooseObject(d){const objects=[...d.querySelectorAll('#objects .object-choice')];if(!objects.length)return null;return objects.map((el,index)=>{const t=text(el).toLowerCase();let score=10;if(t.includes('mental-trace')||t.includes('trace:')||t.includes('trace'))score+=70;if(t.includes('past-nama'))score+=20;if(t.includes('meditation-concept'))score+=10;return{el,index,score}}).sort((a,b)=>b.score-a.score||a.index-b.index)[0].el}
-function tick(){const d=doc();if(!d||busy)return;const winner=d.querySelector('#winner');if(winner&&!winner.hidden){setStatus('Партия завершена.');return}
- const handoff=d.querySelector('#handoff');const title=text(d.querySelector('#handoff-title'));const actor=text(d.querySelector('#actor'));
- const aiHandoff=handoff&&!handoff.hidden&&/fading/i.test(title);const aiTurn=/fading/i.test(actor)&&d.querySelector('#play-area')&&!d.querySelector('#play-area').hidden;
- if(!aiHandoff&&!aiTurn){setStatus('Ваш ход · Becoming');return}
- busy=true;setStatus('ИИ обдумывает ход…','thinking');
- setTimeout(()=>{try{if(aiHandoff){d.querySelector('#reveal')?.click();busy=false;return}const card=chooseCard(d);const object=chooseObject(d);if(!card||!object){setStatus('ИИ не нашёл допустимый ход.','error');busy=false;return}card.click();const radio=object.querySelector('input[type="radio"]');if(radio){radio.checked=true;radio.dispatchEvent(new Event('change',{bubbles:true}))}setTimeout(()=>{const resolve=d.querySelector('#resolve');if(resolve&&!resolve.disabled){resolve.click();setStatus('ИИ завершил ход. Передайте ход Becoming.')}else setStatus('Ход ИИ не удалось разрешить.','error');busy=false},350)}catch(e){setStatus('Ошибка хода ИИ: '+String(e?.message||e),'error');busy=false}},450)
-}
-frame.addEventListener('load',()=>{clearInterval(timer);timer=setInterval(tick,600)});
-document.getElementById('restart').addEventListener('click',()=>{busy=false;frame.src='/mind-tides/index.html?ai='+Date.now()});
+const frame=document.getElementById('game'),status=document.getElementById('ai-status');let busy=false,timer,lastSignature='';
+const ROLE_SCORE={'wise-recognition':100,'non-grasping-root':95,'non-aversion-root':90,'mindful-observation':85,'object-direction':55,'object-sustain':50,'one-pointedness':48,'pleasant-feeling':42,'rapture':40,'doubt':35,'remorse-worry':30,'sloth-torpor-pair':25,'attachment-root':10,'aversion-root':8};
+function doc(){try{return frame.contentDocument}catch{return null}} function text(el){return(el?.textContent||'').trim()} function setStatus(m,k=''){status.textContent=m;status.className='status '+k}
+function legalCards(d){return[...d.querySelectorAll('#hand .card-choice')].filter(el=>!el.disabled&&!el.matches('[aria-disabled="true"]'))}
+function legalObjects(d){return[...d.querySelectorAll('#objects .object-choice')].filter(el=>!el.disabled&&!el.matches('[aria-disabled="true"]'))}
+function cardScore(el,index){const role=text(el.querySelector('span'));let score=ROLE_SCORE[role]??20;const t=text(el).toLowerCase();if(/wisdom|paññ|non-grasp|alobha/.test(t))score+=18;if(/mindful|sati/.test(t))score+=12;if(/aversion|dosa|attachment|lobha/.test(t))score-=10;return{el,index,score,role}}
+function objectScore(el,index){const t=text(el).toLowerCase();let score=10;if(/mental-trace|trace:|trace/.test(t))score+=70;if(/past-nama/.test(t))score+=20;if(/meditation-concept/.test(t))score+=10;if(/present|current/.test(t))score+=8;return{el,index,score}}
+function choosePair(d){const cards=legalCards(d),objects=legalObjects(d);if(!cards.length||!objects.length)return null;const cs=cards.map(cardScore).sort((a,b)=>b.score-a.score||a.index-b.index);const os=objects.map(objectScore).sort((a,b)=>b.score-a.score||a.index-b.index);return{card:cs[0],object:os[0],signature:cs[0].role+'|'+text(os[0].el).slice(0,80)}}
+function tick(){const d=doc();if(!d||busy)return;const winner=d.querySelector('#winner');if(winner&&!winner.hidden){setStatus('Партия завершена.');return}const handoff=d.querySelector('#handoff'),title=text(d.querySelector('#handoff-title')),actor=text(d.querySelector('#actor'));const aiHandoff=handoff&&!handoff.hidden&&/fading/i.test(title),aiTurn=/fading/i.test(actor)&&d.querySelector('#play-area')&&!d.querySelector('#play-area').hidden;if(!aiHandoff&&!aiTurn){lastSignature='';setStatus('Ваш ход · Becoming');return}busy=true;setStatus('ИИ обдумывает ход…','thinking');setTimeout(()=>{try{if(aiHandoff){d.querySelector('#reveal')?.click();busy=false;return}const pair=choosePair(d);if(!pair){setStatus('ИИ не нашёл допустимый ход.','error');busy=false;return}if(pair.signature===lastSignature)setStatus('ИИ повторно проверяет допустимый ход…','thinking');pair.card.el.click();const radio=pair.object.el.querySelector('input[type="radio"]');if(radio){radio.checked=true;radio.dispatchEvent(new Event('change',{bubbles:true}))}setTimeout(()=>{const resolve=d.querySelector('#resolve');if(resolve&&!resolve.disabled){lastSignature=pair.signature;resolve.click();setStatus('ИИ завершил ход. Передайте ход Becoming.')}else{lastSignature='';setStatus('Выбранный ход стал недоступен; ИИ попробует снова.','error')}busy=false},350)}catch(e){lastSignature='';setStatus('Ошибка хода ИИ: '+String(e?.message||e),'error');busy=false}},450)}
+frame.addEventListener('load',()=>{clearInterval(timer);lastSignature='';timer=setInterval(tick,600)});document.getElementById('restart').addEventListener('click',()=>{busy=false;lastSignature='';frame.src='/mind-tides/index.html?ai='+Date.now()});
 })();
-</script>
-</body></html>
+</script></body></html>
