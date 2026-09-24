@@ -2,7 +2,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createWanMcpHandler, wanHealth } from './wan_mcp.mjs';
+import { createWanMcpHandler, wanHealth, ltxHealth } from './wan_mcp.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
@@ -1471,6 +1471,23 @@ child.on('spawn',()=>{ childReady=true; console.log(JSON.stringify({event:'ND_OM
 child.on('exit',(code,signal)=>{ childReady=false; console.error(JSON.stringify({event:'ND_OMNIROUTE_CHILD_EXIT',code,signal})); });
 
 const server = http.createServer(async (req,res) => {
+  if (req.method === 'GET' && req.url === '/ltx/health') {
+    try {
+      const h = await ltxHealth();
+      return json(res,200,{...h,mcp_path_configured:!!WAN_MCP_TOKEN});
+    } catch(e) {
+      return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
+  if (req.method === 'GET' && req.url?.startsWith('/ltx/probe')) {
+    try {
+      const u=new URL(req.url,'https://nd-external-intelligence-production.up.railway.app');
+      const h = await ltxHealth({probe:true,spaceId:u.searchParams.get('space_id')||undefined});
+      return json(res,h.ok?200:503,{...h,mcp_path_configured:!!WAN_MCP_TOKEN});
+    } catch(e) {
+      return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
   if (req.method === 'GET' && req.url === '/wan/health') {
     try {
       const h = await wanHealth();
