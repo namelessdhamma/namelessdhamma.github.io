@@ -6,7 +6,7 @@ const DEFAULT_LTX_SPACE = String(process.env.ND_LTX_PRIMARY_SPACE || 'DeepRat/LT
 const DEFAULT_LTX_RESERVES = String(process.env.ND_LTX_RESERVE_SPACES || 'Lightricks/ltx-video-distilled')
   .split(',').map(x => x.trim()).filter(Boolean);
 const LTX_I2V_PRIMARY_SPACE = String(process.env.ND_LTX_I2V_PRIMARY_SPACE || 'DeepRat/LTX-Video-ZeroGPU-Optimized').trim();
-const LTX_KEYFRAME_PRIMARY_SPACE = String(process.env.ND_LTX_KEYFRAME_PRIMARY_SPACE || 'Imosu/LTX-2.3-turboX').trim();
+const LTX_KEYFRAME_PRIMARY_SPACE = String(process.env.ND_LTX_KEYFRAME_PRIMARY_SPACE || '').trim();
 const LTX_KEYFRAME_RESERVES = String(process.env.ND_LTX_KEYFRAME_RESERVE_SPACES || 'techfreakworm/LTX2.3-Studio,linoyts/ltx-2-first-last-frame')
   .split(',').map(x => x.trim()).filter(Boolean);
 
@@ -110,32 +110,10 @@ function findVideoRef(value){
 
 async function ltxGenerateKeyframes(args={}){
   const spaceId=String(args.space_id||LTX_KEYFRAME_PRIMARY_SPACE).trim();
-  if(spaceId !== 'Imosu/LTX-2.3-turboX'){
-    throw new Error('No semantic keyframe adapter is qualified for this Space yet; use ltx_call_space_raw after capability readback.');
+  if(!spaceId){
+    throw new Error('No live-qualified LTX keyframe primary is configured. Use ltx_get_capabilities + ltx_call_space_raw on a readable candidate until a real first/last MP4 qualification passes.');
   }
-  const start=String(args.start_image_url||'').trim();
-  const end=String(args.end_image_url||'').trim();
-  if(!start || !end) throw new Error('start_image_url and end_image_url required');
-  const duration=Math.max(1,Math.min(6,Number(args.duration_seconds??2)));
-  const width=Number(args.width??512);
-  const height=Number(args.height??512);
-  const app=await Client.connect(spaceId,connectOptions());
-  const payload={
-    first_frame:handle_file(start),
-    end_frame:handle_file(end),
-    prompt:String(args.prompt||'Smooth continuous cinematic motion from the first keyframe to the last keyframe, preserving subject identity and scene coherence.'),
-    duration,
-    generation_mode:'Interpolate',
-    enhance_prompt:Boolean(args.enhance_prompt??false),
-    seed:Number(args.seed??42),
-    randomize_seed:Boolean(args.randomize_seed??false),
-    height,
-    width,
-    audio_path:null
-  };
-  const result=await app.predict('/generate_video',payload);
-  const normalized={space_id:spaceId,api_name:'/generate_video',...normalizeResult(result)};
-  return {...normalized,video_ref:findVideoRef(normalized.data),semantic_mode:'first_last_keyframe_interpolation'};
+  throw new Error('No live-qualified semantic keyframe adapter is currently adopted for '+spaceId+'. Use ltx_get_capabilities + ltx_call_space_raw after schema readback.');
 }
 
 export async function ltxKeyframeSelftest(){
@@ -176,7 +154,7 @@ async function rawCall(args={}){
 const TOOLS=[
   {
     name:'ltx_generate_keyframes',
-    description:'Generate a free LTX first-to-last-keyframe interpolation video through the qualified LTX 2.3 ZeroGPU adapter. Intended for storyboard segment animation.',
+    description:'Fail-closed semantic first/last-frame entrypoint. It becomes executable only after a real keyframe Space passes live qualification; until then use ltx_get_capabilities + ltx_call_space_raw.',
     inputSchema:{
       type:'object',
       properties:{
@@ -305,7 +283,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:LTX_KEYFRAME_PRIMARY_SPACE,reserves:LTX_KEYFRAME_RESERVES},
+          keyframe:{primary:LTX_KEYFRAME_PRIMARY_SPACE||null,reserves:LTX_KEYFRAME_RESERVES,state:LTX_KEYFRAME_PRIMARY_SPACE?'VERIFY_AT_USE':'NO_LIVE_QUALIFIED_PRIMARY'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE'
         };
