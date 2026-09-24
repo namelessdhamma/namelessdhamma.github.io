@@ -1,6 +1,6 @@
-const CACHE='mind-tides-shell-v4';
+const CACHE='mind-tides-shell-v5';
 const SCOPE='/mind-tides/';
-const SHELL=[SCOPE,SCOPE+'index.html',SCOPE+'manifest.webmanifest',SCOPE+'icon.svg',SCOPE+'offline.html',SCOPE+'glossary.html'];
+const SHELL=[SCOPE,SCOPE+'index.html',SCOPE+'ai.html',SCOPE+'manifest.webmanifest',SCOPE+'icon.svg',SCOPE+'offline.html',SCOPE+'glossary.html'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));
