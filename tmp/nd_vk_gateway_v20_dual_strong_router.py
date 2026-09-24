@@ -1,7 +1,7 @@
 import ast
 import urllib.request
 
-V18 = 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/tmp/nd_vk_gateway_v18_adaptive_router.py'
+V18 = 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/4c33d1e0e646763ed6184be1dfdc54967abe227f/tmp/nd_vk_gateway_v18_adaptive_router.py'
 source = urllib.request.urlopen(V18, timeout=30).read().decode('utf-8')
 
 def literal_assignment(src, name):
