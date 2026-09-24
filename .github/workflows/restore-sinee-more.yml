@@ -1,4 +1,4 @@
-name: Restore Sinee More release surface
+name: Guard ND product release surfaces
 
 on:
   push:
@@ -9,26 +9,42 @@ permissions:
   contents: write
 
 jobs:
-  restore:
+  guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Restore accepted RC2.6 tree if missing
+      - name: Restore missing accepted product surfaces
         shell: bash
         run: |
           set -euo pipefail
-          if [ -d sinee-more ] && [ -f sinee-more/index.html ]; then
-            echo "sinee-more already present; nothing to restore"
+          changed=0
+
+          if [ ! -f sinee-more/index.html ]; then
+            echo "sinee-more missing; restoring accepted RC2.6 tree"
+            git checkout ad68fb86bfe1261776fc907541ec3b8297cbcad6 -- sinee-more
+            test -f sinee-more/index.html
+            test -f sinee-more/app.js
+            test -f sinee-more/ai/engine.js
+            git add sinee-more
+            changed=1
+          fi
+
+          if [ ! -f mind-tides/index.html ]; then
+            echo "mind-tides missing; restoring last verified PASS 7C surface"
+            git checkout 068c7847856140aca5304eaafb826f7d49e73101 -- mind-tides
+            test -f mind-tides/index.html
+            git add mind-tides
+            changed=1
+          fi
+
+          if [ "$changed" -eq 0 ]; then
+            echo "Both product release surfaces present; nothing to restore"
             exit 0
           fi
-          git checkout ad68fb86bfe1261776fc907541ec3b8297cbcad6 -- sinee-more
-          test -f sinee-more/index.html
-          test -f sinee-more/app.js
-          test -f sinee-more/ai/engine.js
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add sinee-more
-          git commit -m "fix(sinee-more): restore accepted RC2.6 release surface"
+          git commit -m "fix(release): restore missing ND product surface"
           git push origin HEAD:main
