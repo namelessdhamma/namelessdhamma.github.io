@@ -102,7 +102,7 @@ probe = '''def adaptive_startup_probe():
                 state['provider_probes'][key]={'ok':False,'stage':'not_configured','model':model}
                 continue
             try:
-                out=_call_candidate(provider,model,[{'role':'user','content':'Reply exactly OK.'}],48,0.0)
+                out=_call_candidate(provider,model,[{'role':'user','content':'Reply exactly OK.'}],1024,0.0)
                 ok=bool(out)
                 state['provider_probes'][key]={'ok':ok,'model':model}
                 print('STRONG_PROVIDER_PROBE',json.dumps(
