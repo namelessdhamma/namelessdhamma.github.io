@@ -1,0 +1,101 @@
+name: ND Public Video Bridge
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  execute:
+    if: startsWith(github.event.issue.title, '[ND-PUBLIC-VIDEO]') && github.event.issue.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Parse request
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os
+          req=json.loads(os.environ.get("ISSUE_BODY","").strip())
+          for key in ("space_id","api_name"):
+              if not req.get(key):
+                  raise SystemExit(f"missing {key}")
+          open("request.json","w").write(json.dumps(req))
+          PY
+
+      - name: Install Gradio client
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install gradio_client
+
+      - name: Execute public Gradio request
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, shutil
+          from gradio_client import Client, handle_file
+
+          req=json.load(open("request.json"))
+
+          def conv(x):
+              if isinstance(x, dict):
+                  if set(x) == {"__file__"}:
+                      return handle_file(x["__file__"])
+                  return {k: conv(v) for k, v in x.items()}
+              if isinstance(x, list):
+                  return [conv(v) for v in x]
+              return x
+
+          client=Client(req["space_id"], verbose=False)
+          args=conv(req.get("args", []))
+          kwargs=conv(req.get("kwargs", {}))
+          result=client.predict(*args, api_name=req["api_name"], **kwargs)
+
+          pathlib.Path("response.json").write_text(
+              json.dumps({"result": str(result)}, ensure_ascii=False)
+          )
+
+          files=[]
+          def collect(x):
+              if isinstance(x, (list, tuple)):
+                  for v in x: collect(v)
+              elif isinstance(x, dict):
+                  for v in x.values(): collect(v)
+              elif isinstance(x, str) and os.path.isfile(x):
+                  files.append(x)
+              elif hasattr(x, "path"):
+                  p=getattr(x, "path", None)
+                  if isinstance(p, str) and os.path.isfile(p):
+                      files.append(p)
+
+          collect(result)
+          for i,p in enumerate(dict.fromkeys(files)):
+              ext=pathlib.Path(p).suffix or ".bin"
+              shutil.copy2(p, f"output_{i}{ext}")
+
+          print(json.dumps({"outputs": [str(x) for x in files]}))
+          PY
+
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nd-public-video-${{ github.event.issue.number }}
+          path: |
+            response.json
+            output_*
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Comment completion
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "ND public video execution complete. Run ID: $RUN_ID"
