@@ -15,6 +15,7 @@
     {"src":"/mind-tides/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
   ],
   "shortcuts": [
+    {"name":"Играть против ИИ","short_name":"Против ИИ","description":"Одиночная партия: вы Becoming, ИИ Fading","url":"/mind-tides/ai.html","icons":[{"src":"/mind-tides/icon.svg","sizes":"any","type":"image/svg+xml"}]},
     {"name":"52 четасики","short_name":"52 четасики","description":"Полный справочный корпус Mind Tides","url":"/mind-tides/glossary.html","icons":[{"src":"/mind-tides/icon.svg","sizes":"any","type":"image/svg+xml"}]}
   ]
 }
