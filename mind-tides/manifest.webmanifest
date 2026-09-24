@@ -13,5 +13,8 @@
   "categories": ["games", "education"],
   "icons": [
     {"src":"/mind-tides/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ],
+  "shortcuts": [
+    {"name":"52 четасики","short_name":"52 четасики","description":"Полный справочный корпус Mind Tides","url":"/mind-tides/glossary.html","icons":[{"src":"/mind-tides/icon.svg","sizes":"any","type":"image/svg+xml"}]}
   ]
 }
