@@ -2,12 +2,16 @@ import { Client, handle_file } from '@gradio/client';
 
 const DEFAULT_SPACE = process.env.ND_WAN_DEFAULT_SPACE || 'Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom';
 const HF_TOKEN = String(process.env.HF_TOKEN || '').trim();
-const DEFAULT_LTX_SPACE = String(process.env.ND_LTX_PRIMARY_SPACE || 'Lightricks/ltx-video-distilled').trim();
-const DEFAULT_LTX_RESERVES = String(process.env.ND_LTX_RESERVE_SPACES || 'DeepRat/LTX-Video-ZeroGPU-Optimized')
+const DEFAULT_LTX_SPACE = String(process.env.ND_LTX_PRIMARY_SPACE || 'DeepRat/LTX-Video-ZeroGPU-Optimized').trim();
+const DEFAULT_LTX_RESERVES = String(process.env.ND_LTX_RESERVE_SPACES || 'Lightricks/ltx-video-distilled')
+  .split(',').map(x => x.trim()).filter(Boolean);
+const LTX_I2V_PRIMARY_SPACE = String(process.env.ND_LTX_I2V_PRIMARY_SPACE || 'DeepRat/LTX-Video-ZeroGPU-Optimized').trim();
+const LTX_KEYFRAME_PRIMARY_SPACE = String(process.env.ND_LTX_KEYFRAME_PRIMARY_SPACE || 'Imosu/LTX-2.3-turboX').trim();
+const LTX_KEYFRAME_RESERVES = String(process.env.ND_LTX_KEYFRAME_RESERVE_SPACES || 'techfreakworm/LTX2.3-Studio,linoyts/ltx-2-first-last-frame')
   .split(',').map(x => x.trim()).filter(Boolean);
 
 function configuredLtxSpaces(){
-  return [...new Set([DEFAULT_LTX_SPACE, ...DEFAULT_LTX_RESERVES].filter(Boolean))];
+  return [...new Set([DEFAULT_LTX_SPACE, LTX_I2V_PRIMARY_SPACE, LTX_KEYFRAME_PRIMARY_SPACE, ...DEFAULT_LTX_RESERVES, ...LTX_KEYFRAME_RESERVES].filter(Boolean))];
 }
 
 function json(res,status,obj){
@@ -88,6 +92,74 @@ async function ltxRawCall(args={}){
   return rawCall({...args,space_id:String(args.space_id||DEFAULT_LTX_SPACE)});
 }
 
+function findVideoRef(value){
+  if(value == null) return null;
+  if(typeof value === 'string' && /\.mp4(?:$|\?)/i.test(value)) return value;
+  if(Array.isArray(value)){
+    for(const v of value){ const hit=findVideoRef(v); if(hit) return hit; }
+    return null;
+  }
+  if(typeof value === 'object'){
+    for(const key of ['url','path','video','name']){
+      if(key in value){ const hit=findVideoRef(value[key]); if(hit) return hit; }
+    }
+    for(const v of Object.values(value)){ const hit=findVideoRef(v); if(hit) return hit; }
+  }
+  return null;
+}
+
+async function ltxGenerateKeyframes(args={}){
+  const spaceId=String(args.space_id||LTX_KEYFRAME_PRIMARY_SPACE).trim();
+  if(spaceId !== 'Imosu/LTX-2.3-turboX'){
+    throw new Error('No semantic keyframe adapter is qualified for this Space yet; use ltx_call_space_raw after capability readback.');
+  }
+  const start=String(args.start_image_url||'').trim();
+  const end=String(args.end_image_url||'').trim();
+  if(!start || !end) throw new Error('start_image_url and end_image_url required');
+  const duration=Math.max(1,Math.min(6,Number(args.duration_seconds??2)));
+  const width=Number(args.width??512);
+  const height=Number(args.height??512);
+  const app=await Client.connect(spaceId,connectOptions());
+  const payload={
+    first_frame:handle_file(start),
+    end_frame:handle_file(end),
+    prompt:String(args.prompt||'Smooth continuous cinematic motion from the first keyframe to the last keyframe, preserving subject identity and scene coherence.'),
+    duration,
+    generation_mode:'Interpolate',
+    enhance_prompt:Boolean(args.enhance_prompt??false),
+    seed:Number(args.seed??42),
+    randomize_seed:Boolean(args.randomize_seed??false),
+    height,
+    width,
+    audio_path:null
+  };
+  const result=await app.predict('/generate_video',payload);
+  const normalized={space_id:spaceId,api_name:'/generate_video',...normalizeResult(result)};
+  return {...normalized,video_ref:findVideoRef(normalized.data),semantic_mode:'first_last_keyframe_interpolation'};
+}
+
+export async function ltxKeyframeSelftest(){
+  const start='https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png';
+  const end='https://raw.githubusercontent.com/gradio-app/gradio/main/test/test_files/bus.png';
+  const started=Date.now();
+  try{
+    const result=await ltxGenerateKeyframes({
+      start_image_url:start,
+      end_image_url:end,
+      prompt:'Smooth continuous transition between two keyframes, stable camera, coherent motion.',
+      duration_seconds:2,
+      width:512,
+      height:512,
+      seed:42,
+      randomize_seed:false,
+      enhance_prompt:false
+    });
+    return {ok:!!result.video_ref,elapsed_ms:Date.now()-started,space_id:LTX_KEYFRAME_PRIMARY_SPACE,video_ref:result.video_ref||null,result};
+  }catch(e){
+    return {ok:false,elapsed_ms:Date.now()-started,space_id:LTX_KEYFRAME_PRIMARY_SPACE,error:errorText(e)};
+  }
+}
+
 async function rawCall(args={}){
   const spaceId=String(args.space_id||DEFAULT_SPACE);
   const endpoint=String(args.api_name||'').trim();
@@ -102,6 +174,27 @@ async function rawCall(args={}){
 }
 
 const TOOLS=[
+  {
+    name:'ltx_generate_keyframes',
+    description:'Generate a free LTX first-to-last-keyframe interpolation video through the qualified LTX 2.3 ZeroGPU adapter. Intended for storyboard segment animation.',
+    inputSchema:{
+      type:'object',
+      properties:{
+        start_image_url:{type:'string'},
+        end_image_url:{type:'string'},
+        prompt:{type:'string'},
+        duration_seconds:{type:'number',default:2,minimum:1,maximum:6},
+        width:{type:'integer',default:512},
+        height:{type:'integer',default:512},
+        seed:{type:'integer',default:42},
+        randomize_seed:{type:'boolean',default:false},
+        enhance_prompt:{type:'boolean',default:false},
+        space_id:{type:'string',default:LTX_KEYFRAME_PRIMARY_SPACE}
+      },
+      required:['start_image_url','end_image_url'],
+      additionalProperties:false
+    }
+  },
   {
     name:'ltx_list_routes',
     description:'List configured free LTX Hugging Face Space routes. This is configuration exposure only; live operation must be qualified separately.',
@@ -208,7 +301,14 @@ export function createWanMcpHandler(){
         const name=String(msg?.params?.name||'');
         const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
         let result;
-        if(name==='ltx_list_routes') result={primary:DEFAULT_LTX_SPACE,reserves:DEFAULT_LTX_RESERVES,all:configuredLtxSpaces(),state:'CONFIGURED / VERIFY_AT_USE'};
+        if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
+        else if(name==='ltx_list_routes') result={
+          primary:DEFAULT_LTX_SPACE,
+          i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
+          keyframe:{primary:LTX_KEYFRAME_PRIMARY_SPACE,reserves:LTX_KEYFRAME_RESERVES},
+          all:configuredLtxSpaces(),
+          state:'CONFIGURED / VERIFY_AT_USE'
+        };
         else if(name==='ltx_get_capabilities') result=await ltxCapabilities(args);
         else if(name==='ltx_call_space_raw') result=await ltxRawCall(args);
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
@@ -230,7 +330,7 @@ export async function wanHealth(){
 
 export async function ltxHealth({probe=false,spaceId}={}){
   const selected=String(spaceId||DEFAULT_LTX_SPACE).trim();
-  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,reserve_spaces:DEFAULT_LTX_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
+  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:LTX_KEYFRAME_PRIMARY_SPACE,reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
   if(!probe) return {...base,upstream:'VERIFY_AT_USE'};
   try{
     const cap=await capabilities(selected);
