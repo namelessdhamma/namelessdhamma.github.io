@@ -147,7 +147,11 @@ print("ND_V20_DUAL_STRONG_DELTA_APPLIED",flush=True)
 rr=P.get("_new_rr","")
 bad="synth='User request:\n'+text[:7000]+'\n\nFresh web material gathered independently of the model provider:\n'+evidence[:28000]+'\n\nAnswer from this material. Cite direct source URLs actually present. Distinguish publication dates from page text when uncertain. Do not invent sources or current facts.'"
 good="synth='User request:\\n'+text[:7000]+'\\n\\nFresh web material gathered independently of the model provider:\\n'+evidence[:28000]+'\\n\\nAnswer from this material. Cite direct source URLs actually present. Distinguish publication dates from page text when uncertain. Do not invent sources or current facts.'"
-if bad in rr:\n    rr=rr.replace(bad,good,1)\nelif good not in rr:\n    raise RuntimeError("v20_new_rr_escape_state_invalid")\nfinal=P["_pre"]+P["_adaptive_code"]+rr+P["_rr_end"]+P["_post"]
+if bad in rr:
+    rr=rr.replace(bad,good,1)
+elif good not in rr:
+    raise RuntimeError("v20_new_rr_escape_state_invalid")
+final=P["_pre"]+P["_adaptive_code"]+rr+P["_rr_end"]+P["_post"]
 if P["_groq_gate"] not in final: raise RuntimeError("v18_final_groq_gate_missing")
 final=final.replace(P["_groq_gate"],P["_adaptive_gate"],1)
 if P["_thread_marker"] not in final: raise RuntimeError("v18_final_thread_marker_missing")
