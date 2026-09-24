@@ -6,45 +6,32 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Restore missing accepted product surfaces
+      - name: Verify accepted product surfaces exist
         shell: bash
         run: |
           set -euo pipefail
-          changed=0
+          missing=0
 
-          if [ ! -f sinee-more/index.html ]; then
-            echo "sinee-more missing; restoring accepted RC2.6 tree"
-            git checkout ad68fb86bfe1261776fc907541ec3b8297cbcad6 -- sinee-more
-            test -f sinee-more/index.html
-            test -f sinee-more/app.js
-            test -f sinee-more/ai/engine.js
-            git add sinee-more
-            changed=1
+          for path in \
+            sinee-more/index.html \
+            sinee-more/app.js \
+            sinee-more/ai/engine.js \
+            mind-tides/index.html; do
+            if [ ! -f "$path" ]; then
+              echo "::error file=$path::Accepted product surface is missing. Guard is fail-closed; it will not restore a stale historical snapshot."
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
           fi
 
-          if [ ! -f mind-tides/index.html ]; then
-            echo "mind-tides missing; restoring last verified PASS 7C surface"
-            git checkout 068c7847856140aca5304eaafb826f7d49e73101 -- mind-tides
-            test -f mind-tides/index.html
-            git add mind-tides
-            changed=1
-          fi
-
-          if [ "$changed" -eq 0 ]; then
-            echo "Both product release surfaces present; nothing to restore"
-            exit 0
-          fi
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "fix(release): restore missing ND product surface"
-          git push origin HEAD:main
+          echo "Accepted Sinee More and Mind Tides release surfaces are present."
