@@ -1,0 +1,34 @@
+name: Restore Sinee More release surface
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore accepted RC2.6 tree if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d sinee-more ] && [ -f sinee-more/index.html ]; then
+            echo "sinee-more already present; nothing to restore"
+            exit 0
+          fi
+          git checkout ad68fb86bfe1261776fc907541ec3b8297cbcad6 -- sinee-more
+          test -f sinee-more/index.html
+          test -f sinee-more/app.js
+          test -f sinee-more/ai/engine.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sinee-more
+          git commit -m "fix(sinee-more): restore accepted RC2.6 release surface"
+          git push origin HEAD:main
