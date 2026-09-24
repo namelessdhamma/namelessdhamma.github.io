@@ -1,0 +1,13 @@
+{
+  "name": "Mind Tides",
+  "short_name": "Mind Tides",
+  "description": "A strategic card game of mind, conditions, becoming and fading.",
+  "start_url": "/mind-tides/",
+  "scope": "/mind-tides/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111111",
+  "theme_color": "#111111",
+  "lang": "ru",
+  "categories": ["games", "education"]
+}
