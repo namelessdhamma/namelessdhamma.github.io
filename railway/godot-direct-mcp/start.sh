@@ -30,10 +30,23 @@ IMPORT_RC=${PIPESTATUS[0]}
 set -e
 echo "ND_GODOT_IMPORT_DONE rc=$IMPORT_RC"
 
+# Warm import may leave a dead bridge descriptor. Require the long-lived
+# editor to create a fresh descriptor so readiness cannot be satisfied by stale state.
+rm -f "$GODOT_PROJECT/.godot/mcp_bridge.json"
+
+echo "ND_GODOT_XVFB_START"
 Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp \
   >"$GODOT_PROJECT/ci-out/xvfb.log" 2>&1 &
 XVFB_PID=$!
+sleep 0.5
+if ! kill -0 "$XVFB_PID" >/dev/null 2>&1; then
+  echo "ND_GODOT_XVFB_FAILED"
+  cat "$GODOT_PROJECT/ci-out/xvfb.log" >&2 || true
+  exit 1
+fi
+echo "ND_GODOT_XVFB_READY"
 
+echo "ND_GODOT_EDITOR_START"
 godot --headless --editor --path "$GODOT_PROJECT" \
   >"$GODOT_PROJECT/ci-out/editor.log" 2>&1 &
 EDITOR_PID=$!
@@ -44,21 +57,30 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+BRIDGE_READY=0
 for _ in $(seq 1 80); do
-  if test -f "$GODOT_PROJECT/.godot/mcp_bridge.json"; then
-    break
-  fi
   if ! kill -0 "$EDITOR_PID" >/dev/null 2>&1; then
+    echo "ND_GODOT_EDITOR_FAILED"
     cat "$GODOT_PROJECT/ci-out/editor.log" >&2 || true
     exit 1
+  fi
+  if test -s "$GODOT_PROJECT/.godot/mcp_bridge.json"; then
+    BRIDGE_READY=1
+    break
   fi
   sleep 0.5
 done
 
-test -f "$GODOT_PROJECT/.godot/mcp_bridge.json"
+if test "$BRIDGE_READY" != "1"; then
+  echo "ND_GODOT_BRIDGE_TIMEOUT"
+  cat "$GODOT_PROJECT/ci-out/editor.log" >&2 || true
+  exit 1
+fi
 
+echo "ND_GODOT_BRIDGE_READY"
 cd "$GODOT_PROJECT"
 
+echo "ND_GODOT_GATEWAY_START port=${PORT:-8080}"
 exec supergateway \
   --stdio "node /opt/godot-mcp/dist/server.js" \
   --outputTransport streamableHttp \
