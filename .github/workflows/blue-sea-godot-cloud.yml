@@ -1,0 +1,115 @@
+name: Blue Sea Godot Cloud Qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sinee-more-godot/**"
+      - ".github/workflows/blue-sea-godot-cloud.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GODOT_PROJECT: ${{ github.workspace }}/sinee-more-godot
+      GODOT_PATH: /usr/local/bin/godot
+      GODOT_MCP_DOCS_CACHE: /tmp/nd-godot-docs
+      LIBGL_ALWAYS_SOFTWARE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Godot developer stack
+        run: bash sinee-more-godot/ci/setup_godot_cloud.sh
+
+      - name: Engine import, smoke, and MCP tiers A-B
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GODOT_PROJECT/ci-out"
+
+          godot --headless --path "$GODOT_PROJECT" --editor --quit             2>&1 | tee "$GODOT_PROJECT/ci-out/import.log"
+
+          godot --headless --path "$GODOT_PROJECT" --quit-after 2             2>&1 | tee "$GODOT_PROJECT/ci-out/smoke.log"
+          grep -Fq "BLUE_SEA_GODOT_READY" "$GODOT_PROJECT/ci-out/smoke.log"
+
+          python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool godot_status             --args '{}'             --out "$GODOT_PROJECT/ci-out/godot_status.json"
+
+          python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool read_scene             --args '{"scene":"res://main.tscn"}'             --out "$GODOT_PROJECT/ci-out/read_scene.json"
+
+          python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool validate_script             --args '{"script":"res://scripts/main.gd"}'             --out "$GODOT_PROJECT/ci-out/validate_script.json"
+
+      - name: Qualify live editor bridge and rendered screenshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GODOT_PROJECT/addons"
+          rm -rf "$GODOT_PROJECT/addons/godot_mcp"
+          cp -R /tmp/godot-mcp/addon/godot_mcp "$GODOT_PROJECT/addons/godot_mcp"
+
+          if ! grep -Fq 'res://addons/godot_mcp/plugin.cfg' "$GODOT_PROJECT/project.godot"; then
+            cat >> "$GODOT_PROJECT/project.godot" <<'EOF'
+
+          [editor_plugins]
+
+          enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
+          EOF
+          fi
+
+          Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp             >"$GODOT_PROJECT/ci-out/xvfb.log" 2>&1 &
+          XVFB_PID=$!
+          export DISPLAY=:99
+
+          godot --headless --editor --path "$GODOT_PROJECT"             >"$GODOT_PROJECT/ci-out/editor.log" 2>&1 &
+          EDITOR_PID=$!
+
+          cleanup() {
+            kill "$EDITOR_PID" >/dev/null 2>&1 || true
+            kill "$XVFB_PID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          for i in $(seq 1 60); do
+            test -f "$GODOT_PROJECT/.godot/mcp_bridge.json" && break
+            sleep 0.5
+          done
+          test -f "$GODOT_PROJECT/.godot/mcp_bridge.json"
+
+          python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool editor_state             --args '{}'             --out "$GODOT_PROJECT/ci-out/editor_state.json"
+
+          python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool open_scene_in_editor             --args '{"scene":"res://main.tscn"}'             --out "$GODOT_PROJECT/ci-out/open_scene.json"
+
+          python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool live_scene_tree             --args '{}'             --out "$GODOT_PROJECT/ci-out/live_scene_tree.json"
+
+          python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool capture_screenshot             --args '{"out":"ci-out/bootstrap.png","scene":"res://main.tscn","frame":5,"width":1280,"height":720}'             --out "$GODOT_PROJECT/ci-out/capture_screenshot.json"
+
+          test -s "$GODOT_PROJECT/ci-out/bootstrap.png"
+
+      - name: Qualification receipt
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "commit=${GITHUB_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "godot=4.7.2"
+            echo "godot_mcp_commit=735bdc9c98806e5ecdd05b819bc4ac461d9af935"
+            echo "timestamp=$(date -u +%FT%TZ)"
+          } > sinee-more-godot/ci-out/receipt.txt
+
+      - name: Upload qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-sea-godot-qualification-${{ github.run_id }}
+          path: sinee-more-godot/ci-out/
+          if-no-files-found: error
+          retention-days: 14
