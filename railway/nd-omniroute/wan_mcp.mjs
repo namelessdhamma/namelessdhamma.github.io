@@ -10,6 +10,11 @@ const LTX_KEYFRAME_PRIMARY_SPACE = String(process.env.ND_LTX_KEYFRAME_PRIMARY_SP
 const LTX_KEYFRAME_RESERVES = String(process.env.ND_LTX_KEYFRAME_RESERVE_SPACES || 'techfreakworm/LTX2.3-Studio,linoyts/ltx-2-first-last-frame')
   .split(',').map(x => x.trim()).filter(Boolean);
 
+const GITHUB_PAT = String(process.env.ND_GITHUB_PAT || '').trim();
+const LTX_HFJOBS_ENABLED = /^(1|true|yes)$/i.test(String(process.env.ND_LTX_HFJOBS_PAID_ENABLED || 'false').trim());
+const LTX_HFJOBS_REPO = 'namelessdhamma/ND-app';
+const LTX_HFJOBS_MAX_COST_USD = 0.405;
+
 function configuredLtxSpaces(){
   return [...new Set([DEFAULT_LTX_SPACE, LTX_I2V_PRIMARY_SPACE, LTX_KEYFRAME_PRIMARY_SPACE, ...DEFAULT_LTX_RESERVES, ...LTX_KEYFRAME_RESERVES].filter(Boolean))];
 }
@@ -20,6 +25,89 @@ function json(res,status,obj){
   res.end(raw);
 }
 function errorText(e){return String(e?.stack||e?.message||e).slice(0,4000);}
+
+async function githubJson(path,{method='GET',body}={}){
+  if(!GITHUB_PAT) throw new Error('ND_GITHUB_PAT is not configured');
+  const res=await fetch('https://api.github.com'+path,{
+    method,
+    headers:{
+      'accept':'application/vnd.github+json',
+      'authorization':'Bearer '+GITHUB_PAT,
+      'x-github-api-version':'2022-11-28',
+      ...(body?{'content-type':'application/json'}:{})
+    },
+    body:body?JSON.stringify(body):undefined
+  });
+  const txt=await res.text();
+  let data={};
+  try{data=txt?JSON.parse(txt):{};}catch{data={raw:txt.slice(0,4000)};}
+  if(!res.ok) throw new Error('GitHub API '+res.status+': '+JSON.stringify(data).slice(0,3000));
+  return data;
+}
+
+async function ltxQuotaIndependentSubmit(args={}){
+  if(!LTX_HFJOBS_ENABLED){
+    return {
+      ok:false,
+      state:'DISABLED_REQUIRES_PAID_AUTHORIZATION',
+      route:'HF Jobs / L4 / LTX 2B distilled FP8',
+      daily_generation_quota:'NONE',
+      billing:'pay_as_you_go_per_minute',
+      max_job_timeout_minutes:30,
+      estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD,
+      note:'Infrastructure is staged but paid compute is deliberately disabled.'
+    };
+  }
+  if(args.paid_compute_authorized !== true) throw new Error('paid_compute_authorized=true required');
+  const prompt=String(args.prompt||'').trim();
+  if(!prompt) throw new Error('prompt required');
+  const request={
+    paid_authorized:true,
+    prompt,
+    conditioning_media_urls:Array.isArray(args.conditioning_media_urls)?args.conditioning_media_urls:[],
+    conditioning_start_frames:Array.isArray(args.conditioning_start_frames)?args.conditioning_start_frames:[],
+    conditioning_strengths:Array.isArray(args.conditioning_strengths)?args.conditioning_strengths:undefined,
+    width:Number(args.width??512),
+    height:Number(args.height??768),
+    num_frames:Number(args.num_frames??49),
+    frame_rate:Number(args.frame_rate??24),
+    seed:Number(args.seed??42)
+  };
+  const issue=await githubJson('/repos/'+LTX_HFJOBS_REPO+'/issues',{
+    method:'POST',
+    body:{
+      title:'[ND-LTX-HFJOB] '+new Date().toISOString(),
+      body:JSON.stringify(request)
+    }
+  });
+  return {
+    ok:true,
+    state:'SUBMITTED',
+    route:'HF Jobs / L4 / LTX 2B distilled FP8',
+    issue_number:issue.number,
+    issue_url:issue.html_url,
+    max_job_timeout_minutes:30,
+    estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD
+  };
+}
+
+async function ltxQuotaIndependentStatus(args={}){
+  const n=Number(args.issue_number);
+  if(!Number.isInteger(n)||n<1) throw new Error('issue_number required');
+  const [issue,comments]=await Promise.all([
+    githubJson('/repos/'+LTX_HFJOBS_REPO+'/issues/'+n),
+    githubJson('/repos/'+LTX_HFJOBS_REPO+'/issues/'+n+'/comments')
+  ]);
+  const latest=Array.isArray(comments)&&comments.length?comments[comments.length-1]:null;
+  return {
+    issue_number:n,
+    state:issue.state,
+    issue_url:issue.html_url,
+    latest_comment:latest?.body||null,
+    updated_at:issue.updated_at,
+    paid_route_enabled:LTX_HFJOBS_ENABLED
+  };
+}
 
 function connectOptions(){
   return HF_TOKEN ? { hf_token: HF_TOKEN } : {};
@@ -153,6 +241,32 @@ async function rawCall(args={}){
 
 const TOOLS=[
   {
+    name:'ltx_generate_quota_independent',
+    description:'Submit an open-weight LTX 2B distilled FP8 generation to a quota-independent Hugging Face GPU Job. This route has no daily generation quota but uses paid GPU compute; it is hard-disabled until the owner explicitly authorizes paid compute.',
+    inputSchema:{
+      type:'object',
+      properties:{
+        prompt:{type:'string'},
+        conditioning_media_urls:{type:'array',items:{type:'string'}},
+        conditioning_start_frames:{type:'array',items:{type:'integer'}},
+        conditioning_strengths:{type:'array',items:{type:'number'}},
+        width:{type:'integer',default:512,minimum:256,maximum:1280},
+        height:{type:'integer',default:768,minimum:256,maximum:1280},
+        num_frames:{type:'integer',default:49,minimum:9,maximum:121},
+        frame_rate:{type:'integer',default:24,minimum:1,maximum:60},
+        seed:{type:'integer',default:42},
+        paid_compute_authorized:{type:'boolean',default:false}
+      },
+      required:['prompt','paid_compute_authorized'],
+      additionalProperties:false
+    }
+  },
+  {
+    name:'ltx_quota_independent_status',
+    description:'Read status/comments for a quota-independent LTX Hugging Face GPU Job submission.',
+    inputSchema:{type:'object',properties:{issue_number:{type:'integer',minimum:1}},required:['issue_number'],additionalProperties:false}
+  },
+  {
     name:'ltx_generate_keyframes',
     description:'Fail-closed semantic first/last-frame entrypoint. It becomes executable only after a real keyframe Space passes live qualification; until then use ltx_get_capabilities + ltx_call_space_raw.',
     inputSchema:{
@@ -279,13 +393,22 @@ export function createWanMcpHandler(){
         const name=String(msg?.params?.name||'');
         const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
         let result;
-        if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
+        if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
+        else if(name==='ltx_quota_independent_status') result=await ltxQuotaIndependentStatus(args);
+        else if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
           keyframe:{primary:LTX_KEYFRAME_PRIMARY_SPACE||null,reserves:LTX_KEYFRAME_RESERVES,state:LTX_KEYFRAME_PRIMARY_SPACE?'VERIFY_AT_USE':'NO_LIVE_QUALIFIED_PRIMARY'},
           all:configuredLtxSpaces(),
-          state:'CONFIGURED / VERIFY_AT_USE'
+          state:'CONFIGURED / VERIFY_AT_USE',
+          quota_independent:{
+            route:'HF Jobs / L4 / LTX 2B distilled FP8',
+            state:LTX_HFJOBS_ENABLED?'ENABLED_REQUIRES_PER_CALL_PAID_AUTH':'STAGED_DISABLED_REQUIRES_OWNER_AUTH',
+            daily_generation_quota:'NONE',
+            max_job_timeout_minutes:30,
+            estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD
+          }
         };
         else if(name==='ltx_get_capabilities') result=await ltxCapabilities(args);
         else if(name==='ltx_call_space_raw') result=await ltxRawCall(args);
@@ -308,7 +431,7 @@ export async function wanHealth(){
 
 export async function ltxHealth({probe=false,spaceId}={}){
   const selected=String(spaceId||DEFAULT_LTX_SPACE).trim();
-  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:LTX_KEYFRAME_PRIMARY_SPACE,reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
+  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:LTX_KEYFRAME_PRIMARY_SPACE,reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
   if(!probe) return {...base,upstream:'VERIFY_AT_USE'};
   try{
     const cap=await capabilities(selected);
