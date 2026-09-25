@@ -97,6 +97,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          mkdir -p sinee-more-godot/ci-out
           {
             echo "commit=${GITHUB_SHA}"
             echo "run_id=${GITHUB_RUN_ID}"
