@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "omniroute": "3.8.50",
-    "@gradio/client": "^1.19.0"
+    "@gradio/client": "^1.19.0",
+    "adm-zip": "^0.5.16"
   }
 }
