@@ -3,5 +3,6 @@
   "scene": "res://intro/storm_intro_render.tscn",
   "fps": 24,
   "frames": 312,
-  "requested_at": "2026-09-25T13:45:00Z"
+  "requested_at": "2026-09-25T13:51:30Z",
+  "attempt": 2
 }
