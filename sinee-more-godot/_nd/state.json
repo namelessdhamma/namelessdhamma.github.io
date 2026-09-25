@@ -23,9 +23,12 @@
     "repository_path": "sinee-more-godot"
   },
   "execution": {
-    "primary": "GitHub Actions Godot cloud qualification",
-    "direct_reserve": "Railway Godot Direct MCP",
-    "generation": "13.8",
+    "primary_interactive": "@Godot Direct MCP",
+    "direct_backend_reserve": "Railway Godot Direct MCP",
+    "independent_qualification": "GitHub Actions Godot cloud qualification",
+    "command_fallback": "GitHub Actions Godot command workflow",
+    "durable_source": "GitHub versioned source",
+    "generation": "13.9",
     "no_local_computer_required": true
   },
   "product": {
