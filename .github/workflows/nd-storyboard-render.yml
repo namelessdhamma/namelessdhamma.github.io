@@ -1,0 +1,68 @@
+name: ND Storyboard Renderer
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  render:
+    if: startsWith(github.event.issue.title, '[ND-STORYBOARD]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate manifest
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python - <<'PY'
+          import json, os
+          m=json.loads(os.environ.get("ISSUE_BODY","{}"))
+          if not isinstance(m,dict): raise SystemExit("manifest must be a JSON object")
+          frames=m.get("frames") or []
+          if len(frames)<2 or len(frames)>40: raise SystemExit("frames must contain 2..40 items")
+          for i,f in enumerate(frames):
+              if not str(f.get("url","")).startswith(("http://","https://")):
+                  raise SystemExit(f"frame {i} missing http(s) url")
+          print("manifest ok:", len(frames), "frames")
+          PY
+
+      - name: Install renderer dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Render storyboard
+        env:
+          ND_STORYBOARD_MANIFEST: ${{ github.event.issue.body }}
+        run: python .github/scripts/nd_storyboard_renderer.py
+
+      - name: Upload MP4 and receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nd-storyboard-${{ github.event.issue.number }}
+          path: |
+            storyboard-output.mp4
+            storyboard-receipt.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Comment result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          if test -s storyboard-output.mp4; then
+            STATE="PASS / MP4"
+          else
+            STATE="FAIL / NO_MP4"
+          fi
+          gh issue comment "$ISSUE" --body "ND Storyboard Renderer: $STATE. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/$RUN_ID. Artifact: nd-storyboard-$ISSUE."
