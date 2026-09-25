@@ -1,4 +1,5 @@
 import { Client, handle_file } from '@gradio/client';
+import AdmZip from 'adm-zip';
 
 const DEFAULT_SPACE = process.env.ND_WAN_DEFAULT_SPACE || 'Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom';
 const HF_TOKEN = String(process.env.HF_TOKEN || '').trim();
@@ -17,6 +18,8 @@ const LTX_HFJOBS_MAX_COST_USD = 0.405;
 
 const STORYBOARD_REPO = 'namelessdhamma/namelessdhamma.github.io';
 const STORYBOARD_EVENT = 'nd_storyboard_render';
+const STORYBOARD_MCP_TOKEN = String(process.env.ND_STORYBOARD_MCP_PATH_TOKEN || '').trim();
+const STORYBOARD_PUBLIC_BASE = String(process.env.ND_STORYBOARD_PUBLIC_BASE || 'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
 
 function configuredLtxSpaces(){
   return [...new Set([DEFAULT_LTX_SPACE, LTX_I2V_PRIMARY_SPACE, LTX_KEYFRAME_PRIMARY_SPACE, ...DEFAULT_LTX_RESERVES, ...LTX_KEYFRAME_RESERVES].filter(Boolean))];
@@ -196,6 +199,62 @@ async function storyboardRenderStatus(args={}){
   };
 }
 
+
+async function storyboardArtifactBundle(requestId){
+  const status=await storyboardRenderStatus({request_id:requestId});
+  if(status.state!=='COMPLETED' || !status.artifact?.id){
+    return {status,mp4:null,receipt:null};
+  }
+  if(status.artifact.expired) throw new Error('storyboard artifact expired');
+  if(Number(status.artifact.size_in_bytes||0) > 150*1024*1024) throw new Error('storyboard artifact exceeds 150 MB result proxy limit');
+  if(!GITHUB_PAT) throw new Error('ND_GITHUB_PAT is not configured');
+  const res=await fetch('https://api.github.com/repos/'+STORYBOARD_REPO+'/actions/artifacts/'+status.artifact.id+'/zip',{
+    headers:{
+      'accept':'application/vnd.github+json',
+      'authorization':'Bearer '+GITHUB_PAT,
+      'x-github-api-version':'2022-11-28'
+    },
+    redirect:'follow'
+  });
+  if(!res.ok) throw new Error('GitHub artifact download '+res.status);
+  const buf=Buffer.from(await res.arrayBuffer());
+  const zip=new AdmZip(buf);
+  const mp4Entry=zip.getEntry('storyboard-output.mp4');
+  const receiptEntry=zip.getEntry('storyboard-receipt.json');
+  if(!mp4Entry) throw new Error('storyboard-output.mp4 missing from artifact');
+  let receipt=null;
+  if(receiptEntry){
+    try{receipt=JSON.parse(receiptEntry.getData().toString('utf8'));}catch{}
+  }
+  return {status,mp4:mp4Entry.getData(),receipt};
+}
+
+async function storyboardRenderResult(args={}){
+  const requestId=String(args.request_id||'').trim();
+  if(!/^sb-[a-z0-9-]+$/i.test(requestId)) throw new Error('valid request_id required');
+  const bundle=await storyboardArtifactBundle(requestId);
+  if(!bundle.mp4){
+    return {ok:false,request_id:requestId,state:bundle.status.state,status:bundle.status};
+  }
+  const base=STORYBOARD_PUBLIC_BASE+'/storyboard-result/'+STORYBOARD_MCP_TOKEN+'/'+requestId;
+  return {
+    ok:true,
+    request_id:requestId,
+    state:'READY',
+    mp4_url:base+'.mp4',
+    receipt_url:base+'.json',
+    bytes:bundle.mp4.length,
+    receipt:bundle.receipt,
+    artifact:bundle.status.artifact
+  };
+}
+
+export async function storyboardResultBytes(requestId){
+  const id=String(requestId||'').trim();
+  if(!/^sb-[a-z0-9-]+$/i.test(id)) throw new Error('valid request_id required');
+  return storyboardArtifactBundle(id);
+}
+
 function connectOptions(){
   return HF_TOKEN ? { hf_token: HF_TOKEN } : {};
 }
@@ -368,6 +427,16 @@ const TOOLS=[
     }
   },
   {
+    name:'storyboard_render_result',
+    description:'Return the completed storyboard render receipt plus a protected direct MP4 URL served through the ND storyboard result proxy.',
+    inputSchema:{
+      type:'object',
+      properties:{request_id:{type:'string'}},
+      required:['request_id'],
+      additionalProperties:false
+    }
+  },
+  {
     name:'ltx_generate_quota_independent',
     description:'Submit an open-weight LTX 2B distilled FP8 generation to a quota-independent Hugging Face GPU Job. This route has no daily generation quota but uses paid GPU compute; it is hard-disabled until the owner explicitly authorizes paid compute.',
     inputSchema:{
@@ -521,6 +590,7 @@ export function createStoryboardMcpHandler(){
         let result;
         if(name==='storyboard_render_submit') result=await storyboardRenderSubmit(args);
         else if(name==='storyboard_render_status') result=await storyboardRenderStatus(args);
+        else if(name==='storyboard_render_result') result=await storyboardRenderResult(args);
         else return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Unknown tool'}});
         return json(res,200,{jsonrpc:'2.0',id,result:toolResult(result)});
       }
@@ -540,7 +610,7 @@ export async function storyboardHealth(){
     cost_policy:'FREE_ONLY',
     daily_generation_quota:'NONE',
     renderer:'ffmpeg-storyboard-v1',
-    rife_state:'NOT_YET_QUALIFIED',
+    rife_state:'CPU_COMPONENT_QUALIFIED / Practical-RIFE-4.25.lite / 3.228s_pair_512x256',
     tools:STORYBOARD_TOOLS.map(x=>x.name)
   };
 }
@@ -579,6 +649,7 @@ export function createWanMcpHandler(){
         let result;
         if(name==='storyboard_render_submit') result=await storyboardRenderSubmit(args);
         else if(name==='storyboard_render_status') result=await storyboardRenderStatus(args);
+        else if(name==='storyboard_render_result') result=await storyboardRenderResult(args);
         else if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
         else if(name==='ltx_quota_independent_status') result=await ltxQuotaIndependentStatus(args);
         else if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
