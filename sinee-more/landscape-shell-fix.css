@@ -18,6 +18,7 @@
   .actions{grid-area:auto;grid-column:3;grid-row:3;grid-template-columns:repeat(3,minmax(44px,1fr));gap:4px}
   .settingsCard,.btn{min-height:44px}
   body[data-theme] .actions{width:100%}
+  body[data-theme="atlantis"] .player{padding-left:3px;padding-right:3px}
 
   /* Status is informational, so keep it out of the scarce bottom control row. */
   .msg{grid-area:auto;position:absolute;top:7px;right:10px;width:min(22vw,260px);min-height:30px;justify-content:flex-end;text-align:right;pointer-events:none}
