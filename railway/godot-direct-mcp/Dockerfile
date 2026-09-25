@@ -46,6 +46,7 @@ RUN npm install -g "supergateway@${SUPERGATEWAY_VERSION}"
 
 COPY sinee-more-godot /workspace/sinee-more-godot
 COPY railway/godot-direct-mcp/start.sh /usr/local/bin/nd-godot-start
+COPY railway/godot-direct-mcp/proxy.mjs /opt/nd-godot/proxy.mjs
 
 RUN chmod +x /usr/local/bin/nd-godot-start \
     && mkdir -p /workspace/sinee-more-godot/addons \
