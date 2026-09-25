@@ -1,5 +1,9 @@
 {
-  "request_id": "godot-command-002",
-  "tool": "godot_status",
-  "arguments": {}
+  "request_id": "godot-write-probe-003",
+  "tool": "create_scene",
+  "arguments": {
+    "scene": "res://ci_write_probe.tscn",
+    "root_name": "CloudWriteProbe",
+    "root_type": "Node"
+  }
 }
