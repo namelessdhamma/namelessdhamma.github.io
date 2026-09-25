@@ -396,6 +396,65 @@ async function kaggleWanGPBootstrap(){
 }
 
 
+
+async function kaggleWan21Cache(){
+  const enabled=String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_wan21_cache_auth_failed');
+  const username=String(intro.username);
+  const slug='nd-wan21-weight-cache';
+  const fullSlug=username+'/'+slug;
+  const filename='wan2.1_image2video_480p_14B_quanto_mfp16_int8.safetensors';
+  const script=[
+    "from pathlib import Path",
+    "import hashlib,json,requests,shutil,time",
+    "name='"+filename+"'",
+    "url='https://huggingface.co/DeepBeepMeep/Wan2.1/resolve/main/'+name",
+    "dst=Path('/kaggle/working')/name",
+    "du=shutil.disk_usage('/kaggle/working')",
+    "print('ND_WAN21_CACHE_DISK='+json.dumps({'free_gb':round(du.free/1e9,2),'total_gb':round(du.total/1e9,2)}))",
+    "if du.free < 18.5*10**9: raise RuntimeError('insufficient disk for transformer cache')",
+    "t0=time.time(); h=hashlib.sha256(); size=0",
+    "with requests.get(url,stream=True,timeout=(30,300),allow_redirects=True) as r:",
+    "    r.raise_for_status()",
+    "    with dst.open('wb') as f:",
+    "        for chunk in r.iter_content(chunk_size=16*1024*1024):",
+    "            if not chunk: continue",
+    "            f.write(chunk); h.update(chunk); size+=len(chunk)",
+    "receipt={'ok':True,'filename':name,'size_bytes':size,'sha256':h.hexdigest(),'elapsed_seconds':round(time.time()-t0,2)}",
+    "Path('/kaggle/working/cache-receipt.json').write_text(json.dumps(receipt,indent=2),encoding='utf-8')",
+    "print('ND_WAN21_CACHE_JSON='+json.dumps(receipt,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,newTitle:'ND Wan21 Weight Cache',text:script,language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],
+    isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:true,modelDataSources:[],
+    sessionTimeoutSeconds:3600
+  });
+  if(save?.error) throw new Error('kaggle_wan21_cache_save_error: '+String(save.error).slice(0,500));
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version) throw new Error('kaggle_wan21_cache_missing_version');
+  const versionLabel='v'+version;
+  let lastStatus=null,failureMessage=null;
+  const deadline=Date.now()+55*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    lastStatus=st?.status; failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,12000));
+  }
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_wan21_cache_timeout status='+String(lastStatus));
+  const statusText=String(lastStatus??'').toUpperCase();
+  if(statusText==='3'||statusText.includes('ERROR')) throw new Error('kaggle_wan21_cache_failed: '+String(failureMessage||'')+' log_tail='+String(out?.log||'').slice(-9000));
+  const payload=extractKaggleJsonMarker(out?.log||'','ND_WAN21_CACHE_JSON=','kaggle_wan21_cache_payload_unparseable');
+  const files=(out?.files||[]).map(f=>({file_name:f?.fileName||f?.file_name||null,url:f?.url||null,size:f?.size||null})).filter(x=>x.file_name);
+  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,provider_url:save?.url||null,provider_status:lastStatus,cache:payload,output_files:files};
+  console.log(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',...result}));
+  return result;
+}
+
 async function kaggleWanGPGeneration(){
   const enabled=String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true';
   if(!enabled) return {state:'SKIPPED'};
@@ -2185,6 +2244,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   }
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_BOOTSTRAP_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPBootstrap().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_BOOTSTRAP',state:'FAIL',error:String(e?.message||e).slice(0,7800)}))),10000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPGeneration().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),12000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWan21Cache().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
     ltxSelftestState={state:'RUNNING',updated_at:new Date().toISOString()};
     setTimeout(async()=>{
