@@ -9,7 +9,7 @@ sudo apt-get update -y
 sudo apt-get install -y --no-install-recommends \
   ca-certificates curl git unzip xvfb ffmpeg \
   libx11-6 libxcursor1 libxinerama1 libxrandr2 libxi6 libxkbcommon0 \
-  libgl1 libegl1 libvulkan1 libasound2 libpulse0 libfontconfig1 libudev1 libdbus-1-3
+  libgl1 libegl1 libvulkan1 libasound2t64 libpulse0 libfontconfig1 libudev1 libdbus-1-3
 
 rm -rf /tmp/nd-godot-dist /tmp/godot-mcp /tmp/godot.zip
 curl -fL "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_mono_linux_x86_64.zip" -o /tmp/godot.zip
