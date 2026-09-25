@@ -88,6 +88,63 @@ async function kaggleSelftest(){
 }
 
 
+function extractKaggleProbePayload(log){
+  const marker='ND_GPU_PROBE_JSON=';
+  const raw=String(log||'');
+  const chunks=[raw];
+  try{
+    const parsed=JSON.parse(raw);
+    const visit=v=>{
+      if(v==null) return;
+      if(typeof v==='string') chunks.push(v);
+      else if(Array.isArray(v)) for(const x of v) visit(x);
+      else if(typeof v==='object'){
+        for(const key of ['data','message','text','log']) if(typeof v[key]==='string') chunks.push(v[key]);
+      }
+    };
+    visit(parsed);
+  }catch{}
+  for(const chunk0 of chunks){
+    const chunk=String(chunk0||'');
+    const pos=chunk.indexOf(marker);
+    if(pos<0) continue;
+    let candidate=chunk.slice(pos+marker.length).trim();
+    candidate=candidate.split(/\r?\n/,1)[0].trim();
+    // Common persisted-log encodings may leave a trailing quote/comma/bracket.
+    candidate=candidate.replace(/\\n.*$/s,'').replace(/["']?\s*[,}\]]*\s*$/,'').trim();
+    const attempts=[candidate];
+    if(candidate.startsWith('{\\"')) attempts.push(candidate.replace(/\\"/g,'"'));
+    if(candidate.startsWith("{'")) attempts.push(candidate.replace(/'/g,'"'));
+    for(const a of attempts){
+      try{return JSON.parse(a);}catch{}
+    }
+    // Last-resort balanced-object extraction from the marker onward.
+    const start=chunk.indexOf('{',pos+marker.length);
+    if(start>=0){
+      let depth=0, quote=null, esc=false;
+      for(let i=start;i<chunk.length;i++){
+        const ch=chunk[i];
+        if(esc){esc=false;continue;}
+        if(ch==='\\'){esc=true;continue;}
+        if(quote){if(ch===quote)quote=null;continue;}
+        if(ch==='"'||ch==="'"){quote=ch;continue;}
+        if(ch==='{') depth++;
+        else if(ch==='}'){
+          depth--;
+          if(depth===0){
+            const objText=chunk.slice(start,i+1);
+            for(const a of [objText,objText.replace(/\\"/g,'"'),objText.replace(/'/g,'"')]){
+              try{return JSON.parse(a);}catch{}
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+  throw new Error('kaggle_gpu_probe_payload_unparseable');
+}
+
 function kaggleStatusTerminal(status){
   const s=String(status??'').toUpperCase();
   return s==='2'||s==='3'||s==='4'||s==='5'||s.includes('COMPLETE')||s.includes('ERROR')||s.includes('CANCEL');
@@ -152,11 +209,7 @@ async function kaggleGpuProbe(){
   const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
     userName:username,kernelSlug:slug,versionLabel,pageSize:20
   });
-  const log=String(out?.log||'');
-  const marker='ND_GPU_PROBE_JSON=';
-  const line=log.split(/\r?\n/).find(x=>x.includes(marker));
-  if(!line) throw new Error('kaggle_gpu_probe_marker_missing');
-  const payload=JSON.parse(line.slice(line.indexOf(marker)+marker.length));
+  const payload=extractKaggleProbePayload(out?.log||'');
   const result={
     state:'PASS',
     username,
@@ -166,6 +219,33 @@ async function kaggleGpuProbe(){
     gpu:payload
   };
   console.log(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE',...result}));
+  return result;
+}
+
+
+async function kaggleGpuProbeReadback(version){
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_probe_readback_auth_failed');
+  const username=String(intro.username);
+  const slug='nd-gpu-probe';
+  const versionLabel='v'+Number(version);
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+    userName:username,kernelSlug:slug,versionLabel
+  });
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+    userName:username,kernelSlug:slug,versionLabel,pageSize:20
+  });
+  const payload=extractKaggleProbePayload(out?.log||'');
+  const result={
+    state:'PASS',
+    username,
+    ref:username+'/'+slug+'/'+Number(version),
+    version:Number(version),
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    gpu:payload
+  };
+  console.log(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE_READBACK',...result}));
   return result;
 }
 
@@ -1814,6 +1894,10 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_KAGGLE_CONFIG',configured:!!KAGGLE_API_TOKEN}));
   if(KAGGLE_API_TOKEN) setTimeout(()=>kaggleSelftest().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SELFTEST_CRASH',error:String(e?.message||e).slice(0,500)}))),4000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_GPU_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleGpuProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,900)}))),9000);
+  {
+    const readVersion=Number(process.env.ND_KAGGLE_GPU_PROBE_READ_VERSION||0);
+    if(KAGGLE_API_TOKEN && readVersion>0) setTimeout(()=>kaggleGpuProbeReadback(readVersion).catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE_READBACK',state:'FAIL',version:readVersion,error:String(e?.message||e).slice(0,900)}))),7000);
+  }
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
     ltxSelftestState={state:'RUNNING',updated_at:new Date().toISOString()};
     setTimeout(async()=>{
