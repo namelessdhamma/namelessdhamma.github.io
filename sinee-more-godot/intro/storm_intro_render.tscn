@@ -1,0 +1,110 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://intro/storm_intro.gd" id="1_intro"]
+[ext_resource type="Texture2D" path="res://intro/assets/ocean_bg.jpg" id="2_ocean"]
+[ext_resource type="Texture2D" path="res://intro/assets/ship_cutout.png" id="3_ship"]
+[ext_resource type="Shader" path="res://intro/ocean_continuous.gdshader" id="4_ocean_shader"]
+[ext_resource type="Shader" path="res://intro/ship_motion.gdshader" id="5_ship_shader"]
+[ext_resource type="Shader" path="res://intro/foreground_wave.gdshader" id="6_foreground_shader"]
+[ext_resource type="Shader" path="res://intro/rain.gdshader" id="7_rain_shader"]
+[ext_resource type="Script" path="res://intro/lightning.gd" id="8_lightning"]
+
+[sub_resource type="ShaderMaterial" id="OceanMaterial"]
+shader = ExtResource("4_ocean_shader")
+shader_parameter/source_texture = ExtResource("2_ocean")
+shader_parameter/anim_time = 0.0
+shader_parameter/progress = 0.0
+shader_parameter/lightning_flash = 0.0
+
+[sub_resource type="ShaderMaterial" id="ShipMaterial"]
+shader = ExtResource("5_ship_shader")
+shader_parameter/source_texture = ExtResource("3_ship")
+shader_parameter/anim_time = 0.0
+shader_parameter/progress = 0.0
+shader_parameter/lightning_flash = 0.0
+
+[sub_resource type="ShaderMaterial" id="ForegroundMaterial"]
+shader = ExtResource("6_foreground_shader")
+shader_parameter/anim_time = 0.0
+shader_parameter/progress = 0.0
+shader_parameter/lightning_flash = 0.0
+
+[sub_resource type="ShaderMaterial" id="RainMaterial"]
+shader = ExtResource("7_rain_shader")
+shader_parameter/anim_time = 0.0
+shader_parameter/intensity = 1.0
+
+[node name="StormIntro" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_intro")
+fixed_clock = true
+
+[node name="Background" type="TextureRect" parent="."]
+material = SubResource("OceanMaterial")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_ocean")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Ship" type="TextureRect" parent="."]
+material = SubResource("ShipMaterial")
+offset_right = 736.0
+offset_bottom = 707.0
+mouse_filter = 2
+texture = ExtResource("3_ship")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ForegroundWater" type="ColorRect" parent="."]
+material = SubResource("ForegroundMaterial")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="Rain" type="ColorRect" parent="."]
+material = SubResource("RainMaterial")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="Lightning" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("8_lightning")
+
+[node name="Fade" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
