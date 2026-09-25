@@ -1,0 +1,74 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://intro/storm_intro.gd" id="1_intro"]
+[ext_resource type="Texture2D" path="res://intro/assets/storm_intro_sheet.jpg" id="2_sheet"]
+[ext_resource type="Shader" path="res://intro/storm_scene.gdshader" id="3_storm"]
+[ext_resource type="Shader" path="res://intro/rain.gdshader" id="4_rain"]
+[ext_resource type="Script" path="res://intro/lightning.gd" id="5_lightning"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_storm"]
+shader = ExtResource("3_storm")
+shader_parameter/anim_time = 0.0
+shader_parameter/shot_a = 0
+shader_parameter/shot_b = 1
+shader_parameter/mix_amount = 0.0
+shader_parameter/lightning_flash = 0.0
+shader_parameter/atlas_texture = ExtResource("2_sheet")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_rain"]
+shader = ExtResource("4_rain")
+shader_parameter/intensity = 1.0
+
+[node name="StormIntro" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_intro")
+
+[node name="StormImage" type="TextureRect" parent="."]
+material = SubResource("ShaderMaterial_storm")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_sheet")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Lightning" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_lightning")
+
+[node name="Rain" type="ColorRect" parent="."]
+material = SubResource("ShaderMaterial_rain")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
+
+[node name="Fade" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0)
