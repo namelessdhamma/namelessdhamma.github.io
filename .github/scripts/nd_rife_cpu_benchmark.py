@@ -32,6 +32,14 @@ dst=repo/"train_log"
 if dst.exists(): shutil.rmtree(dst)
 shutil.copytree(srcdir,dst)
 
+# Practical-RIFE's generic image demo hardcodes 448x256, while 4.25.lite
+# expects the width path used here to align at 512. Patch only the benchmark checkout.
+infer=repo/"inference_img.py"
+src=infer.read_text()
+src=src.replace("cv2.resize(img0, (448, 256))","cv2.resize(img0, (512, 256))")
+src=src.replace("cv2.resize(img1, (448, 256))","cv2.resize(img1, (512, 256))")
+infer.write_text(src)
+
 out=repo/"output"
 if out.exists(): shutil.rmtree(out)
 start=time.perf_counter()
