@@ -12,6 +12,81 @@ const LTX_MCP_TOKEN = String(process.env.ND_LTX_MCP_PATH_TOKEN || '').trim();
 const LTX_MCP_PATH = '/ltx-mcp/' + LTX_MCP_TOKEN;
 const STORYBOARD_MCP_TOKEN = String(process.env.ND_STORYBOARD_MCP_PATH_TOKEN || '').trim();
 const STORYBOARD_MCP_PATH = '/storyboard-mcp/' + STORYBOARD_MCP_TOKEN;
+const KAGGLE_API_TOKEN = String(process.env.KAGGLE_API_TOKEN || '').trim();
+let kaggleSelftestState={state:'NOT_RUN',updated_at:null,username:null,gpu:null,error:null};
+
+function kaggleDurationSeconds(v){
+  if(typeof v==='number') return v;
+  if(typeof v==='string'){
+    const m=v.match(/^(-?\d+(?:\.\d+)?)s$/);
+    return m?Number(m[1]):Number(v)||0;
+  }
+  if(v && typeof v==='object'){
+    const s=Number(v.seconds||v.Seconds||0);
+    const n=Number(v.nanos||v.Nanos||0);
+    return s+n/1e9;
+  }
+  return 0;
+}
+
+async function kaggleRpc(service,method,body={}){
+  if(!KAGGLE_API_TOKEN) throw new Error('kaggle_api_token_missing');
+  const res=await fetch('https://api.kaggle.com/v1/'+service+'/'+method,{
+    method:'POST',
+    headers:{
+      authorization:'Bearer '+KAGGLE_API_TOKEN,
+      accept:'application/json',
+      'content-type':'application/json',
+      'user-agent':'nd-external-intelligence/1.0'
+    },
+    body:JSON.stringify(body)
+  });
+  const text=await res.text();
+  let obj={};
+  try{obj=text?JSON.parse(text):{};}catch{obj={raw:text.slice(0,500)};}
+  if(!res.ok){
+    const e=new Error('kaggle HTTP '+res.status+': '+String(obj?.message||obj?.error||text).slice(0,500));
+    e.status=res.status;
+    throw e;
+  }
+  return obj;
+}
+
+async function kaggleSelftest(){
+  kaggleSelftestState={state:'RUNNING',updated_at:new Date().toISOString(),username:null,gpu:null,error:null};
+  try{
+    const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+    if(!intro?.active || !intro?.username) throw new Error('kaggle_token_inactive_or_username_missing');
+    const quota=await kaggleRpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});
+    const g=quota?.gpuQuota||quota?.gpu_quota||null;
+    const used=kaggleDurationSeconds(g?.timeUsed??g?.time_used);
+    const total=kaggleDurationSeconds(g?.totalTimeAllowed??g?.total_time_allowed);
+    kaggleSelftestState={
+      state:'PASS',
+      updated_at:new Date().toISOString(),
+      username:String(intro.username),
+      gpu:g?{
+        used_hours:Number((used/3600).toFixed(3)),
+        total_hours:Number((total/3600).toFixed(3)),
+        remaining_hours:Number((Math.max(0,total-used)/3600).toFixed(3)),
+        refresh_at:quota?.quotaRefreshTime||quota?.quota_refresh_time||null,
+        has_ever_run:g?.hasEverRun??g?.has_ever_run??null
+      }:null,
+      error:null
+    };
+  }catch(e){
+    kaggleSelftestState={
+      state:'FAIL',
+      updated_at:new Date().toISOString(),
+      username:null,
+      gpu:null,
+      error:String(e?.message||e).slice(0,700)
+    };
+  }
+  console.log(JSON.stringify({event:'ND_KAGGLE_SELFTEST',...kaggleSelftestState}));
+  return kaggleSelftestState;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -1654,6 +1729,8 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
   console.log(JSON.stringify({event:'ND_WAN_VIDEO_MCP_READY',mcp_path_configured:!!WAN_MCP_TOKEN,mode:'full'}));
   console.log(JSON.stringify({event:'ND_STORYBOARD_MCP_READY',mcp_path_configured:!!STORYBOARD_MCP_TOKEN,mode:'free_public_actions'}));
+  console.log(JSON.stringify({event:'ND_KAGGLE_CONFIG',configured:!!KAGGLE_API_TOKEN}));
+  if(KAGGLE_API_TOKEN) setTimeout(()=>kaggleSelftest().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SELFTEST_CRASH',error:String(e?.message||e).slice(0,500)}))),4000);
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
     ltxSelftestState={state:'RUNNING',updated_at:new Date().toISOString()};
     setTimeout(async()=>{
