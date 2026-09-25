@@ -51,12 +51,6 @@ godot --headless --editor --path "$GODOT_PROJECT" \
   >"$GODOT_PROJECT/ci-out/editor.log" 2>&1 &
 EDITOR_PID=$!
 
-cleanup() {
-  kill "$EDITOR_PID" >/dev/null 2>&1 || true
-  kill "$XVFB_PID" >/dev/null 2>&1 || true
-}
-trap cleanup EXIT INT TERM
-
 BRIDGE_READY=0
 for _ in $(seq 1 80); do
   if ! kill -0 "$EDITOR_PID" >/dev/null 2>&1; then
@@ -80,11 +74,46 @@ fi
 echo "ND_GODOT_BRIDGE_READY"
 cd "$GODOT_PROJECT"
 
-echo "ND_GODOT_GATEWAY_START port=${PORT:-8080}"
-exec supergateway \
+INTERNAL_MCP_PORT="${ND_GODOT_INTERNAL_MCP_PORT:-8001}"
+echo "ND_GODOT_GATEWAY_START internal_port=$INTERNAL_MCP_PORT"
+supergateway \
   --stdio "node /opt/godot-mcp/dist/server.js" \
   --outputTransport streamableHttp \
-  --port "${PORT:-8080}" \
-  --streamableHttpPath "/mcp/${ND_GODOT_MCP_PATH_TOKEN}" \
+  --port "$INTERNAL_MCP_PORT" \
+  --streamableHttpPath /mcp \
   --healthEndpoint /healthz \
-  --logLevel none
+  --logLevel none &
+GATEWAY_PID=$!
+
+for _ in $(seq 1 40); do
+  if ! kill -0 "$GATEWAY_PID" >/dev/null 2>&1; then
+    echo "ND_GODOT_GATEWAY_FAILED"
+    exit 1
+  fi
+  if curl -fsS "http://127.0.0.1:$INTERNAL_MCP_PORT/healthz" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.25
+done
+
+curl -fsS "http://127.0.0.1:$INTERNAL_MCP_PORT/healthz" >/dev/null
+echo "ND_GODOT_GATEWAY_READY"
+
+node /opt/nd-godot/proxy.mjs &
+PROXY_PID=$!
+
+cleanup() {
+  kill "$PROXY_PID" >/dev/null 2>&1 || true
+  kill "$GATEWAY_PID" >/dev/null 2>&1 || true
+  kill "$EDITOR_PID" >/dev/null 2>&1 || true
+  kill "$XVFB_PID" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT INT TERM
+
+# The container is healthy only while both the public proxy and MCP gateway live.
+set +e
+wait -n "$GATEWAY_PID" "$PROXY_PID"
+RC=$?
+set -e
+echo "ND_GODOT_PUBLIC_STACK_EXIT rc=$RC"
+exit "$RC"
