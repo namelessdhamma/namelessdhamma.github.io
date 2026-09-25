@@ -2,7 +2,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, storyboardHealth } from './wan_mcp.mjs';
+import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
@@ -1477,6 +1477,28 @@ child.on('spawn',()=>{ childReady=true; console.log(JSON.stringify({event:'ND_OM
 child.on('exit',(code,signal)=>{ childReady=false; console.error(JSON.stringify({event:'ND_OMNIROUTE_CHILD_EXIT',code,signal})); });
 
 const server = http.createServer(async (req,res) => {
+  if (STORYBOARD_MCP_TOKEN && req.method === 'GET' && req.url?.startsWith('/storyboard-result/'+STORYBOARD_MCP_TOKEN+'/')) {
+    const prefix='/storyboard-result/'+STORYBOARD_MCP_TOKEN+'/';
+    const leaf=decodeURIComponent(req.url.slice(prefix.length).split('?')[0]);
+    const isMp4=leaf.endsWith('.mp4');
+    const isJson=leaf.endsWith('.json');
+    if(!isMp4 && !isJson) return json(res,404,{ok:false,error:'storyboard_result_format_not_found'});
+    const requestId=leaf.replace(/\.(mp4|json)$/,'');
+    try{
+      const bundle=await storyboardResultBytes(requestId);
+      if(!bundle.mp4) return json(res,404,{ok:false,error:'storyboard_result_not_ready',status:bundle.status});
+      if(isJson) return json(res,200,{ok:true,request_id:requestId,receipt:bundle.receipt,status:bundle.status});
+      res.writeHead(200,{
+        'content-type':'video/mp4',
+        'content-length':bundle.mp4.length,
+        'content-disposition':'inline; filename="'+requestId+'.mp4"',
+        'cache-control':'private, no-store'
+      });
+      return res.end(bundle.mp4);
+    }catch(e){
+      return json(res,502,{ok:false,error:String(e?.message||e).slice(0,1000)});
+    }
+  }
   if (req.method === 'GET' && req.url === '/ltx/selftest/status') {
     return json(res,200,{ok:ltxSelftestState.state==='PASS',...ltxSelftestState});
   }
