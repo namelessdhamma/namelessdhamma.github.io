@@ -15,6 +15,9 @@ const LTX_HFJOBS_ENABLED = /^(1|true|yes)$/i.test(String(process.env.ND_LTX_HFJO
 const LTX_HFJOBS_REPO = 'namelessdhamma/ND-app';
 const LTX_HFJOBS_MAX_COST_USD = 0.405;
 
+const STORYBOARD_REPO = 'namelessdhamma/namelessdhamma.github.io';
+const STORYBOARD_EVENT = 'nd_storyboard_render';
+
 function configuredLtxSpaces(){
   return [...new Set([DEFAULT_LTX_SPACE, LTX_I2V_PRIMARY_SPACE, LTX_KEYFRAME_PRIMARY_SPACE, ...DEFAULT_LTX_RESERVES, ...LTX_KEYFRAME_RESERVES].filter(Boolean))];
 }
@@ -106,6 +109,90 @@ async function ltxQuotaIndependentStatus(args={}){
     latest_comment:latest?.body||null,
     updated_at:issue.updated_at,
     paid_route_enabled:LTX_HFJOBS_ENABLED
+  };
+}
+
+
+function normalizeStoryboardManifest(args={}){
+  const frames=Array.isArray(args.frames)?args.frames:[];
+  if(frames.length<2 || frames.length>40) throw new Error('frames must contain 2..40 items');
+  const normalizedFrames=frames.map((f,i)=>{
+    const url=String(f?.url||'').trim();
+    if(!/^https?:\/\//i.test(url)) throw new Error('frame '+i+' requires http(s) url');
+    return {
+      url,
+      duration:Number(f?.duration??args.default_duration??1.4),
+      motion:String(f?.motion||'slow_push_in'),
+      transition:String(f?.transition||'fade')
+    };
+  });
+  return {
+    width:Number(args.width??640),
+    height:Number(args.height??360),
+    fps:Number(args.fps??24),
+    default_duration:Number(args.default_duration??1.4),
+    transition_duration:Number(args.transition_duration??0.30),
+    frames:normalizedFrames
+  };
+}
+
+function storyboardRequestId(){
+  return 'sb-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);
+}
+
+async function storyboardRenderSubmit(args={}){
+  const manifest=normalizeStoryboardManifest(args);
+  const requestId=storyboardRequestId();
+  await githubJson('/repos/'+STORYBOARD_REPO+'/dispatches',{
+    method:'POST',
+    body:{
+      event_type:STORYBOARD_EVENT,
+      client_payload:{request_id:requestId,manifest}
+    }
+  });
+  return {
+    ok:true,
+    state:'SUBMITTED',
+    request_id:requestId,
+    route:'public_github_actions_ffmpeg_storyboard',
+    cost_policy:'FREE_ONLY',
+    daily_generation_quota:'NONE',
+    renderer:'ffmpeg-storyboard-v1',
+    rife_state:'NOT_YET_QUALIFIED'
+  };
+}
+
+async function storyboardRenderStatus(args={}){
+  const requestId=String(args.request_id||'').trim();
+  if(!/^sb-[a-z0-9-]+$/i.test(requestId)) throw new Error('valid request_id required');
+  const runs=await githubJson('/repos/'+STORYBOARD_REPO+'/actions/runs?event=repository_dispatch&per_page=50');
+  const list=Array.isArray(runs?.workflow_runs)?runs.workflow_runs:[];
+  const title='ND Storyboard '+requestId;
+  const run=list.find(r=>r?.name==='ND Storyboard Renderer' && r?.display_title===title)
+    || list.find(r=>String(r?.display_title||'').includes(requestId));
+  if(!run){
+    return {ok:true,state:'SUBMITTED_NOT_YET_VISIBLE',request_id:requestId};
+  }
+  let artifact=null;
+  if(run.status==='completed'){
+    const arts=await githubJson('/repos/'+STORYBOARD_REPO+'/actions/runs/'+run.id+'/artifacts');
+    const arr=Array.isArray(arts?.artifacts)?arts.artifacts:[];
+    artifact=arr.find(a=>a?.name==='nd-storyboard-'+requestId)||arr[0]||null;
+  }
+  return {
+    ok:run.conclusion!=='failure',
+    request_id:requestId,
+    state:run.status==='completed'?(run.conclusion==='success'?'COMPLETED':'FAILED'):String(run.status||'UNKNOWN').toUpperCase(),
+    conclusion:run.conclusion||null,
+    run_id:run.id,
+    run_url:run.html_url,
+    artifact:artifact?{
+      id:artifact.id,
+      name:artifact.name,
+      size_in_bytes:artifact.size_in_bytes,
+      expired:artifact.expired,
+      archive_download_api_url:artifact.archive_download_url
+    }:null
   };
 }
 
@@ -241,6 +328,46 @@ async function rawCall(args={}){
 
 const TOOLS=[
   {
+    name:'storyboard_render_submit',
+    description:'Submit a free storyboard-to-MP4 render to the public GitHub Actions FFmpeg renderer. Uses deterministic camera motion and transitions; no generative-video credits or browser are required.',
+    inputSchema:{
+      type:'object',
+      properties:{
+        frames:{
+          type:'array',minItems:2,maxItems:40,
+          items:{
+            type:'object',
+            properties:{
+              url:{type:'string'},
+              duration:{type:'number',minimum:0.2,maximum:20},
+              motion:{type:'string',enum:['static','slow_push_in','slow_pull_out','pan_left','pan_right']},
+              transition:{type:'string',enum:['fade','cut','wipeleft','wiperight','fadeblack','slideleft','slideright']}
+            },
+            required:['url'],
+            additionalProperties:false
+          }
+        },
+        width:{type:'integer',default:640,minimum:256,maximum:1920},
+        height:{type:'integer',default:360,minimum:256,maximum:1920},
+        fps:{type:'integer',default:24,minimum:12,maximum:60},
+        default_duration:{type:'number',default:1.4,minimum:0.2,maximum:20},
+        transition_duration:{type:'number',default:0.3,minimum:0.05,maximum:1.0}
+      },
+      required:['frames'],
+      additionalProperties:false
+    }
+  },
+  {
+    name:'storyboard_render_status',
+    description:'Read GitHub Actions status and artifact metadata for a storyboard render request.',
+    inputSchema:{
+      type:'object',
+      properties:{request_id:{type:'string'}},
+      required:['request_id'],
+      additionalProperties:false
+    }
+  },
+  {
     name:'ltx_generate_quota_independent',
     description:'Submit an open-weight LTX 2B distilled FP8 generation to a quota-independent Hugging Face GPU Job. This route has no daily generation quota but uses paid GPU compute; it is hard-disabled until the owner explicitly authorizes paid compute.',
     inputSchema:{
@@ -357,8 +484,65 @@ const TOOLS=[
   }
 ];
 
+const STORYBOARD_TOOLS=TOOLS.filter(x=>x.name.startsWith('storyboard_'));
+
 function toolResult(value){
   return {content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value,isError:false};
+}
+
+
+export function createStoryboardMcpHandler(){
+  return async function handleStoryboardMcp(req,res){
+    if(req.method==='GET'){
+      res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store','connection':'keep-alive'});
+      res.write(': nd-storyboard-renderer-mcp\n\n');
+      return res.end();
+    }
+    if(req.method!=='POST') return json(res,405,{ok:false,error:'method_not_allowed'});
+    const chunks=[]; for await(const ch of req) chunks.push(ch);
+    let msg={};
+    try{msg=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+    catch{return json(res,400,{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}});}
+    const id=msg.id??null, method=String(msg.method||'');
+    try{
+      if(method==='initialize'){
+        return json(res,200,{jsonrpc:'2.0',id,result:{
+          protocolVersion:String(msg?.params?.protocolVersion||'2025-06-18'),
+          capabilities:{tools:{}},
+          serverInfo:{name:'ND Storyboard Renderer MCP',version:'1.0.0'}
+        }});
+      }
+      if(method==='ping') return json(res,200,{jsonrpc:'2.0',id,result:{}});
+      if(method.startsWith('notifications/')){res.writeHead(202,{'cache-control':'no-store'});return res.end();}
+      if(method==='tools/list') return json(res,200,{jsonrpc:'2.0',id,result:{tools:STORYBOARD_TOOLS}});
+      if(method==='tools/call'){
+        const name=String(msg?.params?.name||'');
+        const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
+        let result;
+        if(name==='storyboard_render_submit') result=await storyboardRenderSubmit(args);
+        else if(name==='storyboard_render_status') result=await storyboardRenderStatus(args);
+        else return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Unknown tool'}});
+        return json(res,200,{jsonrpc:'2.0',id,result:toolResult(result)});
+      }
+      return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Method not found'}});
+    }catch(e){
+      return json(res,200,{jsonrpc:'2.0',id,result:{content:[{type:'text',text:errorText(e)}],isError:true}});
+    }
+  };
+}
+
+export async function storyboardHealth(){
+  return {
+    ok:true,
+    route:'public_github_actions_ffmpeg_storyboard',
+    repository:STORYBOARD_REPO,
+    workflow:'.github/workflows/nd-storyboard-render.yml',
+    cost_policy:'FREE_ONLY',
+    daily_generation_quota:'NONE',
+    renderer:'ffmpeg-storyboard-v1',
+    rife_state:'NOT_YET_QUALIFIED',
+    tools:STORYBOARD_TOOLS.map(x=>x.name)
+  };
 }
 
 export function createWanMcpHandler(){
@@ -393,7 +577,9 @@ export function createWanMcpHandler(){
         const name=String(msg?.params?.name||'');
         const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
         let result;
-        if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
+        if(name==='storyboard_render_submit') result=await storyboardRenderSubmit(args);
+        else if(name==='storyboard_render_status') result=await storyboardRenderStatus(args);
+        else if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
         else if(name==='ltx_quota_independent_status') result=await ltxQuotaIndependentStatus(args);
         else if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
         else if(name==='ltx_list_routes') result={
