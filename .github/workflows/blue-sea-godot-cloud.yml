@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "sinee-more-godot/**"
+      - "!sinee-more-godot/.nd/request.json"
       - ".github/workflows/blue-sea-godot-cloud.yml"
   workflow_dispatch:
 
