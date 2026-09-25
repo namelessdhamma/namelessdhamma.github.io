@@ -10,6 +10,7 @@ var reserve_available: Array[Array] = [[true,true,true,true,true,true,true,true,
 
 func _ready() -> void:
 	set_process(true)
+	_apply_requested_test_viewport()
 	for i in range(CELL_NAMES.size()):
 		var cell := get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + CELL_NAMES[i]) as Button
 		cell.pressed.connect(_on_cell_pressed.bind(i))
@@ -24,7 +25,18 @@ func _ready() -> void:
 	_update_status("ready")
 	print("BLUE_SEA_GODOT_GAME_SURFACE_READY ", get_viewport_rect().size)
 	if DisplayServer.get_name() == "headless":
-		call_deferred("_run_headless_interaction_smoke")
+		call_deferred("_run_headless_geometry_and_interaction_smoke")
+
+func _apply_requested_test_viewport() -> void:
+	var args := OS.get_cmdline_user_args()
+	for arg in args:
+		if arg.begins_with("--nd-test-size="):
+			var parts := arg.trim_prefix("--nd-test-size=").split("x")
+			if parts.size() == 2:
+				var requested := Vector2i(int(parts[0]), int(parts[1]))
+				if requested.x > 0 and requested.y > 0:
+					get_window().size = requested
+					print("BLUE_SEA_TEST_VIEWPORT_REQUEST ", requested)
 
 func _process(_delta: float) -> void:
 	var size := get_viewport_rect().size
@@ -100,6 +112,59 @@ func _refresh_surface() -> void:
 func _update_status(event: String) -> void:
 	var status := get_node("SafeArea/Landscape/Center/Status") as Label
 	status.tooltip_text = event
+
+func _geometry_snapshot() -> Dictionary:
+	var paths := {
+		"safe": "SafeArea",
+		"landscape": "SafeArea/Landscape",
+		"left": "SafeArea/Landscape/LeftRail",
+		"center": "SafeArea/Landscape/Center",
+		"board": "SafeArea/Landscape/Center/BoardAspect/Board",
+		"right": "SafeArea/Landscape/RightRail",
+		"reserve1": "SafeArea/Landscape/LeftRail/ReserveOne",
+		"reserve2": "SafeArea/Landscape/RightRail/ReserveTwo",
+		"actions": "SafeArea/Landscape/RightRail/Actions"
+	}
+	var out := {}
+	for key in paths:
+		var control := get_node(paths[key]) as Control
+		out[key] = {"x": control.position.x, "y": control.position.y, "w": control.size.x, "h": control.size.y}
+	return out
+
+func _assert_min_control_size(control: Control, minimum: Vector2, label: String) -> void:
+	assert(control.size.x + 0.01 >= minimum.x, "%s width %.2f < %.2f" % [label, control.size.x, minimum.x])
+	assert(control.size.y + 0.01 >= minimum.y, "%s height %.2f < %.2f" % [label, control.size.y, minimum.y])
+
+func _assert_landscape_geometry() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var viewport := get_viewport_rect().size
+	assert(viewport.x >= viewport.y, "landscape contract violated: %s" % viewport)
+	var safe := get_node("SafeArea") as Control
+	var landscape := get_node("SafeArea/Landscape") as Control
+	var left := get_node("SafeArea/Landscape/LeftRail") as Control
+	var center := get_node("SafeArea/Landscape/Center") as Control
+	var right := get_node("SafeArea/Landscape/RightRail") as Control
+	assert(safe.position.x >= 11.9 and safe.position.y >= 11.9)
+	assert(safe.position.x + safe.size.x <= viewport.x - 11.9)
+	assert(safe.position.y + safe.size.y <= viewport.y - 11.9)
+	assert(left.size.x >= 145.0 and right.size.x >= 145.0)
+	assert(center.size.x > 0.0 and center.size.y > 0.0)
+	assert(left.position.x + left.size.x <= center.position.x + 0.01)
+	assert(center.position.x + center.size.x <= right.position.x + 0.01)
+	for name in CELL_NAMES:
+		_assert_min_control_size(get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + name) as Control, Vector2(44, 44), "cell " + name)
+	for player in [1, 2]:
+		var reserve := _reserve_node(player)
+		for i in range(reserve.get_child_count()):
+			_assert_min_control_size(reserve.get_child(i) as Control, Vector2(44, 44), "P%d reserve %d" % [player, i])
+	for action_name in ["ActionPrimary", "ActionSecondary", "ActionMenu"]:
+		_assert_min_control_size(get_node("SafeArea/Landscape/RightRail/Actions/" + action_name) as Control, Vector2(44, 44), action_name)
+	print("BLUE_SEA_GEOMETRY_PASS viewport=", viewport, " geometry=", _geometry_snapshot())
+
+func _run_headless_geometry_and_interaction_smoke() -> void:
+	await _assert_landscape_geometry()
+	_run_headless_interaction_smoke()
 
 func _run_headless_interaction_smoke() -> void:
 	# Exercise the real interaction handlers and verify state + rendered controls.
