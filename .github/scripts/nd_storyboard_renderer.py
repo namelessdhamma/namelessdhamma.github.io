@@ -50,6 +50,14 @@ for i, frame in enumerate(frames):
     target = FRAMES / f"{i:03d}{ext}"
     print(f"download frame {i}: {url}", flush=True)
     urllib.request.urlretrieve(url, target)
+    try:
+        subprocess.check_output([
+            "ffprobe","-v","error","-select_streams","v:0",
+            "-show_entries","stream=codec_name,width,height",
+            "-of","json",str(target)
+        ], text=True)
+    except subprocess.CalledProcessError as e:
+        raise SystemExit(f"frame {i} is not a readable image/video input: {url}") from e
     downloaded.append(target)
 
 clip_paths = []
