@@ -1,0 +1,6 @@
+.godot/
+ci-out/
+builds/
+exports/
+_nd/runtime/
+*.tmp

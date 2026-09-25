@@ -1,0 +1,47 @@
+{
+  "schema": "blue-sea-godot-workspace-state-v1",
+  "status": "CURRENT",
+  "updated": "2026-09-25",
+  "engine": {
+    "name": "Godot",
+    "version": "4.7.2",
+    "flavor": "Mono",
+    "language_primary": "GDScript"
+  },
+  "project": {
+    "name": "Синее море",
+    "root": "/workspace/sinee-more-godot",
+    "main_scene": "res://main.tscn"
+  },
+  "authority": {
+    "product_statehead_drive": "1UvXEYSFBXzjhJsRX7a_46LD8ek46lXuEBoWRzSwFVA4",
+    "workspace_registry_drive": "1dfQ_nNB5IN8bmOS7E_-K66mISHhWAjiQxE08vCorAIs",
+    "development_runbook_drive": "1EAFdyD4K_zTFFpGnJiYUeDiDiR3SwA6TcNS4MP1mWrA",
+    "product_navigator_linear": "NAM-118",
+    "external_integration_linear": "NAM-142",
+    "repository": "namelessdhamma/namelessdhamma.github.io",
+    "repository_path": "sinee-more-godot"
+  },
+  "execution": {
+    "primary": "GitHub Actions Godot cloud qualification",
+    "direct_reserve": "Railway Godot Direct MCP",
+    "generation": "13.8",
+    "no_local_computer_required": true
+  },
+  "product": {
+    "form": "cinematic narrative adventure",
+    "orientation": "landscape 16:9",
+    "current_frontier": "Pirate Sea opening",
+    "interaction": "cinematic scene -> rare decision -> authored reaction -> next scene",
+    "d2_role": "preserved minigame + standalone Free Play"
+  },
+  "recovery_order": [
+    "NAM-118",
+    "Drive Product StateHead",
+    "res://_nd/state.json",
+    "relevant current canon only",
+    "GitHub current source",
+    "Godot live status"
+  ],
+  "persistence_rule": "accepted consequential Godot delta -> Godot verification -> GitHub versioned source -> Drive workspace/StateHead -> Linear LAST"
+}
