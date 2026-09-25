@@ -395,6 +395,145 @@ async function kaggleWanGPBootstrap(){
   return result;
 }
 
+
+async function kaggleWanGPGeneration(){
+  const enabled=String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_wangp_generation_auth_failed');
+  const username=String(intro.username);
+  const slug='nd-wangp-first-last-qualification';
+  const fullSlug=username+'/'+slug;
+  const script=[
+    "from pathlib import Path",
+    "import json, os, platform, shutil, subprocess, sys, time",
+    "ROOT=Path('/kaggle/working/Wan2GP')",
+    "OUT=Path('/kaggle/working/wangp-output')",
+    "COMMIT='2345ae148f82740f66e82c41292dbbdd592e713d'",
+    "os.environ['HF_XET_HIGH_PERFORMANCE']='1'",
+    "def run(cmd,timeout):",
+    "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout)",
+    "    if p.returncode!=0:",
+    "        print('ND_WANGP_COMMAND_FAIL '+str(cmd)+'\\n'+p.stdout[-10000:])",
+    "        raise RuntimeError('command failed: '+str(cmd))",
+    "    return p.stdout",
+    "du=shutil.disk_usage('/kaggle/working')",
+    "print('ND_WANGP_DISK_JSON='+json.dumps({'total_gb':round(du.total/1e9,2),'free_gb':round(du.free/1e9,2)}))",
+    "if du.free < 28*10**9:",
+    "    raise RuntimeError('insufficient /kaggle/working free disk for bounded Wan2.1 INT8 qualification: '+str(round(du.free/1e9,2))+' GB')",
+    "if ROOT.exists():",
+    "    run(['git','-C',str(ROOT),'fetch','--depth','1','origin',COMMIT],240)",
+    "else:",
+    "    run(['git','clone','--filter=blob:none','https://github.com/deepbeepmeep/Wan2GP.git',str(ROOT)],300)",
+    "run(['git','-C',str(ROOT),'checkout',COMMIT],120)",
+    "run([sys.executable,'-m','pip','install','-q','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],1500)",
+    "from PIL import Image, ImageDraw",
+    "W,H=832,480",
+    "def frame(path,boat_x,lightning_x,phase):",
+    "    im=Image.new('RGB',(W,H),(13,22,40)); d=ImageDraw.Draw(im)",
+    "    d.rectangle([0,0,W,235],fill=(12,20,39)); d.rectangle([0,235,W,H],fill=(14,48,72))",
+    "    for y in range(250,H,28):",
+    "        off=(phase*13+y//7)%70",
+    "        for x in range(-70,W+70,140): d.arc([x+off,y-12,x+off+110,y+25],180,350,fill=(95,145,165),width=3)",
+    "    bx=boat_x; by=290",
+    "    d.polygon([(bx-70,by),(bx+70,by),(bx+48,by+34),(bx-48,by+34)],fill=(72,42,29))",
+    "    d.line([(bx,by),(bx,by-125)],fill=(210,195,165),width=5)",
+    "    d.polygon([(bx+2,by-118),(bx+2,by-20),(bx+70,by-45)],fill=(205,205,185))",
+    "    d.polygon([(bx-3,by-105),(bx-3,by-28),(bx-55,by-48)],fill=(170,180,170))",
+    "    lx=lightning_x; d.line([(lx,35),(lx-25,100),(lx+3,100),(lx-35,175)],fill=(238,242,255),width=5)",
+    "    for x in range(0,W,35): d.line([(x,0),(x-55,H)],fill=(80,110,135),width=1)",
+    "    im.save(path)",
+    "start=Path('/kaggle/working/start.png'); end=Path('/kaggle/working/end.png')",
+    "frame(start,235,660,0); frame(end,595,210,1)",
+    "sys.path.insert(0,str(ROOT)); os.chdir(ROOT)",
+    "from shared.api import init",
+    "OUT.mkdir(parents=True,exist_ok=True)",
+    "session=init(root=ROOT,output_dir=OUT,cli_args=['--profile','4','--attention','sdpa','--fp16','--perc-reserved-mem-max','0.2'],console_output=True)",
+    "schema=(session.get_model_schema('i2v') or {}).get('metadata') or {}",
+    "settings=session.get_default_settings('i2v')",
+    "saved=session.get_model_settings('i2v',include_selection=True)",
+    "profile_entry=None",
+    "for ent in saved.get('settings',[]):",
+    "    if 'lightx2v' in ent.get('id','').lower() and '4 steps' in ent.get('id','').lower(): profile_entry=ent; break",
+    "profile_id=None",
+    "if profile_entry:",
+    "    profile_id=profile_entry['id']; prof=session.get_model_settings('i2v',profile_id).get('content') or {}; settings.update(prof)",
+    "fmin=int(schema.get('frames_minimum') or 5); fstep=int(schema.get('frames_steps') or 4)",
+    "frames=fmin+7*fstep",
+    "settings.update({'model_type':'i2v','prompt':'Cinematic fixed-camera night storm at sea. The wooden sailing ship travels smoothly from left to right while waves surge, rain lashes diagonally, sails billow in strong wind, and lightning shifts across the sky. Preserve the same ship and scene geometry, begin at the supplied start image and finish at the supplied end image.','negative_prompt':'text, watermark, duplicate ship, warped hull, extra mast, static frame','resolution':'832x480','video_length':frames,'force_fps':16,'seed':42,'image_start':str(start),'image_end':str(end),'image_prompt_type':'SE','batch_size':1})",
+    "print('ND_WANGP_SETTINGS_JSON='+json.dumps({'model_type':settings.get('model_type'),'resolution':settings.get('resolution'),'video_length':settings.get('video_length'),'steps':settings.get('num_inference_steps'),'profile_id':profile_id,'image_prompt_type':settings.get('image_prompt_type'),'schema_frames_minimum':fmin,'schema_frames_steps':fstep},sort_keys=True))",
+    "t0=time.time(); result=session.submit_task(settings).result(timeout=4200); elapsed=time.time()-t0",
+    "if not result.success:",
+    "    errs=[getattr(e,'message',str(e)) for e in (result.errors or [])]",
+    "    raise RuntimeError('WanGP generation failed: '+' | '.join(errs))",
+    "files=[Path(p) for p in (result.generated_files or [])]",
+    "if not files: raise RuntimeError('WanGP returned no generated files')",
+    "src=files[0]",
+    "if not src.is_absolute(): src=OUT/src",
+    "dst=Path('/kaggle/working/result.mp4'); shutil.copy2(src,dst)",
+    "import cv2, numpy as np",
+    "cap=cv2.VideoCapture(str(dst)); n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); fps=float(cap.get(cv2.CAP_PROP_FPS) or 0); vw=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)); vh=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))",
+    "ok,first=cap.read(); last=None",
+    "while True:",
+    "    ok2,fr=cap.read()",
+    "    if not ok2: break",
+    "    last=fr",
+    "cap.release()",
+    "if first is None or last is None: raise RuntimeError('generated MP4 could not yield first/last frames')",
+    "cv2.imwrite('/kaggle/working/generated_first.png',first); cv2.imwrite('/kaggle/working/generated_last.png',last)",
+    "s=np.array(Image.open(start).convert('RGB')); e=np.array(Image.open(end).convert('RGB'))",
+    "f=cv2.cvtColor(cv2.resize(first,(W,H)),cv2.COLOR_BGR2RGB); l=cv2.cvtColor(cv2.resize(last,(W,H)),cv2.COLOR_BGR2RGB)",
+    "mae=lambda a,b: float(np.mean(np.abs(a.astype(np.float32)-b.astype(np.float32)))/255.0)",
+    "m={'first_to_start':mae(f,s),'first_to_end':mae(f,e),'last_to_start':mae(l,s),'last_to_end':mae(l,e)}",
+    "directional=bool(m['first_to_start'] < m['first_to_end'] and m['last_to_end'] < m['last_to_start'])",
+    "receipt={'ok':True,'model_type':'i2v','profile_id':profile_id,'image_prompt_type':'SE','resolution':[vw,vh],'frame_count':n,'fps':fps,'duration_seconds':(n/fps if fps else None),'size_bytes':dst.stat().st_size,'elapsed_seconds':round(elapsed,2),'endpoint_mae':m,'directional_endpoint_pass':directional,'generated_source':str(src),'wangp_commit':COMMIT}",
+    "Path('/kaggle/working/result.json').write_text(json.dumps(receipt,indent=2),encoding='utf-8')",
+    "print('ND_WANGP_GENERATION_JSON='+json.dumps(receipt,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,
+    newTitle:'ND WanGP First Last Qualification',
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    isPrivate:true,
+    enableGpu:true,
+    enableTpu:false,
+    enableInternet:true,
+    modelDataSources:[],
+    sessionTimeoutSeconds:5400,
+    machineShape:'NvidiaTeslaT4'
+  });
+  if(save?.error) throw new Error('kaggle_wangp_generation_save_error: '+String(save.error).slice(0,500));
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version) throw new Error('kaggle_wangp_generation_missing_version');
+  const versionLabel='v'+version;
+  let lastStatus=null, failureMessage=null;
+  const deadline=Date.now()+85*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    lastStatus=st?.status; failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,12000));
+  }
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_wangp_generation_timeout status='+String(lastStatus));
+  const statusText=String(lastStatus??'').toUpperCase();
+  if(statusText==='3'||statusText.includes('ERROR')){
+    throw new Error('kaggle_wangp_generation_failed: '+String(failureMessage||'')+' log_tail='+String(out?.log||'').slice(-12000));
+  }
+  const payload=extractKaggleJsonMarker(out?.log||'','ND_WANGP_GENERATION_JSON=','kaggle_wangp_generation_payload_unparseable');
+  const files=(out?.files||[]).map(f=>({file_name:f?.fileName||f?.file_name||null,url:f?.url||null,size:f?.size||null})).filter(x=>x.file_name);
+  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,provider_url:save?.url||null,provider_status:lastStatus,generation:payload,output_files:files};
+  console.log(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -2045,6 +2184,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
     if(KAGGLE_API_TOKEN && readVersion>0) setTimeout(()=>kaggleGpuProbeReadback(readVersion).catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE_READBACK',state:'FAIL',version:readVersion,error:String(e?.message||e).slice(0,900)}))),7000);
   }
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_BOOTSTRAP_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPBootstrap().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_BOOTSTRAP',state:'FAIL',error:String(e?.message||e).slice(0,7800)}))),10000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPGeneration().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),12000);
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
     ltxSelftestState={state:'RUNNING',updated_at:new Date().toISOString()};
     setTimeout(async()=>{
