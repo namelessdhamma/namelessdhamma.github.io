@@ -2,7 +2,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createWanMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest } from './wan_mcp.mjs';
+import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, storyboardHealth } from './wan_mcp.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
@@ -10,7 +10,10 @@ const WAN_MCP_TOKEN = String(process.env.ND_WAN_MCP_PATH_TOKEN || '').trim();
 const WAN_MCP_PATH = '/wan-mcp/' + WAN_MCP_TOKEN;
 const LTX_MCP_TOKEN = String(process.env.ND_LTX_MCP_PATH_TOKEN || '').trim();
 const LTX_MCP_PATH = '/ltx-mcp/' + LTX_MCP_TOKEN;
+const STORYBOARD_MCP_TOKEN = String(process.env.ND_STORYBOARD_MCP_PATH_TOKEN || '').trim();
+const STORYBOARD_MCP_PATH = '/storyboard-mcp/' + STORYBOARD_MCP_TOKEN;
 const wanMcpHandler = createWanMcpHandler();
+const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
 const BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
 const DEVMODE_TOKEN = String(process.env.ND_DRIVE_DEVMODE_PATH_TOKEN || '').trim();
@@ -1502,6 +1505,18 @@ const server = http.createServer(async (req,res) => {
       return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
     }
   }
+  if (req.method === 'GET' && req.url === '/storyboard/health') {
+    try {
+      const h = await storyboardHealth();
+      return json(res,200,{...h,mcp_path_configured:!!STORYBOARD_MCP_TOKEN,dedicated_mcp:true});
+    } catch(e) {
+      return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
+  if (STORYBOARD_MCP_TOKEN && req.url === STORYBOARD_MCP_PATH) {
+    const handled = await storyboardMcpHandler(req,res);
+    if (handled !== false) return;
+  }
   if (LTX_MCP_TOKEN && req.url === LTX_MCP_PATH) {
     const handled = await wanMcpHandler(req,res);
     if (handled !== false) return;
@@ -1616,6 +1631,7 @@ const server = http.createServer(async (req,res) => {
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
   console.log(JSON.stringify({event:'ND_WAN_VIDEO_MCP_READY',mcp_path_configured:!!WAN_MCP_TOKEN,mode:'full'}));
+  console.log(JSON.stringify({event:'ND_STORYBOARD_MCP_READY',mcp_path_configured:!!STORYBOARD_MCP_TOKEN,mode:'free_public_actions'}));
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
     ltxSelftestState={state:'RUNNING',updated_at:new Date().toISOString()};
     setTimeout(async()=>{
