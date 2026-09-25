@@ -249,6 +249,152 @@ async function kaggleGpuProbeReadback(version){
   return result;
 }
 
+
+function extractKaggleJsonMarker(log,marker,errorName='kaggle_marker_payload_unparseable'){
+  const raw=String(log||'');
+  const chunks=[raw];
+  const visit=v=>{
+    if(v==null) return;
+    if(typeof v==='string'){chunks.push(v);return;}
+    if(Array.isArray(v)){for(const x of v) visit(x);return;}
+    if(typeof v==='object'){for(const x of Object.values(v)) visit(x);}
+  };
+  try{visit(JSON.parse(raw));}catch{}
+  for(const chunk0 of chunks){
+    const chunk=String(chunk0||'');
+    const pos=chunk.indexOf(marker);
+    if(pos<0) continue;
+    const start=chunk.indexOf('{',pos+marker.length);
+    if(start<0) continue;
+    for(const normalized of [chunk,chunk.replace(/\\\"/g,'"'),chunk.replace(/\\n/g,'\n')]){
+      const s=normalized.indexOf('{',normalized.indexOf(marker)+marker.length);
+      if(s<0) continue;
+      let depth=0, quote=null, esc=false;
+      for(let i=s;i<normalized.length;i++){
+        const ch=normalized[i];
+        if(esc){esc=false;continue;}
+        if(ch==='\\'){esc=true;continue;}
+        if(quote){if(ch===quote) quote=null;continue;}
+        if(ch==='"'||ch==="'"){quote=ch;continue;}
+        if(ch==='{') depth++;
+        else if(ch==='}'){
+          depth--;
+          if(depth===0){
+            const objText=normalized.slice(s,i+1);
+            for(const a of [objText,objText.replace(/\\\"/g,'"'),objText.replace(/'/g,'"')]){
+              try{return JSON.parse(a);}catch{}
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+  throw new Error(errorName);
+}
+
+async function kaggleWanGPBootstrap(){
+  const enabled=String(process.env.ND_KAGGLE_WANGP_BOOTSTRAP_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_wangp_bootstrap_auth_failed');
+  const username=String(intro.username);
+  const slug='nd-wangp-bootstrap';
+  const fullSlug=username+'/'+slug;
+  const script=[
+    "from pathlib import Path",
+    "import json, os, platform, subprocess, sys, time",
+    "ROOT=Path('/kaggle/working/Wan2GP')",
+    "OUT=Path('/kaggle/working/wangp-bootstrap-out')",
+    "COMMIT='2345ae148f82740f66e82c41292dbbdd592e713d'",
+    "def run(cmd,timeout):",
+    "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout)",
+    "    if p.returncode!=0:",
+    "        print('ND_WANGP_COMMAND_FAIL '+str(cmd)+'\\n'+p.stdout[-6000:])",
+    "        raise RuntimeError('command failed: '+str(cmd))",
+    "    return p.stdout",
+    "if ROOT.exists():",
+    "    run(['git','-C',str(ROOT),'fetch','--depth','1','origin',COMMIT],180)",
+    "else:",
+    "    run(['git','clone','--filter=blob:none','https://github.com/deepbeepmeep/Wan2GP.git',str(ROOT)],240)",
+    "run(['git','-C',str(ROOT),'checkout',COMMIT],90)",
+    "run([sys.executable,'-m','pip','install','-q','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],1200)",
+    "sys.path.insert(0,str(ROOT))",
+    "os.chdir(ROOT)",
+    "from shared.api import init",
+    "OUT.mkdir(parents=True,exist_ok=True)",
+    "session=init(root=ROOT,output_dir=OUT,cli_args=['--profile','4','--attention','sdpa','--fp16','--perc-reserved-mem-max','0.2'],console_output=False)",
+    "records=[]",
+    "seen=set()",
+    "for query in ['H3','Wan 2.2','Wan2.2']:",
+    "    for m in session.list_model_defs(query=query,main_output='video',limit=250):",
+    "        mt=str(m.get('model_type') or '')",
+    "        if not mt or mt in seen: continue",
+    "        seen.add(mt)",
+    "        md=m.get('metadata') or {}",
+    "        image=((md.get('media_inputs') or {}).get('image') or {})",
+    "        caps=md.get('capabilities') or {}",
+    "        sv=(md.get('setting_values') or {}).get('image_prompt_type')",
+    "        records.append({'model_type':mt,'name':m.get('name'),'family':md.get('family'),'inputs':md.get('inputs'),'image':image,'capabilities':caps,'image_prompt_type':sv})",
+    "dual=[r for r in records if bool((r.get('image') or {}).get('start')) and bool((r.get('image') or {}).get('end'))]",
+    "out={'python':platform.python_version(),'wangp_commit':COMMIT,'model_count':len(records),'dual_endpoint_count':len(dual),'dual_endpoint_models':dual[:80]}",
+    "print('ND_WANGP_BOOTSTRAP_JSON='+json.dumps(out,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,
+    newTitle:'ND WanGP Bootstrap',
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    isPrivate:true,
+    enableGpu:true,
+    enableTpu:false,
+    enableInternet:true,
+    modelDataSources:[],
+    sessionTimeoutSeconds:1800,
+    machineShape:'NvidiaTeslaT4'
+  });
+  if(save?.error) throw new Error('kaggle_wangp_bootstrap_save_error: '+String(save.error).slice(0,500));
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version) throw new Error('kaggle_wangp_bootstrap_missing_version');
+  const versionLabel='v'+version;
+  let lastStatus=null, failureMessage=null;
+  const deadline=Date.now()+22*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+      userName:username,kernelSlug:slug,versionLabel
+    });
+    lastStatus=st?.status;
+    failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,8000));
+  }
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+    userName:username,kernelSlug:slug,versionLabel,pageSize:20
+  });
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_wangp_bootstrap_timeout status='+String(lastStatus));
+  const statusText=String(lastStatus??'').toUpperCase();
+  if(statusText==='3'||statusText.includes('ERROR')){
+    throw new Error('kaggle_wangp_bootstrap_failed: '+String(failureMessage||'')+' log_tail='+String(out?.log||'').slice(-7000));
+  }
+  const payload=extractKaggleJsonMarker(out?.log||'','ND_WANGP_BOOTSTRAP_JSON=','kaggle_wangp_bootstrap_payload_unparseable');
+  const result={
+    state:'PASS',
+    username,
+    ref:fullSlug+'/'+version,
+    version,
+    provider_url:save?.url||null,
+    provider_status:lastStatus,
+    bootstrap:payload
+  };
+  console.log(JSON.stringify({event:'ND_KAGGLE_WANGP_BOOTSTRAP',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -1898,6 +2044,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
     const readVersion=Number(process.env.ND_KAGGLE_GPU_PROBE_READ_VERSION||0);
     if(KAGGLE_API_TOKEN && readVersion>0) setTimeout(()=>kaggleGpuProbeReadback(readVersion).catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE_READBACK',state:'FAIL',version:readVersion,error:String(e?.message||e).slice(0,900)}))),7000);
   }
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_BOOTSTRAP_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPBootstrap().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_BOOTSTRAP',state:'FAIL',error:String(e?.message||e).slice(0,7800)}))),10000);
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
     ltxSelftestState={state:'RUNNING',updated_at:new Date().toISOString()};
     setTimeout(async()=>{
