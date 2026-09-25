@@ -40,7 +40,6 @@ theme_override_constants/separation = 12
 [node name="LeftRail" type="VBoxContainer" parent="SafeArea/Landscape"]
 custom_minimum_size = Vector2(145, 0)
 layout_mode = 2
-size_flags_horizontal = 3
 
 [node name="PlayerOne" type="Label" parent="SafeArea/Landscape/LeftRail"]
 layout_mode = 2
@@ -69,11 +68,11 @@ size_flags_vertical = 3
 ratio = 1.0
 stretch_mode = 2
 
-[node name="Board" type="ColorRect" parent="SafeArea/Landscape/Center/BoardAspect"]
+[node name="Board" type="GridContainer" parent="SafeArea/Landscape/Center/BoardAspect"]
 layout_mode = 2
-color = Color(0.04, 0.22, 0.31, 1)
 columns = 2
-mouse_filter = 1
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
 
 [node name="Status" type="Label" parent="SafeArea/Landscape/Center"]
 layout_mode = 2
@@ -83,7 +82,6 @@ horizontal_alignment = 1
 [node name="RightRail" type="VBoxContainer" parent="SafeArea/Landscape"]
 custom_minimum_size = Vector2(145, 0)
 layout_mode = 2
-size_flags_horizontal = 3
 
 [node name="PlayerTwo" type="Label" parent="SafeArea/Landscape/RightRail"]
 layout_mode = 2
@@ -106,7 +104,7 @@ text = "ХОД"
 [node name="ActionSecondary" type="Button" parent="SafeArea/Landscape/RightRail/Actions"]
 custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
-text = "КАРТА"
+text = "ОТМЕНА"
 
 [node name="ActionMenu" type="Button" parent="SafeArea/Landscape/RightRail/Actions"]
 custom_minimum_size = Vector2(44, 44)
