@@ -34,9 +34,11 @@
   "product": {
     "form": "cinematic narrative adventure",
     "orientation": "landscape 16:9",
-    "current_frontier": "Pirate Sea opening",
+    "current_frontier": "FULL LANDSCAPE 16:9 convergence and exact target-viewport rendering/gameplay acceptance",
     "interaction": "cinematic scene -> rare decision -> authored reaction -> next scene",
-    "d2_role": "preserved minigame + standalone Free Play"
+    "d2_role": "preserved minigame + standalone Free Play",
+    "post_gate_frontier": "Pirate Sea opening / campaign and adaptive full-product development",
+    "web_migration_branch": "a5-landscape-16x9-repair"
   },
   "recovery_order": [
     "NAM-118",
@@ -46,5 +48,10 @@
     "GitHub current source",
     "Godot live status"
   ],
-  "persistence_rule": "accepted consequential Godot delta -> Godot verification -> GitHub versioned source -> Drive workspace/StateHead -> Linear LAST"
+  "persistence_rule": "accepted consequential Godot delta -> Godot verification -> GitHub versioned source -> Drive workspace/StateHead -> Linear LAST",
+  "current_durable_source": {
+    "branch": "main",
+    "main_scene_blob": "d7fb6413dbb5e0476c2a91301ebad6ee9c6d4b71",
+    "source_commit": "d8598bb8b69b59b94af08d104877d5439cf9a14d"
+  }
 }
