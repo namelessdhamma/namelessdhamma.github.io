@@ -87,6 +87,88 @@ async function kaggleSelftest(){
   return kaggleSelftestState;
 }
 
+
+function kaggleStatusTerminal(status){
+  const s=String(status??'').toUpperCase();
+  return s==='2'||s==='3'||s==='4'||s==='5'||s.includes('COMPLETE')||s.includes('ERROR')||s.includes('CANCEL');
+}
+
+async function kaggleGpuProbe(){
+  const enabled=String(process.env.ND_KAGGLE_GPU_PROBE_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_gpu_probe_auth_failed');
+  const username=String(intro.username);
+  const slug='nd-gpu-probe';
+  const fullSlug=username+'/'+slug;
+  const script=[
+    "import json, platform",
+    "import torch",
+    "gpus=[]",
+    "for i in range(torch.cuda.device_count()):",
+    "    p=torch.cuda.get_device_properties(i)",
+    "    gpus.append({'index':i,'name':torch.cuda.get_device_name(i),'total_memory_bytes':int(p.total_memory),'capability':list(torch.cuda.get_device_capability(i))})",
+    "out={'python':platform.python_version(),'torch':torch.__version__,'torch_cuda':torch.version.cuda,'cuda_available':torch.cuda.is_available(),'gpu_count':torch.cuda.device_count(),'gpus':gpus}",
+    "print('ND_GPU_PROBE_JSON='+json.dumps(out,sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,
+    newTitle:'ND GPU Probe',
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    isPrivate:true,
+    enableGpu:true,
+    enableTpu:false,
+    enableInternet:false,
+    modelDataSources:[],
+    sessionTimeoutSeconds:300,
+    machineShape:'NvidiaTeslaT4'
+  });
+  if(save?.error) throw new Error('kaggle_save_kernel_error: '+String(save.error).slice(0,500));
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version) throw new Error('kaggle_save_kernel_missing_version');
+  const versionLabel='v'+version;
+  let lastStatus=null;
+  let failureMessage=null;
+  const deadline=Date.now()+4*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+      userName:username,kernelSlug:slug,versionLabel
+    });
+    lastStatus=st?.status;
+    failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,4000));
+  }
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_gpu_probe_timeout status='+String(lastStatus));
+  const statusText=String(lastStatus??'').toUpperCase();
+  if(statusText==='3'||statusText.includes('ERROR')) throw new Error('kaggle_gpu_probe_failed: '+String(failureMessage||lastStatus));
+  if(statusText==='4'||statusText==='5'||statusText.includes('CANCEL')) throw new Error('kaggle_gpu_probe_cancelled: '+String(lastStatus));
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+    userName:username,kernelSlug:slug,versionLabel,pageSize:20
+  });
+  const log=String(out?.log||'');
+  const marker='ND_GPU_PROBE_JSON=';
+  const line=log.split(/\r?\n/).find(x=>x.includes(marker));
+  if(!line) throw new Error('kaggle_gpu_probe_marker_missing');
+  const payload=JSON.parse(line.slice(line.indexOf(marker)+marker.length));
+  const result={
+    state:'PASS',
+    username,
+    ref:fullSlug+'/'+version,
+    version,
+    provider_url:save?.url||null,
+    gpu:payload
+  };
+  console.log(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -1731,6 +1813,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_STORYBOARD_MCP_READY',mcp_path_configured:!!STORYBOARD_MCP_TOKEN,mode:'free_public_actions'}));
   console.log(JSON.stringify({event:'ND_KAGGLE_CONFIG',configured:!!KAGGLE_API_TOKEN}));
   if(KAGGLE_API_TOKEN) setTimeout(()=>kaggleSelftest().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SELFTEST_CRASH',error:String(e?.message||e).slice(0,500)}))),4000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_GPU_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleGpuProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,900)}))),9000);
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
     ltxSelftestState={state:'RUNNING',updated_at:new Date().toISOString()};
     setTimeout(async()=>{
