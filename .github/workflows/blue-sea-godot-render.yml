@@ -45,6 +45,9 @@ jobs:
           print(json.dumps({"ref":ref,"scene":scene,"fps":fps,"frames":frames}))
           PY
 
+      - name: Install pinned Godot developer stack
+        run: bash sinee-more-godot/ci/setup_godot_cloud.sh
+
       - name: Checkout requested source ref
         shell: bash
         run: |
@@ -52,9 +55,6 @@ jobs:
           git fetch --no-tags --depth=1 origin "$RENDER_REF"
           git checkout --detach FETCH_HEAD
           echo "source_commit=$(git rev-parse HEAD)"
-
-      - name: Install pinned Godot developer stack
-        run: bash sinee-more-godot/ci/setup_godot_cloud.sh
 
       - name: Render Godot movie
         shell: bash
