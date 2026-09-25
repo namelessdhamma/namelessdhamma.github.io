@@ -1,16 +1,16 @@
 /* A5 landscape shell binding fix: grid areas apply to direct .player children. */
 @media (orientation:landscape){
   .app{position:relative}
-  .settings + .player{grid-area:dark;min-width:0;align-self:center}
+  #turn + .player{grid-area:dark;min-width:0;align-self:center}
   .board + .player{grid-area:light;min-width:0;align-self:center}
   .player .ph{height:auto;min-height:24px;margin-bottom:6px;align-items:center}
-  .settings + .player .reserve,.board + .player .reserve{
+  #turn + .player .reserve,.board + .player .reserve{
     width:100%;height:min(58dvh,430px);
     grid-template-columns:repeat(3,minmax(44px,1fr));
     grid-template-rows:repeat(3,minmax(44px,1fr));gap:5px;align-items:center
   }
-  .settings + .player .pieceBtn,.board + .player .pieceBtn{height:100%;min-height:44px;align-items:center}
-  .settings + .player .pieceBtn span,.board + .player .pieceBtn span{margin-bottom:0}
+  #turn + .player .pieceBtn,.board + .player .pieceBtn{height:100%;min-height:44px;align-items:center}
+  #turn + .player .pieceBtn span,.board + .player .pieceBtn span{margin-bottom:0}
 
   /* Bottom controls: settings need real label width. Span the left + board columns;
      reserve the right column for three >=44px action targets. */
@@ -24,7 +24,7 @@
   .msg:has(+ .end.open){visibility:hidden}
 }
 @media (orientation:landscape) and (max-height:430px){
-  .settings + .player .reserve,.board + .player .reserve{height:min(58dvh,240px);gap:3px}
+  #turn + .player .reserve,.board + .player .reserve{height:min(58dvh,240px);gap:3px}
   .player .ph{min-height:20px;margin-bottom:2px;font-size:12px}
   .settingsCard{height:48px;min-height:44px}
   .actions{gap:3px}
