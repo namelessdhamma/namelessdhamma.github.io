@@ -1,0 +1,119 @@
+name: Blue Sea Godot Cloud Command
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sinee-more-godot/.nd/request.json"
+      - ".github/workflows/blue-sea-godot-command.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  command:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GODOT_PROJECT: ${{ github.workspace }}/sinee-more-godot
+      GODOT_PATH: /usr/local/bin/godot
+      GODOT_MCP_DOCS_CACHE: /tmp/nd-godot-docs
+      LIBGL_ALWAYS_SOFTWARE: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Godot developer stack
+        run: bash sinee-more-godot/ci/setup_godot_cloud.sh
+
+      - name: Execute requested Godot MCP tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GODOT_PROJECT/ci-out"
+
+          python3 - <<'PY'
+          import json
+          p="sinee-more-godot/.nd/request.json"
+          obj=json.load(open(p,encoding="utf-8"))
+          tool=obj.get("tool")
+          args=obj.get("arguments") or {}
+          if not isinstance(tool,str) or not tool:
+              raise SystemExit("request.tool must be a non-empty string")
+          open("/tmp/nd-godot-tool","w",encoding="utf-8").write(tool)
+          open("/tmp/nd-godot-args","w",encoding="utf-8").write(json.dumps(args,separators=(",",":")))
+          open("sinee-more-godot/ci-out/request.json","w",encoding="utf-8").write(json.dumps(obj,ensure_ascii=False,indent=2))
+          PY
+
+          TOOL="$(cat /tmp/nd-godot-tool)"
+          ARGS="$(cat /tmp/nd-godot-args)"
+          echo "ND_GODOT_TOOL=$TOOL"
+
+          Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp             >"$GODOT_PROJECT/ci-out/xvfb.log" 2>&1 &
+          XVFB_PID=$!
+          export DISPLAY=:99
+          EDITOR_PID=""
+          INJECTED_PLUGIN=0
+
+          cleanup() {
+            if test -n "$EDITOR_PID"; then
+              kill "$EDITOR_PID" >/dev/null 2>&1 || true
+            fi
+            kill "$XVFB_PID" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          case "$TOOL" in
+            editor_state|get_selected_node|live_scene_tree|open_scene_in_editor|execute_editor_script)
+              mkdir -p "$GODOT_PROJECT/addons"
+              rm -rf "$GODOT_PROJECT/addons/godot_mcp"
+              cp -R /tmp/godot-mcp/addon/godot_mcp "$GODOT_PROJECT/addons/godot_mcp"
+              if ! grep -Fq 'res://addons/godot_mcp/plugin.cfg' "$GODOT_PROJECT/project.godot"; then
+                cat >> "$GODOT_PROJECT/project.godot" <<'EOF'
+
+          [editor_plugins]
+
+          enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
+          EOF
+                INJECTED_PLUGIN=1
+              fi
+              godot --headless --editor --path "$GODOT_PROJECT"                 >"$GODOT_PROJECT/ci-out/editor.log" 2>&1 &
+              EDITOR_PID=$!
+              for i in $(seq 1 60); do
+                test -f "$GODOT_PROJECT/.godot/mcp_bridge.json" && break
+                sleep 0.5
+              done
+              test -f "$GODOT_PROJECT/.godot/mcp_bridge.json"
+              ;;
+          esac
+
+          python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool "$TOOL"             --args "$ARGS"             --out "$GODOT_PROJECT/ci-out/mcp_result.json"
+
+          if test "$INJECTED_PLUGIN" = "1"; then
+            rm -rf "$GODOT_PROJECT/addons/godot_mcp"
+            python3 - <<'PY'
+          from pathlib import Path
+          p=Path("sinee-more-godot/project.godot")
+          s=p.read_text(encoding="utf-8")
+          block='\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")\n'
+          if block in s:
+              s=s.replace(block,"\n",1)
+              p.write_text(s,encoding="utf-8")
+          PY
+          fi
+
+          git status --short -- sinee-more-godot             | tee "$GODOT_PROJECT/ci-out/worktree-status.txt"
+          git diff --no-ext-diff -- sinee-more-godot             > "$GODOT_PROJECT/ci-out/worktree.diff" || true
+
+      - name: Upload command evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blue-sea-godot-command-${{ github.run_id }}
+          path: sinee-more-godot/ci-out/
+          if-no-files-found: error
+          retention-days: 14
