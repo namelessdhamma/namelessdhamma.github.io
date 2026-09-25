@@ -20,9 +20,15 @@ enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
 EOF
 fi
 
-# Import once before starting the long-lived editor so all project metadata exists.
-godot --headless --path "$GODOT_PROJECT" --editor --quit \
-  >"$GODOT_PROJECT/ci-out/boot-import.log" 2>&1
+# Bound the optional warm import. It improves first-call latency but must never
+# prevent the MCP gateway from becoming available.
+echo "ND_GODOT_IMPORT_START"
+set +e
+timeout 60s godot --headless --path "$GODOT_PROJECT" --editor --quit \
+  2>&1 | tee "$GODOT_PROJECT/ci-out/boot-import.log"
+IMPORT_RC=${PIPESTATUS[0]}
+set -e
+echo "ND_GODOT_IMPORT_DONE rc=$IMPORT_RC"
 
 Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp \
   >"$GODOT_PROJECT/ci-out/xvfb.log" 2>&1 &
