@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl git unzip xz-utils ffmpeg xvfb \
     libx11-6 libxcursor1 libxinerama1 libxrandr2 libxi6 libxkbcommon0 \
     libgl1 libegl1 libvulkan1 libasound2 libpulse0 libfontconfig1 \
-    libudev1 libdbus-1-3 fonts-dejavu-core \
+    libudev1 libdbus-1-3 libicu72 libssl3 zlib1g fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
