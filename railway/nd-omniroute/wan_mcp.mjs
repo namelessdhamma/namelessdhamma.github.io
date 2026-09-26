@@ -483,15 +483,16 @@ async function prepareLtxKernelInput(value,label){
   const ref=String(value||'').trim();
   const m=ref.match(/^drive:([A-Za-z0-9_-]{10,200})$/i);
   if(!m) return {url:resolveLtxInputRef(ref),base64:null};
-  if(!LTX_INPUT_TOKEN) throw new Error('ND_LTX_MCP_PATH_TOKEN is not configured');
+  if(!LTX_INPUT_TOKEN) throw new Error('ND_LTX_INPUT_TOKEN is not configured');
+  const publicUrl=LTX_PUBLIC_BASE+'/ltx-input/'+LTX_INPUT_TOKEN+'/'+encodeURIComponent(m[1]);
   const local='http://127.0.0.1:'+OUTER_PORT+'/ltx-input/'+LTX_INPUT_TOKEN+'/'+encodeURIComponent(m[1]);
   const res=await fetch(local);
   if(!res.ok) throw new Error(label+' Drive input read failed HTTP '+res.status);
   const ct=String(res.headers.get('content-type')||'');
   if(!ct.startsWith('image/')) throw new Error(label+' Drive input is not an image');
-  const buf=Buffer.from(await res.arrayBuffer());
-  if(!buf.length||buf.length>20*1024*1024) throw new Error(label+' Drive input is empty or too large');
-  return {url:null,base64:buf.toString('base64'),content_type:ct,size_bytes:buf.length};
+  const declared=Number(res.headers.get('content-length')||0);
+  if(declared<=0||declared>20*1024*1024) throw new Error(label+' Drive input size invalid');
+  return {url:publicUrl,base64:null,content_type:ct,size_bytes:declared};
 }
 
 async function ltxKaggleSubmit(args={}){
