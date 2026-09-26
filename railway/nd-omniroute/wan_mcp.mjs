@@ -1155,6 +1155,36 @@ async function ltxKaggle2bFixedStatus(args={}){
   };
 }
 
+async function ltxKaggleAbandonQueued(args={}){
+  const requestId=String(args.request_id||'').trim();
+  let ref;
+  if(/^kbatch-/i.test(requestId)) ref=kaggleLtxBatchRequestRef(requestId);
+  else ref=kaggleLtxRequestRef(requestId);
+  const status=/^kbatch-/i.test(requestId)
+    ? await ltxKaggleBatchStatus({request_id:requestId})
+    : await ltxKaggleStatus({request_id:requestId});
+  if(status.state!=='QUEUED') throw new Error('abandon allowed only for QUEUED jobs');
+  const found=await ltxKaggleFindSession({request_id:requestId});
+  if(!Array.isArray(found.exact_matches)||found.exact_matches.length!==1) throw new Error('abandon requires exactly one matching kernel');
+  const match=found.exact_matches[0];
+  if(match.session_id!=null) throw new Error('abandon blocked because provider session already exists');
+  const {username}=await kaggleLtxIdentity();
+  const del=await kaggleRpc('kernels.KernelsApiService','DeleteKernel',{
+    userName:username,
+    kernelSlug:ref.kernel_slug
+  });
+  let remaining=null;
+  try{remaining=await ltxKaggleFindSession({request_id:requestId});}catch{}
+  return {
+    ok:true,
+    state:'ABANDONED_QUEUED',
+    request_id:requestId,
+    kernel_slug:ref.kernel_slug,
+    delete_response:del||{},
+    remaining_exact_matches:remaining?.exact_matches||[]
+  };
+}
+
 async function ltxKaggleFindSession(args={}){
   const requestId=String(args.request_id||'').trim();
   let ref;
@@ -1337,6 +1367,8 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   const findSession=compat.match(/^find-session:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
   if(findSession) return ltxKaggleFindSession({request_id:findSession[1]});
+  const abandonQueued=compat.match(/^abandon:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
+  if(abandonQueued) return ltxKaggleAbandonQueued({request_id:abandonQueued[1]});
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
   if(compat==='probe-2b-load') return ltxKaggle2bLoadProbe();
   const load2bStatus=compat.match(/^probe-2b-status:(ltx2b-load-v\d+)$/i);
