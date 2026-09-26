@@ -842,7 +842,7 @@ async function kaggleSdCppFLFQualification(){
   const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
   if(!intro?.active||!intro?.username) throw new Error('kaggle_sdcpp_flf_auth_failed');
   const username=String(intro.username);
-  const slug='nd-sdcpp-flf-qualification';
+  const slug='nd-sd-cpp-flf-qualification';
   const fullSlug=username+'/'+slug;
   const script=[
     "from pathlib import Path",
