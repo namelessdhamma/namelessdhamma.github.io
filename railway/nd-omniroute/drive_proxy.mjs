@@ -1086,6 +1086,66 @@ async function kaggleLtxMountProbe(){
   return result;
 }
 
+
+async function kaggleLtxCacheProbe(){
+  const enabled=String(process.env.ND_KAGGLE_LTX_CACHE_PROBE_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_ltx_cache_probe_auth_failed');
+  const username=String(intro.username), slug='nd-ltx-cache-probe', fullSlug=username+'/'+slug;
+  const datasetSource='damnyadav/ltxv13b-distilled-cache';
+  const script=[
+    "from pathlib import Path",
+    "import json, os, shutil",
+    "base=Path('/kaggle/input/datasets/damnyadav/ltxv13b-distilled-cache')",
+    "def files_under(p,limit=40):",
+    "    out=[]",
+    "    if p.exists():",
+    "        for x in p.rglob('*'):",
+    "            if x.is_file():",
+    "                try: out.append({'rel':str(x.relative_to(base)),'size':int(x.stat().st_size)})",
+    "                except: pass",
+    "                if len(out)>=limit: break",
+    "    return out",
+    "def find_root(base):",
+    "    cands=[base]+[p for p in base.iterdir() if p.is_dir()] if base.exists() else []",
+    "    for r in cands:",
+    "        ok=((r/'transformer').is_dir() and any((r/'transformer').rglob('*.safetensors')) and (r/'text_encoder').is_dir() and any((r/'text_encoder').rglob('*.safetensors')) and (r/'vae').is_dir() and (r/'tokenizer').is_dir() and (r/'scheduler'/'scheduler_config.json').exists())",
+    "        if ok: return r",
+    "    return None",
+    "root=find_root(base)",
+    "u=shutil.disk_usage('/kaggle/working')",
+    "out={'base_exists':base.exists(),'model_root':str(root) if root else None,'complete':bool(root),'sample_files':files_under(root or base,60),'working_free_bytes':int(u.free),'working_total_bytes':int(u.total)}",
+    "print('ND_LTX_CACHE_JSON='+json.dumps(out,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,newTitle:'ND LTX Cache Probe',text:script,language:'python',kernelType:'script',
+    datasetDataSources:[datasetSource],kernelDataSources:[],competitionDataSources:[],categoryIds:[],
+    modelDataSources:[],isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:false,sessionTimeoutSeconds:900
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version || save?.error || (save?.invalidDatasetSources||save?.invalid_dataset_sources||[]).length){
+    throw new Error('kaggle_ltx_cache_save_failed: '+JSON.stringify({error:save?.error||null,version,invalid_dataset_sources:save?.invalidDatasetSources||save?.invalid_dataset_sources||[]}));
+  }
+  const versionLabel='v'+version;
+  let lastStatus=null,failureMessage=null;
+  const deadline=Date.now()+12*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    lastStatus=st?.status; failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,6000));
+  }
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_ltx_cache_timeout status='+String(lastStatus));
+  const stx=String(lastStatus??'').toUpperCase();
+  if(stx==='3'||stx.includes('ERROR')) throw new Error('kaggle_ltx_cache_failed: '+String(failureMessage||'')+' tail='+String(out?.log||'').slice(-8000));
+  const payload=extractKaggleJsonMarker(out?.log||'','ND_LTX_CACHE_JSON=','kaggle_ltx_cache_payload_unparseable');
+  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,provider_status:lastStatus,dataset_source:datasetSource,cache:payload};
+  console.log(JSON.stringify({event:'ND_KAGGLE_LTX_CACHE_PROBE',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -2739,6 +2799,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_I2V_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPI2VQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_I2V',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_DISK_FIT_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPDiskFit().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_DISK_FIT',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_MOUNT_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxMountProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_MOUNT_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),16000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_CACHE_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxCacheProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_CACHE_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),18000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_SDCPP_FLF_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleSdCppFLFQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SDCPP_FLF',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),16000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPGeneration().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWan21Cache().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
