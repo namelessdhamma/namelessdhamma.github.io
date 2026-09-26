@@ -1434,6 +1434,80 @@ async function ltxKaggleFindSession(args={}){
   };
 }
 
+async function ltxKaggleAdaptiveInitProbe(){
+  const preflight=await kaggleLtxPreflight();
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  const slug='nd-ltx-init-probe-'+token;
+  const script=[
+    'import json,subprocess,sys,platform',
+    'print("ND_LTX_INIT_STAGE=python",flush=True)',
+    'subprocess.run([sys.executable,"-m","pip","install","--no-cache-dir","-q","diffusers>=0.37.0","transformers>=4.48.0","accelerate>=1.2.0","bitsandbytes","sentencepiece","protobuf","imageio","imageio-ffmpeg","safetensors"],check=True,timeout=900)',
+    'print("ND_LTX_INIT_STAGE=dependencies_ready",flush=True)',
+    'import torch',
+    'print("ND_LTX_INIT_STAGE=torch",flush=True)',
+    'gpu={"cuda_available":torch.cuda.is_available(),"gpu_count":torch.cuda.device_count(),"gpus":[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]}',
+    'print("ND_LTX_INIT_GPU="+json.dumps(gpu,separators=(",",":"),sort_keys=True),flush=True)',
+    'import imageio.v2 as imageio',
+    'print("ND_LTX_INIT_STAGE=imageio",flush=True)',
+    'import numpy as np',
+    'print("ND_LTX_INIT_STAGE=numpy",flush=True)',
+    'from PIL import Image',
+    'print("ND_LTX_INIT_STAGE=pillow",flush=True)',
+    'from diffusers import AutoencoderKLLTXVideo, BitsAndBytesConfig as DiffusersBnBConfig, LTXConditionPipeline, LTXVideoTransformer3DModel',
+    'print("ND_LTX_INIT_STAGE=diffusers",flush=True)',
+    'from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition',
+    'from diffusers.schedulers import FlowMatchEulerDiscreteScheduler',
+    'print("ND_LTX_INIT_STAGE=ltx_imports",flush=True)',
+    'from transformers import BitsAndBytesConfig as TransformersBnBConfig, T5EncoderModel, T5TokenizerFast',
+    'print("ND_LTX_INIT_STAGE=transformers",flush=True)',
+    'import bitsandbytes as bnb',
+    'print("ND_LTX_INIT_STAGE=bitsandbytes",flush=True)',
+    'print("ND_LTX_INIT_JSON="+json.dumps({"ok":True,"python":platform.python_version(),**gpu},separators=(",",":"),sort_keys=True),flush=True)'
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+slug,
+    newTitle:'ND LTX Init Probe '+token,
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    modelDataSources:[],
+    isPrivate:true,
+    enableTpu:false,
+    enableInternet:true,
+    machineShape:'NvidiaTeslaP100',
+    sessionTimeoutSeconds:900
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('adaptive init probe submit failed '+JSON.stringify({error:save?.error||null}));
+  let st=null;
+  const deadline=Date.now()+14*60*1000;
+  while(Date.now()<deadline){
+    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:preflight.username,kernelSlug:slug,versionLabel:'v'+version});
+    if(['COMPLETED','FAILED','CANCELLED'].includes(kaggleState(st?.status))) break;
+    await new Promise(r=>setTimeout(r,5000));
+  }
+  const state=kaggleState(st?.status);
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:preflight.username,kernelSlug:slug,versionLabel:'v'+version,pageSize:50});
+  return {
+    ok:state==='COMPLETED',
+    state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:preflight.username+'/'+slug+'/'+version,
+    requested_machine_shape:'NvidiaTeslaP100',
+    receipt:extractKaggleMarker(out?.log||'','ND_LTX_INIT_JSON='),
+    diagnostics:{
+      files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+      log_tail:String(out?.log||'').slice(-12000)
+    },
+    gpu_quota:preflight.gpu
+  };
+}
+
 async function ltxKaggleAcceleratorProbe(shape='NvidiaTeslaP100'){
   const preflight=await kaggleLtxPreflight();
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
@@ -1571,6 +1645,7 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='quota-readback') return kaggleLtxPreflight();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
+  if(compat==='probe-adaptive-init') return ltxKaggleAdaptiveInitProbe();
   const findSession=compat.match(/^find-session:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
   if(findSession) return ltxKaggleFindSession({request_id:findSession[1]});
   const inspectKernel=compat.match(/^inspect-kernel:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
