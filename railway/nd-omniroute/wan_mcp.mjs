@@ -564,7 +564,7 @@ async function ltxKaggleStatus(args={}){
   });
   const state=kaggleState(st?.status);
   let diagnostics=null;
-  if(['FAILED','CANCELLED','COMPLETED'].includes(state)){
+  if(['QUEUED','RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
     try{
       const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
         userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version,pageSize:100
