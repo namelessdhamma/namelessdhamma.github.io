@@ -2786,6 +2786,45 @@ async function handleDrive(req,res) {
   return false;
 }
 
+
+async function remoteKaggleOutputToDrive(args={}){
+  const rawUrl=String(args.url||'').trim();
+  const name=String(args.name||'').trim();
+  const mimeType=String(args.mime_type||'application/octet-stream').trim();
+  const parentId=String(args.parent_id||'').trim();
+  if(!rawUrl||!name||!parentId) throw new Error('url, name and parent_id required');
+  let remote;
+  try{remote=new URL(rawUrl);}catch{throw new Error('invalid remote url');}
+  if(remote.protocol!=='https:' || remote.hostname!=='www.kaggleusercontent.com') throw new Error('remote host not allowed');
+  if(!['video/mp4','application/json'].includes(mimeType)) throw new Error('remote mime type not allowed');
+  return authContext.run({user:true},async()=>{
+    await requireMcpParent(parentId);
+    const escapedName=name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const escapedParent=parentId.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const q=new URLSearchParams({
+      q:"name = '"+escapedName+"' and '"+escapedParent+"' in parents and trashed = false",
+      pageSize:'10',
+      spaces:'drive',
+      fields:'files(id,name,mimeType,size,parents,webViewLink,modifiedTime)'
+    });
+    const existing=await gjson('https://www.googleapis.com/drive/v3/files?'+q.toString());
+    const found=(existing.files||[])[0]||null;
+    if(found){
+      const rb=await metadata(found.id);
+      return {reused:true,created:false,file:rb};
+    }
+    const res=await fetch(remote);
+    if(!res.ok) throw new Error('remote download HTTP '+res.status);
+    const declared=Number(res.headers.get('content-length')||0);
+    if(declared>150*1024*1024) throw new Error('remote file exceeds 150 MB');
+    const buf=Buffer.from(await res.arrayBuffer());
+    if(buf.length>150*1024*1024) throw new Error('remote file exceeds 150 MB');
+    const created=await multipartCreate(name,mimeType,parentId,buf);
+    const rb=await metadata(created.id);
+    return {reused:false,created:true,file:rb};
+  });
+}
+
 function proxy(req,res) {
   const pr = http.request({
     hostname:'127.0.0.1', port:INNER_PORT, path:req.url, method:req.method,
@@ -2801,6 +2840,19 @@ child.on('spawn',()=>{ childReady=true; console.log(JSON.stringify({event:'ND_OM
 child.on('exit',(code,signal)=>{ childReady=false; console.error(JSON.stringify({event:'ND_OMNIROUTE_CHILD_EXIT',code,signal})); });
 
 const server = http.createServer(async (req,res) => {
+  if (req.method === 'POST' && req.url === '/internal/kaggle-ltx/import-output') {
+    if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
+    const chunks=[]; for await(const ch of req) chunks.push(ch);
+    let body={};
+    try{body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+    catch{return json(res,400,{ok:false,error:'invalid_json'});}
+    try{
+      const result=await remoteKaggleOutputToDrive(body);
+      return json(res,200,{ok:true,result});
+    }catch(e){
+      return json(res,502,{ok:false,error:String(e?.message||e).slice(0,1200)});
+    }
+  }
   if (STORYBOARD_MCP_TOKEN && req.method === 'GET' && req.url?.startsWith('/storyboard-result/'+STORYBOARD_MCP_TOKEN+'/')) {
     const prefix='/storyboard-result/'+STORYBOARD_MCP_TOKEN+'/';
     const leaf=decodeURIComponent(req.url.slice(prefix.length).split('?')[0]);
