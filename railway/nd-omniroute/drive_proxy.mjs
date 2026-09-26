@@ -831,6 +831,129 @@ async function kaggleWanGPDiskFit(){
   return result;
 }
 
+
+async function kaggleSdCppFLFQualification(){
+  const enabled=String(process.env.ND_KAGGLE_SDCPP_FLF_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_sdcpp_flf_auth_failed');
+  const username=String(intro.username);
+  const slug='nd-sdcpp-flf-qualification';
+  const fullSlug=username+'/'+slug;
+  const script=[
+    "from pathlib import Path",
+    "import hashlib, json, os, platform, shutil, subprocess, sys",
+    "WORK=Path('/kaggle/working')",
+    "SRC=WORK/'stable-diffusion.cpp'",
+    "MODELS=WORK/'models'",
+    "SD_COMMIT='2f886889e6e8b78738d6b87f7191f6018557c551'",
+    "def run(cmd,timeout,env=None):",
+    "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env=env)",
+    "    if p.returncode!=0:",
+    "        print('ND_SDCPP_COMMAND_FAIL '+str(cmd)+'\\\\n'+p.stdout[-12000:])",
+    "        raise RuntimeError('command failed: '+str(cmd))",
+    "    return p.stdout",
+    "def disk():",
+    "    u=shutil.disk_usage(WORK); return {'total_gib':round(u.total/2**30,3),'used_gib':round(u.used/2**30,3),'free_gib':round(u.free/2**30,3)}",
+    "receipt={'python':platform.python_version(),'sd_commit':SD_COMMIT,'disk_before':disk()}",
+    "print('ND_SDCPP_STAGE=build_start')",
+    "run(['git','clone','--filter=blob:none','https://github.com/leejet/stable-diffusion.cpp.git',str(SRC)],300)",
+    "run(['git','-C',str(SRC),'checkout',SD_COMMIT],120)",
+    "run(['git','-C',str(SRC),'submodule','update','--init','--recursive','--depth','1'],600)",
+    "receipt['nvcc']=run(['nvcc','--version'],60).splitlines()[-1] if shutil.which('nvcc') else None",
+    "if not receipt['nvcc']: raise RuntimeError('nvcc not available in Kaggle runtime')",
+    "run(['cmake','-S',str(SRC),'-B',str(SRC/'build'),'-DSD_CUDA=ON','-DSD_WEBP=OFF','-DSD_WEBM=OFF','-DCMAKE_BUILD_TYPE=Release','-DCMAKE_CUDA_ARCHITECTURES=75'],600)",
+    "run(['cmake','--build',str(SRC/'build'),'--config','Release','-j2'],1200)",
+    "cli=SRC/'build/bin/sd-cli'",
+    "if not cli.exists():",
+    "    candidates=list((SRC/'build').rglob('sd-cli'))",
+    "    if not candidates: raise RuntimeError('sd-cli binary not found after build')",
+    "    cli=candidates[0]",
+    "receipt['disk_after_build']=disk()",
+    "MODELS.mkdir(parents=True,exist_ok=True)",
+    "assets={",
+    " 'dit':('wan2.1-flf2v-14b-720p-Q3_K_S.gguf','https://huggingface.co/city96/Wan2.1-FLF2V-14B-720P-gguf/resolve/main/wan2.1-flf2v-14b-720p-Q3_K_S.gguf?download=true'),",
+    " 't5':('umt5-xxl-encoder-Q3_K_S.gguf','https://huggingface.co/city96/umt5-xxl-encoder-gguf/resolve/main/umt5-xxl-encoder-Q3_K_S.gguf?download=true'),",
+    " 'clip':('clip_vision_h.safetensors','https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors?download=true'),",
+    " 'vae':('wan_2.1_vae.safetensors','https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors?download=true')",
+    "}",
+    "paths={}",
+    "for key,(name,url) in assets.items():",
+    "    path=MODELS/name; paths[key]=path",
+    "    print('ND_SDCPP_DOWNLOAD_START='+key)",
+    "    run(['curl','-L','--fail','--silent','--show-error','--retry','5','--retry-delay','2','-o',str(path),url],1800)",
+    "    print('ND_SDCPP_DOWNLOAD_DONE='+key+':'+str(path.stat().st_size))",
+    "receipt['asset_sizes']={k:int(v.stat().st_size) for k,v in paths.items()}",
+    "receipt['disk_after_downloads']=disk()",
+    "from PIL import Image,ImageDraw",
+    "W,H=832,480",
+    "def make(path,ship_x,sun_x,warm=False):",
+    "    sky=(199,160,121) if warm else (116,183,222)",
+    "    sea=(42,87,117) if warm else (25,104,145)",
+    "    im=Image.new('RGB',(W,H),sky); d=ImageDraw.Draw(im)",
+    "    d.rectangle((0,270,W,H),fill=sea)",
+    "    d.ellipse((sun_x-35,62,sun_x+35,132),fill=(248,206,88))",
+    "    d.polygon([(ship_x-74,344),(ship_x+78,344),(ship_x+43,383),(ship_x-55,383)],fill=(34,31,29))",
+    "    d.line((ship_x,344,ship_x,204),fill=(28,25,22),width=7)",
+    "    d.polygon([(ship_x+4,215),(ship_x+4,330),(ship_x+94,330)],fill=(239,231,206))",
+    "    d.polygon([(ship_x-5,231),(ship_x-5,325),(ship_x-67,325)],fill=(221,214,194))",
+    "    for y in (408,438,465): d.arc((20,y-20,W-20,y+12),0,180,fill=(173,216,229),width=3)",
+    "    im.save(path)",
+    "start=WORK/'start.png'; end=WORK/'end.png'",
+    "make(start,225,115,False); make(end,610,710,True)",
+    "avi=WORK/'result.avi'; mp4=WORK/'result.mp4'",
+    "prompt='Cinematic continuous ocean shot. The same small sailing ship travels smoothly from left to right. Natural moving waves and wind-filled sails, coherent perspective and lighting transition, no cuts, preserve hull and mast identity.'",
+    "neg='flicker, duplicate ship, extra ship, disappearing ship, malformed hull, extra mast, text, watermark, sudden cut'",
+    "cmd=[str(cli),'-M','vid_gen','--diffusion-model',str(paths['dit']),'--vae',str(paths['vae']),'--t5xxl',str(paths['t5']),'--clip_vision',str(paths['clip']),'-p',prompt,'-n',neg,'--cfg-scale','5.0','--sampling-method','euler','--steps','8','-W',str(W),'-H',str(H),'--diffusion-fa','--video-frames','17','--offload-to-cpu','--init-img',str(start),'--end-img',str(end),'--flow-shift','3.0','--seed','42','-o',str(avi)]",
+    "print('ND_SDCPP_STAGE=generation_start')",
+    "genlog=run(cmd,3000)",
+    "receipt['generation_log_tail']=genlog[-2500:]",
+    "if not avi.exists() or avi.stat().st_size<1024: raise RuntimeError('sd-cli returned no valid AVI')",
+    "run(['ffmpeg','-y','-loglevel','error','-i',str(avi),'-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',str(mp4)],300)",
+    "if not mp4.exists() or mp4.stat().st_size<1024: raise RuntimeError('MP4 conversion failed')",
+    "import cv2, numpy as np",
+    "cap=cv2.VideoCapture(str(mp4)); n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0); fps=float(cap.get(cv2.CAP_PROP_FPS) or 0); ow=int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0); oh=int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)",
+    "ok,first=cap.read()",
+    "if not ok: raise RuntimeError('cannot read first MP4 frame')",
+    "cap.set(cv2.CAP_PROP_POS_FRAMES,max(0,n-1)); ok,last=cap.read(); cap.release()",
+    "if not ok: raise RuntimeError('cannot read last MP4 frame')",
+    "cv2.imwrite(str(WORK/'output_first.png'),first); cv2.imwrite(str(WORK/'output_last.png'),last)",
+    "a=cv2.resize(cv2.imread(str(start)),(ow,oh)); b=cv2.resize(cv2.imread(str(end)),(ow,oh))",
+    "def mae(x,y): return float(np.mean(np.abs(x.astype(np.float32)-y.astype(np.float32))))",
+    "mfs,mfe,mle,mls=mae(first,a),mae(first,b),mae(last,b),mae(last,a)",
+    "receipt.update({'ok':True,'model':'Wan2.1-FLF2V-14B-720P-GGUF-Q3_K_S','width':ow,'height':oh,'frames':n,'fps':fps,'duration_seconds':(n/fps if fps else None),'size_bytes':mp4.stat().st_size,'sha256':hashlib.sha256(mp4.read_bytes()).hexdigest(),'first_to_start_mae':mfs,'first_to_end_mae':mfe,'last_to_end_mae':mle,'last_to_start_mae':mls,'endpoint_order_pass':bool(mfs<mfe and mle<mls),'disk_final':disk()})",
+    "(WORK/'result.json').write_text(json.dumps(receipt,indent=2),encoding='utf-8')",
+    "print('ND_SDCPP_FLF_RESULT_JSON='+json.dumps(receipt,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,newTitle:'ND sd.cpp FLF Qualification',text:script,language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],
+    isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,modelDataSources:[],
+    sessionTimeoutSeconds:3600,machineShape:'NvidiaTeslaT4'
+  });
+  if(save?.error) throw new Error('kaggle_sdcpp_flf_save_error: '+String(save.error).slice(0,700));
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version) throw new Error('kaggle_sdcpp_flf_missing_version');
+  const versionLabel='v'+version;
+  let lastStatus=null,failureMessage=null;
+  const deadline=Date.now()+58*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    lastStatus=st?.status; failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,12000));
+  }
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:100});
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_sdcpp_flf_timeout status='+String(lastStatus));
+  const stx=String(lastStatus??'').toUpperCase();
+  if(stx==='3'||stx.includes('ERROR')) throw new Error('kaggle_sdcpp_flf_failed: '+String(failureMessage||'')+' log_tail='+String(out?.log||'').slice(-12000));
+  const payload=extractKaggleJsonMarker(out?.log||'','ND_SDCPP_FLF_RESULT_JSON=','kaggle_sdcpp_flf_payload_unparseable');
+  const fileList=Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[];
+  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,provider_url:save?.url||null,provider_status:lastStatus,output_files:fileList,qualification:payload};
+  console.log(JSON.stringify({event:'ND_KAGGLE_SDCPP_FLF',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -2483,6 +2606,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_BOOTSTRAP_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPBootstrap().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_BOOTSTRAP',state:'FAIL',error:String(e?.message||e).slice(0,7800)}))),10000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_I2V_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPI2VQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_I2V',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_DISK_FIT_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPDiskFit().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_DISK_FIT',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_SDCPP_FLF_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleSdCppFLFQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SDCPP_FLF',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),16000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPGeneration().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWan21Cache().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
