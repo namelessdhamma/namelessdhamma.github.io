@@ -144,12 +144,15 @@ def main() -> None:
     seed = int(request.get("seed") or 42)
 
     TMP.mkdir(parents=True, exist_ok=True)
+    print("ND_LTX_STAGE=materialize_inputs", flush=True)
     start_path = TMP / "start"
     end_path = TMP / "end"
     _materialize_image(request, "start", start_path)
     _materialize_image(request, "end", end_path)
 
+    print("ND_LTX_STAGE=install_dependencies", flush=True)
     _install()
+    print("ND_LTX_STAGE=dependencies_ready", flush=True)
 
     import imageio.v2 as imageio
     import numpy as np
@@ -188,7 +191,7 @@ def main() -> None:
         "gpu_gen": gpu_gen,
         "gpu_hold": gpu_hold,
         "gpus": [torch.cuda.get_device_name(i) for i in range(n_gpus)],
-    }, separators=(",", ":"), sort_keys=True))
+    }, separators=(",", ":"), sort_keys=True), flush=True)
 
     nf4_diff = DiffusersBnBConfig(
         load_in_4bit=True,
@@ -204,7 +207,7 @@ def main() -> None:
     if not getattr(LTXVideoTransformer3DModel, "_no_split_modules", None):
         LTXVideoTransformer3DModel._no_split_modules = []
 
-    print("ND_LTX_STAGE=load_transformer")
+    print("ND_LTX_STAGE=load_transformer", flush=True)
     transformer = LTXVideoTransformer3DModel.from_pretrained(
         str(MODEL),
         subfolder="transformer",
@@ -234,7 +237,7 @@ def main() -> None:
         if hasattr(block, "ff"):
             block.ff = ChunkedFF(block.ff, 512)
 
-    print("ND_LTX_STAGE=load_t5")
+    print("ND_LTX_STAGE=load_t5", flush=True)
     text_encoder = T5EncoderModel.from_pretrained(
         str(MODEL),
         subfolder="text_encoder",
@@ -248,7 +251,7 @@ def main() -> None:
         str(MODEL), subfolder="tokenizer", local_files_only=True
     )
 
-    print("ND_LTX_STAGE=load_vae")
+    print("ND_LTX_STAGE=load_vae", flush=True)
     vae = AutoencoderKLLTXVideo.from_pretrained(
         str(MODEL), subfolder="vae", torch_dtype=dtype, local_files_only=True
     ).to("cuda:0")
@@ -296,7 +299,7 @@ def main() -> None:
     gc.collect()
     torch.cuda.empty_cache()
 
-    print("ND_LTX_STAGE=generate")
+    print("ND_LTX_STAGE=generate", flush=True)
     started = time.time()
     latents = pipe(**kwargs).frames
     generation_seconds = time.time() - started
@@ -314,7 +317,7 @@ def main() -> None:
     latents = latents.to(decode_dev, pipe.vae.dtype)
     timestep = torch.tensor([0.05], device=decode_dev, dtype=pipe.vae.dtype)
 
-    print("ND_LTX_STAGE=decode")
+    print("ND_LTX_STAGE=decode", flush=True)
     with torch.no_grad():
         decoded = pipe.vae.decode(latents, timestep, return_dict=False)[0]
 
@@ -365,7 +368,7 @@ def main() -> None:
     (WORK / "result.json").write_text(
         json.dumps(receipt, indent=2), encoding="utf-8"
     )
-    print("ND_LTX_F2L_JSON=" + json.dumps(receipt, separators=(",", ":"), sort_keys=True))
+    print("ND_LTX_F2L_JSON=" + json.dumps(receipt, separators=(",", ":"), sort_keys=True), flush=True)
 
 
 if __name__ == "__main__":
