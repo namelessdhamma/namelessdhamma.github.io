@@ -551,7 +551,7 @@ async function ltxKaggleSubmit(args={}){
     enableGpu:true,
     enableTpu:false,
     enableInternet:true,
-    machineShape:'NvidiaTeslaT4',
+    machineShape:requestedShape,
     sessionTimeoutSeconds:3600
   });
   const invalid=save?.invalidDatasetSources||save?.invalid_dataset_sources||[];
@@ -817,7 +817,11 @@ async function ltxKaggleBatchSubmit(spec={}){
     });
   }
   const payload=Buffer.from(JSON.stringify({segments:prepared}),'utf8').toString('base64');
-  const workerUrl='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx_worker.py';
+  const adaptive=spec.adaptive===true;
+  const requestedShape=['NvidiaTeslaT4','NvidiaTeslaP100'].includes(String(spec.machine_shape||''))?String(spec.machine_shape):'NvidiaTeslaT4';
+  const workerUrl=adaptive
+    ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx_worker_adaptive.py'
+    : 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx_worker.py';
   const script=[
     'import base64,json,os,subprocess,sys,urllib.request',
     'from pathlib import Path',
@@ -870,7 +874,9 @@ async function ltxKaggleBatchSubmit(spec={}){
   return {
     ok:true,state:'SUBMITTED',request_id:requestId,
     provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
-    route:'kaggle_ltx13b_mounted_cache_batch',
+    route:adaptive?'kaggle_ltx13b_mounted_cache_batch_adaptive':'kaggle_ltx13b_mounted_cache_batch',
+    machine_shape_requested:requestedShape,
+    adaptive_worker:adaptive,
     segment_count:segments.length,cost_policy:'FREE_ONLY',gpu_quota:preflight.gpu
   };
 }
@@ -1292,6 +1298,11 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='probe-2b-latest') return ltxKaggle2bLatestProbe();
   const batchSubmit=compat.match(/^batch:([A-Za-z0-9_-]+)$/);
   if(batchSubmit) return ltxKaggleBatchSubmit(decodeBatchSpec(batchSubmit[1]));
+  const batchP100=compat.match(/^batch-p100:([A-Za-z0-9_-]+)$/);
+  if(batchP100){
+    const spec=decodeBatchSpec(batchP100[1]);
+    return ltxKaggleBatchSubmit({...spec,adaptive:true,machine_shape:'NvidiaTeslaP100'});
+  }
   const batchStatus=compat.match(/^batch-status:(kbatch-[a-z0-9-]+)$/i);
   if(batchStatus) return ltxKaggleBatchStatus({request_id:batchStatus[1]});
   const batchResult=compat.match(/^batch-result:(kbatch-[a-z0-9-]+)$/i);
