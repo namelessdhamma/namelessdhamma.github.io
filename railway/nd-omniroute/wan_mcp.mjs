@@ -1186,6 +1186,80 @@ async function ltxKaggleAbandonQueued(args={}){
   };
 }
 
+async function ltxKaggleInspectKernel(args={}){
+  const requestId=String(args.request_id||'').trim();
+  let ref;
+  if(/^kbatch-/i.test(requestId)) ref=kaggleLtxBatchRequestRef(requestId);
+  else ref=kaggleLtxRequestRef(requestId);
+  const {username}=await kaggleLtxIdentity();
+  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
+    user:username,
+    search:ref.kernel_slug,
+    pageSize:50
+  });
+  const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
+  const simplified=kernels.map(k=>({
+    id:k?.id??null,
+    ref:k?.ref||null,
+    title:k?.title||null,
+    author:k?.author||null,
+    slug:k?.slug||null,
+    is_private:k?.isPrivate??k?.is_private??null,
+    current_version_number:k?.currentVersionNumber??k?.current_version_number??null,
+    machine_shape:k?.machineShape??k?.machine_shape??null,
+    last_run_time:k?.lastRunTime??k?.last_run_time??null
+  }));
+  const targetSlug=ref.kernel_slug.toLowerCase();
+  const exact=simplified.filter(k=>{
+    const slug=String(k.slug||'').toLowerCase();
+    const author=String(k.author||'').toLowerCase();
+    const full=String(k.ref||'').toLowerCase();
+    return (slug===targetSlug || full===username.toLowerCase()+'/'+targetSlug) &&
+           (!author || author===username.toLowerCase());
+  });
+  return {
+    ok:true,
+    request_id:requestId,
+    kernel_slug:ref.kernel_slug,
+    version:ref.version,
+    owner:username,
+    exact_matches:exact,
+    candidates:simplified.slice(0,50)
+  };
+}
+
+async function ltxKaggleRetireKernel(args={}){
+  const requestId=String(args.request_id||'').trim();
+  if(!/^kbatch-/i.test(requestId)) throw new Error('retire is restricted to isolated batch requests');
+  const ref=kaggleLtxBatchRequestRef(requestId);
+  const inspect=await ltxKaggleInspectKernel({request_id:requestId});
+  if(inspect.exact_matches.length!==1) throw new Error('retire blocked: exact kernel match count='+inspect.exact_matches.length);
+  const hit=inspect.exact_matches[0];
+  if(hit.is_private!==true) throw new Error('retire blocked: kernel is not private');
+  if(Number(hit.current_version_number||0)!==Number(ref.version)) throw new Error('retire blocked: current version mismatch');
+  const out=await kaggleRpc('kernels.KernelsApiService','DeleteKernel',{
+    userName:inspect.owner,
+    kernelSlug:ref.kernel_slug
+  });
+  const verify=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
+    user:inspect.owner,
+    search:ref.kernel_slug,
+    pageSize:50
+  });
+  const remains=(Array.isArray(verify?.kernels)?verify.kernels:[]).filter(k=>{
+    const slug=String(k?.slug||'').toLowerCase();
+    const full=String(k?.ref||'').toLowerCase();
+    return slug===ref.kernel_slug.toLowerCase() || full===inspect.owner.toLowerCase()+'/'+ref.kernel_slug.toLowerCase();
+  });
+  return {
+    ok:remains.length===0,
+    request_id:requestId,
+    retired_kernel_slug:ref.kernel_slug,
+    provider_response:out,
+    remaining_exact_matches:remains.length
+  };
+}
+
 async function ltxKaggleFindSession(args={}){
   const requestId=String(args.request_id||'').trim();
   let ref;
@@ -1368,6 +1442,10 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   const findSession=compat.match(/^find-session:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
   if(findSession) return ltxKaggleFindSession({request_id:findSession[1]});
+  const inspectKernel=compat.match(/^inspect-kernel:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
+  if(inspectKernel) return ltxKaggleInspectKernel({request_id:inspectKernel[1]});
+  const retireKernel=compat.match(/^retire-kernel:(kbatch-[a-z0-9-]+)$/i);
+  if(retireKernel) return ltxKaggleRetireKernel({request_id:retireKernel[1]});
   const abandonQueued=compat.match(/^abandon:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
   if(abandonQueued) return ltxKaggleAbandonQueued({request_id:abandonQueued[1]});
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
