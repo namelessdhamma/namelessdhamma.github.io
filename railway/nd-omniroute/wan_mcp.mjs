@@ -834,19 +834,34 @@ async function ltxKaggleInputProbe(args={}){
   };
 }
 async function ltxKaggleAutoFinalize(requestId){
-  const id=String(requestId||'').trim();
-  for(let i=0;i<280;i++){
-    const st=await ltxKaggleStatus({request_id:id});
-    if(st.state==='COMPLETED'){
-      const result=await ltxKaggleResult({request_id:id});
-      console.log(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:id,state:'READY',drive_video:result?.drive_video||null}));
-      return result;
+  let id=String(requestId||'').trim();
+  for(let cycle=0;cycle<3;cycle++){
+    for(let i=0;i<280;i++){
+      const st=await ltxKaggleStatus({request_id:id});
+      if(st.state==='COMPLETED'){
+        const result=await ltxKaggleResult({request_id:id});
+        console.log(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:id,state:'READY',drive_video:result?.drive_video||null}));
+        return result;
+      }
+      if(st.state==='FAILED'||st.state==='CANCELLED'){
+        const files=st?.diagnostics?.files||[];
+        const logTail=String(st?.diagnostics?.log_tail||'').trim();
+        const emptyLog=logTail===''||logTail==='[]'||logTail==='{}'||logTail==='null';
+        const ref=kaggleLtxRequestRef(id);
+        if(st.state==='CANCELLED' && files.length===0 && emptyLog && !ref.legacy && ref.version<3){
+          await new Promise(r=>setTimeout(r,45000));
+          const retry=await ltxKaggleRetry({request_id:id});
+          console.warn(JSON.stringify({event:'ND_LTX_KAGGLE_SCHEDULER_RETRY',previous_request_id:id,request_id:retry.request_id,retry_number:retry.retry_number}));
+          id=retry.request_id;
+          break;
+        }
+        console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:id,state:st.state,failure_message:st.failure_message||null,diagnostics:st.diagnostics||null}));
+        return st;
+      }
+      await new Promise(r=>setTimeout(r,15000));
     }
-    if(st.state==='FAILED'||st.state==='CANCELLED'){
-      console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:id,state:st.state,failure_message:st.failure_message||null}));
-      return st;
-    }
-    await new Promise(r=>setTimeout(r,15000));
+    const ref=kaggleLtxRequestRef(id);
+    if(ref.version>=3) break;
   }
   console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:id,state:'TIMEOUT'}));
   return {ok:false,request_id:id,state:'TIMEOUT'};
