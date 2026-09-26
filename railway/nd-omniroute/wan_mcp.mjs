@@ -1019,6 +1019,77 @@ async function ltxKaggleCacheInventory(){
   };
 }
 
+async function ltxKaggle2bLoadProbe(){
+  const preflight=await kaggleLtxIdentity();
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  const slug='nd-ltx2b-load-probe-'+token;
+  const marker='ND_LTX2B_LOAD_JSON=';
+  const commit='2345ae148f82740f66e82c41292dbbdd592e713d';
+  const script=[
+    "from pathlib import Path",
+    "import json,os,platform,shutil,subprocess,sys,urllib.request",
+    "ROOT=Path('/kaggle/working/Wan2GP'); CK=ROOT/'ckpts'; T5=CK/'T5_xxl_1.1'",
+    "COMMIT='"+commit+"'",
+    "def run(cmd,timeout):",
+    "    env={**os.environ,'PIP_NO_CACHE_DIR':'1','HF_HUB_DISABLE_XET':'1','HF_HOME':'/kaggle/working/hf-cache'}",
+    "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env=env)",
+    "    if p.returncode!=0:",
+    "        print('ND_LTX2B_CMD_FAIL '+str(cmd)+'\\n'+p.stdout[-12000:]); raise RuntimeError('command failed: '+str(cmd))",
+    "    return p.stdout",
+    "run(['git','clone','--filter=blob:none','https://github.com/deepbeepmeep/Wan2GP.git',str(ROOT)],240)",
+    "run(['git','-C',str(ROOT),'checkout',COMMIT],90)",
+    "run([sys.executable,'-m','pip','install','--no-cache-dir','-q','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],1200)",
+    "from huggingface_hub import hf_hub_download",
+    "CK.mkdir(parents=True,exist_ok=True); T5.mkdir(parents=True,exist_ok=True)",
+    "model=hf_hub_download('Lightricks/LTX-Video','ltxv-2b-0.9.8-distilled-fp8.safetensors',local_dir=str(CK))",
+    "te=hf_hub_download('DeepBeepMeep/LTX_Video','T5_xxl_1.1/T5_xxl_1.1_enc_quanto_bf16_int8.safetensors',local_dir=str(CK))",
+    "for f in ['T5_xxl_1.1/added_tokens.json','T5_xxl_1.1/special_tokens_map.json','T5_xxl_1.1/spiece.model','T5_xxl_1.1/tokenizer_config.json','ltxv_0.9.7_VAE.safetensors','ltxv_0.9.7_spatial_upscaler.safetensors','ltxv_scheduler.json']:",
+    "    hf_hub_download('DeepBeepMeep/LTX_Video',f,local_dir=str(CK))",
+    "cfg=Path('/kaggle/working/ltxv-2b-0.9.8-distilled-fp8.yaml')",
+    "cfg.write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Lightricks/LTX-Video/4b2d053057623ddd4d0a1d3e9cd28890e9ef487f/configs/ltxv-2b-0.9.8-distilled-fp8.yaml',timeout=60).read())",
+    "sys.path.insert(0,str(ROOT)); os.chdir(ROOT)",
+    "import torch",
+    "from shared.utils import files_locator as fl",
+    "fl.set_checkpoints_paths([str(CK)])",
+    "from models.ltx_video.ltxv import LTXV",
+    "print('ND_LTX2B_STAGE=instantiate')",
+    "obj=LTXV(model_filepath=str(model),text_encoder_filepath=str(te),model_type='ltxv_2B',base_model_type='ltxv_2B',model_def={'LTXV_config':str(cfg),'text_encoder_folder':'T5_xxl_1.1'},dtype=torch.bfloat16,VAE_dtype=torch.bfloat16)",
+    "u=shutil.disk_usage('/kaggle/working')",
+    "sizes={}",
+    "for p in [Path(model),Path(te),CK/'ltxv_0.9.7_VAE.safetensors',CK/'ltxv_0.9.7_spatial_upscaler.safetensors']:",
+    "    sizes[p.name]=p.stat().st_size",
+    "out={'ok':True,'python':platform.python_version(),'model_class':type(obj.model).__name__,'vae_class':type(obj.vae).__name__,'pipeline_class':type(obj.pipeline).__name__,'files':sizes,'working_free_bytes':int(u.free),'working_total_bytes':int(u.total)}",
+    "print('"+marker+"'+json.dumps(out,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+slug,newTitle:'ND LTX2B Load Probe '+token,text:script,
+    language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:true,sessionTimeoutSeconds:2400
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('LTX2B load probe submit failed '+JSON.stringify({error:save?.error||null}));
+  let st=null;
+  const deadline=Date.now()+38*60*1000;
+  while(Date.now()<deadline){
+    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:preflight.username,kernelSlug:slug,versionLabel:'v'+version});
+    if(['COMPLETED','FAILED','CANCELLED'].includes(kaggleState(st?.status))) break;
+    await new Promise(r=>setTimeout(r,10000));
+  }
+  const state=kaggleState(st?.status);
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:preflight.username,kernelSlug:slug,versionLabel:'v'+version,pageSize:100});
+  return {
+    ok:state==='COMPLETED',
+    state,provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:preflight.username+'/'+slug+'/'+version,
+    receipt:extractKaggleMarker(out?.log||'',marker),
+    diagnostics:{
+      files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+      log_tail:String(out?.log||'').slice(-16000)
+    }
+  };
+}
+
 async function ltxKaggleAcceleratorProbe(shape='NvidiaTeslaP100'){
   const preflight=await kaggleLtxPreflight();
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
@@ -1156,6 +1227,7 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
+  if(compat==='probe-2b-load') return ltxKaggle2bLoadProbe();
   const batchSubmit=compat.match(/^batch:([A-Za-z0-9_-]+)$/);
   if(batchSubmit) return ltxKaggleBatchSubmit(decodeBatchSpec(batchSubmit[1]));
   const batchStatus=compat.match(/^batch-status:(kbatch-[a-z0-9-]+)$/i);
