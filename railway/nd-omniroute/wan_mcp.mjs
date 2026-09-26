@@ -538,7 +538,7 @@ async function ltxKaggleSubmit(args={}){
   const jobRef=newKaggleLtxKernelRef();
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+jobRef.kernel_slug,
-    newTitle:'ND LTX First Last Production',
+    newTitle:'ND LTX '+jobRef.token,
     text:script,
     language:'python',
     kernelType:'script',
