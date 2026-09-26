@@ -1065,8 +1065,8 @@ async function ltxKaggle2bLatestProbe(){
 
 async function ltxKaggle2bLoadProbe(){
   const preflight=await kaggleLtxIdentity();
-  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
-  const slug='nd-ltx2b-load-probe-'+token;
+  const token='fixed';
+  const slug='nd-ltx2b-load-probe-fixed';
   const marker='ND_LTX2B_LOAD_JSON=';
   const commit='2345ae148f82740f66e82c41292dbbdd592e713d';
   const script=[
@@ -1112,25 +1112,40 @@ async function ltxKaggle2bLoadProbe(){
   });
   const version=Number(save?.versionNumber||save?.version_number||0);
   if(!version||save?.error) throw new Error('LTX2B load probe submit failed '+JSON.stringify({error:save?.error||null}));
-  let st=null;
-  const deadline=Date.now()+38*60*1000;
-  while(Date.now()<deadline){
-    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:preflight.username,kernelSlug:slug,versionLabel:'v'+version});
-    if(['COMPLETED','FAILED','CANCELLED'].includes(kaggleState(st?.status))) break;
-    await new Promise(r=>setTimeout(r,10000));
-  }
-  const state=kaggleState(st?.status);
-  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:preflight.username,kernelSlug:slug,versionLabel:'v'+version,pageSize:100});
   return {
-    ok:state==='COMPLETED',
+    ok:true,
+    state:'SUBMITTED',
+    request_id:'ltx2b-load-v'+version,
+    provider_ref:preflight.username+'/'+slug+'/'+version
+  };
+}
+
+async function ltxKaggle2bFixedStatus(args={}){
+  const {username}=await kaggleLtxIdentity();
+  const slug='nd-ltx2b-load-probe-fixed';
+  const m=String(args.request_id||'').trim().match(/^ltx2b-load-v(\d+)$/i);
+  if(!m) throw new Error('valid ltx2b-load-vN request_id required');
+  const version=Number(m[1]);
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel:'v'+version});
+  const state=kaggleState(st?.status);
+  let output=null;
+  if(['RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel:'v'+version,pageSize:100});
+      output={
+        receipt:extractKaggleMarker(out?.log||'','ND_LTX2B_LOAD_JSON='),
+        files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+        log_tail:String(out?.log||'').slice(-18000)
+      };
+    }catch(e){output={error:errorText(e)};}
+  }
+  return {
+    ok:state==='COMPLETED'&&!!output?.receipt,
+    request_id:'ltx2b-load-v'+version,
     state,provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null,
-    provider_ref:preflight.username+'/'+slug+'/'+version,
-    receipt:extractKaggleMarker(out?.log||'',marker),
-    diagnostics:{
-      files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
-      log_tail:String(out?.log||'').slice(-16000)
-    }
+    provider_ref:username+'/'+slug+'/'+version,
+    output
   };
 }
 
@@ -1272,6 +1287,8 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
   if(compat==='probe-2b-load') return ltxKaggle2bLoadProbe();
+  const load2bStatus=compat.match(/^probe-2b-status:(ltx2b-load-v\d+)$/i);
+  if(load2bStatus) return ltxKaggle2bFixedStatus({request_id:load2bStatus[1]});
   if(compat==='probe-2b-latest') return ltxKaggle2bLatestProbe();
   const batchSubmit=compat.match(/^batch:([A-Za-z0-9_-]+)$/);
   if(batchSubmit) return ltxKaggleBatchSubmit(decodeBatchSpec(batchSubmit[1]));
