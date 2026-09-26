@@ -14,6 +14,7 @@ No model-weight download is performed.
 from __future__ import annotations
 
 from pathlib import Path
+import base64
 import gc
 import hashlib
 import inspect
@@ -100,6 +101,17 @@ def _download(url: str, path: Path) -> None:
             dst.write(chunk)
 
 
+def _materialize_image(request: dict, key: str, path: Path) -> None:
+    inline = request.get(f"{key}_image_base64")
+    if inline:
+        raw = base64.b64decode(str(inline))
+        if not raw or len(raw) > 20 * 1024 * 1024:
+            raise ValueError(f"{key} inline image is empty or too large")
+        path.write_bytes(raw)
+        return
+    _download(str(request.get(f"{key}_image_url") or ""), path)
+
+
 def _mae(a, b, size):
     import numpy as np
 
@@ -134,8 +146,8 @@ def main() -> None:
     TMP.mkdir(parents=True, exist_ok=True)
     start_path = TMP / "start"
     end_path = TMP / "end"
-    _download(str(request.get("start_image_url") or ""), start_path)
-    _download(str(request.get("end_image_url") or ""), end_path)
+    _materialize_image(request, "start", start_path)
+    _materialize_image(request, "end", end_path)
 
     _install()
 
