@@ -2840,6 +2840,29 @@ child.on('spawn',()=>{ childReady=true; console.log(JSON.stringify({event:'ND_OM
 child.on('exit',(code,signal)=>{ childReady=false; console.error(JSON.stringify({event:'ND_OMNIROUTE_CHILD_EXIT',code,signal})); });
 
 const server = http.createServer(async (req,res) => {
+  if (LTX_MCP_TOKEN && req.method === 'GET' && req.url?.startsWith('/ltx-input/'+LTX_MCP_TOKEN+'/')) {
+    const prefix='/ltx-input/'+LTX_MCP_TOKEN+'/';
+    const fileId=decodeURIComponent(req.url.slice(prefix.length).split('?')[0]||'').trim();
+    if(!fileId || !/^[A-Za-z0-9_-]{10,200}$/.test(fileId)) return json(res,400,{ok:false,error:'invalid_drive_file_id'});
+    try{
+      const result=await authContext.run({user:true},async()=>{
+        const m=await metadata(fileId);
+        if(!String(m.mimeType||'').startsWith('image/')) throw new Error('ltx input must be an image');
+        const raw=await gbytes('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(fileId)+'?alt=media&supportsAllDrives=true');
+        if(raw.buffer.length>20*1024*1024) throw new Error('ltx input exceeds 20 MB');
+        return {meta:m,buffer:raw.buffer};
+      });
+      res.writeHead(200,{
+        'content-type':result.meta.mimeType||'application/octet-stream',
+        'content-length':result.buffer.length,
+        'cache-control':'private, no-store',
+        'x-content-type-options':'nosniff'
+      });
+      return res.end(result.buffer);
+    }catch(e){
+      return json(res,502,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
   if (req.method === 'POST' && req.url === '/internal/kaggle-ltx/import-output') {
     if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
     const chunks=[]; for await(const ch of req) chunks.push(ch);
