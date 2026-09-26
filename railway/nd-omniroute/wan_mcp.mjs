@@ -1434,6 +1434,49 @@ async function ltxKaggleFindSession(args={}){
   };
 }
 
+async function ltxKaggleListInitProbes(){
+  const {username}=await kaggleLtxIdentity();
+  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
+    user:username,
+    search:'ND LTX Init Probe',
+    pageSize:50
+  });
+  const kernels=(Array.isArray(listed?.kernels)?listed.kernels:[]).filter(k=>{
+    const slug=String(k?.slug||'').toLowerCase();
+    const ref=String(k?.ref||'').toLowerCase();
+    return slug.startsWith('nd-ltx-init-probe-') || ref.includes('/nd-ltx-init-probe-');
+  });
+  const out=[];
+  for(const k of kernels.slice(0,20)){
+    const slug=String(k?.slug||String(k?.ref||'').split('/').pop()||'');
+    const version=Number(k?.currentVersionNumber??k?.current_version_number??1);
+    let status=null,sessionOutput=null;
+    try{
+      status=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+        userName:username,kernelSlug:slug,versionLabel:'v'+version
+      });
+    }catch(e){status={error:errorText(e)};}
+    try{
+      sessionOutput=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+        userName:username,kernelSlug:slug,versionLabel:'v'+version,pageSize:50
+      });
+    }catch(e){sessionOutput={error:errorText(e)};}
+    out.push({
+      slug,
+      ref:k?.ref||null,
+      title:k?.title||null,
+      version,
+      last_run_time:k?.lastRunTime??k?.last_run_time??null,
+      machine_shape:k?.machineShape??k?.machine_shape??null,
+      status:status?.status??null,
+      failure_message:status?.failureMessage||status?.failure_message||status?.error||null,
+      files:Array.isArray(sessionOutput?.files)?sessionOutput.files.map(x=>x?.fileName||x?.name||x?.path).filter(Boolean):[],
+      log_tail:String(sessionOutput?.log||'').slice(-12000)
+    });
+  }
+  return {ok:true,count:out.length,probes:out};
+}
+
 async function ltxKaggleAdaptiveInitProbe(){
   const preflight=await kaggleLtxPreflight();
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
@@ -1646,6 +1689,7 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   if(compat==='probe-adaptive-init') return ltxKaggleAdaptiveInitProbe();
+  if(compat==='list-init-probes') return ltxKaggleListInitProbes();
   const findSession=compat.match(/^find-session:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
   if(findSession) return ltxKaggleFindSession({request_id:findSession[1]});
   const inspectKernel=compat.match(/^inspect-kernel:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
