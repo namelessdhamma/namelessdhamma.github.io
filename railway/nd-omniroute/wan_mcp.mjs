@@ -415,10 +415,18 @@ async function kaggleLtxPreflight(){
   };
 }
 
-function kaggleLtxRequestVersion(requestId){
-  const m=String(requestId||'').trim().match(/^kltx-v(\d+)$/i);
-  if(!m) throw new Error('valid request_id required, e.g. kltx-v3');
-  return Number(m[1]);
+function kaggleLtxRequestRef(requestId){
+  const id=String(requestId||'').trim();
+  let m=id.match(/^kltx-v(\d+)$/i);
+  if(m) return {request_id:id,kernel_slug:KAGGLE_LTX_KERNEL,version:Number(m[1]),legacy:true};
+  m=id.match(/^kltx-(r[a-z0-9]+-[a-z0-9]+)-v(\d+)$/i);
+  if(m) return {request_id:id,kernel_slug:'nd-ltx-'+m[1],version:Number(m[2]),legacy:false};
+  throw new Error('valid request_id required');
+}
+
+function newKaggleLtxKernelRef(){
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  return {token,kernel_slug:'nd-ltx-'+token};
 }
 
 function kaggleState(status){
@@ -527,8 +535,9 @@ async function ltxKaggleSubmit(args={}){
     "exec(compile(source,'kaggle_ltx_worker.py','exec'),{'__name__':'__main__'})"
   ].join('\n');
   if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle kernel source preflight exceeds 900 KB: '+Buffer.byteLength(script,'utf8'));
+  const jobRef=newKaggleLtxKernelRef();
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
-    slug:preflight.username+'/'+KAGGLE_LTX_KERNEL,
+    slug:preflight.username+'/'+jobRef.kernel_slug,
     newTitle:'ND LTX First Last Production',
     text:script,
     language:'python',
@@ -549,12 +558,13 @@ async function ltxKaggleSubmit(args={}){
   if(save?.error||invalid.length) throw new Error('Kaggle submit failed: '+JSON.stringify({error:save?.error||null,invalid_dataset_sources:invalid}));
   const version=Number(save?.versionNumber||save?.version_number||0);
   if(!version) throw new Error('Kaggle submit returned no version');
-  setTimeout(()=>ltxKaggleAutoFinalize(version).catch(e=>console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:'kltx-v'+version,state:'ERROR',error:errorText(e)}))),10000);
+  const requestId='kltx-'+jobRef.token+'-v'+version;
+  setTimeout(()=>ltxKaggleAutoFinalize(requestId).catch(e=>console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:'ERROR',error:errorText(e)}))),10000);
   return {
     ok:true,
     state:'SUBMITTED',
-    request_id:'kltx-v'+version,
-    provider_ref:preflight.username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
+    request_id:requestId,
+    provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
     route:'kaggle_ltx13b_mounted_cache_f2l',
     cost_policy:'FREE_ONLY',
     gpu_quota:preflight.gpu,
@@ -563,37 +573,32 @@ async function ltxKaggleSubmit(args={}){
 }
 
 async function ltxKaggleStatus(args={}){
-  const version=kaggleLtxRequestVersion(args.request_id);
+  const ref=kaggleLtxRequestRef(args.request_id);
   const {username}=await kaggleLtxIdentity();
   const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-    userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
   });
   const state=kaggleState(st?.status);
   let diagnostics=null;
   if(['QUEUED','RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
     try{
       const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
-        userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version,pageSize:100
+        userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:100
       });
       const files=Array.isArray(out?.files)?out.files.map(x=>({
         name:x?.fileName||x?.name||x?.path||null,
         size:x?.fileSize??x?.size??null
       })).filter(x=>x.name):[];
-      diagnostics={
-        files,
-        log_tail:String(out?.log||'').slice(-12000)
-      };
-    }catch(e){
-      diagnostics={error:errorText(e)};
-    }
+      diagnostics={files,log_tail:String(out?.log||'').slice(-12000)};
+    }catch(e){diagnostics={error:errorText(e)};}
   }
   return {
     ok:true,
-    request_id:'kltx-v'+version,
+    request_id:ref.request_id,
     state,
     provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null,
-    provider_ref:username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
+    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
     diagnostics
   };
 }
@@ -613,19 +618,19 @@ async function driveImportKaggleOutput(url,name,mimeType){
 }
 
 async function ltxKaggleResult(args={}){
-  const version=kaggleLtxRequestVersion(args.request_id);
+  const ref=kaggleLtxRequestRef(args.request_id);
   const {username}=await kaggleLtxIdentity();
   const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-    userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
   });
   const state=kaggleState(st?.status);
   if(state!=='COMPLETED') return {
-    ok:false,request_id:'kltx-v'+version,state,
+    ok:false,request_id:ref.request_id,state,
     provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null
   };
   const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
-    userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version,pageSize:100
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:100
   });
   const files=Array.isArray(out?.files)?out.files:[];
   const byName=name=>files.find(x=>(x?.fileName||x?.name||x?.path)===name);
@@ -633,41 +638,27 @@ async function ltxKaggleResult(args={}){
   const receiptFile=byName('result.json');
   if(!mp4?.url) throw new Error('result.mp4 missing from Kaggle output');
   const receipt=extractKaggleMarker(out?.log||'','ND_LTX_F2L_JSON=');
-  const driveVideo=await driveImportKaggleOutput(
-    mp4.url,
-    'nd-ltx-'+('kltx-v'+version)+'.mp4',
-    'video/mp4'
-  );
+  const driveVideo=await driveImportKaggleOutput(mp4.url,'nd-ltx-'+ref.request_id+'.mp4','video/mp4');
   let driveReceipt=null;
   if(receiptFile?.url){
-    driveReceipt=await driveImportKaggleOutput(
-      receiptFile.url,
-      'nd-ltx-'+('kltx-v'+version)+'.json',
-      'application/json'
-    );
+    driveReceipt=await driveImportKaggleOutput(receiptFile.url,'nd-ltx-'+ref.request_id+'.json','application/json');
   }
   const file=driveVideo?.file||{};
   return {
     ok:true,
-    request_id:'kltx-v'+version,
+    request_id:ref.request_id,
     state:'READY',
     route:'kaggle_ltx13b_mounted_cache_f2l',
-    provider_ref:username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
+    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
     receipt,
     video_ref:file.webViewLink||null,
     drive_video:{
-      id:file.id||null,
-      name:file.name||null,
-      size:Number(file.size||0),
-      mime_type:file.mimeType||null,
-      url:file.webViewLink||null,
-      reused:driveVideo?.reused===true
+      id:file.id||null,name:file.name||null,size:Number(file.size||0),
+      mime_type:file.mimeType||null,url:file.webViewLink||null,reused:driveVideo?.reused===true
     },
     drive_receipt:driveReceipt?.file?{
-      id:driveReceipt.file.id||null,
-      name:driveReceipt.file.name||null,
-      url:driveReceipt.file.webViewLink||null,
-      reused:driveReceipt?.reused===true
+      id:driveReceipt.file.id||null,name:driveReceipt.file.name||null,
+      url:driveReceipt.file.webViewLink||null,reused:driveReceipt?.reused===true
     }:null
   };
 }
@@ -723,31 +714,31 @@ async function ltxKaggleInputProbe(args={}){
     }
   };
 }
-async function ltxKaggleAutoFinalize(version){
-  const requestId='kltx-v'+Number(version);
+async function ltxKaggleAutoFinalize(requestId){
+  const id=String(requestId||'').trim();
   for(let i=0;i<280;i++){
-    const st=await ltxKaggleStatus({request_id:requestId});
+    const st=await ltxKaggleStatus({request_id:id});
     if(st.state==='COMPLETED'){
-      const result=await ltxKaggleResult({request_id:requestId});
-      console.log(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:'READY',drive_video:result?.drive_video||null}));
+      const result=await ltxKaggleResult({request_id:id});
+      console.log(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:id,state:'READY',drive_video:result?.drive_video||null}));
       return result;
     }
     if(st.state==='FAILED'||st.state==='CANCELLED'){
-      console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:st.state,failure_message:st.failure_message||null}));
+      console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:id,state:st.state,failure_message:st.failure_message||null}));
       return st;
     }
     await new Promise(r=>setTimeout(r,15000));
   }
-  console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:'TIMEOUT'}));
-  return {ok:false,request_id:requestId,state:'TIMEOUT'};
+  console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:id,state:'TIMEOUT'}));
+  return {ok:false,request_id:id,state:'TIMEOUT'};
 }
 
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
-  const statusMatch=compat.match(/^status:(kltx-v\d+)$/i);
+  const statusMatch=compat.match(/^status:(kltx-[a-z0-9-]+)$/i);
   if(statusMatch) return ltxKaggleStatus({request_id:statusMatch[1]});
-  const resultMatch=compat.match(/^result:(kltx-v\d+)$/i);
+  const resultMatch=compat.match(/^result:(kltx-[a-z0-9-]+)$/i);
   if(resultMatch) return ltxKaggleResult({request_id:resultMatch[1]});
   return ltxKaggleSubmit(args);
 }
