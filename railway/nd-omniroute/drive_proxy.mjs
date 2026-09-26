@@ -1146,6 +1146,126 @@ async function kaggleLtxCacheProbe(){
   return result;
 }
 
+
+async function kaggleLtxFirstLastQualification(){
+  const enabled=String(process.env.ND_KAGGLE_LTX_F2L_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_ltx_f2l_auth_failed');
+  const username=String(intro.username), slug='nd-ltx-first-last-qualification', fullSlug=username+'/'+slug;
+  const datasetSource='damnyadav/ltxv13b-distilled-cache';
+  const script=[
+    "from pathlib import Path",
+    "import gc, hashlib, inspect, json, os, platform, subprocess, sys, time",
+    "os.environ['PYTORCH_CUDA_ALLOC_CONF']='expandable_segments:True'",
+    "os.environ['TOKENIZERS_PARALLELISM']='false'",
+    "MODEL=Path('/kaggle/input/datasets/damnyadav/ltxv13b-distilled-cache')",
+    "WORK=Path('/kaggle/working')",
+    "def run(cmd,timeout):",
+    "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env={**os.environ,'PIP_NO_CACHE_DIR':'1'})",
+    "    if p.returncode!=0:",
+    "        print('ND_LTX_CMD_FAIL '+str(cmd)+'\\\\n'+p.stdout[-10000:]); raise RuntimeError('command failed: '+str(cmd))",
+    "    return p.stdout",
+    "run([sys.executable,'-m','pip','install','--no-cache-dir','-q','diffusers>=0.37.0','transformers>=4.48.0','accelerate>=1.2.0','bitsandbytes','sentencepiece','protobuf','imageio','imageio-ffmpeg','safetensors'],900)",
+    "import numpy as np, torch, imageio.v2 as imageio",
+    "from PIL import Image, ImageDraw",
+    "from diffusers import LTXConditionPipeline, LTXVideoTransformer3DModel, AutoencoderKLLTXVideo, BitsAndBytesConfig as DiffusersBnBConfig",
+    "from diffusers.schedulers import FlowMatchEulerDiscreteScheduler",
+    "from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition",
+    "from transformers import T5EncoderModel, T5TokenizerFast, BitsAndBytesConfig as TransformersBnBConfig",
+    "assert torch.cuda.is_available() and torch.cuda.device_count()>=2, 'need T4x2'",
+    "DT=torch.float16; G0=0; G1=1",
+    "max_tr={G0:'14GiB',G1:'1GiB','cpu':'8GiB'}; max_t5={G0:'1GiB',G1:'14GiB','cpu':'8GiB'}",
+    "nf4d=DiffusersBnBConfig(load_in_4bit=True,bnb_4bit_quant_type='nf4',bnb_4bit_compute_dtype=DT)",
+    "nf4t=TransformersBnBConfig(load_in_4bit=True,bnb_4bit_quant_type='nf4',bnb_4bit_compute_dtype=DT)",
+    "if not getattr(LTXVideoTransformer3DModel,'_no_split_modules',None): LTXVideoTransformer3DModel._no_split_modules=[]",
+    "print('ND_LTX_STAGE=load_transformer')",
+    "transformer=LTXVideoTransformer3DModel.from_pretrained(str(MODEL),subfolder='transformer',quantization_config=nf4d,torch_dtype=DT,device_map='auto',max_memory=max_tr,local_files_only=True)",
+    "import torch.nn as nn",
+    "class ChunkedFF(nn.Module):",
+    "    def __init__(self,ff,chunk=512): super().__init__(); self.ff=ff; self.chunk=chunk",
+    "    def forward(self,x,*a,**kw):",
+    "        if x.shape[1]<=self.chunk: return self.ff(x,*a,**kw)",
+    "        out=torch.empty_like(x)",
+    "        for st in range(0,x.shape[1],self.chunk): out[:,st:min(st+self.chunk,x.shape[1])]=self.ff(x[:,st:min(st+self.chunk,x.shape[1])],*a,**kw)",
+    "        return out",
+    "for b in transformer.transformer_blocks:",
+    "    if hasattr(b,'ff'): b.ff=ChunkedFF(b.ff,512)",
+    "print('ND_LTX_STAGE=load_t5')",
+    "text_encoder=T5EncoderModel.from_pretrained(str(MODEL),subfolder='text_encoder',quantization_config=nf4t,torch_dtype=DT,device_map='auto',max_memory=max_t5,local_files_only=True)",
+    "tokenizer=T5TokenizerFast.from_pretrained(str(MODEL),subfolder='tokenizer',local_files_only=True)",
+    "print('ND_LTX_STAGE=load_vae')",
+    "vae=AutoencoderKLLTXVideo.from_pretrained(str(MODEL),subfolder='vae',torch_dtype=DT,local_files_only=True).to('cuda:0')",
+    "scheduler=FlowMatchEulerDiscreteScheduler.from_pretrained(str(MODEL),subfolder='scheduler',local_files_only=True)",
+    "pipe=LTXConditionPipeline(transformer=transformer,text_encoder=text_encoder,tokenizer=tokenizer,vae=vae,scheduler=scheduler)",
+    "W,H,NF,FPS=864,480,33,30",
+    "def make(path,ship_x,sun_x,warm=False):",
+    "    sky=(202,170,132) if warm else (132,190,224); sea=(37,94,124) if warm else (28,105,145)",
+    "    im=Image.new('RGB',(W,H),sky); d=ImageDraw.Draw(im); d.rectangle((0,270,W,H),fill=sea)",
+    "    d.ellipse((sun_x-28,62,sun_x+28,118),fill=(247,204,92))",
+    "    d.polygon([(ship_x-64,340),(ship_x+70,340),(ship_x+38,378),(ship_x-50,378)],fill=(33,31,29))",
+    "    d.line((ship_x,340,ship_x,205),fill=(28,25,22),width=7)",
+    "    d.polygon([(ship_x+4,214),(ship_x+4,330),(ship_x+86,330)],fill=(236,229,206))",
+    "    d.polygon([(ship_x-5,228),(ship_x-5,324),(ship_x-62,324)],fill=(220,214,194))",
+    "    for y in (410,440,466): d.arc((20,y-18,W-20,y+14),0,180,fill=(172,215,228),width=3)",
+    "    im.save(path); return im",
+    "sp=WORK/'start.png'; ep=WORK/'end.png'; start=make(sp,220,120,False); end=make(ep,640,735,True)",
+    "conds=[LTXVideoCondition(image=start,frame_index=0),LTXVideoCondition(image=end,frame_index=NF-1)]",
+    "prompt='A continuous cinematic ocean shot. The same small sailing ship travels smoothly from left to right as waves move naturally and sails respond to wind. The sky warms toward sunset. Preserve one ship, one horizon and coherent perspective; no cuts.'",
+    "neg='flicker, duplicate ship, disappearing ship, sudden cut, warped hull, extra sails, text, watermark, jitter'",
+    "kw=dict(prompt=prompt,negative_prompt=neg,width=W,height=H,num_frames=NF,guidance_scale=1.0,decode_timestep=0.05,decode_noise_scale=0.025,image_cond_noise_scale=0.025,generator=torch.Generator(device='cuda:0').manual_seed(42),output_type='latent',conditions=conds)",
+    "params=set(inspect.signature(pipe.__call__).parameters.keys())",
+    "if 'timesteps' in params: kw['timesteps']=[1000,993,987,981,975,909,725]",
+    "else: kw['num_inference_steps']=7",
+    "if 'tone_map_compression_ratio' in params: kw['tone_map_compression_ratio']=0.6",
+    "print('ND_LTX_STAGE=generate')",
+    "t0=time.time(); latents=pipe(**kw).frames; gen_s=time.time()-t0",
+    "lm=pipe.vae.latents_mean.view(1,-1,1,1,1).to(latents.device,latents.dtype); ls=pipe.vae.latents_std.view(1,-1,1,1,1).to(latents.device,latents.dtype)",
+    "latents=latents*ls+lm; pipe.vae.to('cuda:1'); latents=latents.to('cuda:1',pipe.vae.dtype)",
+    "temb=torch.tensor([0.05],device='cuda:1',dtype=pipe.vae.dtype)",
+    "print('ND_LTX_STAGE=decode')",
+    "with torch.no_grad(): decoded=pipe.vae.decode(latents,temb,return_dict=False)[0]",
+    "decoded=decoded.squeeze(0).permute(1,2,3,0); decoded=((decoded.float()+1.0)/2.0).clamp(0,1); arr=(decoded*255).to(torch.uint8).cpu().numpy()",
+    "frames=[Image.fromarray(arr[i]) for i in range(arr.shape[0])]",
+    "outp=WORK/'result.mp4'; imageio.mimsave(str(outp),[np.array(f) for f in frames],fps=FPS,codec='libx264',quality=7)",
+    "frames[0].save(WORK/'output_first.png'); frames[-1].save(WORK/'output_last.png')",
+    "def mae(a,b):",
+    "    a=np.array(a.resize((W,H))).astype(np.float32); b=np.array(b.resize((W,H))).astype(np.float32); return float(np.mean(np.abs(a-b)))",
+    "mfs=mae(frames[0],start); mfe=mae(frames[0],end); mle=mae(frames[-1],end); mls=mae(frames[-1],start)",
+    "sha=hashlib.sha256(outp.read_bytes()).hexdigest()",
+    "receipt={'ok':True,'pipeline':'LTXConditionPipeline','dataset_source':'damnyadav/ltxv13b-distilled-cache','width':W,'height':H,'frames':len(frames),'fps':FPS,'duration_seconds':len(frames)/FPS,'generation_seconds':round(gen_s,3),'size_bytes':outp.stat().st_size,'sha256':sha,'first_to_start_mae':mfs,'first_to_end_mae':mfe,'last_to_end_mae':mle,'last_to_start_mae':mls,'endpoint_order_pass':bool(mfs<mfe and mle<mls),'gpu_names':[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]}",
+    "(WORK/'result.json').write_text(json.dumps(receipt,indent=2),encoding='utf-8')",
+    "print('ND_LTX_F2L_JSON='+json.dumps(receipt,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,newTitle:'ND LTX First Last Qualification',text:script,language:'python',kernelType:'script',
+    datasetDataSources:[datasetSource],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,sessionTimeoutSeconds:3600,machineShape:'NvidiaTeslaT4'
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version || save?.error || (save?.invalidDatasetSources||save?.invalid_dataset_sources||[]).length){
+    throw new Error('kaggle_ltx_f2l_save_failed: '+JSON.stringify({error:save?.error||null,version,invalid_dataset_sources:save?.invalidDatasetSources||save?.invalid_dataset_sources||[]}));
+  }
+  const versionLabel='v'+version;
+  let lastStatus=null,failureMessage=null;
+  const deadline=Date.now()+55*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    lastStatus=st?.status; failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,10000));
+  }
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:100});
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_ltx_f2l_timeout status='+String(lastStatus));
+  const stx=String(lastStatus??'').toUpperCase();
+  if(stx==='3'||stx.includes('ERROR')) throw new Error('kaggle_ltx_f2l_failed: '+String(failureMessage||'')+' log_tail='+String(out?.log||'').slice(-12000));
+  const payload=extractKaggleJsonMarker(out?.log||'','ND_LTX_F2L_JSON=','kaggle_ltx_f2l_payload_unparseable');
+  const files=Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||null,url:x?.url||null})).filter(x=>x.name):[];
+  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,provider_status:lastStatus,output_files:files,qualification:payload};
+  console.log(JSON.stringify({event:'ND_KAGGLE_LTX_F2L',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -2800,6 +2920,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_DISK_FIT_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPDiskFit().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_DISK_FIT',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_MOUNT_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxMountProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_MOUNT_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),16000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_CACHE_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxCacheProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_CACHE_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),18000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_F2L_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxFirstLastQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_F2L',state:'FAIL',error:String(e?.message||e).slice(0,16000)}))),20000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_SDCPP_FLF_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleSdCppFLFQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SDCPP_FLF',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),16000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPGeneration().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWan21Cache().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
