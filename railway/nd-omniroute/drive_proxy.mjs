@@ -1266,6 +1266,76 @@ async function kaggleLtxFirstLastQualification(){
   return result;
 }
 
+
+async function kaggleLtxCopyQualifiedOutputToDrive(){
+  const enabled=String(process.env.ND_KAGGLE_LTX_DRIVE_COPY_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_ltx_drive_copy_auth_failed');
+  const username=String(intro.username);
+  const kernelSlug='nd-ltx-first-last-qualification';
+  const version=2;
+  const versionLabel='v2';
+  const parentId='1Qe6zqqZZzAohSt96_z4vkTcNAcGIThPh';
+  const expectedSha='223008af6ff0035ecb61619765cb0efb7b0670a35ce75c3256db1e07617022a1';
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+    userName:username,kernelSlug,versionLabel,pageSize:100
+  });
+  const files=Array.isArray(out?.files)?out.files:[];
+  const findFile=name=>files.find(x=>(x?.fileName||x?.name||x?.path)===name);
+  const mp4=findFile('result.mp4');
+  const receipt=findFile('result.json');
+  if(!mp4?.url) throw new Error('kaggle_ltx_drive_copy_result_mp4_missing');
+  const videoRes=await fetch(mp4.url);
+  if(!videoRes.ok) throw new Error('kaggle_ltx_drive_copy_download_http_'+videoRes.status);
+  const video=Buffer.from(await videoRes.arrayBuffer());
+  const sha=crypto.createHash('sha256').update(video).digest('hex');
+  if(sha!==expectedSha) throw new Error('kaggle_ltx_drive_copy_sha_mismatch '+sha);
+  if(video.length!==156579) throw new Error('kaggle_ltx_drive_copy_size_mismatch '+video.length);
+  const driveResult=await authContext.run({user:true},async()=>{
+    const created=await multipartCreate(
+      'nd-ltx-first-last-qualification-v2.mp4',
+      'video/mp4',
+      parentId,
+      video
+    );
+    const readback=await metadata(created.id);
+    let receiptCreated=null;
+    if(receipt?.url){
+      const rr=await fetch(receipt.url);
+      if(rr.ok){
+        const rb=Buffer.from(await rr.arrayBuffer());
+        receiptCreated=await multipartCreate(
+          'nd-ltx-first-last-qualification-v2.json',
+          'application/json',
+          parentId,
+          rb
+        );
+      }
+    }
+    return {created,readback,receipt_created:receiptCreated};
+  });
+  if(String(driveResult?.readback?.size||'')!==String(video.length)) throw new Error('drive_copy_readback_size_mismatch');
+  if(driveResult?.readback?.mimeType!=='video/mp4') throw new Error('drive_copy_readback_mime_mismatch');
+  const result={
+    state:'PASS',
+    kaggle_ref:username+'/'+kernelSlug+'/'+version,
+    sha256:sha,
+    size_bytes:video.length,
+    drive:{
+      id:driveResult.created.id,
+      name:driveResult.readback.name,
+      mime_type:driveResult.readback.mimeType,
+      size:Number(driveResult.readback.size||0),
+      parent_id:(driveResult.readback.parents||[])[0]||null,
+      url:driveResult.readback.webViewLink||null,
+      receipt_id:driveResult.receipt_created?.id||null
+    }
+  };
+  console.log(JSON.stringify({event:'ND_KAGGLE_LTX_DRIVE_COPY',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -2921,6 +2991,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_MOUNT_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxMountProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_MOUNT_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),16000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_CACHE_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxCacheProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_CACHE_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),18000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_F2L_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxFirstLastQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_F2L',state:'FAIL',error:String(e?.message||e).slice(0,16000)}))),20000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_DRIVE_COPY_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxCopyQualifiedOutputToDrive().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_DRIVE_COPY',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),22000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_SDCPP_FLF_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleSdCppFLFQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SDCPP_FLF',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),16000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPGeneration().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWan21Cache().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
