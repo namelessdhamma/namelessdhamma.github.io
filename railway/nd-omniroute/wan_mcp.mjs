@@ -369,7 +369,12 @@ async function kaggleRpc(service,method,body={}){
   const txt=await res.text();
   let data={};
   try{data=txt?JSON.parse(txt):{};}catch{data={raw:txt.slice(0,1200)};}
-  if(!res.ok) throw new Error('Kaggle HTTP '+res.status+': '+String(data?.message||data?.error||txt).slice(0,1000));
+  if(!res.ok){
+    const raw=data?.message??data?.error??data??txt;
+    let detail;
+    try{detail=typeof raw==='string'?raw:JSON.stringify(raw);}catch{detail=String(raw);}
+    throw new Error('Kaggle HTTP '+res.status+': '+String(detail).slice(0,1800));
+  }
   return data;
 }
 
