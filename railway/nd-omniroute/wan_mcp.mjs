@@ -400,6 +400,7 @@ async function kaggleLtxPreflight(){
   const quota=await kaggleRpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});
   const g=quota?.gpuQuota||quota?.gpu_quota||{};
   const used=kaggleDurationSeconds(g?.timeUsed??g?.time_used);
+  const reserved=kaggleDurationSeconds(g?.timeReserved??g?.time_reserved);
   const total=kaggleDurationSeconds(g?.totalTimeAllowed??g?.total_time_allowed);
   const remaining=Math.max(0,total-used);
   if(total<=0) throw new Error('FREE_ONLY_BLOCKED: Kaggle GPU quota unavailable');
@@ -408,6 +409,7 @@ async function kaggleLtxPreflight(){
     username,
     gpu:{
       used_hours:Number((used/3600).toFixed(3)),
+      reserved_hours:Number((reserved/3600).toFixed(3)),
       total_hours:Number((total/3600).toFixed(3)),
       remaining_hours:Number((remaining/3600).toFixed(3)),
       refresh_at:quota?.quotaRefreshTime||quota?.quota_refresh_time||null
@@ -1566,6 +1568,7 @@ async function ltxKaggleAutoFinalize(requestId){
 
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
+  if(compat==='quota-readback') return kaggleLtxPreflight();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   const findSession=compat.match(/^find-session:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
