@@ -663,6 +663,68 @@ async function ltxKaggleResult(args={}){
   };
 }
 
+async function ltxKaggleBuild2bCache(){
+  const {username}=await kaggleLtxIdentity();
+  const slug='nd-ltx-2b-distilled-cache';
+  const fullSlug=username+'/'+slug;
+  const title='ND LTX 2B Distilled Cache';
+  const script=[
+    'from pathlib import Path',
+    'import hashlib,json,urllib.request',
+    "root=Path('/kaggle/working/ltxv-2b-distilled')",
+    "(root/'transformer').mkdir(parents=True,exist_ok=True)",
+    "(root/'scheduler').mkdir(parents=True,exist_ok=True)",
+    "files={",
+    " 'transformer/config.json':'https://huggingface.co/multimodalart/ltxv-2b-0.9.6-distilled/resolve/main/transformer/config.json?download=true',",
+    " 'transformer/diffusion_pytorch_model.bf16.safetensors':'https://huggingface.co/multimodalart/ltxv-2b-0.9.6-distilled/resolve/main/transformer/diffusion_pytorch_model.bf16.safetensors?download=true',",
+    " 'scheduler/scheduler_config.json':'https://huggingface.co/multimodalart/ltxv-2b-0.9.6-distilled/resolve/main/scheduler/scheduler_config.json?download=true'",
+    "}",
+    "out={}",
+    "for rel,url in files.items():",
+    "    dest=root/rel",
+    "    req=urllib.request.Request(url,headers={'User-Agent':'nd-kaggle-ltx-cache/1.0'})",
+    "    h=hashlib.sha256(); n=0",
+    "    with urllib.request.urlopen(req,timeout=300) as src, dest.open('wb') as dst:",
+    "        while True:",
+    "            chunk=src.read(4*1024*1024)",
+    "            if not chunk: break",
+    "            dst.write(chunk); h.update(chunk); n+=len(chunk)",
+    "    out[rel]={'size_bytes':n,'sha256':h.hexdigest()}",
+    "print('ND_LTX_2B_CACHE_JSON='+json.dumps(out,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,newTitle:title,text:script,language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:true,sessionTimeoutSeconds:1800
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('Kaggle 2B cache submit failed '+JSON.stringify({error:save?.error||null}));
+  const versionLabel='v'+version;
+  let st=null;
+  const deadline=Date.now()+28*60*1000;
+  while(Date.now()<deadline){
+    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    const state=kaggleState(st?.status);
+    if(['COMPLETED','FAILED','CANCELLED'].includes(state)) break;
+    await new Promise(r=>setTimeout(r,8000));
+  }
+  const state=kaggleState(st?.status);
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
+  const receipt=extractKaggleMarker(out?.log||'','ND_LTX_2B_CACHE_JSON=');
+  return {
+    ok:state==='COMPLETED'&&!!receipt,
+    state,provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:fullSlug+'/'+version,
+    kernel_source:fullSlug,
+    receipt,
+    diagnostics:{
+      files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+      log_tail:String(out?.log||'').slice(-8000)
+    }
+  };
+}
+
 async function ltxKaggleInputProbe(args={}){
   const start=resolveLtxInputRef(args.start_image_url);
   const end=resolveLtxInputRef(args.end_image_url);
@@ -736,6 +798,7 @@ async function ltxKaggleAutoFinalize(requestId){
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
+  if(compat==='build-2b-cache') return ltxKaggleBuild2bCache();
   const statusMatch=compat.match(/^status:(kltx-[a-z0-9-]+)$/i);
   if(statusMatch) return ltxKaggleStatus({request_id:statusMatch[1]});
   const resultMatch=compat.match(/^result:(kltx-[a-z0-9-]+)$/i);
