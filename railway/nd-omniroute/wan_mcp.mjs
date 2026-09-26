@@ -1324,6 +1324,47 @@ async function ltxKaggleInspectKernel(args={}){
   };
 }
 
+async function ltxKaggleForceRetireBatch(args={}){
+  const requestId=String(args.request_id||'').trim();
+  if(!/^kbatch-/i.test(requestId)) throw new Error('force retire is restricted to isolated batch requests');
+  const ref=kaggleLtxBatchRequestRef(requestId);
+  const {username}=await kaggleLtxIdentity();
+  if(!/^nd-ltx-batch-r[a-z0-9]+-[a-z0-9]+$/i.test(ref.kernel_slug)) throw new Error('force retire blocked: unexpected batch slug');
+  const out=await kaggleRpc('kernels.KernelsApiService','DeleteKernel',{
+    userName:username,
+    kernelSlug:ref.kernel_slug
+  });
+  let statusReadback=null;
+  try{
+    statusReadback=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+      userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+    });
+  }catch(e){
+    statusReadback={error:errorText(e)};
+  }
+  let listReadback=null;
+  try{
+    listReadback=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
+      user:username,search:ref.kernel_slug,pageSize:50
+    });
+  }catch(e){
+    listReadback={error:errorText(e)};
+  }
+  const remaining=(Array.isArray(listReadback?.kernels)?listReadback.kernels:[]).filter(k=>{
+    const slug=String(k?.slug||'').toLowerCase();
+    const full=String(k?.ref||'').toLowerCase();
+    return slug===ref.kernel_slug.toLowerCase() || full===username.toLowerCase()+'/'+ref.kernel_slug.toLowerCase();
+  });
+  return {
+    ok:remaining.length===0,
+    request_id:requestId,
+    retired_kernel_slug:ref.kernel_slug,
+    provider_response:out,
+    status_readback:statusReadback,
+    remaining_exact_matches:remaining.length
+  };
+}
+
 async function ltxKaggleRetireKernel(args={}){
   const requestId=String(args.request_id||'').trim();
   if(!/^kbatch-/i.test(requestId)) throw new Error('retire is restricted to isolated batch requests');
@@ -1545,6 +1586,8 @@ async function ltxGenerateKeyframes(args={}){
   if(retireSlug) return ltxKaggleRetireSlug({slug:retireSlug[1]});
   const retireKernel=compat.match(/^retire-kernel:(kbatch-[a-z0-9-]+)$/i);
   if(retireKernel) return ltxKaggleRetireKernel({request_id:retireKernel[1]});
+  const forceRetireKernel=compat.match(/^force-retire-kernel:(kbatch-[a-z0-9-]+)$/i);
+  if(forceRetireKernel) return ltxKaggleForceRetireBatch({request_id:forceRetireKernel[1]});
   const abandonQueued=compat.match(/^abandon:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
   if(abandonQueued) return ltxKaggleAbandonQueued({request_id:abandonQueued[1]});
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
