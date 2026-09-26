@@ -1021,13 +1021,15 @@ async function ltxKaggleCacheInventory(){
 
 async function ltxKaggle2bLatestProbe(){
   const {username}=await kaggleLtxIdentity();
-  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
-    user:username,
-    search:'nd-ltx2b-load-probe',
-    page:1,
-    pageSize:20
-  });
-  const candidates=(listed?.kernels||[]).filter(k=>String(k?.slug||'').startsWith('nd-ltx2b-load-probe-'));
+  const pages=[];
+  for(let page=1;page<=5;page++){
+    const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
+      user:username,page,pageSize:100
+    });
+    pages.push(...(listed?.kernels||[]));
+    if((listed?.kernels||[]).length<100) break;
+  }
+  const candidates=pages.filter(k=>String(k?.slug||'').startsWith('nd-ltx2b-load-probe-') || String(k?.title||'').startsWith('ND LTX2B Load Probe '));
   candidates.sort((a,b)=>String(b?.lastRunTime||b?.last_run_time||'').localeCompare(String(a?.lastRunTime||a?.last_run_time||'')));
   const k=candidates[0];
   if(!k) return {ok:false,state:'NOT_FOUND'};
