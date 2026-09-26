@@ -647,6 +647,57 @@ async function ltxKaggleResult(args={}){
   };
 }
 
+async function ltxKaggleInputProbe(args={}){
+  const start=resolveLtxInputRef(args.start_image_url);
+  const end=resolveLtxInputRef(args.end_image_url);
+  const {username}=await kaggleLtxIdentity();
+  const slug='nd-ltx-input-probe';
+  const fullSlug=username+'/'+slug;
+  const payload=Buffer.from(JSON.stringify({start,end}),'utf8').toString('base64');
+  const script=[
+    'import base64,hashlib,json,urllib.request',
+    'cfg=json.loads(base64.b64decode("'+payload+'").decode("utf-8"))',
+    'out={}',
+    'for key in ["start","end"]:',
+    '    req=urllib.request.Request(cfg[key],headers={"User-Agent":"nd-kaggle-ltx-input-probe/1.0"})',
+    '    with urllib.request.urlopen(req,timeout=120) as r:',
+    '        data=r.read()',
+    '        out[key]={"status":getattr(r,"status",200),"content_type":r.headers.get("Content-Type"),"size_bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()}',
+    'print("ND_LTX_INPUT_PROBE_JSON="+json.dumps(out,separators=(",",":"),sort_keys=True))'
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,newTitle:'ND LTX Input Probe',text:script,
+    language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:true,sessionTimeoutSeconds:900
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('Kaggle input probe submit failed '+JSON.stringify({error:save?.error||null}));
+  const versionLabel='v'+version;
+  let st=null;
+  const deadline=Date.now()+12*60*1000;
+  while(Date.now()<deadline){
+    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    const state=kaggleState(st?.status);
+    if(['COMPLETED','FAILED','CANCELLED'].includes(state)) break;
+    await new Promise(r=>setTimeout(r,5000));
+  }
+  const state=kaggleState(st?.status);
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
+  const receipt=extractKaggleMarker(out?.log||'','ND_LTX_INPUT_PROBE_JSON=');
+  return {
+    ok:state==='COMPLETED'&&!!receipt,
+    state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:fullSlug+'/'+version,
+    receipt,
+    diagnostics:{
+      files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+      log_tail:String(out?.log||'').slice(-8000)
+    }
+  };
+}
 async function ltxKaggleAutoFinalize(version){
   const requestId='kltx-v'+Number(version);
   for(let i=0;i<280;i++){
@@ -668,6 +719,7 @@ async function ltxKaggleAutoFinalize(version){
 
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
+  if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   const statusMatch=compat.match(/^status:(kltx-v\d+)$/i);
   if(statusMatch) return ltxKaggleStatus({request_id:statusMatch[1]});
   const resultMatch=compat.match(/^result:(kltx-v\d+)$/i);
