@@ -962,6 +962,53 @@ function decodeBatchSpec(encoded){
   catch{throw new Error('invalid batch specification');}
 }
 
+async function ltxKaggleAcceleratorProbe(shape='NvidiaTeslaP100'){
+  const preflight=await kaggleLtxPreflight();
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  const slug='nd-ltx-accel-probe-'+token;
+  const marker='ND_LTX_ACCEL_PROBE_JSON=';
+  const script=[
+    'import json,torch,platform',
+    'out={"python":platform.python_version(),"cuda_available":torch.cuda.is_available(),"gpu_count":torch.cuda.device_count(),"gpus":[]}',
+    'for i in range(torch.cuda.device_count()):',
+    '    p=torch.cuda.get_device_properties(i)',
+    '    out["gpus"].append({"index":i,"name":torch.cuda.get_device_name(i),"total_memory_bytes":int(p.total_memory),"major":int(p.major),"minor":int(p.minor)})',
+    'print("'+marker+'"+json.dumps(out,separators=(",",":"),sort_keys=True))'
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+slug,
+    newTitle:'ND LTX Accel Probe '+token,
+    text:script,language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:false,machineShape:shape,sessionTimeoutSeconds:600
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('accelerator probe submit failed '+JSON.stringify({error:save?.error||null}));
+  const deadline=Date.now()+12*60*1000;
+  let st=null;
+  while(Date.now()<deadline){
+    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:preflight.username,kernelSlug:slug,versionLabel:'v'+version});
+    if(['COMPLETED','FAILED','CANCELLED'].includes(kaggleState(st?.status))) break;
+    await new Promise(r=>setTimeout(r,5000));
+  }
+  const state=kaggleState(st?.status);
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:preflight.username,kernelSlug:slug,versionLabel:'v'+version,pageSize:50});
+  return {
+    ok:state==='COMPLETED',
+    state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:preflight.username+'/'+slug+'/'+version,
+    machine_shape_requested:shape,
+    receipt:extractKaggleMarker(out?.log||'',marker),
+    diagnostics:{
+      files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+      log_tail:String(out?.log||'').slice(-8000)
+    },
+    gpu_quota:preflight.gpu
+  };
+}
+
 async function ltxKaggleInputProbe(args={}){
   const start=resolveLtxInputRef(args.start_image_url);
   const end=resolveLtxInputRef(args.end_image_url);
@@ -1050,6 +1097,7 @@ async function ltxKaggleAutoFinalize(requestId){
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
+  if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   const batchSubmit=compat.match(/^batch:([A-Za-z0-9_-]+)$/);
   if(batchSubmit) return ltxKaggleBatchSubmit(decodeBatchSpec(batchSubmit[1]));
   const batchStatus=compat.match(/^batch-status:(kbatch-[a-z0-9-]+)$/i);
