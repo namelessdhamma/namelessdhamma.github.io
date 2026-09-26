@@ -1,7 +1,7 @@
 {
   "schema": "blue-sea-godot-workspace-state-v1",
   "status": "CURRENT",
-  "updated": "2026-09-25",
+  "updated": "2026-09-26",
   "engine": {
     "name": "Godot",
     "version": "4.7.2",
@@ -28,8 +28,9 @@
     "independent_qualification": "GitHub Actions Godot cloud qualification",
     "command_fallback": "GitHub Actions Godot command workflow",
     "durable_source": "GitHub versioned source",
-    "generation": "13.9",
-    "no_local_computer_required": true
+    "generation": "CURRENT",
+    "no_local_computer_required": true,
+    "generation_resolver": "NAM-142"
   },
   "product": {
     "form": "cinematic narrative adventure",
@@ -41,6 +42,7 @@
     "web_migration_branch": "a5-landscape-16x9-repair"
   },
   "recovery_order": [
+    "NAM-138",
     "NAM-118",
     "Drive Product StateHead",
     "res://_nd/state.json",
@@ -53,5 +55,22 @@
     "branch": "main",
     "main_scene_blob": "d7fb6413dbb5e0476c2a91301ebad6ee9c6d4b71",
     "source_commit": "d8598bb8b69b59b94af08d104877d5439cf9a14d"
+  },
+  "nd_runtime": {
+    "launcher_contract": "ND-LAUNCHER-CONTRACT-v5",
+    "root_launcher": "nd-launch-automation-agent",
+    "substantive_owners": {
+      "engineering": "nd-launch-true-developer",
+      "diagnostics": "nd-launch-true-doctor",
+      "research": "nd-launch-true-research",
+      "visual": "nd-launch-true-visual",
+      "memory": "nd-launch-true-memory",
+      "writing": "nd-launch-true-writer"
+    },
+    "route_recovery_support": "nd-launch-generation",
+    "visual_child": "nd-launch-visual-creator",
+    "child_policy": "Child Skills are invoked only through their owning Supervisor",
+    "peer_service": "bounded PEER_SERVICE is allowed only when global ownership, priority, authority and material side effects remain unchanged",
+    "run_kernel": "recover CURRENT -> native Automation Agent -> native substantive owner -> execute real product work -> verify/read-back -> persist CURRENT/NEXT_WORK"
   }
 }
