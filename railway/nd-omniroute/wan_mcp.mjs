@@ -796,7 +796,7 @@ function kaggleLtxBatchRequestRef(requestId){
 
 async function ltxKaggleBatchSubmit(spec={}){
   const segments=Array.isArray(spec.segments)?spec.segments:[];
-  if(segments.length<2||segments.length>8) throw new Error('batch requires 2-8 segments');
+  if(segments.length<1||segments.length>8) throw new Error('batch requires 1-8 segments');
   const preflight=await kaggleLtxPreflight();
   const prepared=[];
   for(let i=0;i<segments.length;i++){
@@ -833,8 +833,9 @@ async function ltxKaggleBatchSubmit(spec={}){
     "for idx,seg in enumerate(cfg['segments'],start=1):",
     "    req_path=Path(f'/kaggle/working/segment-{idx:02d}-request.json')",
     "    req_path.write_text(json.dumps(seg),encoding='utf-8')",
-    "    p=subprocess.run([sys.executable,str(worker),str(req_path)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=3300)",
-    "    print(f'ND_LTX_BATCH_SEGMENT_{idx:02d}_TAIL='+p.stdout[-5000:])",
+    "    print(f'ND_LTX_BATCH_SEGMENT_START={idx:02d}',flush=True)",
+    "    p=subprocess.run([sys.executable,'-u',str(worker),str(req_path)],timeout=3300)",
+    "    print(f'ND_LTX_BATCH_SEGMENT_DONE={idx:02d} rc={p.returncode}',flush=True)",
     "    if p.returncode!=0: raise RuntimeError(f'segment {idx} failed rc={p.returncode}')",
     "    src_mp4=Path('/kaggle/working/result.mp4'); src_json=Path('/kaggle/working/result.json')",
     "    if not src_mp4.exists() or not src_json.exists(): raise RuntimeError(f'segment {idx} outputs missing')",
