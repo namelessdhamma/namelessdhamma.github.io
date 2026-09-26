@@ -1024,6 +1024,68 @@ async function kaggleSdCppFLFQualification(){
   return result;
 }
 
+
+async function kaggleLtxMountProbe(){
+  const enabled=String(process.env.ND_KAGGLE_LTX_MOUNT_PROBE_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_ltx_mount_probe_auth_failed');
+  const username=String(intro.username);
+  const slug='nd-ltx-model-mount-probe';
+  const fullSlug=username+'/'+slug;
+  const modelSource='marcelolmesilva/ltxv-13b-0.9.7-distilled-fp8.safetensors/pytorch/default/1';
+  const script=[
+    "from pathlib import Path",
+    "import json, os, shutil",
+    "root=Path('/kaggle/input')",
+    "hits=[]",
+    "for p in root.rglob('*'):",
+    "    if p.is_file() and ('ltx' in p.name.lower() or p.suffix.lower()=='.safetensors'):",
+    "        try:",
+    "            st=p.stat(); readable=os.access(p,os.R_OK)",
+    "            hits.append({'path':str(p),'size_bytes':int(st.st_size),'readable':bool(readable)})",
+    "        except Exception as e:",
+    "            hits.append({'path':str(p),'error':str(e)[:300]})",
+    "    if len(hits)>=50: break",
+    "u=shutil.disk_usage('/kaggle/working')",
+    "out={'input_root_exists':root.exists(),'hits':hits,'working_total_bytes':int(u.total),'working_free_bytes':int(u.free)}",
+    "print('ND_LTX_MOUNT_JSON='+json.dumps(out,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,newTitle:'ND LTX Model Mount Probe',text:script,
+    language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],
+    modelDataSources:[modelSource],
+    isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:false,
+    sessionTimeoutSeconds:900
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version || save?.error || (save?.invalidModelSources||save?.invalid_model_sources||[]).length){
+    throw new Error('kaggle_ltx_mount_save_failed: '+JSON.stringify({
+      error:save?.error||null,
+      version,
+      invalid_model_sources:save?.invalidModelSources||save?.invalid_model_sources||[]
+    }));
+  }
+  const versionLabel='v'+version;
+  let lastStatus=null,failureMessage=null;
+  const deadline=Date.now()+12*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    lastStatus=st?.status; failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,6000));
+  }
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_ltx_mount_timeout status='+String(lastStatus));
+  const stx=String(lastStatus??'').toUpperCase();
+  if(stx==='3'||stx.includes('ERROR')) throw new Error('kaggle_ltx_mount_failed: '+String(failureMessage||'')+' tail='+String(out?.log||'').slice(-8000));
+  const payload=extractKaggleJsonMarker(out?.log||'','ND_LTX_MOUNT_JSON=','kaggle_ltx_mount_payload_unparseable');
+  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,provider_status:lastStatus,model_source:modelSource,mount:payload};
+  console.log(JSON.stringify({event:'ND_KAGGLE_LTX_MOUNT_PROBE',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -2676,6 +2738,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_BOOTSTRAP_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPBootstrap().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_BOOTSTRAP',state:'FAIL',error:String(e?.message||e).slice(0,7800)}))),10000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_I2V_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPI2VQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_I2V',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_DISK_FIT_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPDiskFit().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_DISK_FIT',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_LTX_MOUNT_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleLtxMountProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_LTX_MOUNT_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),16000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_SDCPP_FLF_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleSdCppFLFQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SDCPP_FLF',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),16000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPGeneration().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWan21Cache().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
