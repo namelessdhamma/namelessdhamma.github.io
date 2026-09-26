@@ -381,11 +381,16 @@ function kaggleDurationSeconds(v){
   return 0;
 }
 
-async function kaggleLtxPreflight(){
+async function kaggleLtxIdentity(){
   const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
   if(!intro?.active||!intro?.username) throw new Error('Kaggle token inactive');
   const username=String(intro.username);
   if(KAGGLE_USERNAME_SLUG && username!==KAGGLE_USERNAME_SLUG) throw new Error('Kaggle username mismatch');
+  return {username};
+}
+
+async function kaggleLtxPreflight(){
+  const {username}=await kaggleLtxIdentity();
   const quota=await kaggleRpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});
   const g=quota?.gpuQuota||quota?.gpu_quota||{};
   const used=kaggleDurationSeconds(g?.timeUsed??g?.time_used);
@@ -507,11 +512,12 @@ async function ltxKaggleSubmit(args={}){
   if(save?.error||invalid.length) throw new Error('Kaggle submit failed: '+JSON.stringify({error:save?.error||null,invalid_dataset_sources:invalid}));
   const version=Number(save?.versionNumber||save?.version_number||0);
   if(!version) throw new Error('Kaggle submit returned no version');
+  setTimeout(()=>ltxKaggleAutoFinalize(version).catch(e=>console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:'kltx-v'+version,state:'ERROR',error:errorText(e)}))),10000);
   return {
     ok:true,
     state:'SUBMITTED',
     request_id:'kltx-v'+version,
-    provider_ref:preflight.username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
+    provider_ref:username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
     route:'kaggle_ltx13b_mounted_cache_f2l',
     cost_policy:'FREE_ONLY',
     gpu_quota:preflight.gpu,
@@ -521,9 +527,9 @@ async function ltxKaggleSubmit(args={}){
 
 async function ltxKaggleStatus(args={}){
   const version=kaggleLtxRequestVersion(args.request_id);
-  const preflight=await kaggleLtxPreflight();
+  const {username}=await kaggleLtxIdentity();
   const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-    userName:preflight.username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version
+    userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version
   });
   return {
     ok:true,
@@ -531,7 +537,7 @@ async function ltxKaggleStatus(args={}){
     state:kaggleState(st?.status),
     provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null,
-    provider_ref:preflight.username+'/'+KAGGLE_LTX_KERNEL+'/'+version
+    provider_ref:username+'/'+KAGGLE_LTX_KERNEL+'/'+version
   };
 }
 
@@ -551,9 +557,9 @@ async function driveImportKaggleOutput(url,name,mimeType){
 
 async function ltxKaggleResult(args={}){
   const version=kaggleLtxRequestVersion(args.request_id);
-  const preflight=await kaggleLtxPreflight();
+  const {username}=await kaggleLtxIdentity();
   const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-    userName:preflight.username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version
+    userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version
   });
   const state=kaggleState(st?.status);
   if(state!=='COMPLETED') return {
@@ -562,7 +568,7 @@ async function ltxKaggleResult(args={}){
     failure_message:st?.failureMessage||st?.failure_message||null
   };
   const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
-    userName:preflight.username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version,pageSize:100
+    userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version,pageSize:100
   });
   const files=Array.isArray(out?.files)?out.files:[];
   const byName=name=>files.find(x=>(x?.fileName||x?.name||x?.path)===name);
@@ -609,7 +615,31 @@ async function ltxKaggleResult(args={}){
   };
 }
 
+async function ltxKaggleAutoFinalize(version){
+  const requestId='kltx-v'+Number(version);
+  for(let i=0;i<280;i++){
+    const st=await ltxKaggleStatus({request_id:requestId});
+    if(st.state==='COMPLETED'){
+      const result=await ltxKaggleResult({request_id:requestId});
+      console.log(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:'READY',drive_video:result?.drive_video||null}));
+      return result;
+    }
+    if(st.state==='FAILED'||st.state==='CANCELLED'){
+      console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:st.state,failure_message:st.failure_message||null}));
+      return st;
+    }
+    await new Promise(r=>setTimeout(r,15000));
+  }
+  console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:'TIMEOUT'}));
+  return {ok:false,request_id:requestId,state:'TIMEOUT'};
+}
+
 async function ltxGenerateKeyframes(args={}){
+  const compat=String(args.space_id||'').trim();
+  const statusMatch=compat.match(/^status:(kltx-v\d+)$/i);
+  if(statusMatch) return ltxKaggleStatus({request_id:statusMatch[1]});
+  const resultMatch=compat.match(/^result:(kltx-v\d+)$/i);
+  if(resultMatch) return ltxKaggleResult({request_id:resultMatch[1]});
   return ltxKaggleSubmit(args);
 }
 
