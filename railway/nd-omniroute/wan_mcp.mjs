@@ -529,7 +529,7 @@ async function ltxKaggleSubmit(args={}){
     ok:true,
     state:'SUBMITTED',
     request_id:'kltx-v'+version,
-    provider_ref:username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
+    provider_ref:preflight.username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
     route:'kaggle_ltx13b_mounted_cache_f2l',
     cost_policy:'FREE_ONLY',
     gpu_quota:preflight.gpu,
@@ -543,13 +543,33 @@ async function ltxKaggleStatus(args={}){
   const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
     userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version
   });
+  const state=kaggleState(st?.status);
+  let diagnostics=null;
+  if(['FAILED','CANCELLED','COMPLETED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+        userName:username,kernelSlug:KAGGLE_LTX_KERNEL,versionLabel:'v'+version,pageSize:100
+      });
+      const files=Array.isArray(out?.files)?out.files.map(x=>({
+        name:x?.fileName||x?.name||x?.path||null,
+        size:x?.fileSize??x?.size??null
+      })).filter(x=>x.name):[];
+      diagnostics={
+        files,
+        log_tail:String(out?.log||'').slice(-12000)
+      };
+    }catch(e){
+      diagnostics={error:errorText(e)};
+    }
+  }
   return {
     ok:true,
     request_id:'kltx-v'+version,
-    state:kaggleState(st?.status),
+    state,
     provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null,
-    provider_ref:username+'/'+KAGGLE_LTX_KERNEL+'/'+version
+    provider_ref:username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
+    diagnostics
   };
 }
 
