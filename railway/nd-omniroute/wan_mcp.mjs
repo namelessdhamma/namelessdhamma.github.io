@@ -858,7 +858,7 @@ async function ltxKaggleBatchSubmit(spec={}){
     categoryIds:[],
     modelDataSources:[],
     isPrivate:true,enableTpu:false,enableInternet:true,
-    machineShape:'NvidiaTeslaT4',
+    machineShape:requestedShape,
     sessionTimeoutSeconds:3600
   });
   const version=Number(save?.versionNumber||save?.version_number||0);
