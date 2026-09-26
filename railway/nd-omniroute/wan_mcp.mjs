@@ -1263,7 +1263,7 @@ async function ltxKaggleRetireSlug(args={}){
     ref:k?.ref||null,
     title:k?.title||null,
     author:k?.author||null,
-    slug:String(k?.slug||'').replace(/^.*\//,''),
+    slug:String(k?.slug||k?.ref||'').replace(/^.*\//,''),
     is_private:k?.isPrivate??k?.is_private??null,
     current_version_number:Number(k?.currentVersionNumber??k?.current_version_number??0)
   })).filter(k=>k.slug.toLowerCase()===slug.toLowerCase() && (!k.author||String(k.author).toLowerCase()===username.toLowerCase()));
@@ -1276,7 +1276,7 @@ async function ltxKaggleRetireSlug(args={}){
   const out=await kaggleRpc('kernels.KernelsApiService','DeleteKernel',{userName:username,kernelSlug:slug});
   const verify=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
   const remains=(Array.isArray(verify?.kernels)?verify.kernels:[]).filter(k=>{
-    const s=String(k?.slug||'').replace(/^.*\//,'').toLowerCase();
+    const s=String(k?.slug||k?.ref||'').replace(/^.*\//,'').toLowerCase();
     return s===slug.toLowerCase();
   });
   return {ok:remains.length===0,retired_kernel_slug:slug,provider_response:out,remaining_exact_matches:remains.length};
