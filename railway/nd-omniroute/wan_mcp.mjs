@@ -1266,7 +1266,7 @@ async function ltxKaggleRetireSlug(args={}){
     slug:String(k?.slug||k?.ref||'').replace(/^.*\//,''),
     is_private:k?.isPrivate??k?.is_private??null,
     current_version_number:Number(k?.currentVersionNumber??k?.current_version_number??0)
-  })).filter(k=>k.slug.toLowerCase()===slug.toLowerCase() && (!k.author||String(k.author).toLowerCase()===username.toLowerCase()));
+  })).filter(k=>k.slug.toLowerCase()===slug.toLowerCase());
   if(exact.length!==1) throw new Error('retire-slug blocked: exact match count='+exact.length);
   const hit=exact[0];
   const exactRef=String(hit.ref||'').toLowerCase()===username.toLowerCase()+'/'+slug.toLowerCase();
