@@ -595,7 +595,7 @@ async function ltxKaggleResult(args={}){
     request_id:'kltx-v'+version,
     state:'READY',
     route:'kaggle_ltx13b_mounted_cache_f2l',
-    provider_ref:preflight.username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
+    provider_ref:username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
     receipt,
     video_ref:file.webViewLink||null,
     drive_video:{
