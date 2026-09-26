@@ -736,7 +736,8 @@ async function ltxKaggleRetry(args={}){
   if(!['FAILED','CANCELLED'].includes(st.state)) throw new Error('retry requires FAILED or CANCELLED state');
   const files=st?.diagnostics?.files||[];
   const logTail=String(st?.diagnostics?.log_tail||'').trim();
-  if(files.length||logTail) throw new Error('retry blocked because provider produced files or logs; diagnose actual execution failure instead');
+  const emptyLog=logTail===''||logTail==='[]'||logTail==='{}'||logTail==='null';
+  if(files.length||!emptyLog) throw new Error('retry blocked because provider produced files or logs; diagnose actual execution failure instead');
   const preflight=await kaggleLtxPreflight();
   const pulled=await kaggleRpc('kernels.KernelsApiService','GetKernel',{
     userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
