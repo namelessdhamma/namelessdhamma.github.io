@@ -699,29 +699,31 @@ async function ltxKaggleBuild2bCache(){
   });
   const version=Number(save?.versionNumber||save?.version_number||0);
   if(!version||save?.error) throw new Error('Kaggle 2B cache submit failed '+JSON.stringify({error:save?.error||null}));
+  return {ok:true,state:'SUBMITTED',provider_ref:fullSlug+'/'+version,kernel_source:fullSlug,version};
+}
+
+async function ltxKaggle2bCacheStatus(){
+  const {username}=await kaggleLtxIdentity();
+  const slug='nd-ltx-2b-distilled-cache';
+  const fullSlug=username+'/'+slug;
+  const version=1;
   const versionLabel='v'+version;
-  let st=null;
-  const deadline=Date.now()+28*60*1000;
-  while(Date.now()<deadline){
-    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
-    const state=kaggleState(st?.status);
-    if(['COMPLETED','FAILED','CANCELLED'].includes(state)) break;
-    await new Promise(r=>setTimeout(r,8000));
-  }
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
   const state=kaggleState(st?.status);
-  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
-  const receipt=extractKaggleMarker(out?.log||'','ND_LTX_2B_CACHE_JSON=');
+  let receipt=null,diagnostics=null;
+  if(['COMPLETED','FAILED','CANCELLED'].includes(state)){
+    const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
+    receipt=extractKaggleMarker(out?.log||'','ND_LTX_2B_CACHE_JSON=');
+    diagnostics={
+      files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+      log_tail:String(out?.log||'').slice(-8000)
+    };
+  }
   return {
     ok:state==='COMPLETED'&&!!receipt,
     state,provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null,
-    provider_ref:fullSlug+'/'+version,
-    kernel_source:fullSlug,
-    receipt,
-    diagnostics:{
-      files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
-      log_tail:String(out?.log||'').slice(-8000)
-    }
+    provider_ref:fullSlug+'/'+version,kernel_source:fullSlug,receipt,diagnostics
   };
 }
 
@@ -799,6 +801,7 @@ async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='build-2b-cache') return ltxKaggleBuild2bCache();
+  if(compat==='build-2b-cache-status') return ltxKaggle2bCacheStatus();
   const statusMatch=compat.match(/^status:(kltx-[a-z0-9-]+)$/i);
   if(statusMatch) return ltxKaggleStatus({request_id:statusMatch[1]});
   const resultMatch=compat.match(/^result:(kltx-[a-z0-9-]+)$/i);
