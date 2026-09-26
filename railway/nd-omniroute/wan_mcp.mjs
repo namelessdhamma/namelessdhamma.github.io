@@ -547,10 +547,7 @@ async function ltxKaggleSubmit(args={}){
     competitionDataSources:[],
     categoryIds:[],
     modelDataSources:[],
-    isPrivate:true,
-    enableGpu:true,
-    enableTpu:false,
-    enableInternet:true,
+    isPrivate:true,enableTpu:false,enableInternet:true,
     machineShape:requestedShape,
     sessionTimeoutSeconds:3600
   });
@@ -757,10 +754,7 @@ async function ltxKaggleRetry(args={}){
     competitionDataSources:[],
     categoryIds:[],
     modelDataSources:[],
-    isPrivate:true,
-    enableGpu:true,
-    enableTpu:false,
-    enableInternet:true,
+    isPrivate:true,enableTpu:false,enableInternet:true,
     machineShape:'NvidiaTeslaT4',
     sessionTimeoutSeconds:3600
   });
@@ -861,10 +855,7 @@ async function ltxKaggleBatchSubmit(spec={}){
     competitionDataSources:[],
     categoryIds:[],
     modelDataSources:[],
-    isPrivate:true,
-    enableGpu:true,
-    enableTpu:false,
-    enableInternet:true,
+    isPrivate:true,enableTpu:false,enableInternet:true,
     machineShape:'NvidiaTeslaT4',
     sessionTimeoutSeconds:3600
   });
@@ -1459,7 +1450,7 @@ async function ltxKaggleAcceleratorProbe(shape='NvidiaTeslaP100'){
     newTitle:'ND LTX Accel Probe '+token,
     text:script,language:'python',kernelType:'script',
     datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
-    isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:false,machineShape:shape,sessionTimeoutSeconds:600
+    isPrivate:true,enableTpu:false,enableInternet:false,machineShape:shape,sessionTimeoutSeconds:600
   });
   const version=Number(save?.versionNumber||save?.version_number||0);
   if(!version||save?.error) throw new Error('accelerator probe submit failed '+JSON.stringify({error:save?.error||null}));
