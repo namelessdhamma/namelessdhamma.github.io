@@ -764,6 +764,73 @@ async function kaggleWanGPI2VQualification(){
   return result;
 }
 
+
+async function kaggleWanGPDiskFit(){
+  const enabled=String(process.env.ND_KAGGLE_WANGP_DISK_FIT_ON_START||'false').trim().toLowerCase()==='true';
+  if(!enabled) return {state:'SKIPPED'};
+  const intro=await kaggleRpc('security.OAuthService','IntrospectToken',{token:KAGGLE_API_TOKEN});
+  if(!intro?.active||!intro?.username) throw new Error('kaggle_wangp_disk_fit_auth_failed');
+  const username=String(intro.username), slug='nd-wangp-disk-fit', fullSlug=username+'/'+slug;
+  const script=[
+    "import json, os, pathlib, shutil, subprocess, sys, urllib.request",
+    "ROOT=pathlib.Path('/kaggle/working/Wan2GP')",
+    "COMMIT='2345ae148f82740f66e82c41292dbbdd592e713d'",
+    "MODEL_URL='https://huggingface.co/DeepBeepMeep/Wan2.2/resolve/main/wan22EnhancedLightning_v2I2VFP8LOW.safetensors'",
+    "def du(path):",
+    "    u=shutil.disk_usage(path); return {'total_gib':round(u.total/2**30,3),'used_gib':round(u.used/2**30,3),'free_gib':round(u.free/2**30,3)}",
+    "def run(cmd,timeout):",
+    "    env={**os.environ,'PIP_NO_CACHE_DIR':'1','HF_HUB_DISABLE_XET':'1'}",
+    "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env=env)",
+    "    if p.returncode!=0:",
+    "        print('ND_CMD_FAIL '+str(cmd)+'\\\\n'+p.stdout[-8000:]); raise RuntimeError('command failed: '+str(cmd))",
+    "    return p.stdout",
+    "out={'python':sys.version.split()[0],'before':du('/kaggle/working')}",
+    "run(['git','clone','--filter=blob:none','https://github.com/deepbeepmeep/Wan2GP.git',str(ROOT)],240)",
+    "run(['git','-C',str(ROOT),'checkout',COMMIT],90)",
+    "out['after_clone']=du('/kaggle/working')",
+    "run([sys.executable,'-m','pip','install','--no-cache-dir','-q','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],1200)",
+    "for p in [pathlib.Path.home()/'.cache/pip',pathlib.Path.home()/'.cache/huggingface']:",
+    "    try:",
+    "        if p.exists(): shutil.rmtree(p,ignore_errors=True)",
+    "    except: pass",
+    "out['after_install_cleanup']=du('/kaggle/working')",
+    "try:",
+    "    req=urllib.request.Request(MODEL_URL,method='HEAD',headers={'User-Agent':'nd-kaggle-disk-fit/1.0'})",
+    "    with urllib.request.urlopen(req,timeout=60) as resp: size=int(resp.headers.get('Content-Length') or 0)",
+    "except Exception as e:",
+    "    size=14300000000; out['head_error']=str(e)[:500]",
+    "out['checkpoint_bytes']=size; out['checkpoint_gib']=round(size/2**30,3); out['reserve_gib']=2.0",
+    "out['fits_with_2gib_reserve']=out['after_install_cleanup']['free_gib'] >= out['checkpoint_gib']+2.0",
+    "print('ND_DISK_FIT_JSON='+json.dumps(out,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:fullSlug,newTitle:'ND WanGP Disk Fit',text:script,language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],
+    isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:true,modelDataSources:[],
+    sessionTimeoutSeconds:1800
+  });
+  if(save?.error) throw new Error('kaggle_disk_fit_save_error: '+String(save.error).slice(0,700));
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version) throw new Error('kaggle_disk_fit_missing_version');
+  const versionLabel='v'+version;
+  let lastStatus=null,failureMessage=null;
+  const deadline=Date.now()+25*60*1000;
+  while(Date.now()<deadline){
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel});
+    lastStatus=st?.status; failureMessage=st?.failureMessage||st?.failure_message||null;
+    if(kaggleStatusTerminal(lastStatus)) break;
+    await new Promise(r=>setTimeout(r,8000));
+  }
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel,pageSize:50});
+  if(!kaggleStatusTerminal(lastStatus)) throw new Error('kaggle_disk_fit_timeout status='+String(lastStatus));
+  const stx=String(lastStatus??'').toUpperCase();
+  if(stx==='3'||stx.includes('ERROR')) throw new Error('kaggle_disk_fit_failed: '+String(failureMessage||'')+' tail='+String(out?.log||'').slice(-9000));
+  const payload=extractKaggleJsonMarker(out?.log||'','ND_DISK_FIT_JSON=','kaggle_disk_fit_payload_unparseable');
+  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,provider_status:lastStatus,disk_fit:payload};
+  console.log(JSON.stringify({event:'ND_KAGGLE_WANGP_DISK_FIT',...result}));
+  return result;
+}
+
 const wanMcpHandler = createWanMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
@@ -2415,6 +2482,7 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   }
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_BOOTSTRAP_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPBootstrap().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_BOOTSTRAP',state:'FAIL',error:String(e?.message||e).slice(0,7800)}))),10000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_I2V_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPI2VQualification().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_I2V',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),12000);
+  if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_DISK_FIT_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPDiskFit().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_DISK_FIT',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WANGP_GENERATE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWanGPGeneration().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WANGP_GENERATION',state:'FAIL',error:String(e?.message||e).slice(0,14000)}))),12000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWan21Cache().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
