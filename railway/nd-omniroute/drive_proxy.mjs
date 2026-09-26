@@ -45,8 +45,12 @@ async function kaggleRpc(service,method,body={}){
   let obj={};
   try{obj=text?JSON.parse(text):{};}catch{obj={raw:text.slice(0,500)};}
   if(!res.ok){
-    const e=new Error('kaggle HTTP '+res.status+': '+String(obj?.message||obj?.error||text).slice(0,500));
+    const rawDetail=obj?.message??obj?.error??obj??text;
+    let detail;
+    try{detail=typeof rawDetail==='string'?rawDetail:JSON.stringify(rawDetail);}catch{detail=String(rawDetail);}
+    const e=new Error('kaggle HTTP '+res.status+': '+String(detail).slice(0,1200));
     e.status=res.status;
+    e.kaggle_body=obj;
     throw e;
   }
   return obj;
@@ -925,13 +929,69 @@ async function kaggleSdCppFLFQualification(){
     "(WORK/'result.json').write_text(json.dumps(receipt,indent=2),encoding='utf-8')",
     "print('ND_SDCPP_FLF_RESULT_JSON='+json.dumps(receipt,separators=(',',':'),sort_keys=True))"
   ].join('\n');
-  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+  // Read existing ND kernel statuses before requesting another accelerator slot.
+  let activeNd=[];
+  try{
+    const listing=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
+    const kernels=Array.isArray(listing?.kernels)?listing.kernels:[];
+    for(const k of kernels){
+      const ks=String(k?.slug||k?.ref||'').split('/').pop();
+      const ver=Number(k?.currentVersionNumber||k?.current_version_number||0);
+      if(!ks?.startsWith('nd-')||!ver) continue;
+      try{
+        const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:ks,versionLabel:'v'+ver});
+        const sv=String(st?.status??'');
+        if(sv==='0'||sv==='1'||sv.toUpperCase().includes('QUEUED')||sv.toUpperCase().includes('RUNNING')){
+          activeNd.push({slug:ks,version:ver,status:st?.status});
+        }
+      }catch{}
+    }
+  }catch(e){
+    console.log(JSON.stringify({event:'ND_KAGGLE_SESSION_PREFLIGHT',state:'LIST_FAILED',error:String(e?.message||e).slice(0,1200)}));
+  }
+  if(activeNd.length){
+    console.log(JSON.stringify({event:'ND_KAGGLE_SESSION_PREFLIGHT',state:'WAITING',active:activeNd}));
+    const deadline=Date.now()+15*60*1000;
+    while(Date.now()<deadline && activeNd.length){
+      await new Promise(r=>setTimeout(r,15000));
+      const next=[];
+      for(const a of activeNd){
+        try{
+          const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:a.slug,versionLabel:'v'+a.version});
+          const sv=String(st?.status??'');
+          if(sv==='0'||sv==='1'||sv.toUpperCase().includes('QUEUED')||sv.toUpperCase().includes('RUNNING')) next.push({...a,status:st?.status});
+        }catch{}
+      }
+      activeNd=next;
+    }
+  }
+  if(activeNd.length) throw new Error('kaggle_sdcpp_flf_blocked_active_nd_sessions: '+JSON.stringify(activeNd));
+
+  const baseSave={
     slug:fullSlug,newTitle:'ND sd.cpp FLF Qualification',text:script,language:'python',kernelType:'script',
     datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],
     isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,modelDataSources:[],
-    sessionTimeoutSeconds:3600,machineShape:'NvidiaTeslaT4'
-  });
-  if(save?.error) throw new Error('kaggle_sdcpp_flf_save_error: '+String(save.error).slice(0,700));
+    sessionTimeoutSeconds:3600
+  };
+  let save=null,chosenShape=null,last403=null;
+  for(const shape of ['NvidiaTeslaT4','NvidiaTeslaP100']){
+    try{
+      save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{...baseSave,machineShape:shape});
+      chosenShape=shape;
+      break;
+    }catch(e){
+      if(Number(e?.status)===403){
+        last403=String(e?.message||e);
+        console.log(JSON.stringify({event:'ND_KAGGLE_SDCPP_ADMISSION',state:'REJECTED',machine_shape:shape,error:last403.slice(0,1800)}));
+        await new Promise(r=>setTimeout(r,20000));
+        continue;
+      }
+      throw e;
+    }
+  }
+  if(!save) throw new Error('kaggle_sdcpp_flf_all_gpu_shapes_rejected: '+String(last403||'unknown'));
+  if(save?.error) throw new Error('kaggle_sdcpp_flf_save_error: '+JSON.stringify(save.error).slice(0,1200));
+  console.log(JSON.stringify({event:'ND_KAGGLE_SDCPP_ADMISSION',state:'ACCEPTED',machine_shape:chosenShape}));
   const version=Number(save?.versionNumber||save?.version_number||0);
   if(!version) throw new Error('kaggle_sdcpp_flf_missing_version');
   const versionLabel='v'+version;
@@ -949,7 +1009,7 @@ async function kaggleSdCppFLFQualification(){
   if(stx==='3'||stx.includes('ERROR')) throw new Error('kaggle_sdcpp_flf_failed: '+String(failureMessage||'')+' log_tail='+String(out?.log||'').slice(-12000));
   const payload=extractKaggleJsonMarker(out?.log||'','ND_SDCPP_FLF_RESULT_JSON=','kaggle_sdcpp_flf_payload_unparseable');
   const fileList=Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[];
-  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,provider_url:save?.url||null,provider_status:lastStatus,output_files:fileList,qualification:payload};
+  const result={state:'PASS',username,ref:fullSlug+'/'+version,version,machine_shape:chosenShape,provider_url:save?.url||null,provider_status:lastStatus,output_files:fileList,qualification:payload};
   console.log(JSON.stringify({event:'ND_KAGGLE_SDCPP_FLF',...result}));
   return result;
 }
