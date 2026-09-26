@@ -1195,7 +1195,7 @@ async function ltxKaggleDiagnoseSessions(){
     ref:k?.ref||null,
     title:k?.title||null,
     author:k?.author||null,
-    slug:String(k?.slug||'').replace(/^.*\//,''),
+    slug:String(k?.slug||k?.ref||'').replace(/^.*\//,''),
     is_private:k?.isPrivate??k?.is_private??null,
     current_version_number:Number(k?.currentVersionNumber??k?.current_version_number??0),
     machine_shape:k?.machineShape??k?.machine_shape??null,
