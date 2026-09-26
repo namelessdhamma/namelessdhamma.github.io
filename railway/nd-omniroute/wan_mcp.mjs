@@ -962,6 +962,63 @@ function decodeBatchSpec(encoded){
   catch{throw new Error('invalid batch specification');}
 }
 
+async function ltxKaggleCacheInventory(){
+  const owner='damnyadav',dataset='ltxv13b-distilled-cache';
+  const queue=[''];
+  const seen=new Set();
+  const files=[];
+  const dirs=[];
+  while(queue.length){
+    const path=queue.shift();
+    if(seen.has(path)) continue;
+    seen.add(path);
+    let token='';
+    do{
+      const out=await kaggleRpc('datasets.DatasetApiService','ListTreeDatasetFiles',{
+        ownerSlug:owner,
+        datasetSlug:dataset,
+        path,
+        pageSize:200,
+        ...(token?{pageToken:token}:{})
+      });
+      for(const d of (out?.directories||[])){
+        const rel=String(d?.relativeUrl||d?.relative_url||d?.name||'').replace(/^\/+|\/+$/g,'');
+        if(rel&&!seen.has(rel)){queue.push(rel);dirs.push({path:rel,total_files:d?.totalFiles??d?.total_files??null,total_children:d?.totalChildren??d?.total_children??null});}
+      }
+      for(const f of (out?.files||[])){
+        const rel=String(f?.relativeUrl||f?.relative_url||f?.name||'').replace(/^\/+/, '');
+        files.push({path:rel,size:Number(f?.totalBytes??f?.total_bytes??0)});
+      }
+      token=String(out?.nextPageToken||out?.next_page_token||'');
+    }while(token);
+  }
+  files.sort((a,b)=>b.size-a.size);
+  const neededRoots=['transformer/','text_encoder/','vae/','tokenizer/','scheduler/'];
+  const needed=files.filter(f=>neededRoots.some(r=>f.path===r.slice(0,-1)||f.path.startsWith(r)));
+  const total=files.reduce((a,f)=>a+f.size,0);
+  const neededTotal=needed.reduce((a,f)=>a+f.size,0);
+  const byRoot={};
+  for(const r of neededRoots){
+    const key=r.slice(0,-1);
+    const xs=files.filter(f=>f.path===key||f.path.startsWith(r));
+    byRoot[key]={files:xs.length,bytes:xs.reduce((a,f)=>a+f.size,0)};
+  }
+  return {
+    ok:true,
+    dataset:owner+'/'+dataset,
+    total_files:files.length,
+    total_bytes:total,
+    total_gib:Number((total/2**30).toFixed(3)),
+    minimal_runtime_files:needed.length,
+    minimal_runtime_bytes:neededTotal,
+    minimal_runtime_gib:Number((neededTotal/2**30).toFixed(3)),
+    minimal_fits_19_5_gib:neededTotal<19.0*2**30,
+    by_root:byRoot,
+    top_files:files.slice(0,40),
+    directories:dirs.slice(0,100)
+  };
+}
+
 async function ltxKaggleAcceleratorProbe(shape='NvidiaTeslaP100'){
   const preflight=await kaggleLtxPreflight();
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
@@ -1098,6 +1155,7 @@ async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
+  if(compat==='inspect-cache') return ltxKaggleCacheInventory();
   const batchSubmit=compat.match(/^batch:([A-Za-z0-9_-]+)$/);
   if(batchSubmit) return ltxKaggleBatchSubmit(decodeBatchSpec(batchSubmit[1]));
   const batchStatus=compat.match(/^batch-status:(kbatch-[a-z0-9-]+)$/i);
