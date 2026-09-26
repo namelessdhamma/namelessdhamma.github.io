@@ -1019,6 +1019,48 @@ async function ltxKaggleCacheInventory(){
   };
 }
 
+async function ltxKaggle2bLatestProbe(){
+  const {username}=await kaggleLtxIdentity();
+  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
+    user:username,
+    search:'nd-ltx2b-load-probe',
+    page:1,
+    pageSize:20
+  });
+  const candidates=(listed?.kernels||[]).filter(k=>String(k?.slug||'').startsWith('nd-ltx2b-load-probe-'));
+  candidates.sort((a,b)=>String(b?.lastRunTime||b?.last_run_time||'').localeCompare(String(a?.lastRunTime||a?.last_run_time||'')));
+  const k=candidates[0];
+  if(!k) return {ok:false,state:'NOT_FOUND'};
+  const slug=String(k.slug);
+  const version=Number(k?.currentVersionNumber||k?.current_version_number||1);
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel:'v'+version});
+  const state=kaggleState(st?.status);
+  let output=null;
+  if(['RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,versionLabel:'v'+version,pageSize:100});
+      output={
+        receipt:extractKaggleMarker(out?.log||'','ND_LTX2B_LOAD_JSON='),
+        files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+        log_tail:String(out?.log||'').slice(-16000)
+      };
+    }catch(e){output={error:errorText(e)};}
+  }
+  return {
+    ok:state==='COMPLETED'&&!!output?.receipt,
+    state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:username+'/'+slug+'/'+version,
+    metadata:{
+      title:k?.title||null,
+      machine_shape:k?.machineShape||k?.machine_shape||null,
+      last_run_time:k?.lastRunTime||k?.last_run_time||null
+    },
+    output
+  };
+}
+
 async function ltxKaggle2bLoadProbe(){
   const preflight=await kaggleLtxIdentity();
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
@@ -1228,6 +1270,7 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
   if(compat==='probe-2b-load') return ltxKaggle2bLoadProbe();
+  if(compat==='probe-2b-latest') return ltxKaggle2bLatestProbe();
   const batchSubmit=compat.match(/^batch:([A-Za-z0-9_-]+)$/);
   if(batchSubmit) return ltxKaggleBatchSubmit(decodeBatchSpec(batchSubmit[1]));
   const batchStatus=compat.match(/^batch-status:(kbatch-[a-z0-9-]+)$/i);
