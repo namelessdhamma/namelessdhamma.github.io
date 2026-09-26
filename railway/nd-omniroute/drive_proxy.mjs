@@ -10,6 +10,7 @@ const WAN_MCP_TOKEN = String(process.env.ND_WAN_MCP_PATH_TOKEN || '').trim();
 const WAN_MCP_PATH = '/wan-mcp/' + WAN_MCP_TOKEN;
 const LTX_MCP_TOKEN = String(process.env.ND_LTX_MCP_PATH_TOKEN || '').trim();
 const LTX_MCP_PATH = '/ltx-mcp/' + LTX_MCP_TOKEN;
+const LTX_INPUT_TOKEN = String(process.env.ND_LTX_INPUT_TOKEN || '').trim();
 const STORYBOARD_MCP_TOKEN = String(process.env.ND_STORYBOARD_MCP_PATH_TOKEN || '').trim();
 const STORYBOARD_MCP_PATH = '/storyboard-mcp/' + STORYBOARD_MCP_TOKEN;
 const KAGGLE_API_TOKEN = String(process.env.KAGGLE_API_TOKEN || '').trim();
@@ -2840,8 +2841,8 @@ child.on('spawn',()=>{ childReady=true; console.log(JSON.stringify({event:'ND_OM
 child.on('exit',(code,signal)=>{ childReady=false; console.error(JSON.stringify({event:'ND_OMNIROUTE_CHILD_EXIT',code,signal})); });
 
 const server = http.createServer(async (req,res) => {
-  if (LTX_MCP_TOKEN && req.method === 'GET' && req.url?.startsWith('/ltx-input/'+LTX_MCP_TOKEN+'/')) {
-    const prefix='/ltx-input/'+LTX_MCP_TOKEN+'/';
+  if (LTX_INPUT_TOKEN && req.method === 'GET' && req.url?.startsWith('/ltx-input/'+LTX_INPUT_TOKEN+'/')) {
+    const prefix='/ltx-input/'+LTX_INPUT_TOKEN+'/';
     const fileId=decodeURIComponent(req.url.slice(prefix.length).split('?')[0]||'').trim();
     if(!fileId || !/^[A-Za-z0-9_-]{10,200}$/.test(fileId)) return json(res,400,{ok:false,error:'invalid_drive_file_id'});
     try{
