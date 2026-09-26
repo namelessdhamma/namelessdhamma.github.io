@@ -1,6 +1,5 @@
 import { Client, handle_file } from '@gradio/client';
 import AdmZip from 'adm-zip';
-import { readFile } from 'node:fs/promises';
 
 const DEFAULT_SPACE = process.env.ND_WAN_DEFAULT_SPACE || 'Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom';
 const HF_TOKEN = String(process.env.HF_TOKEN || '').trim();
@@ -501,7 +500,6 @@ async function ltxKaggleSubmit(args={}){
     prepareLtxKernelInput(args.end_image_url,'end')
   ]);
   const preflight=await kaggleLtxPreflight();
-  const worker=await readFile(new URL('./kaggle_ltx_worker.py',import.meta.url),'utf8');
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
   const request={
     start_image_url:startInput.url||undefined,
@@ -516,16 +514,18 @@ async function ltxKaggleSubmit(args={}){
     seed
   };
   const reqB64=Buffer.from(JSON.stringify(request),'utf8').toString('base64');
-  const workerB64=Buffer.from(worker,'utf8').toString('base64');
+  const workerUrl='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx_worker.py';
   const script=[
-    'import base64,sys',
+    'import base64,sys,urllib.request',
     'from pathlib import Path',
     "request_path=Path('/kaggle/working/nd-ltx-request.json')",
     "request_path.write_bytes(base64.b64decode('"+reqB64+"'))",
     "sys.argv=['kaggle_ltx_worker.py',str(request_path)]",
-    "source=base64.b64decode('"+workerB64+"').decode('utf-8')",
+    "req=urllib.request.Request('"+workerUrl+"',headers={'User-Agent':'nd-kaggle-ltx/1.0'})",
+    "source=urllib.request.urlopen(req,timeout=120).read().decode('utf-8')",
     "exec(compile(source,'kaggle_ltx_worker.py','exec'),{'__name__':'__main__'})"
   ].join('\n');
+  if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle kernel source preflight exceeds 900 KB: '+Buffer.byteLength(script,'utf8'));
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+KAGGLE_LTX_KERNEL,
     newTitle:'ND LTX First Last Production',
