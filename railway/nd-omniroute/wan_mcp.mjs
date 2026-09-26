@@ -1188,39 +1188,58 @@ async function ltxKaggleAbandonQueued(args={}){
 
 async function ltxKaggleDiagnoseSessions(){
   const {username}=await kaggleLtxIdentity();
-  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
-    user:username,
-    pageSize:100
-  });
+  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
   const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
   const targets=kernels.map(k=>({
     id:k?.id??null,
     ref:k?.ref||null,
     title:k?.title||null,
     author:k?.author||null,
-    slug:k?.slug||null,
+    slug:String(k?.slug||'').replace(/^.*\//,''),
     is_private:k?.isPrivate??k?.is_private??null,
     current_version_number:Number(k?.currentVersionNumber??k?.current_version_number??0),
     machine_shape:k?.machineShape??k?.machine_shape??null,
     last_run_time:k?.lastRunTime??k?.last_run_time??null
-  })).filter(k=>{
-    const slug=String(k.slug||'');
-    const ref=String(k.ref||'');
-    return /^nd-ltx-/i.test(slug) || /\/nd-ltx-/i.test(ref);
-  }).slice(0,100);
+  })).filter(k=>/^nd-ltx-/i.test(k.slug)).slice(0,100);
   const sessions=[];
   for(const k of targets){
-    const slug=String(k.slug||'').replace(/^.*\//,'');
-    if(!slug||!k.current_version_number) continue;
+    let version=k.current_version_number;
+    let pulledMeta=null;
+    try{
+      const pulled=await kaggleRpc('kernels.KernelsApiService','GetKernel',{
+        userName:username,
+        kernelSlug:k.slug
+      });
+      pulledMeta=pulled?.metadata||null;
+      version=Number(
+        pulledMeta?.currentVersionNumber ??
+        pulledMeta?.current_version_number ??
+        version ??
+        0
+      );
+    }catch(e){
+      sessions.push({...k,kernel_slug:k.slug,state:'PULL_ERROR',pull_error:errorText(e)});
+      continue;
+    }
+    if(!version){
+      sessions.push({...k,kernel_slug:k.slug,state:'NO_VERSION',pulled_metadata:pulledMeta});
+      continue;
+    }
     try{
       const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-        userName:username,
-        kernelSlug:slug,
-        versionLabel:'v'+k.current_version_number
+        userName:username,kernelSlug:k.slug,versionLabel:'v'+version
       });
-      sessions.push({...k,kernel_slug:slug,state:kaggleState(st?.status),provider_status:st?.status??null,failure_message:st?.failureMessage||st?.failure_message||null});
+      sessions.push({
+        ...k,
+        current_version_number:version,
+        kernel_slug:k.slug,
+        state:kaggleState(st?.status),
+        provider_status:st?.status??null,
+        failure_message:st?.failureMessage||st?.failure_message||null,
+        pulled_machine_shape:pulledMeta?.machineShape??pulledMeta?.machine_shape??null
+      });
     }catch(e){
-      sessions.push({...k,kernel_slug:slug,state:'STATUS_ERROR',status_error:errorText(e)});
+      sessions.push({...k,current_version_number:version,kernel_slug:k.slug,state:'STATUS_ERROR',status_error:errorText(e)});
     }
   }
   return {
