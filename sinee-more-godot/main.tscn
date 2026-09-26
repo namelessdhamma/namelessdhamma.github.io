@@ -70,7 +70,7 @@ stretch_mode = 2
 
 [node name="Board" type="GridContainer" parent="SafeArea/Landscape/Center/BoardAspect"]
 layout_mode = 2
-columns = 2
+columns = 3
 theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
 
@@ -198,3 +198,23 @@ text = "·"
 [node name="R22" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
+
+[node name="Cell02" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "·"
+custom_minimum_size = Vector2(44,44)
+
+[node name="Cell12" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "·"
+custom_minimum_size = Vector2(44,44)
+
+[node name="Cell20" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "·"
+custom_minimum_size = Vector2(44,44)
+
+[node name="Cell21" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "·"
+custom_minimum_size = Vector2(44,44)
+
+[node name="Cell22" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "·"
+custom_minimum_size = Vector2(44,44)
