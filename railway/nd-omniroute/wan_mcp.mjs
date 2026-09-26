@@ -1186,6 +1186,79 @@ async function ltxKaggleAbandonQueued(args={}){
   };
 }
 
+async function ltxKaggleDiagnoseSessions(){
+  const {username}=await kaggleLtxIdentity();
+  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
+    user:username,
+    pageSize:100
+  });
+  const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
+  const targets=kernels.map(k=>({
+    id:k?.id??null,
+    ref:k?.ref||null,
+    title:k?.title||null,
+    author:k?.author||null,
+    slug:k?.slug||null,
+    is_private:k?.isPrivate??k?.is_private??null,
+    current_version_number:Number(k?.currentVersionNumber??k?.current_version_number??0),
+    machine_shape:k?.machineShape??k?.machine_shape??null,
+    last_run_time:k?.lastRunTime??k?.last_run_time??null
+  })).filter(k=>{
+    const slug=String(k.slug||'');
+    const ref=String(k.ref||'');
+    return /^nd-ltx-/i.test(slug) || /\/nd-ltx-/i.test(ref);
+  }).slice(0,100);
+  const sessions=[];
+  for(const k of targets){
+    const slug=String(k.slug||'').replace(/^.*\//,'');
+    if(!slug||!k.current_version_number) continue;
+    try{
+      const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+        userName:username,
+        kernelSlug:slug,
+        versionLabel:'v'+k.current_version_number
+      });
+      sessions.push({...k,kernel_slug:slug,state:kaggleState(st?.status),provider_status:st?.status??null,failure_message:st?.failureMessage||st?.failure_message||null});
+    }catch(e){
+      sessions.push({...k,kernel_slug:slug,state:'STATUS_ERROR',status_error:errorText(e)});
+    }
+  }
+  return {
+    ok:true,
+    owner:username,
+    kernel_count:kernels.length,
+    ltx_kernel_count:targets.length,
+    sessions,
+    active_or_queued:sessions.filter(x=>['QUEUED','RUNNING'].includes(x.state))
+  };
+}
+
+async function ltxKaggleRetireSlug(args={}){
+  const slug=String(args.slug||'').trim();
+  if(!/^nd-ltx-[a-z0-9-]+$/i.test(slug)) throw new Error('retire-slug restricted to nd-ltx-* transient kernels');
+  const {username}=await kaggleLtxIdentity();
+  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
+  const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
+  const exact=kernels.map(k=>({
+    id:k?.id??null,
+    ref:k?.ref||null,
+    title:k?.title||null,
+    author:k?.author||null,
+    slug:String(k?.slug||'').replace(/^.*\//,''),
+    is_private:k?.isPrivate??k?.is_private??null,
+    current_version_number:Number(k?.currentVersionNumber??k?.current_version_number??0)
+  })).filter(k=>k.slug.toLowerCase()===slug.toLowerCase() && (!k.author||String(k.author).toLowerCase()===username.toLowerCase()));
+  if(exact.length!==1) throw new Error('retire-slug blocked: exact match count='+exact.length);
+  if(exact[0].is_private!==true) throw new Error('retire-slug blocked: kernel is not private');
+  const out=await kaggleRpc('kernels.KernelsApiService','DeleteKernel',{userName:username,kernelSlug:slug});
+  const verify=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
+  const remains=(Array.isArray(verify?.kernels)?verify.kernels:[]).filter(k=>{
+    const s=String(k?.slug||'').replace(/^.*\//,'').toLowerCase();
+    return s===slug.toLowerCase();
+  });
+  return {ok:remains.length===0,retired_kernel_slug:slug,provider_response:out,remaining_exact_matches:remains.length};
+}
+
 async function ltxKaggleInspectKernel(args={}){
   const requestId=String(args.request_id||'').trim();
   let ref;
@@ -1444,6 +1517,9 @@ async function ltxGenerateKeyframes(args={}){
   if(findSession) return ltxKaggleFindSession({request_id:findSession[1]});
   const inspectKernel=compat.match(/^inspect-kernel:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
   if(inspectKernel) return ltxKaggleInspectKernel({request_id:inspectKernel[1]});
+  if(compat==='diagnose-sessions') return ltxKaggleDiagnoseSessions();
+  const retireSlug=compat.match(/^retire-slug:(nd-ltx-[a-z0-9-]+)$/i);
+  if(retireSlug) return ltxKaggleRetireSlug({slug:retireSlug[1]});
   const retireKernel=compat.match(/^retire-kernel:(kbatch-[a-z0-9-]+)$/i);
   if(retireKernel) return ltxKaggleRetireKernel({request_id:retireKernel[1]});
   const abandonQueued=compat.match(/^abandon:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
