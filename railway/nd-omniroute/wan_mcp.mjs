@@ -1155,6 +1155,50 @@ async function ltxKaggle2bFixedStatus(args={}){
   };
 }
 
+async function ltxKaggleFindSession(args={}){
+  const requestId=String(args.request_id||'').trim();
+  let ref;
+  if(/^kbatch-/i.test(requestId)) ref=kaggleLtxBatchRequestRef(requestId);
+  else ref=kaggleLtxRequestRef(requestId);
+  const {username}=await kaggleLtxIdentity();
+  const query=ref.kernel_slug;
+  const attempts=[
+    {filters:{query,privacy:1,documentTypes:[5]},pageSize:50},
+    {filters:{query,privacy:0,documentTypes:[5]},pageSize:50},
+    {filters:{query},pageSize:50}
+  ];
+  let lastError=null, response=null;
+  for(const body of attempts){
+    try{
+      response=await kaggleRpc('search.SearchApiService','ListEntities',body);
+      if(response) break;
+    }catch(e){lastError=errorText(e);}
+  }
+  if(!response) throw new Error('Kaggle search lookup failed: '+String(lastError||'unknown'));
+  const docs=Array.isArray(response?.documents)?response.documents:[];
+  const simplified=docs.map(d=>({
+    id:d?.id??null,
+    title:d?.title||null,
+    slug:d?.slug||null,
+    is_private:d?.isPrivate??d?.is_private??null,
+    owner:d?.ownerUser?.userName||d?.owner_user?.user_name||d?.ownerUser?.username||null,
+    session_id:d?.kernelDocument?.sessionId??d?.kernel_document?.session_id??null
+  }));
+  const exact=simplified.filter(d=>{
+    const slug=String(d.slug||'').toLowerCase();
+    const target=ref.kernel_slug.toLowerCase();
+    return slug===target || slug===username.toLowerCase()+'/'+target || slug.endsWith('/'+target);
+  });
+  return {
+    ok:true,
+    request_id:requestId,
+    kernel_slug:ref.kernel_slug,
+    version:ref.version,
+    documents:simplified.slice(0,50),
+    exact_matches:exact
+  };
+}
+
 async function ltxKaggleAcceleratorProbe(shape='NvidiaTeslaP100'){
   const preflight=await kaggleLtxPreflight();
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
@@ -1291,6 +1335,8 @@ async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
+  const findSession=compat.match(/^find-session:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
+  if(findSession) return ltxKaggleFindSession({request_id:findSession[1]});
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
   if(compat==='probe-2b-load') return ltxKaggle2bLoadProbe();
   const load2bStatus=compat.match(/^probe-2b-status:(ltx2b-load-v\d+)$/i);
