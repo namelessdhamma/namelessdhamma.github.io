@@ -782,6 +782,186 @@ async function ltxKaggleRetry(args={}){
   };
 }
 
+function newKaggleLtxBatchRef(){
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  return {token,kernel_slug:'nd-ltx-batch-'+token};
+}
+
+function kaggleLtxBatchRequestRef(requestId){
+  const id=String(requestId||'').trim();
+  const m=id.match(/^kbatch-(r[a-z0-9]+-[a-z0-9]+)-v(\d+)$/i);
+  if(!m) throw new Error('valid batch request_id required');
+  return {request_id:id,kernel_slug:'nd-ltx-batch-'+m[1],version:Number(m[2])};
+}
+
+async function ltxKaggleBatchSubmit(spec={}){
+  const segments=Array.isArray(spec.segments)?spec.segments:[];
+  if(segments.length<2||segments.length>8) throw new Error('batch requires 2-8 segments');
+  const preflight=await kaggleLtxPreflight();
+  const prepared=[];
+  for(let i=0;i<segments.length;i++){
+    const seg=segments[i]||{};
+    const [a,b]=await Promise.all([
+      prepareLtxKernelInput(seg.start_image_url,'segment '+(i+1)+' start'),
+      prepareLtxKernelInput(seg.end_image_url,'segment '+(i+1)+' end')
+    ]);
+    prepared.push({
+      start_image_url:a.url,
+      end_image_url:b.url,
+      prompt:String(seg.prompt||'').trim(),
+      negative_prompt:String(seg.negative_prompt||'').trim()||undefined,
+      duration_seconds:Number(seg.duration_seconds??1),
+      width:Number(seg.width??512),
+      height:Number(seg.height??288),
+      seed:Number(seg.seed??(200+i))
+    });
+  }
+  const payload=Buffer.from(JSON.stringify({segments:prepared}),'utf8').toString('base64');
+  const workerUrl='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx_worker.py';
+  const script=[
+    'import base64,json,os,subprocess,sys,urllib.request',
+    'from pathlib import Path',
+    "cfg=json.loads(base64.b64decode('"+payload+"').decode('utf-8'))",
+    "worker=Path('/kaggle/working/kaggle_ltx_worker.py')",
+    "req=urllib.request.Request('"+workerUrl+"',headers={'User-Agent':'nd-kaggle-ltx-batch/1.0'})",
+    "worker.write_bytes(urllib.request.urlopen(req,timeout=120).read())",
+    "receipts=[]",
+    "for idx,seg in enumerate(cfg['segments'],start=1):",
+    "    req_path=Path(f'/kaggle/working/segment-{idx:02d}-request.json')",
+    "    req_path.write_text(json.dumps(seg),encoding='utf-8')",
+    "    p=subprocess.run([sys.executable,str(worker),str(req_path)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=3300)",
+    "    print(f'ND_LTX_BATCH_SEGMENT_{idx:02d}_TAIL='+p.stdout[-5000:])",
+    "    if p.returncode!=0: raise RuntimeError(f'segment {idx} failed rc={p.returncode}')",
+    "    src_mp4=Path('/kaggle/working/result.mp4'); src_json=Path('/kaggle/working/result.json')",
+    "    if not src_mp4.exists() or not src_json.exists(): raise RuntimeError(f'segment {idx} outputs missing')",
+    "    dst_mp4=Path(f'/kaggle/working/segment-{idx:02d}.mp4'); dst_json=Path(f'/kaggle/working/segment-{idx:02d}.json')",
+    "    if dst_mp4.exists(): dst_mp4.unlink()",
+    "    if dst_json.exists(): dst_json.unlink()",
+    "    src_mp4.replace(dst_mp4); src_json.replace(dst_json)",
+    "    receipts.append(json.loads(dst_json.read_text(encoding='utf-8')))",
+    "summary={'ok':True,'segment_count':len(receipts),'segments':receipts}",
+    "Path('/kaggle/working/batch-result.json').write_text(json.dumps(summary,indent=2),encoding='utf-8')",
+    "print('ND_LTX_BATCH_JSON='+json.dumps(summary,separators=(',',':'),sort_keys=True))"
+  ].join('\n');
+  if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle batch source exceeds provider limit');
+  const jobRef=newKaggleLtxBatchRef();
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+jobRef.kernel_slug,
+    newTitle:'ND LTX Batch '+jobRef.token,
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[KAGGLE_LTX_DATASET],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    modelDataSources:[],
+    isPrivate:true,
+    enableGpu:true,
+    enableTpu:false,
+    enableInternet:true,
+    machineShape:'NvidiaTeslaT4',
+    sessionTimeoutSeconds:3600
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('Kaggle batch submit failed '+JSON.stringify({error:save?.error||null}));
+  const requestId='kbatch-'+jobRef.token+'-v'+version;
+  setTimeout(()=>ltxKaggleBatchAutoFinalize(requestId).catch(e=>console.error(JSON.stringify({event:'ND_LTX_BATCH_AUTO_FINALIZE',request_id:requestId,state:'ERROR',error:errorText(e)}))),10000);
+  return {
+    ok:true,state:'SUBMITTED',request_id:requestId,
+    provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
+    route:'kaggle_ltx13b_mounted_cache_batch',
+    segment_count:segments.length,cost_policy:'FREE_ONLY',gpu_quota:preflight.gpu
+  };
+}
+
+async function ltxKaggleBatchStatus(args={}){
+  const ref=kaggleLtxBatchRequestRef(args.request_id);
+  const {username}=await kaggleLtxIdentity();
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+  });
+  const state=kaggleState(st?.status);
+  let diagnostics=null;
+  if(['QUEUED','RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+        userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:100
+      });
+      diagnostics={
+        files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+        log_tail:String(out?.log||'').slice(-16000)
+      };
+    }catch(e){diagnostics={error:errorText(e)};}
+  }
+  return {
+    ok:true,request_id:ref.request_id,state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
+    diagnostics
+  };
+}
+
+async function ltxKaggleBatchResult(args={}){
+  const ref=kaggleLtxBatchRequestRef(args.request_id);
+  const {username}=await kaggleLtxIdentity();
+  const st=await ltxKaggleBatchStatus({request_id:ref.request_id});
+  if(st.state!=='COMPLETED') return {ok:false,request_id:ref.request_id,state:st.state,failure_message:st.failure_message||null};
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:100
+  });
+  const files=Array.isArray(out?.files)?out.files:[];
+  const receipt=extractKaggleMarker(out?.log||'','ND_LTX_BATCH_JSON=');
+  const imported=[];
+  for(let i=1;i<=8;i++){
+    const tag=String(i).padStart(2,'0');
+    const mp4=files.find(x=>(x?.fileName||x?.name||x?.path)==='segment-'+tag+'.mp4');
+    const js=files.find(x=>(x?.fileName||x?.name||x?.path)==='segment-'+tag+'.json');
+    if(!mp4?.url) break;
+    const v=await driveImportKaggleOutput(mp4.url,'nd-ltx-'+ref.request_id+'-segment-'+tag+'.mp4','video/mp4');
+    let j=null;
+    if(js?.url) j=await driveImportKaggleOutput(js.url,'nd-ltx-'+ref.request_id+'-segment-'+tag+'.json','application/json');
+    imported.push({
+      segment:i,
+      video:v?.file?{id:v.file.id||null,name:v.file.name||null,size:Number(v.file.size||0),url:v.file.webViewLink||null}:null,
+      receipt:j?.file?{id:j.file.id||null,name:j.file.name||null,url:j.file.webViewLink||null}:null
+    });
+  }
+  const batchJson=files.find(x=>(x?.fileName||x?.name||x?.path)==='batch-result.json');
+  let batchReceiptDrive=null;
+  if(batchJson?.url) batchReceiptDrive=await driveImportKaggleOutput(batchJson.url,'nd-ltx-'+ref.request_id+'-batch-result.json','application/json');
+  return {
+    ok:true,request_id:ref.request_id,state:'READY',
+    route:'kaggle_ltx13b_mounted_cache_batch',
+    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
+    receipt,segments:imported,
+    batch_receipt:batchReceiptDrive?.file?{id:batchReceiptDrive.file.id||null,name:batchReceiptDrive.file.name||null,url:batchReceiptDrive.file.webViewLink||null}:null
+  };
+}
+
+async function ltxKaggleBatchAutoFinalize(requestId){
+  for(let i=0;i<280;i++){
+    const st=await ltxKaggleBatchStatus({request_id:requestId});
+    if(st.state==='COMPLETED'){
+      const result=await ltxKaggleBatchResult({request_id:requestId});
+      console.log(JSON.stringify({event:'ND_LTX_BATCH_AUTO_FINALIZE',request_id:requestId,state:'READY',segments:result?.segments?.length||0}));
+      return result;
+    }
+    if(st.state==='FAILED'||st.state==='CANCELLED'){
+      console.error(JSON.stringify({event:'ND_LTX_BATCH_AUTO_FINALIZE',request_id:requestId,state:st.state,failure_message:st.failure_message||null,diagnostics:st.diagnostics||null}));
+      return st;
+    }
+    await new Promise(r=>setTimeout(r,15000));
+  }
+  return {ok:false,request_id:requestId,state:'TIMEOUT'};
+}
+
+function decodeBatchSpec(encoded){
+  try{return JSON.parse(Buffer.from(String(encoded||''),'base64url').toString('utf8'));}
+  catch{throw new Error('invalid batch specification');}
+}
+
 async function ltxKaggleInputProbe(args={}){
   const start=resolveLtxInputRef(args.start_image_url);
   const end=resolveLtxInputRef(args.end_image_url);
@@ -870,6 +1050,12 @@ async function ltxKaggleAutoFinalize(requestId){
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
+  const batchSubmit=compat.match(/^batch:([A-Za-z0-9_-]+)$/);
+  if(batchSubmit) return ltxKaggleBatchSubmit(decodeBatchSpec(batchSubmit[1]));
+  const batchStatus=compat.match(/^batch-status:(kbatch-[a-z0-9-]+)$/i);
+  if(batchStatus) return ltxKaggleBatchStatus({request_id:batchStatus[1]});
+  const batchResult=compat.match(/^batch-result:(kbatch-[a-z0-9-]+)$/i);
+  if(batchResult) return ltxKaggleBatchResult({request_id:batchResult[1]});
   const retryMatch=compat.match(/^retry:(kltx-[a-z0-9-]+)$/i);
   if(retryMatch) return ltxKaggleRetry({request_id:retryMatch[1]});
   if(compat==='build-2b-cache') return ltxKaggleBuild2bCache();
