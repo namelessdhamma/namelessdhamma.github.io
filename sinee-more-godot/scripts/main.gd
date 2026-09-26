@@ -1,11 +1,11 @@
 extends Control
 
-const CELL_NAMES: Array[String] = ["Cell00", "Cell01", "Cell10", "Cell11"]
+const CELL_NAMES: Array[String] = ["Cell00", "Cell01", "Cell02", "Cell10", "Cell11", "Cell12", "Cell20", "Cell21", "Cell22"]
 var selected_cell := -1
 var selected_reserve := -1
 var turn := 1
 var moves := 0
-var board_occupancy: Array[int] = [0, 0, 0, 0]
+var board_occupancy: Array[int] = [0, 0, 0, 0, 0, 0, 0, 0, 0]
 var reserve_available: Array[Array] = [[true,true,true,true,true,true,true,true,true],[true,true,true,true,true,true,true,true,true]]
 
 func _ready() -> void:
@@ -171,7 +171,7 @@ func _run_headless_interaction_smoke() -> void:
 	_on_reserve_pressed(1, 0)
 	_on_cell_pressed(0)
 	_on_primary()
-	assert(board_occupancy == [1, 0, 0, 0])
+	assert(board_occupancy == [1, 0, 0, 0, 0, 0, 0, 0, 0])
 	assert(reserve_available[0][0] == false)
 	assert(turn == 2 and moves == 1)
 	var cell0 := get_node("SafeArea/Landscape/Center/BoardAspect/Board/Cell00") as Button
@@ -183,14 +183,14 @@ func _run_headless_interaction_smoke() -> void:
 	_on_reserve_pressed(2, 0)
 	_on_cell_pressed(0)
 	_on_primary()
-	assert(board_occupancy == [1, 0, 0, 0])
+	assert(board_occupancy == [1, 0, 0, 0, 0, 0, 0, 0, 0])
 	assert(reserve_available[1][0] == true)
 	assert(turn == 2 and moves == 1)
 
 	# Recovery after rejection: choose free cell and commit the still-selected P2 piece.
 	_on_cell_pressed(1)
 	_on_primary()
-	assert(board_occupancy == [1, 2, 0, 0])
+	assert(board_occupancy == [1, 2, 0, 0, 0, 0, 0, 0, 0])
 	assert(reserve_available[1][0] == false)
 	assert(turn == 1 and moves == 2)
 	print("BLUE_SEA_INTERACTION_SMOKE_PASS board=", board_occupancy, " turn=", turn, " moves=", moves)
