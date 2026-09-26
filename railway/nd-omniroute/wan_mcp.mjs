@@ -727,6 +727,60 @@ async function ltxKaggle2bCacheStatus(){
   };
 }
 
+async function ltxKaggleRetry(args={}){
+  const ref=kaggleLtxRequestRef(args.request_id);
+  if(ref.legacy) throw new Error('retry is supported only for isolated Kaggle LTX requests');
+  if(ref.version>=3) throw new Error('retry limit reached for '+ref.request_id);
+  const {username}=await kaggleLtxIdentity();
+  const st=await ltxKaggleStatus({request_id:ref.request_id});
+  if(!['FAILED','CANCELLED'].includes(st.state)) throw new Error('retry requires FAILED or CANCELLED state');
+  const files=st?.diagnostics?.files||[];
+  const logTail=String(st?.diagnostics?.log_tail||'').trim();
+  if(files.length||logTail) throw new Error('retry blocked because provider produced files or logs; diagnose actual execution failure instead');
+  const preflight=await kaggleLtxPreflight();
+  const pulled=await kaggleRpc('kernels.KernelsApiService','GetKernel',{
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+  });
+  const source=String(pulled?.blob?.source||pulled?.blob?.text||'');
+  if(!source) throw new Error('retry source unavailable from Kaggle GetKernel');
+  if(Buffer.byteLength(source,'utf8')>=900000) throw new Error('retry source exceeds Kaggle limit');
+  const title=String(pulled?.metadata?.title||('ND LTX '+ref.kernel_slug.replace(/^nd-ltx-/,''))).slice(0,120);
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:username+'/'+ref.kernel_slug,
+    newTitle:title,
+    text:source,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[KAGGLE_LTX_DATASET],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    modelDataSources:[],
+    isPrivate:true,
+    enableGpu:true,
+    enableTpu:false,
+    enableInternet:true,
+    machineShape:'NvidiaTeslaT4',
+    sessionTimeoutSeconds:3600
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('Kaggle retry submit failed '+JSON.stringify({error:save?.error||null}));
+  const base=ref.request_id.replace(/-v\d+$/i,'');
+  const requestId=base+'-v'+version;
+  setTimeout(()=>ltxKaggleAutoFinalize(requestId).catch(e=>console.error(JSON.stringify({event:'ND_LTX_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:'ERROR',error:errorText(e)}))),10000);
+  return {
+    ok:true,
+    state:'RETRIED',
+    previous_request_id:ref.request_id,
+    request_id:requestId,
+    provider_ref:username+'/'+ref.kernel_slug+'/'+version,
+    route:'kaggle_ltx13b_mounted_cache_f2l',
+    cost_policy:'FREE_ONLY',
+    gpu_quota:preflight.gpu,
+    retry_number:version-1
+  };
+}
+
 async function ltxKaggleInputProbe(args={}){
   const start=resolveLtxInputRef(args.start_image_url);
   const end=resolveLtxInputRef(args.end_image_url);
@@ -800,6 +854,8 @@ async function ltxKaggleAutoFinalize(requestId){
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
+  const retryMatch=compat.match(/^retry:(kltx-[a-z0-9-]+)$/i);
+  if(retryMatch) return ltxKaggleRetry({request_id:retryMatch[1]});
   if(compat==='build-2b-cache') return ltxKaggleBuild2bCache();
   if(compat==='build-2b-cache-status') return ltxKaggle2bCacheStatus();
   const statusMatch=compat.match(/^status:(kltx-[a-z0-9-]+)$/i);
