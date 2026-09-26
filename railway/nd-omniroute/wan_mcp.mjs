@@ -475,15 +475,34 @@ function resolveLtxInputRef(value){
   throw new Error('image ref must be http(s) URL or drive:<fileId>');
 }
 
+async function prepareLtxKernelInput(value,label){
+  const ref=String(value||'').trim();
+  const m=ref.match(/^drive:([A-Za-z0-9_-]{10,200})$/i);
+  if(!m) return {url:resolveLtxInputRef(ref),base64:null};
+  if(!LTX_INPUT_TOKEN) throw new Error('ND_LTX_MCP_PATH_TOKEN is not configured');
+  const local='http://127.0.0.1:'+OUTER_PORT+'/ltx-input/'+LTX_INPUT_TOKEN+'/'+encodeURIComponent(m[1]);
+  const res=await fetch(local);
+  if(!res.ok) throw new Error(label+' Drive input read failed HTTP '+res.status);
+  const ct=String(res.headers.get('content-type')||'');
+  if(!ct.startsWith('image/')) throw new Error(label+' Drive input is not an image');
+  const buf=Buffer.from(await res.arrayBuffer());
+  if(!buf.length||buf.length>20*1024*1024) throw new Error(label+' Drive input is empty or too large');
+  return {url:null,base64:buf.toString('base64'),content_type:ct,size_bytes:buf.length};
+}
+
 async function ltxKaggleSubmit(args={}){
-  const start=resolveLtxInputRef(args.start_image_url);
-  const end=resolveLtxInputRef(args.end_image_url);
+  const [startInput,endInput]=await Promise.all([
+    prepareLtxKernelInput(args.start_image_url,'start'),
+    prepareLtxKernelInput(args.end_image_url,'end')
+  ]);
   const preflight=await kaggleLtxPreflight();
   const worker=await readFile(new URL('./kaggle_ltx_worker.py',import.meta.url),'utf8');
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
   const request={
-    start_image_url:start,
-    end_image_url:end,
+    start_image_url:startInput.url||undefined,
+    end_image_url:endInput.url||undefined,
+    start_image_base64:startInput.base64||undefined,
+    end_image_base64:endInput.base64||undefined,
     prompt:String(args.prompt||'').trim(),
     negative_prompt:String(args.negative_prompt||'').trim()||undefined,
     duration_seconds:Number(args.duration_seconds??2),
