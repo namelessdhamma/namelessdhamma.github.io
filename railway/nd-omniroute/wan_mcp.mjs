@@ -25,6 +25,12 @@ const GITHUB_PAT = String(process.env.ND_GITHUB_PAT || '').trim();
 const LTX_HFJOBS_ENABLED = /^(1|true|yes)$/i.test(String(process.env.ND_LTX_HFJOBS_PAID_ENABLED || 'false').trim());
 const LTX_HFJOBS_REPO = 'namelessdhamma/ND-app';
 const LTX_HFJOBS_MAX_COST_USD = 0.405;
+const LTX_MODAL_ENABLED = /^(1|true|yes)$/i.test(String(process.env.ND_LTX_MODAL_ENABLED || 'false').trim());
+const LTX_MODAL_GENERATE_URL = String(process.env.ND_LTX_MODAL_GENERATE_URL || '').trim();
+const LTX_MODAL_HEALTH_URL = String(process.env.ND_LTX_MODAL_HEALTH_URL || '').trim();
+const LTX_MODAL_PROXY_KEY = String(process.env.ND_LTX_MODAL_PROXY_KEY || '').trim();
+const LTX_MODAL_PROXY_SECRET = String(process.env.ND_LTX_MODAL_PROXY_SECRET || '').trim();
+
 
 const STORYBOARD_REPO = 'namelessdhamma/namelessdhamma.github.io';
 const STORYBOARD_EVENT = 'nd_storyboard_render';
@@ -840,6 +846,120 @@ async function ltxKaggleStatus(args={}){
     failure_message:st?.failureMessage||st?.failure_message||null,
     provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
     diagnostics
+  };
+}
+
+async function driveImportLtxBytes(buf,name,mimeType){
+  if(!DRIVE_BRIDGE_KEY) throw new Error('ND_DRIVE_BRIDGE_TOKEN is not configured');
+  if(!Buffer.isBuffer(buf)||!buf.length) throw new Error('LTX output bytes missing');
+  const res=await fetch('http://127.0.0.1:'+OUTER_PORT+'/internal/ltx/import-bytes',{
+    method:'POST',
+    headers:{
+      'content-type':mimeType,
+      'content-length':String(buf.length),
+      'x-nd-bridge-key':DRIVE_BRIDGE_KEY,
+      'x-nd-name':encodeURIComponent(name),
+      'x-nd-parent-id':KAGGLE_LTX_DRIVE_FOLDER
+    },
+    body:buf
+  });
+  const txt=await res.text();
+  let data={};
+  try{data=txt?JSON.parse(txt):{};}catch{}
+  if(!res.ok||data?.ok!==true) throw new Error('Drive bytes import failed: '+String(data?.error||txt).slice(0,1000));
+  return data.result;
+}
+
+function ltxModalConfigured(){
+  return LTX_MODAL_ENABLED && /^https:\/\//i.test(LTX_MODAL_GENERATE_URL) && !!LTX_MODAL_PROXY_KEY && !!LTX_MODAL_PROXY_SECRET;
+}
+
+async function ltxModalFirstLast(args={}){
+  if(!ltxModalConfigured()){
+    return {
+      ok:false,
+      state:'NOT_CONFIGURED',
+      route:'modal_ltx2b_distilled_f2l',
+      provider:'Modal',
+      enabled:LTX_MODAL_ENABLED,
+      generate_url_configured:!!LTX_MODAL_GENERATE_URL,
+      proxy_auth_configured:!!LTX_MODAL_PROXY_KEY && !!LTX_MODAL_PROXY_SECRET,
+      cost_policy:'FREE_CREDIT_ONLY'
+    };
+  }
+  const [startInput,endInput]=await Promise.all([
+    prepareLtxKernelInput(args.start_image_url,'start'),
+    prepareLtxKernelInput(args.end_image_url,'end')
+  ]);
+  const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
+  const requestId='mltx-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  const body={
+    start_image_url:startInput.url,
+    end_image_url:endInput.url,
+    prompt:String(args.prompt||'').trim()||'Smooth cinematic transition between keyframes with natural motion and consistent lighting.',
+    negative_prompt:String(args.negative_prompt||'worst quality, inconsistent motion, blurry, jittery, distorted, sudden cut, duplicate subject, text, watermark'),
+    duration_seconds:Number(args.duration_seconds??2),
+    width:Number(args.width??512),
+    height:Number(args.height??288),
+    frame_rate:Number(args.frame_rate??24),
+    seed,
+    start_strength:Number(args.start_strength??1.0),
+    end_strength:Number(args.end_strength??0.9)
+  };
+  const res=await fetch(LTX_MODAL_GENERATE_URL,{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'accept':'video/mp4',
+      'Modal-Key':LTX_MODAL_PROXY_KEY,
+      'Modal-Secret':LTX_MODAL_PROXY_SECRET
+    },
+    body:JSON.stringify(body)
+  });
+  if(!res.ok){
+    const detail=(await res.text()).slice(0,7000);
+    throw new Error('Modal LTX HTTP '+res.status+': '+detail);
+  }
+  const ct=String(res.headers.get('content-type')||'').toLowerCase();
+  if(!ct.includes('video/mp4') && !ct.includes('application/octet-stream')) throw new Error('Modal LTX returned unexpected content-type '+ct);
+  const video=Buffer.from(await res.arrayBuffer());
+  if(!video.length) throw new Error('Modal LTX returned empty output');
+  if(video.length>150*1024*1024) throw new Error('Modal LTX output exceeds 150 MB');
+
+  const videoName='nd-ltx-modal-'+requestId+'.mp4';
+  const imported=await driveImportLtxBytes(video,videoName,'video/mp4');
+  const file=imported?.file||{};
+  const receipt={
+    ok:true,
+    state:'READY',
+    request_id:requestId,
+    route:'modal_ltx2b_distilled_f2l',
+    provider:'Modal',
+    model:'LTX-Video 2B 0.9.8 distilled',
+    cost_policy:'FREE_CREDIT_ONLY',
+    seed,
+    duration_seconds:body.duration_seconds,
+    width:body.width,
+    height:body.height,
+    frame_rate:body.frame_rate,
+    bytes:video.length,
+    drive_video_id:file.id||null,
+    created_at:new Date().toISOString()
+  };
+  const receiptBuf=Buffer.from(JSON.stringify(receipt,null,2));
+  const receiptImport=await driveImportLtxBytes(receiptBuf,'nd-ltx-modal-'+requestId+'.json','application/json');
+  const receiptFile=receiptImport?.file||{};
+  return {
+    ...receipt,
+    video_ref:file.webViewLink||null,
+    drive_video:{
+      id:file.id||null,name:file.name||null,size:Number(file.size||video.length),
+      mime_type:file.mimeType||'video/mp4',url:file.webViewLink||null,reused:imported?.reused===true
+    },
+    drive_receipt:{
+      id:receiptFile.id||null,name:receiptFile.name||null,size:Number(receiptFile.size||receiptBuf.length),
+      mime_type:receiptFile.mimeType||'application/json',url:receiptFile.webViewLink||null,reused:receiptImport?.reused===true
+    }
   };
 }
 
@@ -1967,6 +2087,7 @@ async function ltxKaggleAutoFinalize(requestId){
 
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
+  if(compat==='modal'||compat==='modal-ltx2b'||compat==='modal_ltx2b_distilled_f2l') return ltxModalFirstLast(args);
   if(compat==='quota-readback') return kaggleLtxPreflight();
   if(compat==='hf-linoyts') return ltxHfLinoytsFirstLast(args);
   if(compat==='hf-studio') return ltxHfStudioFirstLast(args);
@@ -2130,7 +2251,7 @@ const TOOLS=[
   },
   {
     name:'ltx_generate_keyframes',
-    description:'Submit a FREE_ONLY first-to-last-keyframe LTX 13B generation to Kaggle T4x2 using the mounted model cache. Returns a request_id; use ltx_keyframe_status and ltx_keyframe_result. Completed results are copied to Google Drive.',
+    description:'Generate FREE-policy first-to-last-keyframe LTX video. Default remains Kaggle; set space_id=modal to use the Modal LTX 2B candidate when configured. Completed synchronous Modal results are copied to Google Drive.',
     inputSchema:{
       type:'object',
       properties:{
@@ -2366,7 +2487,7 @@ export async function wanHealth(){
 
 export async function ltxHealth({probe=false,spaceId}={}){
   const selected=String(spaceId||DEFAULT_LTX_SPACE).trim();
-  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:'kaggle_ltx13b_mounted_cache_f2l',keyframe_provider:'Kaggle',keyframe_dataset_source:KAGGLE_LTX_DATASET,reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
+  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:'kaggle_ltx13b_mounted_cache_f2l',keyframe_provider:'Kaggle',keyframe_dataset_source:KAGGLE_LTX_DATASET,reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},modal:{enabled:LTX_MODAL_ENABLED,configured:ltxModalConfigured(),route:'modal_ltx2b_distilled_f2l',health_url_configured:!!LTX_MODAL_HEALTH_URL,cost_policy:'FREE_CREDIT_ONLY'},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
   if(!probe) return {...base,upstream:'VERIFY_AT_USE'};
   try{
     const cap=await capabilities(selected);
