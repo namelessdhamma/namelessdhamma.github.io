@@ -672,29 +672,63 @@ async function lpVkGenerateQr(){
     }
 
     let other=false;
-    for(let i=0;i<40;i++){
-      other=await p.evaluate(()=>{
-        const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
-        if(!b)return false;b.click();return true;
-      }).catch(()=>false);
+    let qrFrame=null;
+    for(let i=0;i<50;i++){
+      for(const fr of p.frames()){
+        try{
+          const btn=fr.locator('button').filter({hasText:'Подтвердить другим способом'}).first();
+          if(await btn.count()){
+            await btn.click({force:true,timeout:5000});
+            other=true;
+            qrFrame=fr;
+            break;
+          }
+          const already=fr.locator('div.vkuiSimpleCell__host').filter({hasText:'QR-код'}).first();
+          if(await already.count()){
+            other=true;
+            qrFrame=fr;
+            break;
+          }
+        }catch{}
+      }
       if(other)break;
       await new Promise(r=>setTimeout(r,350));
     }
     if(!other)throw new Error("vk_other_method_missing");
 
     let chosen=false;
-    for(let i=0;i<30;i++){
-      chosen=await p.evaluate(()=>{
-        const cells=[...document.querySelectorAll('div.vkuiSimpleCell__host')];
-        const q=cells.find(x=>(x.textContent||'').includes('QR-код'));
-        if(!q)return false;q.click();return true;
-      }).catch(()=>false);
+    for(let i=0;i<40;i++){
+      for(const fr of p.frames()){
+        try{
+          const q=fr.locator('div.vkuiSimpleCell__host').filter({hasText:'QR-код'}).first();
+          if(await q.count()){
+            await q.click({force:true,timeout:5000});
+            chosen=true;
+            qrFrame=fr;
+            break;
+          }
+        }catch{}
+      }
       if(chosen)break;
       await new Promise(r=>setTimeout(r,300));
     }
     if(!chosen)throw new Error("vk_qr_method_missing");
 
-    const qr=p.locator('svg.vkc__QRCode-module__image').first();
+    let qr=null;
+    for(let i=0;i<50&&!qr;i++){
+      for(const fr of p.frames()){
+        try{
+          const candidate=fr.locator('svg.vkc__QRCode-module__image').first();
+          if(await candidate.count()){
+            qr=candidate;
+            qrFrame=fr;
+            break;
+          }
+        }catch{}
+      }
+      if(!qr)await new Promise(r=>setTimeout(r,300));
+    }
+    if(!qr)throw new Error("vk_qr_svg_missing");
     await qr.waitFor({state:"attached",timeout:15000});
     let svg=await qr.evaluate(el=>el.outerHTML);
     if(!/\sxmlns=/.test(svg))svg=svg.replace(/^<svg/,'<svg xmlns="http://www.w3.org/2000/svg"');
