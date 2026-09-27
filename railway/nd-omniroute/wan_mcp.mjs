@@ -511,6 +511,7 @@ async function ltxKaggleSubmit(args={}){
     prepareLtxKernelInput(args.end_image_url,'end')
   ]);
   const preflight=await kaggleLtxPreflight();
+  const requestedShape='NvidiaTeslaT4';
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
   const request={
     start_image_url:startInput.url||undefined,
