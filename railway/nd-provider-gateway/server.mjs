@@ -1,4 +1,5 @@
 import http from 'node:http';
+import fs from 'node:fs';
 import { URL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { chromium } from 'playwright-core';
@@ -16,6 +17,7 @@ const LIGHTPANDA_MCP_PATH=LIGHTPANDA_PATH_TOKEN?'/nd/lightpanda/mcp/'+LIGHTPANDA
 const LIGHTPANDA_API='https://euwest.cloud.lightpanda.io/api/fetch';
 const LIGHTPANDA_CDP_URL='wss://euwest.cloud.lightpanda.io/ws?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
 const LIGHTPANDA_MCP_SSE='https://euwest.cloud.lightpanda.io/mcp/sse?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
+const LIGHTPANDA_VK_STATE_FILE=String(process.env.ND_LIGHTPANDA_VK_STATE_FILE||'/memos-data/lightpanda-vk-storage-state.json').trim();
 let lpUpstream={reader:null,postUrl:'',pending:new Map(),connecting:null,ready:false,seq:1000,lastError:''};
 const ND_CLOUDFLARE_MUX_CODE_REV='cloudflare-browser-run-cdp-v1-20260920';
 const CLOUDFLARE_ACCOUNT_ID=String(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
@@ -512,6 +514,46 @@ async function lightpandaFetch(a={}){
   };
 }
 
+
+function lpVkHost(host){
+  const h=String(host||'').toLowerCase();
+  return h==='vk.com'||h.endsWith('.vk.com')||h==='vk.ru'||h.endsWith('.vk.ru')||h==='id.vk.com'||h.endsWith('.id.vk.com')||h==='id.vk.ru'||h.endsWith('.id.vk.ru');
+}
+function lpReadVkState(){
+  try{
+    if(!LIGHTPANDA_VK_STATE_FILE||!fs.existsSync(LIGHTPANDA_VK_STATE_FILE))return null;
+    const d=JSON.parse(fs.readFileSync(LIGHTPANDA_VK_STATE_FILE,'utf8'));
+    return d&&Array.isArray(d.cookies)&&Array.isArray(d.origins)?d:null;
+  }catch{return null;}
+}
+function lpVkStateMeta(){
+  const d=lpReadVkState();
+  if(!d)return {persisted:false,cookies:0,origins:0};
+  const names=(d.cookies||[]).map(x=>String(x?.name||''));
+  return {persisted:true,cookies:(d.cookies||[]).length,origins:(d.origins||[]).length,auth_cookie_present:names.some(n=>n==='remixsid'||n==='remixsid6'||n==='remixnsid')};
+}
+async function lpMaybePersistVkState(context){
+  try{
+    if(!context||!LIGHTPANDA_VK_STATE_FILE)return false;
+    const raw=await context.storageState();
+    const cookies=(raw.cookies||[]).filter(x=>lpVkHost(String(x?.domain||'').replace(/^\./,'')));
+    const names=cookies.map(x=>String(x?.name||''));
+    const authenticated=names.some(n=>n==='remixsid'||n==='remixsid6'||n==='remixnsid');
+    if(!authenticated)return false;
+    const origins=(raw.origins||[]).filter(x=>{
+      try{return lpVkHost(new URL(String(x?.origin||'')).hostname);}catch{return false;}
+    });
+    const safe={cookies,origins};
+    const dir=LIGHTPANDA_VK_STATE_FILE.split('/').slice(0,-1).join('/')||'.';
+    fs.mkdirSync(dir,{recursive:true});
+    const tmp=LIGHTPANDA_VK_STATE_FILE+'.tmp';
+    fs.writeFileSync(tmp,JSON.stringify(safe),{mode:0o600});
+    fs.renameSync(tmp,LIGHTPANDA_VK_STATE_FILE);
+    try{fs.chmodSync(LIGHTPANDA_VK_STATE_FILE,0o600);}catch{}
+    return true;
+  }catch{return false;}
+}
+
 let lpCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:"",stage:"idle"};
 async function lpStage(label,promise,ms=10000){
   lpCdp.stage=label;
@@ -526,6 +568,7 @@ async function lpStage(label,promise,ms=10000){
 function lpCdpTouch(){
   if(lpCdp.idleTimer)clearTimeout(lpCdp.idleTimer);
   lpCdp.idleTimer=setTimeout(async()=>{
+    try{if(lpCdp.context)await lpMaybePersistVkState(lpCdp.context);}catch{}
     try{if(lpCdp.browser)await lpCdp.browser.close();}catch{}
     lpCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:""};
   },120000);
@@ -540,7 +583,8 @@ async function ensureLpCdp(){
     if(!LIGHTPANDA_TOKEN)throw new Error("lightpanda_token_missing");
     const browser=await lpStage("connectOverCDP",chromium.connectOverCDP(LIGHTPANDA_CDP_URL,{timeout:9000}),10000);
     browser.on("disconnected",()=>{lpCdp.browser=null;lpCdp.context=null;lpCdp.page=null;lpCdp.connecting=null;lpCdp.stage="disconnected";});
-    const context=await lpStage("newContext",browser.newContext(),10000);
+    const savedState=lpReadVkState();
+    const context=await lpStage("newContext",browser.newContext(savedState?{storageState:savedState}:{}),10000);
     const page=await lpStage("newPage",context.newPage(),10000);
     lpCdp.browser=browser;lpCdp.context=context;lpCdp.page=page;lpCdp.lastError="";lpCdp.connecting=null;lpCdp.stage="ready";
     lpCdpTouch();
@@ -561,7 +605,10 @@ async function lpCdpCall(name,a={}){
     const response=await page.goto(u.toString(),{waitUntil,timeout:lpTimeout(a,30000,90000)});
     return {ok:true,url:page.url(),title:await page.title(),status:response?response.status():null};
   }
-  if(name==="lightpanda_get_url")return {ok:true,url:page.url(),title:await page.title()};
+  if(name==="lightpanda_get_url"){
+    const persisted=await lpMaybePersistVkState(st.context);
+    return {ok:true,url:page.url(),title:await page.title(),vk_session_saved:persisted||lpVkStateMeta().persisted};
+  }
   if(name==="lightpanda_read_text"){
     const selector=String(a.selector||"body"),max=Math.max(1,Math.min(100000,Number(a.max_chars||30000)));
     const text=await page.locator(selector).innerText({timeout:15000});
@@ -603,10 +650,12 @@ async function lpCdpCall(name,a={}){
   }
   if(name==="lightpanda_evaluate"){
     const value=await page.evaluate(String(a.script||""));
-    return {ok:true,url:page.url(),value};
+    const persisted=await lpMaybePersistVkState(st.context);
+    return {ok:true,url:page.url(),value,vk_session_saved:persisted||lpVkStateMeta().persisted};
   }
   if(name==="lightpanda_get_cookies"){
     const cookies=a.url?await st.context.cookies(String(a.url)):await st.context.cookies();
+    await lpMaybePersistVkState(st.context);
     return {ok:true,url:page.url(),cookies};
   }
   throw new Error("unknown_lightpanda_cdp_tool:"+String(name));
@@ -736,7 +785,7 @@ async function lpNativeTools(){
 
 async function lightpandaCallTool(name,args){
   if(name==="lightpanda_status"){
-    return {...lightpandaStatus(),cdp_configured:Boolean(LIGHTPANDA_TOKEN),cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:lpCdp.lastError||null,native_sse_status:"provider_endpoint_404"};
+    return {...lightpandaStatus(),cdp_configured:Boolean(LIGHTPANDA_TOKEN),cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:lpCdp.lastError||null,vk_session:lpVkStateMeta(),native_sse_status:"provider_endpoint_404"};
   }
   if(name==="lightpanda_fetch")return await lightpandaFetch(args||{});
   if(LP_TOOLS.some(x=>x.name===name))return await lpCdpCall(name,args||{});
