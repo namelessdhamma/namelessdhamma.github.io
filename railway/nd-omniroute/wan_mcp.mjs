@@ -874,7 +874,7 @@ async function ltxKaggle2bSubmit(args={}){
     enableGpu:true,
     enableTpu:false,
     enableInternet:true,
-    kernelExecutionType:'SAVE_AND_RUN_ALL',
+    kernelExecutionType:'SaveAndRunAll',
     machineShape:'NvidiaTeslaT4',
     sessionTimeoutSeconds:3600
   });
