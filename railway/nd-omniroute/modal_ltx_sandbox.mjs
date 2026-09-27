@@ -60,19 +60,27 @@ export async function modalLtxSandboxSubmit(args={}){
   const modal=new ModalClient();
   try{
     const app=await modal.apps.fromName(MODAL_APP,{createIfMissing:true});
-    const image=modal.images.fromRegistry(BASE_IMAGE).dockerfileCommands([
-      'RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ffmpeg && rm -rf /var/lib/apt/lists/*',
-      'RUN git clone https://github.com/Lightricks/LTX-Video.git /opt/LTX-Video && cd /opt/LTX-Video && git checkout '+LTX_COMMIT,
-      "RUN cd /opt/LTX-Video && pip install --no-cache-dir -e '.[inference]'"
-    ]);
-    const built=await image.build(app);
+    const image=modal.images.fromRegistry(BASE_IMAGE);
     const encoded=Buffer.from(JSON.stringify(req),'utf8').toString('base64url');
-    const sb=await modal.sandboxes.create(app,built,{
+    const workerB64=Buffer.from(WORKER,'utf8').toString('base64');
+    const setup=[
+      'set -euo pipefail',
+      'apt-get update -qq',
+      'DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ffmpeg',
+      'rm -rf /var/lib/apt/lists/*',
+      'git clone https://github.com/Lightricks/LTX-Video.git /opt/LTX-Video',
+      'cd /opt/LTX-Video',
+      'git checkout '+LTX_COMMIT,
+      "pip install --no-cache-dir -e '.[inference]'",
+      'echo "$ND_LTX_WORKER_B64" | base64 -d > /tmp/nd-ltx-worker.py',
+      'python /tmp/nd-ltx-worker.py'
+    ].join('; ');
+    const sb=await modal.sandboxes.create(app,image,{
       gpu:'L4',
       timeoutMs:20*60*1000,
       memoryMiB:24576,
-      command:['python','-c',WORKER],
-      env:{ND_LTX_REQUEST_B64:encoded,HF_HOME:'/tmp/hf-cache',TRANSFORMERS_CACHE:'/tmp/hf-cache'}
+      command:['bash','-lc',setup],
+      env:{ND_LTX_REQUEST_B64:encoded,ND_LTX_WORKER_B64:workerB64,HF_HOME:'/tmp/hf-cache',TRANSFORMERS_CACHE:'/tmp/hf-cache'}
     });
     const result={
       ok:true,state:'SUBMITTED',provider:'Modal',route:'modal_ltx2b_direct_sandbox',
