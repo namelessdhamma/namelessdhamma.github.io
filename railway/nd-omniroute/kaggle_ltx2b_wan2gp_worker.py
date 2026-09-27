@@ -2,7 +2,7 @@
 """ND Kaggle LTX 2B first/last worker via Wan2GP + MMGP.
 
 FREE_ONLY candidate for Kaggle T4. Designed to avoid the 86 GiB LTX-13B
-dataset mount and use the compact LTX 2B distilled FP8 stack.
+dataset mount and use the compact mounted LTX 2B 0.9.6 diffusers BF16 stack.
 """
 from __future__ import annotations
 
@@ -30,7 +30,9 @@ TMP = Path("/tmp/nd-ltx2b-f2l")
 FPS = 30
 WANGP_COMMIT = "2345ae148f82740f66e82c41292dbbdd592e713d"
 LTX_CONFIG_COMMIT = "4b2d053057623ddd4d0a1d3e9cd28890e9ef487f"
-MODEL_NAME = "ltxv-2b-0.9.8-distilled-fp8.safetensors"
+MODEL_NAME = "diffusion_pytorch_model.bf16.safetensors"
+MODEL_REPO = "multimodalart/ltxv-2b-0.9.6-distilled"
+MODEL_REL = "transformer/diffusion_pytorch_model.bf16.safetensors"
 TEXT_ENCODER = "T5_xxl_1.1_enc_quanto_bf16_int8.safetensors"
 DEFAULT_NEGATIVE = "worst quality, blurry, jittery, distorted, sudden cut, duplicate subject, text, watermark"
 
@@ -124,9 +126,12 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
     CK.mkdir(parents=True, exist_ok=True)
     T5.mkdir(parents=True, exist_ok=True)
 
-    model = CK / MODEL_NAME
-    if not model.exists() and not link_or_copy_cached(MODEL_NAME, model):
-        model = Path(hf_hub_download("Lightricks/LTX-Video", MODEL_NAME, local_dir=str(CK)))
+    mounted_models = [p for p in Path("/kaggle/input").glob(f"**/{MODEL_NAME}") if p.is_file()]
+    if mounted_models:
+        model = mounted_models[0]
+        print(f"ND_LTX2B_CACHE_HIT={model}", flush=True)
+    else:
+        model = Path(hf_hub_download(MODEL_REPO, MODEL_REL, local_dir=str(CK)))
 
     te = T5 / TEXT_ENCODER
     if not te.exists() and not link_or_copy_cached(TEXT_ENCODER, te):
@@ -149,35 +154,73 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
             continue
         hf_hub_download("DeepBeepMeep/LTX_Video", rel, local_dir=str(CK))
 
-    cfg = WORK / "ltxv-2b-0.9.8-distilled-fp8.yaml"
+    cfg = WORK / "ltxv-2b-0.9.6-distilled.yaml"
     if not cfg.exists():
         cfg.write_bytes(
             urllib.request.urlopen(
-                f"https://raw.githubusercontent.com/Lightricks/LTX-Video/{LTX_CONFIG_COMMIT}/configs/ltxv-2b-0.9.8-distilled-fp8.yaml",
+                f"https://raw.githubusercontent.com/Lightricks/LTX-Video/{LTX_CONFIG_COMMIT}/configs/ltxv-2b-0.9.6-distilled.yaml",
                 timeout=60,
             ).read()
         )
 
-    # Lightricks single-file checkpoints store the model config as a JSON string
-    # with a nested "transformer" object. MMGP 3.8.1 expects a plain config
-    # object when using its fast loader, so provide the nested transformer
-    # config explicitly instead of letting MMGP consume raw safetensors metadata.
-    from safetensors import safe_open
-    with safe_open(str(model), framework="pt", device="cpu") as sf:
-        raw_cfg = (sf.metadata() or {}).get("config")
-    if not raw_cfg:
-        raise RuntimeError("LTX checkpoint config metadata missing")
-    all_cfg = json.loads(raw_cfg) if isinstance(raw_cfg, str) else raw_cfg
-    transformer_cfg = all_cfg.get("transformer", all_cfg)
-    if not isinstance(transformer_cfg, dict):
-        raise RuntimeError("LTX transformer config is not an object")
+    mounted_cfg = list(Path("/kaggle/input").glob("**/ltxv-2b-distilled/transformer/config.json"))
+    source_cfg = mounted_cfg[0] if mounted_cfg else None
+    if source_cfg is None:
+        source_cfg = CK / "nd_ltx2b_source_config.json"
+        urllib.request.urlretrieve(
+            "https://huggingface.co/multimodalart/ltxv-2b-0.9.6-distilled/resolve/main/transformer/config.json?download=true",
+            str(source_cfg),
+        )
+    cfg_obj = json.loads(Path(source_cfg).read_text(encoding="utf-8"))
+    cfg_obj.update(
+        {
+            "_class_name": "Transformer3DModel",
+            "_diffusers_version": "0.25.1",
+            "_name_or_path": "PixArt-alpha/PixArt-XL-2-256x256",
+            "activation_fn": "gelu-approximate",
+            "attention_bias": True,
+            "attention_head_dim": 64,
+            "attention_type": "default",
+            "caption_channels": 4096,
+            "cross_attention_dim": 2048,
+            "double_self_attention": False,
+            "dropout": 0.0,
+            "in_channels": 128,
+            "norm_elementwise_affine": False,
+            "norm_eps": 1e-6,
+            "norm_num_groups": 32,
+            "num_attention_heads": 32,
+            "num_embeds_ada_norm": 1000,
+            "num_layers": 28,
+            "num_vector_embeds": None,
+            "only_cross_attention": False,
+            "out_channels": 128,
+            "project_to_2d_pos": True,
+            "upcast_attention": False,
+            "use_linear_projection": False,
+            "qk_norm": "rms_norm",
+            "standardization_norm": "rms_norm",
+            "positional_embedding_type": "rope",
+            "positional_embedding_theta": 10000.0,
+            "positional_embedding_max_pos": [20, 2048, 2048],
+            "timestep_scale_multiplier": 1000,
+        }
+    )
     forced_cfg = CK / "nd_ltx2b_transformer_config.json"
-    forced_cfg.write_text(json.dumps(transformer_cfg), encoding="utf-8")
+    forced_cfg.write_text(json.dumps(cfg_obj), encoding="utf-8")
 
     ltxv_py = ROOT / "models" / "ltx_video" / "ltxv.py"
     src = ltxv_py.read_text(encoding="utf-8")
     needle = "offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False)"
-    replacement = "offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False, forcedConfigPath=os.environ['ND_LTX_TRANSFORMER_CONFIG_PATH'])"
+    replacement = (
+        "offload.fast_load_transformers_model("
+        "model_filepath, modelClass=Transformer3DModel, writable_tensors=False, "
+        "forcedConfigPath=os.environ['ND_LTX_TRANSFORMER_CONFIG_PATH'], "
+        "preprocess_sd={**{'proj_in':'patchify_proj','time_embed':'adaln_single'}, "
+        "**{f'transformer_blocks.{i}.{a}.{src}':f'transformer_blocks.{i}.{a}.{dst}' "
+        "for i in range(28) for a in ['attn1','attn2'] "
+        "for src,dst in [('norm_q','q_norm'),('norm_k','k_norm')]}})"
+    )
     if needle not in src and "ND_LTX_TRANSFORMER_CONFIG_PATH" not in src:
         raise RuntimeError("Wan2GP LTX loader patch point missing")
     if needle in src:
@@ -317,7 +360,8 @@ def main() -> None:
     receipt = {
         "ok": True,
         "route": "kaggle_ltx2b_wan2gp_f2l",
-        "model": MODEL_NAME,
+        "model": f"{MODEL_REPO}:{MODEL_REL}",
+        "model_precision": "bf16",
         "wangp_commit": WANGP_COMMIT,
         "profile": "VerylowRAM_LowVRAM",
         "width": width,
