@@ -2986,6 +2986,24 @@ const server = http.createServer(async (req,res) => {
       return json(res,502,{ok:false,error:String(e?.message||e).slice(0,800)});
     }
   }
+  if (req.url === '/ltx/modal-config/bootstrap' && req.method === 'POST') {
+    if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
+    const chunks=[]; let total=0;
+    for await(const ch of req){
+      total+=ch.length;
+      if(total>64*1024) return json(res,413,{ok:false,error:'config_too_large'});
+      chunks.push(ch);
+    }
+    let body={};
+    try{body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+    catch{return json(res,400,{ok:false,error:'invalid_json'});}
+    try{
+      const result=await modalLtxConfigWrite(body);
+      return json(res,200,{ok:true,result});
+    }catch(e){
+      return json(res,502,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
   if (req.url === '/internal/ltx/modal-config' && (req.method === 'GET' || req.method === 'POST')) {
     if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
     try{
