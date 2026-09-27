@@ -1366,6 +1366,8 @@ const LINEAR_USER_OAUTH_REDIRECT_URI = String(process.env.ND_LINEAR_USER_OAUTH_R
 const LINEAR_GITHUB_PAT = String(process.env.ND_GITHUB_PAT || '').trim();
 const LINEAR_SECRET_REPO = 'namelessdhamma/nameless-dhamma-vault';
 const LINEAR_USER_OAUTH_STORE_PATH = '.nd-secrets/linear-user-oauth.enc.json';
+const MODAL_LTX_STORE_PATH = '.nd-secrets/modal-ltx.enc.json';
+let modalLtxConfigCache=null;
 const LINEAR_BRIDGE_KEY = String(process.env.ND_LINEAR_BRIDGE_TOKEN || '').trim();
 const LINEAR_DEVMODE_TOKEN = String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN || '').trim();
 const LINEAR_DEVMODE_MCP_PATH = '/linear-mcp/' + LINEAR_DEVMODE_TOKEN;
@@ -2788,6 +2790,94 @@ async function handleDrive(req,res) {
 }
 
 
+function modalLtxCryptoKey(){
+  if(!BRIDGE_KEY) throw new Error('modal_ltx_bridge_key_missing');
+  return crypto.createHash('sha256').update('nd-modal-ltx-config-v1\0'+BRIDGE_KEY).digest();
+}
+
+function modalLtxEncrypt(obj){
+  const iv=crypto.randomBytes(12);
+  const purpose='modal-ltx-config';
+  const cipher=crypto.createCipheriv('aes-256-gcm',modalLtxCryptoKey(),iv);
+  cipher.setAAD(Buffer.from(purpose,'utf8'));
+  const ciphertext=Buffer.concat([cipher.update(JSON.stringify(obj),'utf8'),cipher.final()]);
+  return {
+    schema:'nd-modal-ltx-encrypted-v1',
+    purpose,
+    iv:iv.toString('base64'),
+    tag:cipher.getAuthTag().toString('base64'),
+    ciphertext:ciphertext.toString('base64')
+  };
+}
+
+function modalLtxDecrypt(blob){
+  if(!blob||blob.schema!=='nd-modal-ltx-encrypted-v1'||blob.purpose!=='modal-ltx-config') throw new Error('modal_ltx_encrypted_state_invalid');
+  const decipher=crypto.createDecipheriv('aes-256-gcm',modalLtxCryptoKey(),Buffer.from(blob.iv,'base64'));
+  decipher.setAAD(Buffer.from('modal-ltx-config','utf8'));
+  decipher.setAuthTag(Buffer.from(blob.tag,'base64'));
+  const raw=Buffer.concat([decipher.update(Buffer.from(blob.ciphertext,'base64')),decipher.final()]).toString('utf8');
+  return JSON.parse(raw);
+}
+
+function validateModalLtxConfig(input={}){
+  const generate_url=String(input.generate_url||'').trim();
+  const health_url=String(input.health_url||'').trim();
+  const proxy_key=String(input.proxy_key||'').trim();
+  const proxy_secret=String(input.proxy_secret||'').trim();
+  let gu,hu;
+  try{gu=new URL(generate_url);hu=new URL(health_url);}catch{throw new Error('modal_ltx_urls_invalid');}
+  if(gu.protocol!=='https:'||hu.protocol!=='https:'||!gu.hostname.endsWith('.modal.run')||!hu.hostname.endsWith('.modal.run')) throw new Error('modal_ltx_urls_must_be_modal_run_https');
+  if(!/^wk-[A-Za-z0-9_-]{8,}$/.test(proxy_key)) throw new Error('modal_ltx_proxy_key_invalid');
+  if(!/^ws-[A-Za-z0-9_-]{8,}$/.test(proxy_secret)) throw new Error('modal_ltx_proxy_secret_invalid');
+  return {generate_url,health_url,proxy_key,proxy_secret,updated_at:new Date().toISOString()};
+}
+
+async function modalLtxGithubRead(){
+  if(!LINEAR_GITHUB_PAT) throw new Error('modal_ltx_github_store_not_configured');
+  const url='https://api.github.com/repos/'+LINEAR_SECRET_REPO+'/contents/'+MODAL_LTX_STORE_PATH.split('/').map(encodeURIComponent).join('/')+'?ref=main';
+  const r=await fetch(url,{headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'ND-Modal-LTX-Store/1.0'}});
+  if(r.status===404) return null;
+  const raw=await r.text();
+  if(!r.ok) throw new Error('modal_ltx_store_read_http_'+r.status);
+  const obj=JSON.parse(raw||'{}');
+  const content=Buffer.from(String(obj.content||'').replace(/\n/g,''),'base64').toString('utf8');
+  return {sha:String(obj.sha||''),blob:JSON.parse(content)};
+}
+
+async function modalLtxConfigRead(){
+  if(modalLtxConfigCache) return modalLtxConfigCache;
+  const stored=await modalLtxGithubRead();
+  if(!stored?.blob) return null;
+  const cfg=modalLtxDecrypt(stored.blob);
+  modalLtxConfigCache=cfg;
+  return cfg;
+}
+
+async function modalLtxConfigWrite(input={}){
+  if(!LINEAR_GITHUB_PAT) throw new Error('modal_ltx_github_store_not_configured');
+  const cfg=validateModalLtxConfig(input);
+  const existing=await modalLtxGithubRead();
+  const encrypted=modalLtxEncrypt(cfg);
+  const body={
+    message:'runtime(ltx): persist encrypted Modal route credentials',
+    content:Buffer.from(JSON.stringify(encrypted,null,2)+'\n','utf8').toString('base64'),
+    branch:'main'
+  };
+  if(existing?.sha) body.sha=existing.sha;
+  const url='https://api.github.com/repos/'+LINEAR_SECRET_REPO+'/contents/'+MODAL_LTX_STORE_PATH.split('/').map(encodeURIComponent).join('/');
+  const r=await fetch(url,{method:'PUT',headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','content-type':'application/json','x-github-api-version':'2022-11-28','user-agent':'ND-Modal-LTX-Store/1.0'},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error('modal_ltx_store_write_http_'+r.status);
+  modalLtxConfigCache=cfg;
+  return {
+    configured:true,
+    generate_host:new URL(cfg.generate_url).hostname,
+    health_host:new URL(cfg.health_url).hostname,
+    proxy_key_prefix:cfg.proxy_key.slice(0,6),
+    updated_at:cfg.updated_at,
+    encrypted_store:LINEAR_SECRET_REPO+':'+MODAL_LTX_STORE_PATH
+  };
+}
+
 async function remoteKaggleOutputToDrive(args={}){
   const rawUrl=String(args.url||'').trim();
   const name=String(args.name||'').trim();
@@ -2822,6 +2912,36 @@ async function remoteKaggleOutputToDrive(args={}){
     if(declared>150*1024*1024) throw new Error('remote file exceeds 150 MB');
     const buf=Buffer.from(await res.arrayBuffer());
     if(buf.length>150*1024*1024) throw new Error('remote file exceeds 150 MB');
+    const created=await multipartCreate(name,mimeType,parentId,buf);
+    const rb=await metadata(created.id);
+    return {reused:false,created:true,file:rb};
+  });
+}
+
+async function localLtxBytesToDrive(name,mimeType,parentId,buf){
+  name=String(name||'').trim();
+  mimeType=String(mimeType||'application/octet-stream').trim();
+  parentId=String(parentId||'').trim();
+  if(!name||!parentId) throw new Error('name and parent_id required');
+  if(!['video/mp4','application/json'].includes(mimeType)) throw new Error('local mime type not allowed');
+  if(!Buffer.isBuffer(buf)||!buf.length) throw new Error('local output is empty');
+  if(buf.length>150*1024*1024) throw new Error('local output exceeds 150 MB');
+  return authContext.run({user:true},async()=>{
+    await requireMcpParent(parentId);
+    const escapedName=name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const escapedParent=parentId.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const q=new URLSearchParams({
+      q:"name = '"+escapedName+"' and '"+escapedParent+"' in parents and trashed = false",
+      pageSize:'10',
+      spaces:'drive',
+      fields:'files(id,name,mimeType,size,parents,webViewLink,modifiedTime)'
+    });
+    const existing=await gjson('https://www.googleapis.com/drive/v3/files?'+q.toString());
+    const found=(existing.files||[])[0]||null;
+    if(found){
+      const rb=await metadata(found.id);
+      return {reused:true,created:false,file:rb};
+    }
     const created=await multipartCreate(name,mimeType,parentId,buf);
     const rb=await metadata(created.id);
     return {reused:false,created:true,file:rb};
@@ -2864,6 +2984,48 @@ const server = http.createServer(async (req,res) => {
       return res.end(result.buffer);
     }catch(e){
       return json(res,502,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
+  if (req.url === '/internal/ltx/modal-config' && (req.method === 'GET' || req.method === 'POST')) {
+    if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
+    try{
+      if(req.method==='GET'){
+        const cfg=await modalLtxConfigRead();
+        if(!cfg) return json(res,404,{ok:false,error:'modal_ltx_not_configured'});
+        return json(res,200,{ok:true,result:cfg});
+      }
+      const chunks=[]; let total=0;
+      for await(const ch of req){
+        total+=ch.length;
+        if(total>64*1024) return json(res,413,{ok:false,error:'config_too_large'});
+        chunks.push(ch);
+      }
+      let body={};
+      try{body=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+      catch{return json(res,400,{ok:false,error:'invalid_json'});}
+      const result=await modalLtxConfigWrite(body);
+      return json(res,200,{ok:true,result});
+    }catch(e){
+      return json(res,502,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
+  if (req.method === 'POST' && req.url === '/internal/ltx/import-bytes') {
+    if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
+    const name=decodeURIComponent(String(req.headers['x-nd-name']||'')).replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,120);
+    const parentId=String(req.headers['x-nd-parent-id']||'').trim();
+    const mimeType=String(req.headers['content-type']||'application/octet-stream').split(';',1)[0].trim();
+    if(!name||!parentId) return json(res,400,{ok:false,error:'name_and_parent_required'});
+    const chunks=[]; let total=0;
+    for await(const ch of req){
+      total+=ch.length;
+      if(total>150*1024*1024) return json(res,413,{ok:false,error:'output_too_large'});
+      chunks.push(ch);
+    }
+    try{
+      const result=await localLtxBytesToDrive(name,mimeType,parentId,Buffer.concat(chunks));
+      return json(res,200,{ok:true,result});
+    }catch(e){
+      return json(res,502,{ok:false,error:String(e?.message||e).slice(0,1200)});
     }
   }
   if (req.method === 'POST' && req.url === '/internal/kaggle-ltx/import-output') {
