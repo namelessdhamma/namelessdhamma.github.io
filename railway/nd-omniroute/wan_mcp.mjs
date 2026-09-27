@@ -1678,6 +1678,103 @@ async function ltxKaggle2bImportProbeStatus(args={}){
   };
 }
 
+async function ltxKaggle2bImportProbe(){
+  const preflight=await kaggleLtxIdentity();
+  const slug='nd-ltx2b-import-probe-fixed';
+  const marker='ND_LTX2B_IMPORT_JSON=';
+  const commit='2345ae148f82740f66e82c41292dbbdd592e713d';
+  const child=[
+    "import importlib.metadata as im,json,platform,time",
+    "def mark(x): print('ND_LTX2B_IMPORT_STAGE='+x,flush=True)",
+    "mark('torch_begin'); import torch; mark('torch_done')",
+    "mark('accelerate_begin'); from accelerate import init_empty_weights; mark('accelerate_done')",
+    "mark('safetensors2_begin'); from mmgp import safetensors2; mark('safetensors2_done')",
+    "mark('quanto_begin'); import optimum.quanto; mark('quanto_done')",
+    "mark('quant_router_begin'); from mmgp import quant_router; mark('quant_router_done')",
+    "mark('transformers_modeling_utils_begin'); import transformers.modeling_utils; mark('transformers_modeling_utils_done')",
+    "mark('offload_begin'); from mmgp import offload, profile_type; mark('offload_done')",
+    "out={'ok':True,'python':platform.python_version(),'torch':im.version('torch'),'mmgp':im.version('mmgp'),'transformers':im.version('transformers'),'optimum_quanto':im.version('optimum-quanto')}",
+    "print('"+marker+"'+json.dumps(out,separators=(',',':'),sort_keys=True),flush=True)"
+  ].join('\n');
+  const childB64=Buffer.from(child,'utf8').toString('base64');
+  const script=[
+    "from pathlib import Path",
+    "import base64,os,subprocess,sys",
+    "ROOT=Path('/kaggle/working/Wan2GP')",
+    "COMMIT='"+commit+"'",
+    "def run(cmd,timeout):",
+    "    env={**os.environ,'PIP_NO_CACHE_DIR':'1','HF_HUB_DISABLE_XET':'1','HF_HOME':'/kaggle/working/hf-cache'}",
+    "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env=env)",
+    "    if p.returncode!=0:",
+    "        print('ND_LTX2B_IMPORT_CMD_FAIL '+str(cmd)+'\\n'+p.stdout[-12000:],flush=True); raise RuntimeError('command failed: '+str(cmd))",
+    "    return p.stdout",
+    "print('ND_LTX2B_IMPORT_STAGE=clone_begin',flush=True)",
+    "run(['git','clone','--filter=blob:none','https://github.com/deepbeepmeep/Wan2GP.git',str(ROOT)],240)",
+    "run(['git','-C',str(ROOT),'checkout',COMMIT],90)",
+    "print('ND_LTX2B_IMPORT_STAGE=clone_done',flush=True)",
+    "print('ND_LTX2B_IMPORT_STAGE=pip_begin',flush=True)",
+    "run([sys.executable,'-m','pip','install','--no-cache-dir','-q','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],1200)",
+    "print('ND_LTX2B_IMPORT_STAGE=pip_done',flush=True)",
+    "code=base64.b64decode('"+childB64+"').decode('utf-8')",
+    "env={**os.environ,'PYTHONPATH':str(ROOT)}",
+    "print('ND_LTX2B_IMPORT_STAGE=child_begin',flush=True)",
+    "p=subprocess.run([sys.executable,'-c',code],cwd=str(ROOT),env=env)",
+    "print('ND_LTX2B_IMPORT_STAGE=child_rc_'+str(p.returncode),flush=True)",
+    "if p.returncode!=0: raise SystemExit(p.returncode)"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+slug,
+    newTitle:'ND LTX2B Import Probe',
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    modelDataSources:[],
+    isPrivate:true,
+    enableGpu:false,
+    enableTpu:false,
+    enableInternet:true,
+    kernelExecutionType:'SaveAndRunAll',
+    sessionTimeoutSeconds:1800
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('LTX2B import probe submit failed '+JSON.stringify({error:save?.error||null}));
+  return {ok:true,state:'SUBMITTED',request_id:'ltx2b-import-v'+version,provider_ref:preflight.username+'/'+slug+'/'+version};
+}
+
+async function ltxKaggle2bImportStatus(args={}){
+  const {username}=await kaggleLtxIdentity();
+  const slug='nd-ltx2b-import-probe-fixed';
+  const m=String(args.request_id||'').trim().match(/^ltx2b-import-v(\d+)$/i);
+  if(!m) throw new Error('valid ltx2b-import-vN request_id required');
+  const version=Number(m[1]);
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
+  const state=kaggleState(st?.status);
+  let output=null;
+  if(['RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,pageSize:100});
+      output={
+        receipt:extractKaggleMarker(out?.log||'','ND_LTX2B_IMPORT_JSON='),
+        files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+        log_tail:String(out?.log||'').slice(-18000)
+      };
+    }catch(e){output={error:errorText(e)};}
+  }
+  return {
+    ok:state==='COMPLETED'&&!!output?.receipt,
+    request_id:'ltx2b-import-v'+version,
+    state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:username+'/'+slug+'/'+version,
+    output
+  };
+}
+
 async function ltxKaggle2bLoadProbe(){
   const preflight=await kaggleLtxIdentity();
   const token='fixed';
@@ -2367,6 +2464,9 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='probe-2b-import') return ltxKaggle2bImportProbe();
   const import2bStatus=compat.match(/^probe-2b-import-status:(ltx2b-import-v\d+)$/i);
   if(import2bStatus) return ltxKaggle2bImportProbeStatus({request_id:import2bStatus[1]});
+  if(compat==='probe-2b-import') return ltxKaggle2bImportProbe();
+  const import2bStatus=compat.match(/^probe-2b-import-status:(ltx2b-import-v\d+)$/i);
+  if(import2bStatus) return ltxKaggle2bImportStatus({request_id:import2bStatus[1]});
   if(compat==='probe-2b-load') return ltxKaggle2bLoadProbe();
   const load2bStatus=compat.match(/^probe-2b-status:(ltx2b-load-v\d+)$/i);
   if(load2bStatus) return ltxKaggle2bFixedStatus({request_id:load2bStatus[1]});
