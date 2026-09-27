@@ -352,16 +352,18 @@ def main() -> None:
     sys.path.insert(0, str(ROOT))
     os.chdir(ROOT)
     print("ND_LTX2B_STAGE=import_wan2gp_begin", flush=True)
-    from mmgp import offload, profile_type
-    print("ND_LTX2B_STAGE=import_mmgp_done", flush=True)
-    from shared.attention import attention_config_shared_state
-    print("ND_LTX2B_STAGE=import_attention_done", flush=True)
     from shared.utils import files_locator as fl
     print("ND_LTX2B_STAGE=import_files_locator_done", flush=True)
     fl.set_checkpoints_paths([str(CK)])
     print("ND_LTX2B_STAGE=import_ltxv_begin", flush=True)
-    from models.ltx_video.ltxv import LTXV
+    from models.ltx_video import ltxv as ltxv_module
+    LTXV = ltxv_module.LTXV
+    offload = ltxv_module.offload
     print("ND_LTX2B_STAGE=import_ltxv_done", flush=True)
+    from mmgp import profile_type
+    print("ND_LTX2B_STAGE=import_mmgp_done", flush=True)
+    from shared.attention import attention_config_shared_state
+    print("ND_LTX2B_STAGE=import_attention_done", flush=True)
     print("ND_LTX2B_STAGE=import_wan2gp_done", flush=True)
 
     print("ND_LTX2B_STAGE=instantiate", flush=True)
