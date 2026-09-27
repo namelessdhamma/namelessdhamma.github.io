@@ -18,6 +18,7 @@ const LIGHTPANDA_API='https://euwest.cloud.lightpanda.io/api/fetch';
 const LIGHTPANDA_CDP_URL='wss://euwest.cloud.lightpanda.io/ws?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
 const LIGHTPANDA_MCP_SSE='https://euwest.cloud.lightpanda.io/mcp/sse?token='+encodeURIComponent(LIGHTPANDA_TOKEN);
 const LIGHTPANDA_VK_STATE_FILE=String(process.env.ND_LIGHTPANDA_VK_STATE_FILE||'/memos-data/lightpanda-vk-storage-state.json').trim();
+const LIGHTPANDA_VK_QR_TOKEN=String(process.env.ND_LIGHTPANDA_VK_QR_TOKEN||'').trim();
 let lpUpstream={reader:null,postUrl:'',pending:new Map(),connecting:null,ready:false,seq:1000,lastError:''};
 const ND_CLOUDFLARE_MUX_CODE_REV='cloudflare-browser-run-cdp-v1-20260920';
 const CLOUDFLARE_ACCOUNT_ID=String(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
@@ -1018,6 +1019,20 @@ const muxServer=http.createServer(async(req,res)=>{
       res.end(raw);return;
     }
 
+
+    if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-qr/'+LIGHTPANDA_VK_QR_TOKEN){
+      if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
+      try{
+        const st=await ensureLpCdp();
+        const qr=st.page.locator('svg.vkc__QRCode-module__image').first();
+        if(!await qr.count())return j(res,404,{ok:false,error:'qr_not_ready'});
+        const png=await qr.screenshot({type:'png',timeout:10000});
+        res.writeHead(200,{'content-type':'image/png','content-length':String(png.length),'cache-control':'no-store, max-age=0','x-content-type-options':'nosniff'});
+        res.end(png);return;
+      }catch(e){
+        return j(res,503,{ok:false,error:String(e?.message||e||'qr_error').slice(0,1200)});
+      }
+    }
 
     if(path==='/lightpanda/diagnostic'){
       try{
