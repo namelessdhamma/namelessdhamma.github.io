@@ -16,6 +16,7 @@ VK_VIDEO_MUTATIONS=set()
 VK_ID_CLIENT_ID='54776731'
 VK_ID_REDIRECT='https://nd-qstash-control-v2-production.up.railway.app/vk/oauth/callback'
 VK_OAUTH_PENDING={}
+VK_OAUTH_FILE='/data/vk-video-oauth.json'
 
 LAUNCHER=os.environ.get('ND_VK_V19_PINNED_FRONT_LAUNCHER','')
 if not LAUNCHER:
@@ -83,6 +84,130 @@ def vk_api_call(method,params=None,timeout=60):
         err=obj.get('error') or {}
         raise RuntimeError('vk_api_%s:%s'%(err.get('error_code'),clean(err.get('error_msg'))))
     return obj.get('response')
+
+
+def vk_oauth_load():
+    try:
+        with open(VK_OAUTH_FILE,'r',encoding='utf-8') as f:
+            obj=json.load(f)
+        return obj if isinstance(obj,dict) else None
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        raise RuntimeError('vk_oauth_load:'+clean(e))
+
+def vk_oauth_store(tok,device_id):
+    if not isinstance(tok,dict):
+        raise RuntimeError('vk_oauth_invalid_bundle')
+    access=str(tok.get('access_token') or '')
+    refresh=str(tok.get('refresh_token') or '')
+    if not access or not refresh or not device_id:
+        raise RuntimeError('vk_oauth_incomplete_bundle')
+    now=int(time.time())
+    bundle={
+      'client_id':VK_ID_CLIENT_ID,
+      'device_id':str(device_id),
+      'access_token':access,
+      'refresh_token':refresh,
+      'token_type':tok.get('token_type'),
+      'scope':tok.get('scope'),
+      'user_id':tok.get('user_id'),
+      'obtained_at':now,
+      'expires_at':now+max(60,int(tok.get('expires_in') or 3600)),
+    }
+    os.makedirs(os.path.dirname(VK_OAUTH_FILE),exist_ok=True)
+    tmp=VK_OAUTH_FILE+'.tmp'
+    with open(tmp,'w',encoding='utf-8') as f:
+        json.dump(bundle,f,ensure_ascii=False,separators=(',',':'))
+        f.flush(); os.fsync(f.fileno())
+    os.chmod(tmp,0o600)
+    os.replace(tmp,VK_OAUTH_FILE)
+    try: os.chmod(VK_OAUTH_FILE,0o600)
+    except Exception: pass
+    return bundle
+
+def vk_oauth_refresh(bundle):
+    refresh=str((bundle or {}).get('refresh_token') or '')
+    device=str((bundle or {}).get('device_id') or '')
+    if not refresh or not device:
+        raise RuntimeError('vk_oauth_refresh_missing_state')
+    state=secrets.token_urlsafe(32)
+    form={
+      'grant_type':'refresh_token',
+      'refresh_token':refresh,
+      'client_id':VK_ID_CLIENT_ID,
+      'device_id':device,
+      'state':state,
+    }
+    req=urllib.request.Request(
+      'https://id.vk.ru/oauth2/auth',
+      data=urllib.parse.urlencode(form).encode('utf-8'),
+      headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'ND-VK-VIDEO-MCP/1.0'},
+      method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req,timeout=30) as r:
+            tok=json.loads(r.read().decode('utf-8','replace') or '{}')
+    except HTTPError as e:
+        raw=e.read().decode('utf-8','replace')
+        raise RuntimeError('vk_oauth_refresh_http_%s:%s'%(e.code,clean(raw or e.reason)))
+    if tok.get('error'):
+        raise RuntimeError('vk_oauth_refresh:'+clean(tok.get('error_description') or tok.get('error')))
+    if str(tok.get('state') or state)!=state:
+        raise RuntimeError('vk_oauth_refresh_state_mismatch')
+    return vk_oauth_store(tok,device)
+
+def vk_video_user_token(force_refresh=False):
+    bundle=vk_oauth_load()
+    if not bundle:
+        raise RuntimeError('vk_user_oauth_required')
+    now=int(time.time())
+    if not force_refresh and bundle.get('access_token') and int(bundle.get('expires_at') or 0)>now+120:
+        return str(bundle['access_token']),bundle
+    bundle=vk_oauth_refresh(bundle)
+    return str(bundle['access_token']),bundle
+
+def vk_api_call_with_token(method,params,token,timeout=60):
+    form=dict(params or {})
+    form['access_token']=token
+    form['v']=VK_VERSION
+    req=urllib.request.Request(
+        'https://api.vk.com/method/'+str(method).strip(),
+        data=urllib.parse.urlencode({k:str(v) for k,v in form.items() if v is not None}).encode('utf-8'),
+        headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'ND-VK-VIDEO-MCP/1.0'},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req,timeout=timeout) as r:
+            obj=json.loads(r.read().decode('utf-8','replace') or '{}')
+    except Exception as e:
+        raise RuntimeError('vk_transport:'+clean(e))
+    return obj
+
+def vk_video_user_api(method,params=None,timeout=60):
+    token,_=vk_video_user_token(False)
+    obj=vk_api_call_with_token(method,params or {},token,timeout)
+    err=obj.get('error') if isinstance(obj,dict) else None
+    if isinstance(err,dict) and int(err.get('error_code') or 0)==5:
+        token,_=vk_video_user_token(True)
+        obj=vk_api_call_with_token(method,params or {},token,timeout)
+        err=obj.get('error') if isinstance(obj,dict) else None
+    if err:
+        raise RuntimeError('vk_api_%s:%s'%(err.get('error_code'),clean(err.get('error_msg'))))
+    return obj.get('response')
+
+def vk_oauth_status():
+    b=vk_oauth_load()
+    if not b:
+        return {'stored':False}
+    return {
+      'stored':True,
+      'client_id':b.get('client_id'),
+      'user_id':b.get('user_id'),
+      'scope':b.get('scope'),
+      'expires_at':b.get('expires_at'),
+      'refresh_token_present':bool(b.get('refresh_token')),
+    }
 
 def vk_video_group():
     obj=vk_api_call('groups.getById',{'group_id':VK_SCREEN,'fields':'name,screen_name,members_count'})
@@ -170,16 +295,16 @@ def vk_video_call(name,a):
     if name=='vk_video_status':
         count=max(1,min(100,int(a.get('count') or 20)))
         videos=vk_api_call('video.get',{'owner_id':owner,'count':count,'offset':0}) or {}
-        return {'ok':True,'provider':'vk','route':'direct_api','api_version':VK_VERSION,'group':g,'videos':videos,'outcome':'READ_PASS'}
+        return {'ok':True,'provider':'vk','route':'direct_api','api_version':VK_VERSION,'group':g,'oauth':vk_oauth_status(),'videos':videos,'outcome':'READ_PASS'}
     if name=='vk_video_auth_probe':
         mid=vk_video_guard(a.get('mutation_id'),a.get('confirm'))
-        saved=vk_api_call('video.save',{'group_id':int(g['id']),'name':'ND direct VK Video auth probe','description':'Temporary authorization probe; no bytes uploaded.','wallpost':0})
+        saved=vk_video_user_api('video.save',{'group_id':int(g['id']),'name':'ND direct VK Video auth probe','description':'Temporary authorization probe; no bytes uploaded.','wallpost':0})
         cleanup={'attempted':False}
         vid=int((saved or {}).get('video_id') or 0); own=int((saved or {}).get('owner_id') or owner)
         if vid>0:
             cleanup['attempted']=True
             try:
-                cleanup['response']=vk_api_call('video.delete',{'video_id':vid,'owner_id':own,'target_id':owner})
+                cleanup['response']=vk_video_user_api('video.delete',{'video_id':vid,'owner_id':own,'target_id':owner})
                 cleanup['ok']=True
             except Exception as e:
                 cleanup['ok']=False; cleanup['error']=clean(e)
@@ -195,7 +320,7 @@ def vk_video_call(name,a):
             raise RuntimeError('description_too_long')
         if not file_url.startswith('https://'):
             raise RuntimeError('file_url_must_be_https')
-        saved=vk_api_call('video.save',{'group_id':int(g['id']),'name':title,'description':desc,'wallpost':1 if a.get('wallpost') is True else 0})
+        saved=vk_video_user_api('video.save',{'group_id':int(g['id']),'name':title,'description':desc,'wallpost':1 if a.get('wallpost') is True else 0})
         up=(saved or {}).get('upload_url')
         if not up:
             raise RuntimeError('vk_upload_url_missing')
@@ -223,7 +348,7 @@ def vk_video_call(name,a):
         own=int(a.get('owner_id')); vid=int(a.get('video_id'))
         if own!=owner:
             raise RuntimeError('owner_not_configured_community')
-        res=vk_api_call('video.delete',{'video_id':vid,'owner_id':own,'target_id':owner})
+        res=vk_video_user_api('video.delete',{'video_id':vid,'owner_id':own,'target_id':owner})
         rb=vk_api_call('video.get',{'videos':'%s_%s'%(own,vid),'extended':0}) or {}
         return {'ok':True,'mutation_id':mid,'owner_id':own,'video_id':vid,'response':res,'readback':rb,'outcome':'CONFIRMED_APPLIED'}
     raise RuntimeError('unknown_vk_video_tool')
@@ -465,7 +590,8 @@ class H(BaseHTTPRequestHandler):
                         cleanup=json.loads(qr.read().decode('utf-8','replace') or '{}')
                 except Exception as ce:
                     cleanup={'error':clean(ce)}
-            self.send_json(200,{'ok':True,'stage':'complete','app_id':VK_ID_CLIENT_ID,'scope':tok.get('scope'),'video_save':{'owner_id':own,'video_id':vid,'upload_url_present':bool(saved.get('upload_url'))},'cleanup':cleanup,'refresh_token_present':bool(tok.get('refresh_token')),'token_persisted':False})
+            persisted=vk_oauth_store(tok,device)
+            self.send_json(200,{'ok':True,'stage':'complete','app_id':VK_ID_CLIENT_ID,'scope':tok.get('scope'),'video_save':{'owner_id':own,'video_id':vid,'upload_url_present':bool(saved.get('upload_url'))},'cleanup':cleanup,'refresh_token_present':bool(tok.get('refresh_token')),'token_persisted':True,'oauth':{'user_id':persisted.get('user_id'),'expires_at':persisted.get('expires_at')}})
         finally:
             access=''; tok={}
     def do_GET(self):
@@ -477,7 +603,7 @@ class H(BaseHTTPRequestHandler):
         if _p=='/nd/vk-video/health':
             try:
                 g=vk_video_group()
-                self.send_json(200,{'ok':True,'service':'nd-vk-video-direct-mcp','version':'1.0.0','configured':bool(VK_TOKEN and VK_VIDEO_PATH_TOKEN),'group':g,'browser_required':False,'make_required':False})
+                self.send_json(200,{'ok':True,'service':'nd-vk-video-direct-mcp','version':'1.1.0','configured':bool(VK_TOKEN and VK_VIDEO_PATH_TOKEN),'group':g,'oauth':vk_oauth_status(),'browser_required':False,'make_required':False})
             except Exception as e:
                 self.send_json(503,{'ok':False,'service':'nd-vk-video-direct-mcp','error':clean(e)})
             return
