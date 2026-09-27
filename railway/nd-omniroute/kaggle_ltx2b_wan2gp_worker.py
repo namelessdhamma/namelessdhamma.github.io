@@ -252,10 +252,6 @@ def main() -> None:
         raise SystemExit("usage: kaggle_ltx2b_wan2gp_worker.py request.json")
     request = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 
-    import torch
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA GPU required for LTX 2B generation")
-
     width = align32(int(request.get("width") or 512))
     height = align32(int(request.get("height") or 288))
     if width * height > 768 * 448:
@@ -274,6 +270,10 @@ def main() -> None:
     materialize_image(request, "end", end_path)
 
     model, te, cfg = prepare_runtime()
+
+    import torch
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA GPU required for LTX 2B generation")
 
     sys.path.insert(0, str(ROOT))
     os.chdir(ROOT)
