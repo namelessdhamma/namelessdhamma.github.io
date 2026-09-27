@@ -659,7 +659,6 @@ async function ltxKaggleWan2gpSubmit(args={}){
   const version=Number(save?.versionNumber||save?.version_number||0);
   if(!version||save?.error) throw new Error('Kaggle LTX23 submit failed '+JSON.stringify({error:save?.error||null}));
   const requestId='kltx-'+jobRef.token+'-v'+version;
-  setTimeout(()=>ltxKaggleAutoFinalize(requestId).catch(e=>console.error(JSON.stringify({event:'ND_LTX23_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:'ERROR',error:errorText(e)}))),10000);
   return {
     ok:true,state:'SUBMITTED',request_id:requestId,
     provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
@@ -2259,7 +2258,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback'},
+          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
