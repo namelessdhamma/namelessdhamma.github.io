@@ -584,7 +584,13 @@ async function ensureLpCdp(){
     const browser=await lpStage("connectOverCDP",chromium.connectOverCDP(LIGHTPANDA_CDP_URL,{timeout:9000}),10000);
     browser.on("disconnected",()=>{lpCdp.browser=null;lpCdp.context=null;lpCdp.page=null;lpCdp.connecting=null;lpCdp.stage="disconnected";});
     const savedState=lpReadVkState();
-    const context=await lpStage("newContext",browser.newContext(savedState?{storageState:savedState}:{}),10000);
+    const contextOpts={
+      userAgent:"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+      viewport:{width:1365,height:900},
+      locale:"ru-RU",
+      ...(savedState?{storageState:savedState}:{})
+    };
+    const context=await lpStage("newContext",browser.newContext(contextOpts),10000);
     const page=await lpStage("newPage",context.newPage(),10000);
     lpCdp.browser=browser;lpCdp.context=context;lpCdp.page=page;lpCdp.lastError="";lpCdp.connecting=null;lpCdp.stage="ready";
     lpCdpTouch();
