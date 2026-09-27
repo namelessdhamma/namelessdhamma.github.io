@@ -3,7 +3,7 @@ import { URL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { chromium } from 'playwright-core';
 const PORT=Number(process.env.PORT||5678);
-const ND_YOUTUBE_MUX_CODE_REV='youtube-vk-mirror-v1-20260927';
+const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v3-20260916';
 const ND_YANDEX_MUX_CODE_REV='yandex-delete-v3-20260919';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 const ROUTE=String(process.env.ND_YANDEX_MCP_ROUTE_TOKEN||'').trim();
@@ -177,9 +177,6 @@ const YT_CLIENT_SECRET=String(process.env.ND_YOUTUBE_CLIENT_SECRET||"").trim();
 const YT_REFRESH_TOKEN=String(process.env.ND_YOUTUBE_REFRESH_TOKEN||"").trim();
 const YT_WRITES=/^(1|true|yes|on)$/i.test(String(process.env.ND_SOCIAL_WRITES_ENABLED||"true"));
 const YT_GITHUB_PAT=String(process.env.ND_GITHUB_PAT||"").trim();
-const YT_VK_MIRROR_ENABLED=/^(1|true|yes|on)$/i.test(String(process.env.ND_YOUTUBE_VK_MIRROR_ENABLED||"false"));
-const YT_VK_MIRROR_WEBHOOK=String(process.env.ND_YOUTUBE_VK_MIRROR_WEBHOOK||"").trim();
-const YT_VK_GROUP_ID=Number(process.env.ND_YOUTUBE_VK_GROUP_ID||"228330620");
 const YOUTUBE_MCP_PATH=YT_PATH_TOKEN?"/nd/youtube/mcp/"+YT_PATH_TOKEN:"";
 
 function j(res,status,obj){
@@ -189,7 +186,7 @@ function j(res,status,obj){
 }
 function cleanErr(e){
   let s=String(e?.message||e||"error");
-  for(const v of [YT_CLIENT_ID,YT_CLIENT_SECRET,YT_REFRESH_TOKEN,YT_PATH_TOKEN,YT_GITHUB_PAT,YT_VK_MIRROR_WEBHOOK]) if(v)s=s.split(v).join("[REDACTED]");
+  for(const v of [YT_CLIENT_ID,YT_CLIENT_SECRET,YT_REFRESH_TOKEN,YT_PATH_TOKEN,YT_GITHUB_PAT]) if(v)s=s.split(v).join("[REDACTED]");
   return s.slice(0,1800);
 }
 async function accessToken(){
@@ -222,31 +219,6 @@ async function video(id){
   const o=await yapi("GET","videos",{part:"id,snippet,status,statistics,contentDetails",id});
   const item=o.items?.[0]; if(!item)throw new Error("youtube_video_not_found"); return item;
 }
-async function mirrorSourceToVk(a,youtubeVideoId=""){
-  if(!YT_VK_MIRROR_ENABLED)return {ok:false,state:"DISABLED"};
-  if(!YT_VK_MIRROR_WEBHOOK||!Number.isFinite(YT_VK_GROUP_ID)||!YT_VK_GROUP_ID)return {ok:false,state:"NOT_CONFIGURED"};
-  const mediaUrl=String(a.media_url||"").trim();
-  if(!mediaUrl)throw new Error("vk_mirror_media_url_required");
-  const payload={
-    group_id:YT_VK_GROUP_ID,
-    title:String(a.title||"").slice(0,128),
-    description:String(a.description||""),
-    file_url:mediaUrl,
-    youtube_video_id:String(youtubeVideoId||"")
-  };
-  const r=await fetch(YT_VK_MIRROR_WEBHOOK,{
-    method:"POST",
-    headers:{"content-type":"application/json; charset=utf-8","accept":"application/json"},
-    body:JSON.stringify(payload)
-  });
-  const t=await r.text();
-  let d={}; try{d=t?JSON.parse(t):{};}catch{d={raw:t.slice(0,800)};}
-  if(!r.ok)throw new Error("vk_mirror_http_"+r.status+":"+JSON.stringify(d).slice(0,900));
-  const videoId=d.video_id??d.videoId??null;
-  const videoUrl=d.video_url??d.videoUrl??null;
-  if(!videoId&&!videoUrl)throw new Error("vk_mirror_readback_missing:"+JSON.stringify(d).slice(0,900));
-  return {ok:true,state:"MIRRORED",owner_id:d.owner_id??null,video_id:videoId,video_url:videoUrl};
-}
 async function uploadFromUrl(a){
   if(!YT_WRITES)throw new Error("youtube_writes_disabled");
   const src=await fetch(String(a.media_url||"")); if(!src.ok)throw new Error("media_fetch_http_"+src.status);
@@ -255,8 +227,7 @@ async function uploadFromUrl(a){
   const token=await accessToken();
   const snippet={title:String(a.title||""),description:String(a.description||""),categoryId:String(a.category_id||"22")};
   if(Array.isArray(a.tags)&&a.tags.length)snippet.tags=a.tags.map(String);
-  const requestedPrivacy=String(a.privacy_status||"private");
-  const status={privacyStatus:requestedPrivacy,selfDeclaredMadeForKids:Boolean(a.made_for_kids)};
+  const status={privacyStatus:String(a.privacy_status||"private"),selfDeclaredMadeForKids:Boolean(a.made_for_kids)};
   if(a.publish_at){status.privacyStatus="private";status.publishAt=String(a.publish_at);}
   const init=await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",{
     method:"POST",
@@ -267,17 +238,7 @@ async function uploadFromUrl(a){
   const loc=init.headers.get("location"); if(!loc)throw new Error("youtube_upload_session_missing");
   const put=await fetch(loc,{method:"PUT",headers:{authorization:"Bearer "+token,"content-type":ctype,"content-length":len},body:src.body,duplex:"half"});
   const out=await put.text(); if(!put.ok)throw new Error("youtube_upload_"+put.status+":"+out.slice(0,1200));
-  const youtube=JSON.parse(out||"{}");
-  let mirror={ok:false,state:"SKIPPED",reason:"not_public_immediate_upload"};
-  if(YT_VK_MIRROR_ENABLED&&a.mirror_vk!==false&&!a.publish_at&&requestedPrivacy==="public"){
-    try{mirror=await mirrorSourceToVk(a,youtube.id||"");}
-    catch(e){mirror={ok:false,state:"FAILED",error:cleanErr(e)};}
-  }else if(a.mirror_vk===false){
-    mirror={ok:false,state:"SKIPPED",reason:"mirror_vk_disabled_for_request"};
-  }else if(!YT_VK_MIRROR_ENABLED){
-    mirror={ok:false,state:"DISABLED"};
-  }
-  return {...youtube,nd_vk_mirror:mirror};
+  return JSON.parse(out||"{}");
 }
 async function thumbnail(a){
   if(!YT_WRITES)throw new Error("youtube_writes_disabled");
@@ -293,8 +254,7 @@ const YT_TOOLS=[
   ["youtube_get_video","Read metadata, status and statistics for one video",{video_id:{type:"string"}}],
   ["youtube_update_video","Update title, description, tags, category, privacy, schedule or made-for-kids status",{video_id:{type:"string"},title:{type:"string"},description:{type:"string"},tags:{type:"array",items:{type:"string"}},category_id:{type:"string"},privacy_status:{type:"string"},publish_at:{type:"string"},made_for_kids:{type:"boolean"}}],
   ["youtube_delete_video","Permanently delete a video; confirm=true required",{video_id:{type:"string"},confirm:{type:"boolean"}}],
-  ["youtube_upload_video_from_url","Upload a video from an HTTP(S) URL and automatically mirror immediate public uploads to VK Video unless mirror_vk=false",{media_url:{type:"string"},title:{type:"string"},description:{type:"string"},privacy_status:{type:"string"},tags:{type:"array",items:{type:"string"}},category_id:{type:"string"},publish_at:{type:"string"},made_for_kids:{type:"boolean"},mirror_vk:{type:"boolean"}}],
-  ["youtube_mirror_source_to_vk","Mirror an original source video URL to the configured ND VK Video community without re-uploading to YouTube",{media_url:{type:"string"},title:{type:"string"},description:{type:"string"},youtube_video_id:{type:"string"}}],
+  ["youtube_upload_video_from_url","Upload a video from an HTTP(S) URL",{media_url:{type:"string"},title:{type:"string"},description:{type:"string"},privacy_status:{type:"string"},tags:{type:"array",items:{type:"string"}},category_id:{type:"string"},publish_at:{type:"string"},made_for_kids:{type:"boolean"}}],
   ["youtube_set_thumbnail","Set a custom thumbnail from an HTTP(S) URL",{video_id:{type:"string"},image_url:{type:"string"}}],
   ["youtube_list_comments","List comment threads for a video",{video_id:{type:"string"},max_results:{type:"integer"},page_token:{type:"string"}}],
   ["youtube_create_comment","Create a top-level comment",{video_id:{type:"string"},text:{type:"string"}}],
@@ -316,7 +276,6 @@ async function ytCallTool(name,a={}){
   if(name==="youtube_update_video"){if(!YT_WRITES)throw new Error("youtube_writes_disabled");const id=String(a.video_id||""),x=await video(id),sn={...(x.snippet||{})},st={...(x.status||{})};if(a.title!==undefined)sn.title=String(a.title);if(a.description!==undefined)sn.description=String(a.description);if(a.tags!==undefined)sn.tags=(a.tags||[]).map(String);if(a.category_id)sn.categoryId=String(a.category_id);if(a.privacy_status)st.privacyStatus=String(a.privacy_status);if(a.publish_at){st.publishAt=String(a.publish_at);st.privacyStatus="private";}if(a.made_for_kids!==undefined)st.selfDeclaredMadeForKids=Boolean(a.made_for_kids);return {ok:true,result:await yapi("PUT","videos",{part:"snippet,status"},{id,snippet:sn,status:st})};}
   if(name==="youtube_delete_video"){if(!YT_WRITES)throw new Error("youtube_writes_disabled");if(a.confirm!==true)throw new Error("confirm_required");return {ok:true,result:await yapi("DELETE","videos",{id:String(a.video_id||"")})};}
   if(name==="youtube_upload_video_from_url")return {ok:true,result:await uploadFromUrl(a)};
-  if(name==="youtube_mirror_source_to_vk"){if(!YT_WRITES)throw new Error("youtube_writes_disabled");return {ok:true,result:await mirrorSourceToVk(a,String(a.youtube_video_id||""))};}
   if(name==="youtube_set_thumbnail")return {ok:true,result:await thumbnail(a)};
   if(name==="youtube_list_comments")return {ok:true,result:await yapi("GET","commentThreads",{part:"id,snippet,replies",videoId:String(a.video_id||""),maxResults:Math.max(1,Math.min(Number(a.max_results||50),100)),textFormat:"plainText",...(a.page_token?{pageToken:a.page_token}:{})})};
   if(name==="youtube_create_comment"){if(!YT_WRITES)throw new Error("youtube_writes_disabled");return {ok:true,result:await yapi("POST","commentThreads",{part:"snippet"},{snippet:{videoId:String(a.video_id||""),topLevelComment:{snippet:{textOriginal:String(a.text||"")}}}})};}
@@ -986,7 +945,7 @@ const muxServer=http.createServer(async(req,res)=>{
         status:'ok',
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
-        youtube:{configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),writes:YT_WRITES,tools:YT_TOOLS.length,vk_mirror:{enabled:YT_VK_MIRROR_ENABLED,configured:Boolean(YT_VK_MIRROR_WEBHOOK&&YT_VK_GROUP_ID)}},
+        youtube:{configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),writes:YT_WRITES,tools:YT_TOOLS.length},
         telegram:{configured:Boolean(TG_TOKEN&&TG_CHANNEL&&TG_PATH_TOKEN),writes:TG_WRITES,tools:TG_TOOLS.length,code_rev:ND_TELEGRAM_MUX_CODE_REV},
         lightpanda:{configured:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_stage:lpCdp.stage,cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:String(lpCdp.lastError||"").slice(0,300)},
         cloudflare_browser:{configured:Boolean(CLOUDFLARE_ACCOUNT_ID&&CLOUDFLARE_API_TOKEN&&CLOUDFLARE_PATH_TOKEN),tools:CF_TOOLS.length,code_rev:ND_CLOUDFLARE_MUX_CODE_REV,cdp_stage:cfCdp.stage,cdp_active:Boolean(cfCdp.browser&&cfCdp.page),cdp_last_error:String(cfCdp.lastError||"").slice(0,300)}
@@ -1106,8 +1065,6 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   youtube_configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),
   youtube_writes:YT_WRITES,
   youtube_tools:YT_TOOLS.length,
-  youtube_vk_mirror_enabled:YT_VK_MIRROR_ENABLED,
-  youtube_vk_mirror_configured:Boolean(YT_VK_MIRROR_WEBHOOK&&YT_VK_GROUP_ID),
   telegram_configured:Boolean(TG_TOKEN&&TG_CHANNEL&&TG_PATH_TOKEN),
   telegram_writes:TG_WRITES,
   telegram_tools:TG_TOOLS.length,
