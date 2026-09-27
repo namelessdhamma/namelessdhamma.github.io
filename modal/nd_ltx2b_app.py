@@ -8,7 +8,7 @@ import modal
 
 LTX_COMMIT = "4b2d053057623ddd4d0a1d3e9cd28890e9ef487f"
 LTX_ROOT = Path("/opt/LTX-Video")
-PIPELINE_CONFIG = "configs/ltxv-2b-0.9.8-distilled.yaml"
+PIPELINE_CONFIG = "configs/ltxv-2b-0.9.8-distilled-fp8.yaml"
 
 app = modal.App("nd-ltx2b-first-last")
 cache = modal.Volume.from_name("nd-ltx2b-hf-cache", create_if_missing=True)
@@ -70,7 +70,7 @@ def _download(url: str, target: Path) -> None:
 
 @app.function(
     image=image,
-    gpu="L4",
+    gpu="T4",
     timeout=1800,
     scaledown_window=120,
     volumes={"/root/.cache/huggingface": cache},
@@ -153,9 +153,9 @@ def health():
     return {
         "ok": True,
         "route": "modal_ltx2b_distilled_f2l",
-        "model": "Lightricks/LTX-Video 2B 0.9.8 distilled",
+        "model": "Lightricks/LTX-Video 2B 0.9.8 distilled FP8",
         "ltx_commit": LTX_COMMIT,
-        "gpu": "L4",
+        "gpu": "T4",
         "cost_policy": "FREE_CREDIT_ONLY",
         "first_last": True,
         "max_duration_seconds": 6,
