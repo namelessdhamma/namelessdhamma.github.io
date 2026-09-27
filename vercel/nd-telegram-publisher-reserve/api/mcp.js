@@ -78,6 +78,10 @@ async function call(name,a={}){
   throw new Error("unknown_tool");
 }
 export default async function handler(req,res){
+  const suppliedToken = String(req.query?.token || "").trim();
+  if(!PATH_TOKEN || suppliedToken !== PATH_TOKEN){
+    return res.status(404).json({ok:false,error:"not_found"});
+  }
   if(req.method==="GET"){
     return res.status(200).json({ok:true,service:"nd-telegram-publisher-vercel-reserve",transport:"streamable-http",configured:Boolean(TG_TOKEN&&TG_CHANNEL&&PATH_TOKEN),writes:WRITES,tools:TOOLS.length});
   }
