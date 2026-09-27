@@ -1365,7 +1365,7 @@ async function ltxKaggleRetireSlug(args={}){
   const hit=exact[0];
   const exactRef=String(hit.ref||'').toLowerCase()===username.toLowerCase()+'/'+slug.toLowerCase();
   const ownedByUser=!hit.author||String(hit.author).toLowerCase()===username.toLowerCase()||String(hit.author).toLowerCase()==='savva savchenko';
-  const ndTitle=/^ND LTX\b/i.test(String(hit.title||''));
+  const ndTitle=/^ND LTX(?:23 Wan2GP)?\b/i.test(String(hit.title||''));
   if(!exactRef||!ownedByUser||!ndTitle) throw new Error('retire-slug blocked: ownership/title guard failed');
   const out=await kaggleRpc('kernels.KernelsApiService','DeleteKernel',{userName:username,kernelSlug:slug});
   const verify=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
