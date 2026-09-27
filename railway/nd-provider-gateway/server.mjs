@@ -611,101 +611,99 @@ function lpVkStartMonitor(){
   },2000);
 }
 
+
+let lpGlobalVkLock=false;
+let lpGlobalVkLockTimer=null;
 let lpVkQrCache={svg:"",generatedAt:0,error:"",running:null};
 
+function lpReleaseGlobalVkLock(){
+  lpGlobalVkLock=false;
+  if(lpGlobalVkLockTimer)clearTimeout(lpGlobalVkLockTimer);
+  lpGlobalVkLockTimer=null;
+}
+function lpAcquireGlobalVkLock(){
+  lpGlobalVkLock=true;
+  if(lpGlobalVkLockTimer)clearTimeout(lpGlobalVkLockTimer);
+  lpGlobalVkLockTimer=setTimeout(()=>lpReleaseGlobalVkLock(),300000);
+}
+function lpStartGlobalVkMonitor(st){
+  const timer=setInterval(async()=>{
+    try{
+      lpCdpTouch();
+      const saved=await lpMaybePersistVkState(st.context);
+      if(saved){
+        clearInterval(timer);
+        lpReleaseGlobalVkLock();
+      }
+    }catch{}
+  },2000);
+  setTimeout(()=>{try{clearInterval(timer);}catch{};lpReleaseGlobalVkLock();},300000);
+}
+
 async function lpVkGenerateQr(){
-  const st=await ensureLpVkCdp();
+  lpAcquireGlobalVkLock();
+  const st=await ensureLpCdp();
   const p=st.page;
-  lpVkTouch();
-  st.stage="login";
-  await p.goto("https://m.vk.com/login",{waitUntil:"domcontentloaded",timeout:35000});
-  const login=p.locator('input[name="login"]');
-  await login.waitFor({state:"attached",timeout:20000});
-  st.stage="login_form";
-  await p.evaluate(()=>{
-    const rs=document.querySelectorAll('input[name="login-view"]');
-    for(const x of rs){if(x.value==="email"){x.click();break;}}
-  });
-  await login.fill(LIGHTPANDA_VK_LOGIN_EMAIL);
-  await p.evaluate(()=>{
-    const b=document.querySelector('button[data-test-id="submit_btn"]');
-    if(b)setTimeout(()=>b.click(),0);
-  });
+  lpCdpTouch();
+  try{
+    await p.goto("https://m.vk.com/login",{waitUntil:"domcontentloaded",timeout:30000});
+    const login=p.locator('input[name="login"]');
+    await login.waitFor({state:"attached",timeout:15000});
+    await p.evaluate(()=>{
+      const rs=document.querySelectorAll('input[name="login-view"]');
+      for(const x of rs){if(x.value==="email"){x.click();break;}}
+    });
+    await login.fill(LIGHTPANDA_VK_LOGIN_EMAIL);
+    await p.evaluate(()=>{
+      const b=document.querySelector('button[data-test-id="submit_btn"]');
+      if(b)setTimeout(()=>b.click(),0);
+    });
 
-  st.stage="captcha_wait";
-  let captchaClicked=false;
-  let methodVisible=false;
-  for(let i=0;i<120;i++){
-    methodVisible=await p.evaluate(()=>[...document.querySelectorAll('button')].some(x=>(x.textContent||'').trim()==='Подтвердить другим способом')).catch(()=>false);
-    if(methodVisible)break;
-
-    for(const fr of p.frames()){
-      try{
-        const box=fr.locator('#not-robot-captcha-checkbox');
-        if(await box.count()){
-          await box.click({force:true,timeout:5000});
-          captchaClicked=true;
-          break;
-        }
-      }catch{}
+    let captchaClicked=false;
+    for(let i=0;i<40;i++){
+      captchaClicked=await p.evaluate(()=>{
+        const d=document.querySelector('iframe')?.contentDocument;
+        const box=d?.querySelector('#not-robot-captcha-checkbox');
+        if(!box)return false;
+        box.click();return true;
+      }).catch(()=>false);
+      if(captchaClicked)break;
+      await new Promise(r=>setTimeout(r,350));
     }
-    if(captchaClicked)break;
 
-    const fallback=await p.evaluate(()=>{
-      const d=document.querySelector('iframe')?.contentDocument;
-      const box=d?.querySelector('#not-robot-captcha-checkbox');
-      if(!box)return false;
-      box.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
-      box.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
-      box.click();
-      return true;
-    }).catch(()=>false);
-    if(fallback){captchaClicked=true;break;}
-    await new Promise(r=>setTimeout(r,500));
-  }
-  if(!captchaClicked&&!methodVisible)throw new Error("vk_captcha_not_ready");
+    let other=false;
+    for(let i=0;i<40;i++){
+      other=await p.evaluate(()=>{
+        const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
+        if(!b)return false;b.click();return true;
+      }).catch(()=>false);
+      if(other)break;
+      await new Promise(r=>setTimeout(r,350));
+    }
+    if(!other)throw new Error("vk_other_method_missing");
 
-  st.stage="choose_method";
-  let opened=methodVisible;
-  for(let i=0;i<60&&!opened;i++){
-    opened=await p.evaluate(()=>{
-      const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
-      if(!b)return false;
-      b.click();return true;
-    }).catch(()=>false);
-    if(opened)break;
-    await new Promise(r=>setTimeout(r,500));
-  }
-  if(methodVisible){
-    const did=await p.evaluate(()=>{
-      const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
-      if(!b)return false;b.click();return true;
-    }).catch(()=>false);
-    opened=opened||did;
-  }
-  if(!opened)throw new Error("vk_other_method_missing");
+    let chosen=false;
+    for(let i=0;i<30;i++){
+      chosen=await p.evaluate(()=>{
+        const cells=[...document.querySelectorAll('div.vkuiSimpleCell__host')];
+        const q=cells.find(x=>(x.textContent||'').includes('QR-код'));
+        if(!q)return false;q.click();return true;
+      }).catch(()=>false);
+      if(chosen)break;
+      await new Promise(r=>setTimeout(r,300));
+    }
+    if(!chosen)throw new Error("vk_qr_method_missing");
 
-  st.stage="qr_method";
-  let chosen=false;
-  for(let i=0;i<60;i++){
-    chosen=await p.evaluate(()=>{
-      const cells=[...document.querySelectorAll('div.vkuiSimpleCell__host')];
-      const q=cells.find(x=>(x.textContent||'').includes('QR-код'));
-      if(!q)return false;
-      q.click();return true;
-    }).catch(()=>false);
-    if(chosen)break;
-    await new Promise(r=>setTimeout(r,400));
+    const qr=p.locator('svg.vkc__QRCode-module__image').first();
+    await qr.waitFor({state:"attached",timeout:15000});
+    let svg=await qr.evaluate(el=>el.outerHTML);
+    if(!/\sxmlns=/.test(svg))svg=svg.replace(/^<svg/,'<svg xmlns="http://www.w3.org/2000/svg"');
+    lpStartGlobalVkMonitor(st);
+    return {svg,url:p.url()};
+  }catch(e){
+    lpReleaseGlobalVkLock();
+    throw e;
   }
-  if(!chosen)throw new Error("vk_qr_method_missing");
-
-  st.stage="qr";
-  const qr=p.locator('svg.vkc__QRCode-module__image').first();
-  await qr.waitFor({state:"attached",timeout:20000});
-  let svg=await qr.evaluate(el=>el.outerHTML);
-  if(!/\sxmlns=/.test(svg))svg=svg.replace(/^<svg/,'<svg xmlns="http://www.w3.org/2000/svg"');
-  lpVkStartMonitor();
-  return {svg,url:p.url()};
 }
 
 function lpVkStartQrGeneration(force=false){
@@ -781,6 +779,7 @@ async function ensureLpCdp(){
 }
 function lpTimeout(a,def=15000,max=90000){return Math.max(1000,Math.min(max,Number(a?.timeout_ms||def)));}
 async function lpCdpCall(name,a={}){
+  if(lpGlobalVkLock)throw new Error("lightpanda_reserved_for_vk_auth");
   const st=await ensureLpCdp();const page=st.page;lpCdpTouch();
   if(name==="lightpanda_goto"){
     let u;try{u=new URL(String(a.url||""));}catch{throw new Error("invalid_url");}
@@ -1221,17 +1220,17 @@ const muxServer=http.createServer(async(req,res)=>{
 
     if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-auth-status/'+LIGHTPANDA_VK_QR_TOKEN){
       if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
-      try{if(lpVkCdp.context)await lpMaybePersistVkState(lpVkCdp.context);}catch{}
+      try{if(lpCdp.context)await lpMaybePersistVkState(lpCdp.context);}catch{}
       let ui=null;
       try{
-        if(lpVkCdp.page)ui=await lpVkCdp.page.evaluate(()=>({
+        if(lpCdp.page)ui=await lpCdp.page.evaluate(()=>({
           text:(document.body?.innerText||'').slice(0,1800),
           inputs:[...document.querySelectorAll('input')].map(x=>({type:x.type,name:x.name,placeholder:x.placeholder,autocomplete:x.autocomplete})).slice(0,30),
           buttons:[...document.querySelectorAll('button,[role=button],a')].map(x=>({tag:x.tagName,text:(x.innerText||x.textContent||'').trim(),aria:x.getAttribute('aria-label')})).filter(x=>x.text||x.aria).slice(0,50),
           iframe_count:document.querySelectorAll('iframe').length
         }));
       }catch{}
-      return j(res,200,{ok:true,vk_session:lpVkStateMeta(),stage:lpVkCdp.stage,url:lpVkCdp.page?lpVkCdp.page.url():null,ui});
+      return j(res,200,{ok:true,vk_session:lpVkStateMeta(),locked:lpGlobalVkLock,url:lpCdp.page?lpCdp.page.url():null,ui});
     }
 
     if(path==='/lightpanda/diagnostic'){
