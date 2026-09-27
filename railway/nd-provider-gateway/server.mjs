@@ -1,7 +1,7 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
-import { chromium } from 'playwright-core';
+import { chromium } from 'playwright-core';\nimport { initPorfirchikMemos, handlePorfirchikMemos, porfirchikMemosHealth } from './porfirchik_memos.mjs';
 const PORT=Number(process.env.PORT||5678);
 const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v3-20260916';
 const ND_YANDEX_MUX_CODE_REV='yandex-delete-v3-20260919';
@@ -940,10 +940,17 @@ const muxServer=http.createServer(async(req,res)=>{
     const requestUrl=new URL(req.url||'/','http://local');
     const path=requestUrl.pathname;
 
+    if(path.startsWith('/porfirchik-memos/')){
+      const handled=await handlePorfirchikMemos(req,res,requestUrl);
+      if(handled)return;
+    }
+
     if(path==='/healthz'){
+      const memosHealth=await porfirchikMemosHealth();
       const body={
         status:'ok',
         service:'ND Yandex + YouTube MCP',
+        porfirchik_memos:memosHealth,
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
         youtube:{configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),writes:YT_WRITES,tools:YT_TOOLS.length},
         telegram:{configured:Boolean(TG_TOKEN&&TG_CHANNEL&&TG_PATH_TOKEN),writes:TG_WRITES,tools:TG_TOOLS.length,code_rev:ND_TELEGRAM_MUX_CODE_REV},
@@ -1073,4 +1080,5 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   qualification_rev:YT_QUALIFY_REV||null
 }));
 muxServer.listen(PORT,'0.0.0.0');
+setTimeout(()=>{void initPorfirchikMemos();},1000);
 setTimeout(runYoutubeQualification,2000);
