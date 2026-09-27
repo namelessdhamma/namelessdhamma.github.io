@@ -5,6 +5,7 @@ import urllib.request
 from pathlib import Path
 
 import modal
+from pydantic import BaseModel, Field
 
 LTX_COMMIT = "4b2d053057623ddd4d0a1d3e9cd28890e9ef487f"
 LTX_ROOT = Path("/opt/LTX-Video")
@@ -25,11 +26,6 @@ image = (
         f"cd {LTX_ROOT} && pip install '.[inference]' fastapi pydantic",
     )
 )
-
-with image.imports():
-    from fastapi import HTTPException, Response
-    from pydantic import BaseModel, Field
-
 
 class GenerateRequest(BaseModel):
     start_image_url: str
@@ -77,6 +73,7 @@ def _download(url: str, target: Path) -> None:
 )
 @modal.fastapi_endpoint(method="POST", requires_proxy_auth=True, docs=True)
 def generate(req: GenerateRequest):
+    from fastapi import HTTPException, Response
     frames = _num_frames(req.duration_seconds, req.frame_rate)
     endpoint_frame = frames - 1
 
