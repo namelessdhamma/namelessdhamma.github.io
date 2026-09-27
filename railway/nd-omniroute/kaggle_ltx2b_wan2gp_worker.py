@@ -288,6 +288,7 @@ def main() -> None:
     sys.path.insert(0, str(ROOT))
     os.chdir(ROOT)
     from mmgp import offload, profile_type
+    from shared.attention import attention_config_shared_state
     from shared.utils import files_locator as fl
     fl.set_checkpoints_paths([str(CK)])
     from models.ltx_video.ltxv import LTXV
@@ -365,23 +366,24 @@ def main() -> None:
 
     print("ND_LTX2B_STAGE=generate", flush=True)
     started = time.time()
-    with torch.inference_mode():
-        samples = obj.generate(
-            input_prompt=prompt,
-            n_prompt=negative,
-            image_start=start_t,
-            image_end=end_t,
-            sampling_steps=7,
-            image_cond_noise_scale=0.025,
-            seed=seed,
-            height=height,
-            width=width,
-            frame_num=frames,
-            frame_rate=FPS,
-            fit_into_canvas=True,
-            device="cuda",
-            VAE_tile_size=256,
-        )
+    with attention_config_shared_state("sdpa"):
+        with torch.inference_mode():
+            samples = obj.generate(
+                input_prompt=prompt,
+                n_prompt=negative,
+                image_start=start_t,
+                image_end=end_t,
+                sampling_steps=7,
+                image_cond_noise_scale=0.025,
+                seed=seed,
+                height=height,
+                width=width,
+                frame_num=frames,
+                frame_rate=FPS,
+                fit_into_canvas=True,
+                device="cuda",
+                VAE_tile_size=256,
+            )
     generation_seconds = time.time() - started
     if samples is None:
         raise RuntimeError("LTX 2B returned no samples")
