@@ -300,9 +300,11 @@ async function capabilities(spaceId){
 async function generateVideo(args={}){
   const spaceId=String(args.space_id||DEFAULT_SPACE);
   const endpoint=String(args.api_name||'/generate_video');
-  const input=String(args.input_image_url||'').trim();
-  if(!input) throw new Error('input_image_url required');
-  const last=String(args.last_image_url||'').trim();
+  const inputRef=String(args.input_image_url||'').trim();
+  if(!inputRef) throw new Error('input_image_url required');
+  const lastRef=String(args.last_image_url||'').trim();
+  const input=/^drive:/i.test(inputRef)?resolveLtxInputRef(inputRef):inputRef;
+  const last=lastRef?( /^drive:/i.test(lastRef)?resolveLtxInputRef(lastRef):lastRef ):'';
   const app=await Client.connect(spaceId,connectOptions());
   const payload={
     input_image:handle_file(input),
@@ -2320,7 +2322,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1'},
+          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
