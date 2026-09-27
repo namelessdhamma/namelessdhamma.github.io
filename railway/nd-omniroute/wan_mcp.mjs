@@ -871,6 +871,7 @@ async function ltxKaggle2bSubmit(args={}){
     categoryIds:[],
     modelDataSources:[],
     isPrivate:true,
+    enableGpu:true,
     enableTpu:false,
     enableInternet:true,
     machineShape:'NvidiaTeslaT4',
@@ -1610,10 +1611,13 @@ async function ltxKaggleAbandonQueued(args={}){
   const requestId=String(args.request_id||'').trim();
   let ref;
   if(/^kbatch-/i.test(requestId)) ref=kaggleLtxBatchRequestRef(requestId);
+  else if(/^k2b-/i.test(requestId)) ref=kaggleLtx2bRequestRef(requestId);
   else ref=kaggleLtxRequestRef(requestId);
   const status=/^kbatch-/i.test(requestId)
     ? await ltxKaggleBatchStatus({request_id:requestId})
-    : await ltxKaggleStatus({request_id:requestId});
+    : /^k2b-/i.test(requestId)
+      ? await ltxKaggle2bStatus({request_id:requestId})
+      : await ltxKaggleStatus({request_id:requestId});
   if(status.state!=='QUEUED') throw new Error('abandon allowed only for QUEUED jobs');
   const found=await ltxKaggleFindSession({request_id:requestId});
   if(!Array.isArray(found.exact_matches)||found.exact_matches.length!==1) throw new Error('abandon requires exactly one matching kernel');
@@ -2169,7 +2173,7 @@ async function ltxGenerateKeyframes(args={}){
   if(retireKernel) return ltxKaggleRetireKernel({request_id:retireKernel[1]});
   const forceRetireKernel=compat.match(/^force-retire-kernel:(kbatch-[a-z0-9-]+)$/i);
   if(forceRetireKernel) return ltxKaggleForceRetireBatch({request_id:forceRetireKernel[1]});
-  const abandonQueued=compat.match(/^abandon:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
+  const abandonQueued=compat.match(/^abandon:(k(?:ltx|batch|2b)-[a-z0-9-]+)$/i);
   if(abandonQueued) return ltxKaggleAbandonQueued({request_id:abandonQueued[1]});
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
   if(compat==='probe-2b-load') return ltxKaggle2bLoadProbe();
