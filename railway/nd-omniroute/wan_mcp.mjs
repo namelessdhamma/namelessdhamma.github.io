@@ -891,7 +891,10 @@ async function ltxKaggle2bSubmit(args={}){
   ].join('\n');
   if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle LTX2B kernel source preflight exceeds 900 KB');
   const jobRef=newKaggleLtx2bKernelRef();
-  const cacheSource=preflight.username+'/nd-ltx2b-load-probe-fixed';
+  const cacheSources=[
+    preflight.username+'/nd-ltx-2b-distilled-cache',
+    preflight.username+'/nd-ltx2b-load-probe-fixed'
+  ];
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+jobRef.kernel_slug,
     newTitle:'ND LTX2B '+jobRef.token,
@@ -899,7 +902,7 @@ async function ltxKaggle2bSubmit(args={}){
     language:'python',
     kernelType:'script',
     datasetDataSources:[],
-    kernelDataSources:[cacheSource],
+    kernelDataSources:cacheSources,
     competitionDataSources:[],
     categoryIds:[],
     modelDataSources:[],
@@ -921,7 +924,8 @@ async function ltxKaggle2bSubmit(args={}){
     request_id:'k2b-'+jobRef.token+'-v'+version,
     provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
     route:'kaggle_ltx2b_wan2gp_f2l',
-    cache_source:cacheSource,
+    cache_source:cacheSources[0],
+    cache_sources:cacheSources,
     machine_shape_requested:'NvidiaTeslaT4',
     cost_policy:'FREE_ONLY',
     gpu_quota:preflight.gpu,
