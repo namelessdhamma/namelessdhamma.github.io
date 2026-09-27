@@ -281,6 +281,11 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
         src = src.replace(needle, replacement, 1)
     ltxv_py.write_text(src, encoding="utf-8")
 
+    # Headless LTX uses shared.utils submodules directly. The package initializer
+    # imports unrelated solver modules and can destabilize the constrained Kaggle runtime.
+    utils_init = ROOT / "shared" / "utils" / "__init__.py"
+    utils_init.write_text("__all__ = []\n", encoding="utf-8")
+
     pipeline_py = ROOT / "models" / "ltx_video" / "pipelines" / "pipeline_ltx_video.py"
     pipeline_src = pipeline_py.read_text(encoding="utf-8")
     enhancer_import = "from shared.prompt_enhancer.prompt_enhance_utils import generate_cinematic_prompt"
