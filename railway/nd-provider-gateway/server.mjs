@@ -616,7 +616,8 @@ async function lpVkGenerateQr(){
   lpVkTouch();
   st.stage="login";
   await p.goto("https://m.vk.com/login",{waitUntil:"commit",timeout:20000});
-  await new Promise(r=>setTimeout(r,1000));
+  await new Promise(r=>setTimeout(r,1200));
+
   await p.evaluate(()=>{
     const rs=document.querySelectorAll('input[name="login-view"]');
     for(const x of rs){if(x.value==="email"){x.click();break;}}
@@ -628,35 +629,54 @@ async function lpVkGenerateQr(){
     const b=document.querySelector('button[data-test-id="submit_btn"]');
     if(b)setTimeout(()=>b.click(),0);
   });
-  await new Promise(r=>setTimeout(r,1500));
+
   st.stage="captcha";
-  for(let i=0;i<8;i++){
-    const clicked=await p.evaluate(()=>{
+  let captchaClicked=false;
+  for(let i=0;i<24;i++){
+    captchaClicked=await p.evaluate(()=>{
       const d=document.querySelector('iframe')?.contentDocument;
       const box=d?.querySelector('#not-robot-captcha-checkbox');
       if(!box)return false;
       box.click();return true;
     }).catch(()=>false);
-    if(clicked)break;
-    await new Promise(r=>setTimeout(r,350));
+    if(captchaClicked)break;
+    const hasNext=await p.evaluate(()=>[...document.querySelectorAll('button')].some(x=>(x.textContent||'').trim()==='Подтвердить другим способом')).catch(()=>false);
+    if(hasNext)break;
+    await new Promise(r=>setTimeout(r,500));
   }
-  await new Promise(r=>setTimeout(r,1100));
+
   st.stage="choose_method";
-  const other=await p.evaluate(()=>{
-    const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
-    if(!b)return false;b.click();return true;
-  }).catch(()=>false);
-  if(!other)throw new Error("vk_other_method_missing");
-  await new Promise(r=>setTimeout(r,450));
-  const chosen=await p.evaluate(()=>{
-    const cells=[...document.querySelectorAll('div.vkuiSimpleCell__host')];
-    const q=cells.find(x=>(x.textContent||'').includes('QR-код'));
-    if(!q)return false;q.click();return true;
-  }).catch(()=>false);
+  let opened=false;
+  for(let i=0;i<24;i++){
+    opened=await p.evaluate(()=>{
+      const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
+      if(!b)return false;
+      b.click();return true;
+    }).catch(()=>false);
+    if(opened)break;
+    const qrAlready=await p.evaluate(()=>[...document.querySelectorAll('div.vkuiSimpleCell__host')].some(x=>(x.textContent||'').includes('QR-код'))).catch(()=>false);
+    if(qrAlready){opened=true;break;}
+    await new Promise(r=>setTimeout(r,500));
+  }
+  if(!opened)throw new Error("vk_other_method_missing");
+
+  st.stage="qr_method";
+  let chosen=false;
+  for(let i=0;i<20;i++){
+    chosen=await p.evaluate(()=>{
+      const cells=[...document.querySelectorAll('div.vkuiSimpleCell__host')];
+      const q=cells.find(x=>(x.textContent||'').includes('QR-код'));
+      if(!q)return false;
+      q.click();return true;
+    }).catch(()=>false);
+    if(chosen)break;
+    await new Promise(r=>setTimeout(r,400));
+  }
   if(!chosen)throw new Error("vk_qr_method_missing");
+
   st.stage="qr";
   const qr=p.locator('svg.vkc__QRCode-module__image').first();
-  await qr.waitFor({state:"attached",timeout:10000});
+  await qr.waitFor({state:"attached",timeout:15000});
   let svg=await qr.evaluate(el=>el.outerHTML);
   if(!/\sxmlns=/.test(svg))svg=svg.replace(/^<svg/,'<svg xmlns="http://www.w3.org/2000/svg"');
   lpVkStartMonitor();
