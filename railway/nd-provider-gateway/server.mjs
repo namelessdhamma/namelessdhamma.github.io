@@ -615,15 +615,14 @@ async function lpVkGenerateQr(){
   const p=st.page;
   lpVkTouch();
   st.stage="login";
-  await p.goto("https://m.vk.com/login",{waitUntil:"commit",timeout:20000});
-  await new Promise(r=>setTimeout(r,1200));
-
+  await p.goto("https://m.vk.com/login",{waitUntil:"domcontentloaded",timeout:35000});
+  const login=p.locator('input[name="login"]');
+  await login.waitFor({state:"attached",timeout:20000});
+  st.stage="login_form";
   await p.evaluate(()=>{
     const rs=document.querySelectorAll('input[name="login-view"]');
     for(const x of rs){if(x.value==="email"){x.click();break;}}
   });
-  const login=p.locator('input[name="login"]');
-  await login.waitFor({state:"attached",timeout:10000});
   await login.fill(LIGHTPANDA_VK_LOGIN_EMAIL);
   await p.evaluate(()=>{
     const b=document.querySelector('button[data-test-id="submit_btn"]');
