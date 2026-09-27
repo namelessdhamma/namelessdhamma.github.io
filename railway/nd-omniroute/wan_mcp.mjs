@@ -915,12 +915,13 @@ async function ltxKaggleBatchSubmit(spec={}){
     "source=worker.read_text(encoding='utf-8')",
     "compiled=compile(source,'kaggle_ltx_worker.py','exec')",
     "receipts=[]",
+    "runtime_cache={}",
     "for idx,seg in enumerate(cfg['segments'],start=1):",
     "    req_path=Path(f'/kaggle/working/segment-{idx:02d}-request.json')",
     "    req_path.write_text(json.dumps(seg),encoding='utf-8')",
     "    print(f'ND_LTX_BATCH_SEGMENT_START={idx:02d}',flush=True)",
     "    old_argv=sys.argv",
-    "    scope={'__name__':'__main__'}",
+    "    scope={'__name__':'__main__','_ND_LTX_RUNTIME_CACHE':runtime_cache}",
     "    try:",
     "        sys.argv=['kaggle_ltx_worker.py',str(req_path)]",
     "        exec(compiled,scope)",
@@ -2150,7 +2151,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_exec'},
+          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
