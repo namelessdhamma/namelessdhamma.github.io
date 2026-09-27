@@ -138,6 +138,57 @@ export async function modalLtxSandboxResultBytes(args={}){
   }
 }
 
+export async function modalLtxFunctionBootstrapRaw(){
+  if(!modalLtxSandboxConfigured()) throw new Error('Modal credentials are not configured');
+  const modal=new ModalClient();
+  try{
+    const app=await modal.apps.fromName('nd-modal-bootstrap',{createIfMissing:true});
+    const image=modal.images.fromRegistry('python:3.11-slim');
+    const secret=await modal.secrets.fromObject({
+      MODAL_TOKEN_ID:String(process.env.MODAL_TOKEN_ID||''),
+      MODAL_TOKEN_SECRET:String(process.env.MODAL_TOKEN_SECRET||'')
+    });
+    const script=[
+      'set -euo pipefail',
+      "python -m pip install -q --disable-pip-version-check 'modal>=1.5.1'",
+      "python - <<'PY'",
+      'from urllib.request import urlopen',
+      "u='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/modal/nd_ltx2b_app.py'",
+      "open('/tmp/nd_ltx2b_app.py','wb').write(urlopen(u,timeout=60).read())",
+      'PY',
+      "modal deploy /tmp/nd_ltx2b_app.py --name nd-ltx2b-first-last > /tmp/deploy.log 2>&1",
+      "modal workspace proxy-tokens create --json > /tmp/proxy.json",
+      "python - <<'PY'",
+      'import json,re',
+      "deploy=open('/tmp/deploy.log','r',encoding='utf-8',errors='replace').read()",
+      "urls=re.findall(r'https://[A-Za-z0-9.-]+\\.modal\\.run',deploy)",
+      "generate=next((u for u in urls if 'generate' in u),None)",
+      "health=next((u for u in urls if 'health' in u),None)",
+      "if not generate or not health: raise RuntimeError('Modal endpoint URLs not found')",
+      "p=json.load(open('/tmp/proxy.json'))",
+      "print('ND_MODAL_BOOTSTRAP='+json.dumps({'generate_url':generate,'health_url':health,'proxy_key':p['Modal-Key'],'proxy_secret':p['Modal-Secret']},separators=(',',':')))",
+      'PY'
+    ].join('\n');
+    const sb=await modal.sandboxes.create(app,image,{
+      command:['sh','-lc',script],
+      secrets:[secret],
+      timeoutMs:20*60*1000,
+      memoryMiB:2048
+    });
+    const code=await sb.wait();
+    const [stdout,stderr]=await Promise.all([sb.stdout.readText(),sb.stderr.readText()]);
+    if(code!==0) throw new Error('Modal bootstrap failed: '+String(stderr||stdout).slice(-5000));
+    const marker='ND_MODAL_BOOTSTRAP=';
+    const line=String(stdout||'').split(/\r?\n/).find(x=>x.startsWith(marker));
+    if(!line) throw new Error('Modal bootstrap receipt missing');
+    const cfg=JSON.parse(line.slice(marker.length));
+    if(!cfg.generate_url||!cfg.health_url||!cfg.proxy_key||!cfg.proxy_secret) throw new Error('Modal bootstrap receipt incomplete');
+    return cfg;
+  }finally{
+    modal.close();
+  }
+}
+
 export function isModalSandboxRequestId(value){
   return !!sandboxIdFromRequest(value);
 }
