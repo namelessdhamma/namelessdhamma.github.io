@@ -288,7 +288,7 @@ capture_new="""def memos_capture(uid,user_text,assistant_text):
         state['memos_last_cloud_ok']=None
         print('MEMOS_CAPTURE',json.dumps({'uid':uid,'local_ok':True,'cloud_configured':False},ensure_ascii=False),flush=True)
 """
-src=src.slice(0,capture_start)+capture_new+src.slice(capture_end)
+src=src[:capture_start]+capture_new+src[capture_end:]
 
 status_old="""        return {'ok':True,'local_records':n,'cloud_configured':bool(MEMOS_API_KEY),'local_selftest':state.get('memos_local_selftest'),'cloud_probe':state.get('memos_cloud_probe'),'last_recall_ok':state.get('memos_last_recall_ok'),'last_capture_ok':state.get('memos_last_capture_ok'),'last_cloud_ok':state.get('memos_last_cloud_ok'),'last_error':state.get('memos_last_error')}
 """
@@ -342,7 +342,7 @@ qual_new="""    if name=='memos_qualify':
                     except Exception as e:errors.append('local_cleanup:'+_memos_clean(e))
         return {'ok':bool(local_ok and user_first_ok and outbox_ok and (cloud_ok if MEMOS_API_KEY else True)),'local_ok':local_ok,'user_first_ok':user_first_ok,'outbox_ok':outbox_ok,'cloud_configured':bool(MEMOS_API_KEY),'cloud_ok':cloud_ok if MEMOS_API_KEY else None,'cloud_cleanup':cloud_cleanup if MEMOS_API_KEY else None,'outbox_pending':_memos_outbox_stats().get('pending'),'marker':marker,'errors':errors}
 """
-src=src.slice(0,qual_start)+qual_new+src.slice(qual_end)
+src=src[:qual_start]+qual_new+src[qual_end:]
 
 probe_old="""            state['memos_cloud_probe']='pass'
             print('MEMOS_CLOUD_PROBE_OK',flush=True)
