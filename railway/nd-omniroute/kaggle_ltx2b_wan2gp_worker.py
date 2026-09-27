@@ -292,6 +292,9 @@ def main() -> None:
         dtype=torch.bfloat16,
         VAE_dtype=torch.bfloat16,
     )
+    # Wan2GP's generation_progress decorator expects the UI cancellation flag.
+    # Direct headless LTXV construction does not initialize it.
+    obj._interrupt = False
 
     pipeline = obj.pipeline
     pipe = {
