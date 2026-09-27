@@ -300,6 +300,18 @@ async function capabilities(spaceId){
 async function generateVideo(args={}){
   const spaceId=String(args.space_id||DEFAULT_SPACE);
   const endpoint=String(args.api_name||'/generate_video');
+  if(spaceId==='nd-import-public-video'){
+    const url=String(args.input_image_url||'').trim();
+    if(!/^https:\/\//i.test(url)) throw new Error('public https video URL required');
+    const requested=String(args.prompt||'nd-wan-output.mp4').trim();
+    const name=(requested||'nd-wan-output.mp4').replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,120);
+    const imported=await driveImportKaggleOutput(url,name.endsWith('.mp4')?name:name+'.mp4','video/mp4');
+    const file=imported?.file||{};
+    return {
+      ok:true,state:'READY',route:'wan_public_video_import',cost_policy:'FREE_ONLY',
+      drive_video:{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:imported?.reused===true}
+    };
+  }
   const inputRef=String(args.input_image_url||'').trim();
   if(!inputRef) throw new Error('input_image_url required');
   const lastRef=String(args.last_image_url||'').trim();
@@ -2322,7 +2334,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1'},
+          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1',wan_public_video_import:'v1'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
