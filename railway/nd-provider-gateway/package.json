@@ -1,11 +1,12 @@
 {
   "name": "nd-provider-gateway",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": { "start": "node server.mjs" },
   "dependencies": {
-    "playwright-core": "^1.55.0"
+    "playwright-core": "^1.55.0",
+    "@memtensor/memos-local-plugin": "2.0.16-beta.1"
   }
 }
