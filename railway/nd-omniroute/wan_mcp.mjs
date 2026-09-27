@@ -497,6 +497,39 @@ async function kaggleRpc(service,method,body={}){
   return data;
 }
 
+async function kaggleKernelOutputUrl(ownerSlug,kernelSlug,filePath,versionNumber=0){
+  if(!KAGGLE_API_TOKEN) throw new Error('KAGGLE_API_TOKEN is not configured');
+  const res=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput',{
+    method:'POST',
+    redirect:'manual',
+    headers:{
+      authorization:'Bearer '+KAGGLE_API_TOKEN,
+      accept:'application/json',
+      'content-type':'application/json',
+      'user-agent':'nd-ltx-kaggle/1.0'
+    },
+    body:JSON.stringify({ownerSlug,kernelSlug,filePath,versionNumber})
+  });
+  if(res.status>=300&&res.status<400){
+    const loc=res.headers.get('location');
+    if(loc) return loc;
+  }
+  const txt=await res.text();
+  let data={};
+  try{data=txt?JSON.parse(txt):{};}catch{data={raw:txt};}
+  if(!res.ok){
+    const raw=data?.message??data?.error??data??txt;
+    let detail;
+    try{detail=typeof raw==='string'?raw:JSON.stringify(raw);}catch{detail=String(raw);}
+    throw new Error('Kaggle DownloadKernelOutput HTTP '+res.status+': '+String(detail).slice(0,1200));
+  }
+  const url=data?.url||data?.redirectUrl||data?.redirect_url||data?.downloadUrl||data?.download_url||null;
+  if(url) return String(url);
+  const raw=String(txt||'').trim();
+  if(/^https?:\/\//i.test(raw)) return raw;
+  throw new Error('Kaggle DownloadKernelOutput returned no URL for '+filePath);
+}
+
 function kaggleDurationSeconds(v){
   if(typeof v==='number') return v;
   if(typeof v==='string'){
@@ -952,11 +985,15 @@ async function ltxKaggle2bResult(args={}){
   const byName=name=>files.find(x=>(x?.fileName||x?.name||x?.path)===name);
   const mp4=byName('result.mp4');
   const receiptFile=byName('result.json');
-  if(!mp4?.url) throw new Error('LTX2B result.mp4 missing from Kaggle output after pagination');
   const receipt=extractKaggleMarker(logs.join('\n'),'ND_LTX2B_F2L_JSON=');
-  const driveVideo=await driveImportKaggleOutput(mp4.url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
+  const mp4Url=mp4?.url||await kaggleKernelOutputUrl(username,ref.kernel_slug,'result.mp4',ref.version);
+  const driveVideo=await driveImportKaggleOutput(mp4Url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
   let driveReceipt=null;
-  if(receiptFile?.url) driveReceipt=await driveImportKaggleOutput(receiptFile.url,'nd-ltx2b-'+ref.request_id+'.json','application/json');
+  let receiptUrl=receiptFile?.url||null;
+  if(!receiptUrl){
+    try{receiptUrl=await kaggleKernelOutputUrl(username,ref.kernel_slug,'result.json',ref.version);}catch{}
+  }
+  if(receiptUrl) driveReceipt=await driveImportKaggleOutput(receiptUrl,'nd-ltx2b-'+ref.request_id+'.json','application/json');
   const file=driveVideo?.file||{};
   return {
     ok:true,request_id:ref.request_id,state:'READY',
