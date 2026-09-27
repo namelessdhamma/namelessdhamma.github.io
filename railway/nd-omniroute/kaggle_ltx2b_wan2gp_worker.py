@@ -311,11 +311,11 @@ def main() -> None:
     # so select its inner base pipeline for this model instead of borrowing
     # 0.9.8-only multi-scale parameters.
     multi_pipeline = obj.pipeline
-    obj.pipeline = multi_pipeline.video_pipeline
+    base_pipeline = multi_pipeline.video_pipeline
     pipe = {
-        "transformer": obj.pipeline.transformer,
-        "vae": obj.pipeline.vae,
-        "text_encoder": obj.pipeline.text_encoder,
+        "transformer": base_pipeline.transformer,
+        "vae": base_pipeline.vae,
+        "text_encoder": base_pipeline.text_encoder,
     }
     print("ND_LTX2B_STAGE=profile", flush=True)
     offload_obj = offload.profile(
@@ -325,6 +325,37 @@ def main() -> None:
         pinnedMemory=False,
         budgets={"transformer": 100, "text_encoder": 100, "*": 1000},
     )
+
+    class BasePromptAdapter:
+        def __init__(self, base):
+            self._base = base
+
+        def __getattr__(self, name):
+            return getattr(self._base, name)
+
+        def __call__(self, *args, **kwargs):
+            prompt = kwargs.pop("prompt", None)
+            negative_prompt = kwargs.pop("negative_prompt", None)
+            if kwargs.get("prompt_embeds") is None:
+                (
+                    prompt_embeds,
+                    prompt_attention_mask,
+                    negative_prompt_embeds,
+                    negative_prompt_attention_mask,
+                ) = self._base.encode_prompt(
+                    prompt,
+                    True,
+                    negative_prompt=negative_prompt,
+                    device=kwargs.get("device") or "cuda",
+                    text_encoder_max_tokens=256,
+                )
+                kwargs["prompt_embeds"] = prompt_embeds
+                kwargs["prompt_attention_mask"] = prompt_attention_mask
+                kwargs["negative_prompt_embeds"] = negative_prompt_embeds
+                kwargs["negative_prompt_attention_mask"] = negative_prompt_attention_mask
+            return self._base(*args, **kwargs)
+
+    obj.pipeline = BasePromptAdapter(base_pipeline)
 
     from PIL import Image
     start_img = Image.open(start_path).convert("RGB")
