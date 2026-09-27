@@ -1390,7 +1390,7 @@ async function ltxKaggle2bLoadProbe(){
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+slug,newTitle:'ND LTX2B Load Probe '+token,text:script,
     language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
-    isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:true,sessionTimeoutSeconds:2400
+    isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:2400
   });
   const version=Number(save?.versionNumber||save?.version_number||0);
   if(!version||save?.error) throw new Error('LTX2B load probe submit failed '+JSON.stringify({error:save?.error||null}));
