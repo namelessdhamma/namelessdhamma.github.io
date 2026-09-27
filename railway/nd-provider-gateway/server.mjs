@@ -320,7 +320,7 @@ async function tgStatus(){
   const me=await tgApi("getMe");
   const chat=await tgApi("getChat",{chat_id:TG_CHANNEL});
   const member=await tgApi("getChatMember",{chat_id:TG_CHANNEL,user_id:me.id});
-  const admins=await tgApi("getChatAdministrators",{chat_id:TG_CHANNEL});
+  const admins=await tgApi("getChatAdministrators",{chat_id:TG_CHANNEL,return_bots:true});
   const adminBots=(admins||[]).filter(x=>x?.user?.is_bot).map(x=>({
     id:x.user.id,username:x.user.username||null,status:x.status,
     can_post_messages:x.can_post_messages??null,
