@@ -1541,9 +1541,30 @@ async function ltxKaggle2bLatestProbe(){
 
 async function ltxKaggle2bImportProbe(){
   const preflight=await kaggleLtxIdentity();
-  const slug='nd-ltx2b-import-probe';
+  const slug='nd-ltx2b-cpu-import-probe';
   const commit='2345ae148f82740f66e82c41292dbbdd592e713d';
   const marker='ND_LTX2B_IMPORT_JSON=';
+  const reqs=[
+    'mmgp==3.8.1',
+    'diffusers==0.36.0',
+    'transformers==4.54.0',
+    'tokenizers>=0.20.3',
+    'accelerate>=1.1.1',
+    'tqdm',
+    'imageio',
+    'imageio-ffmpeg',
+    'einops',
+    'rotary-embedding-torch>=0.5.3',
+    'sentencepiece',
+    'numpy==2.1.2',
+    'scipy',
+    'opencv-python-headless>=4.12.0.88',
+    'av',
+    'pyyaml',
+    'safetensors',
+    'huggingface_hub[hf_xet]',
+    'hf_xet>=1.5.2'
+  ];
   const child=[
     "import os,sys,time",
     "from pathlib import Path",
@@ -1551,6 +1572,7 @@ async function ltxKaggle2bImportProbe(){
     "sys.path.insert(0,str(ROOT)); os.chdir(ROOT)",
     "print('ND_LTX2B_IMPORT=child_start',flush=True)",
     "t=time.time(); import torch; print('ND_LTX2B_IMPORT=torch_done sec=%.3f'%(time.time()-t),flush=True)",
+    "torch.cuda.get_device_capability=lambda device=None:(7,5)",
     "t=time.time(); from mmgp import offload, profile_type; print('ND_LTX2B_IMPORT=mmgp_done sec=%.3f'%(time.time()-t),flush=True)",
     "t=time.time(); from shared.attention import attention_config_shared_state; print('ND_LTX2B_IMPORT=attention_done sec=%.3f'%(time.time()-t),flush=True)",
     "t=time.time(); from shared.utils import files_locator as fl; print('ND_LTX2B_IMPORT=files_locator_done sec=%.3f'%(time.time()-t),flush=True)",
@@ -1561,6 +1583,7 @@ async function ltxKaggle2bImportProbe(){
     "import json,os,subprocess,sys,time",
     "ROOT=Path('/kaggle/working/Wan2GP')",
     "COMMIT='"+commit+"'",
+    "REQS="+JSON.stringify(reqs),
     "def run(cmd,timeout):",
     "    env={**os.environ,'PIP_NO_CACHE_DIR':'1','HF_HUB_DISABLE_XET':'1','HF_HOME':'/kaggle/working/hf-cache'}",
     "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env=env)",
@@ -1570,23 +1593,35 @@ async function ltxKaggle2bImportProbe(){
     "print('ND_LTX2B_IMPORT=clone_begin',flush=True)",
     "run(['git','clone','--filter=blob:none','https://github.com/deepbeepmeep/Wan2GP.git',str(ROOT)],240)",
     "run(['git','-C',str(ROOT),'checkout',COMMIT],90)",
+    "ltx=ROOT/'models/ltx_video/ltxv.py'",
+    "s=ltx.read_text(encoding='utf-8')",
+    "needle='from shared.utils.utils import calculate_new_dimensions'",
+    "replacement='def calculate_new_dimensions(canvas_height, canvas_width, image_height, image_width, fit_into_canvas, block_size=16):\\n    if fit_into_canvas is None or fit_into_canvas == 2:\\n        return canvas_height, canvas_width\\n    if fit_into_canvas == 1:\\n        scale=max(min(canvas_height/image_height,canvas_width/image_width),min(canvas_width/image_height,canvas_height/image_width))\\n    else:\\n        scale=(canvas_height*canvas_width/(image_height*image_width))**0.5\\n    return round(image_height*scale/block_size)*block_size, round(image_width*scale/block_size)*block_size'",
+    "if needle not in s: raise RuntimeError('ltx minimal utils patch point missing')",
+    "ltx.write_text(s.replace(needle,replacement,1),encoding='utf-8')",
+    "pipe=ROOT/'models/ltx_video/pipelines/pipeline_ltx_video.py'",
+    "s=pipe.read_text(encoding='utf-8')",
+    "needle='from shared.prompt_enhancer.prompt_enhance_utils import generate_cinematic_prompt'",
+    "replacement='def generate_cinematic_prompt(prompt, *args, **kwargs):\\n    return prompt'",
+    "if needle not in s: raise RuntimeError('prompt enhancer patch point missing')",
+    "pipe.write_text(s.replace(needle,replacement,1),encoding='utf-8')",
     "print('ND_LTX2B_IMPORT=pip_begin',flush=True)",
     "started=time.time()",
-    "run([sys.executable,'-m','pip','install','--no-cache-dir','-q','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],1200)",
+    "run([sys.executable,'-m','pip','install','--no-cache-dir','-q','--disable-pip-version-check',*REQS],900)",
     "pip_sec=time.time()-started",
     "print('ND_LTX2B_IMPORT=pip_done sec=%.3f'%pip_sec,flush=True)",
     "probe=Path('/kaggle/working/nd_ltx2b_import_child.py')",
     "probe.write_text("+JSON.stringify(child)+",encoding='utf-8')",
     "started=time.time()",
-    "p=subprocess.run([sys.executable,str(probe)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=900,cwd=str(ROOT))",
+    "p=subprocess.run([sys.executable,str(probe)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=600,cwd=str(ROOT))",
     "print(p.stdout,flush=True)",
-    "out={'ok':p.returncode==0,'returncode':p.returncode,'pip_seconds':round(pip_sec,3),'import_seconds':round(time.time()-started,3)}",
+    "out={'ok':p.returncode==0,'returncode':p.returncode,'pip_seconds':round(pip_sec,3),'import_seconds':round(time.time()-started,3),'minimal':True}",
     "print('"+marker+"'+json.dumps(out,separators=(',',':'),sort_keys=True),flush=True)",
     "raise SystemExit(0 if p.returncode==0 else p.returncode)"
   ].join('\n');
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+slug,
-    newTitle:'ND LTX2B CPU Import Probe',
+    newTitle:'ND LTX2B CPU Minimal Import Probe',
     text:script,
     language:'python',kernelType:'script',
     datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
