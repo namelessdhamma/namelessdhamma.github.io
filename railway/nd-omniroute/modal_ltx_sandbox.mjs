@@ -145,7 +145,7 @@ export async function modalLtxFunctionBootstrapSubmit(){
     const app=await modal.apps.fromName('nd-modal-bootstrap',{createIfMissing:true});
     const image=modal.images.fromRegistry('python:3.11-slim');
     const script=[
-      'exec >/tmp/bootstrap.stdout 2>/tmp/bootstrap.stderr',
+      'echo ND_MODAL_BOOTSTRAP_START',
       'set -eu',
       "python -m pip install -q --disable-pip-version-check 'modal>=1.5.1'",
       "python - <<'PY'",
