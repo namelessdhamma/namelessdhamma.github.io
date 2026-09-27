@@ -974,23 +974,28 @@ async function ltxModalConfigure(payload={}){
 }
 
 async function ltxModalFirstLast(args={}){
-  const cfg=await ltxModalConfig();
-  if(!cfg){
-    return {
-      ok:false,
-      state:'NOT_CONFIGURED',
-      route:'modal_ltx2b_distilled_f2l',
-      provider:'Modal',
-      enabled:false,
-      generate_url_configured:false,
-      proxy_auth_configured:false,
-      cost_policy:'FREE_CREDIT_ONLY'
-    };
-  }
   const [startInput,endInput]=await Promise.all([
     prepareLtxKernelInput(args.start_image_url,'start'),
     prepareLtxKernelInput(args.end_image_url,'end')
   ]);
+  const cfg=await ltxModalConfig();
+  if(!cfg){
+    if(!modalLtxSandboxConfigured()){
+      return {
+        ok:false,
+        state:'NOT_CONFIGURED',
+        route:'modal_ltx2b_direct_sandbox',
+        provider:'Modal',
+        enabled:false,
+        cost_policy:'FREE_CREDIT_ONLY'
+      };
+    }
+    return modalLtxSandboxSubmit({
+      ...args,
+      start_image_url:startInput.url,
+      end_image_url:endInput.url
+    });
+  }
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
   const requestId='mltx-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
   const body={
