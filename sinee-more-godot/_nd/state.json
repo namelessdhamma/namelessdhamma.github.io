@@ -1,7 +1,7 @@
 {
   "schema": "blue-sea-godot-workspace-state-v1",
   "status": "CURRENT",
-  "updated": "2026-09-26",
+  "updated": "2026-09-27",
   "engine": {
     "name": "Godot",
     "version": "4.7.2",
@@ -54,23 +54,28 @@
   "current_durable_source": {
     "branch": "main",
     "main_scene_blob": "d7fb6413dbb5e0476c2a91301ebad6ee9c6d4b71",
-    "source_commit": "d8598bb8b69b59b94af08d104877d5439cf9a14d"
+    "source_commit": "255539ae91eb8261cd9cbcb8af9ebb8cd57f515f",
+    "main_script_blob": "1029d17d0f6ad20b2dc1b1e4b3b42245782c3cae"
   },
   "nd_runtime": {
-    "launcher_contract": "ND-LAUNCHER-CONTRACT-v5",
-    "root_launcher": "nd-launch-automation-agent",
+    "launcher_contract": "ND-LAUNCHER-CONTRACT-v6",
+    "root_launcher": "skills://plugins/nd-automation-agent/nd-launch-automation-agent",
+    "true_memory_launcher": "skills://plugins/nd-true-memory/nd-launch-true-memory",
     "substantive_owners": {
-      "engineering": "nd-launch-true-developer",
-      "diagnostics": "nd-launch-true-doctor",
-      "research": "nd-launch-true-research",
-      "visual": "nd-launch-true-visual",
-      "memory": "nd-launch-true-memory",
-      "writing": "nd-launch-true-writer"
+      "engineering": "skills://plugins/nd-true-developer/nd-launch-true-developer",
+      "diagnostics": "skills://plugins/nd-true-doctor/nd-launch-true-doctor",
+      "research": "skills://plugins/nd-true-research/nd-launch-true-research",
+      "visual": "skills://plugins/nd-true-visual/nd-launch-true-visual",
+      "memory": "skills://plugins/nd-true-memory/nd-launch-true-memory",
+      "writing": "skills://plugins/nd-true-writer/nd-launch-true-writer"
     },
-    "route_recovery_support": "nd-launch-generation",
-    "visual_child": "nd-launch-visual-creator",
-    "child_policy": "Child Skills are invoked only through their owning Supervisor",
-    "peer_service": "bounded PEER_SERVICE is allowed only when global ownership, priority, authority and material side effects remain unchanged",
-    "run_kernel": "recover CURRENT -> native Automation Agent -> native substantive owner -> execute real product work -> verify/read-back -> persist CURRENT/NEXT_WORK"
+    "route_recovery_support": "skills://plugins/nd-generation/nd-launch-generation",
+    "external_route_creation": "skills://plugins/nd-external-connecting/connecting-external-capabilities",
+    "visual_child": "skills://plugins/nd-visual-creator/nd-launch-visual-creator",
+    "child_policy": "Child Skills execute only through their owning Supervisor and exact CURRENT Registry-resolved launcher URI",
+    "peer_service": "bounded PEER_SERVICE preserves original task ownership when global ownership, priority, authority and material side effects remain unchanged",
+    "executable_edge_rule": "human names, Kernels, bare launcher IDs and @ND aliases are non-executable metadata; callable cognitive edges use exact CURRENT skills://plugins/... URIs",
+    "return_rule": "typed RETURN addresses the already-live caller by exact return_to_launcher_uri without re-invocation; re-entry only if caller is absent and CURRENT task/call/correlation/runtime-generation identity still matches",
+    "run_kernel": "recover CURRENT -> exact Automation Agent URI -> exact True Memory URI -> exact substantive owner URI -> only-needed exact Child/PEER_SERVICE/SUPPORT calls -> execute real product work -> verify/read-back -> persist CURRENT/NEXT_WORK"
   }
 }
