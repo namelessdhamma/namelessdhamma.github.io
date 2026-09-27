@@ -144,11 +144,8 @@ export async function modalLtxFunctionBootstrapSubmit(){
   try{
     const app=await modal.apps.fromName('nd-modal-bootstrap',{createIfMissing:true});
     const image=modal.images.fromRegistry('python:3.11-slim');
-    const secret=await modal.secrets.fromObject({
-      MODAL_TOKEN_ID:String(process.env.MODAL_TOKEN_ID||''),
-      MODAL_TOKEN_SECRET:String(process.env.MODAL_TOKEN_SECRET||'')
-    });
     const script=[
+      'exec >/tmp/bootstrap.stdout 2>/tmp/bootstrap.stderr',
       'set -eu',
       "python -m pip install -q --disable-pip-version-check 'modal>=1.5.1'",
       "python - <<'PY'",
@@ -171,7 +168,10 @@ export async function modalLtxFunctionBootstrapSubmit(){
     ].join('\n');
     const sb=await modal.sandboxes.create(app,image,{
       command:['sh','-lc',script],
-      secrets:[secret],
+      env:{
+        MODAL_TOKEN_ID:String(process.env.MODAL_TOKEN_ID||''),
+        MODAL_TOKEN_SECRET:String(process.env.MODAL_TOKEN_SECRET||'')
+      },
       timeoutMs:20*60*1000,
       memoryMiB:2048
     });
@@ -192,7 +192,9 @@ export async function modalLtxFunctionBootstrapStatus(args={}){
     const sb=await modal.sandboxes.fromId(sandboxId);
     const code=await sb.poll();
     if(code===null) return {ok:true,state:'RUNNING',provider:'Modal',route:'modal_function_bootstrap',request_id:'modal-bootstrap:'+sandboxId,sandbox_id:sandboxId};
-    const [stdout,stderr]=await Promise.all([sb.stdout.readText().catch(()=>''),sb.stderr.readText().catch(()=>'')]);
+    let [stdout,stderr]=await Promise.all([sb.stdout.readText().catch(()=>''),sb.stderr.readText().catch(()=>'')]);
+    if(!stdout) stdout=await sb.filesystem.readText('/tmp/bootstrap.stdout').catch(()=>'');
+    if(!stderr) stderr=await sb.filesystem.readText('/tmp/bootstrap.stderr').catch(()=>'');
     if(code!==0) return {ok:false,state:'FAILED',provider:'Modal',route:'modal_function_bootstrap',request_id:'modal-bootstrap:'+sandboxId,sandbox_id:sandboxId,exit_code:code,stdout_tail:String(stdout).slice(-2500),stderr_tail:cleanError(String(stderr).slice(-3500))};
     const marker='ND_MODAL_BOOTSTRAP=';
     const line=String(stdout||'').split(/\r?\n/).find(x=>x.startsWith(marker));
