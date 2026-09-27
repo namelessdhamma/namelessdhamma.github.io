@@ -537,7 +537,7 @@ async function ltxKaggleWan2gpSubmit(args={}){
   const jobRef=newKaggleLtxKernelRef();
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+jobRef.kernel_slug,
-    newTitle:'ND LTX23 Wan2GP '+jobRef.token,
+    newTitle:'ND LTX '+jobRef.token,
     text:script,
     language:'python',
     kernelType:'script',
@@ -1348,7 +1348,7 @@ async function ltxKaggleDiagnoseSessions(){
 
 async function ltxKaggleRetireSlug(args={}){
   const slug=String(args.slug||'').trim();
-  if(!/^nd-ltx-[a-z0-9-]+$/i.test(slug)) throw new Error('retire-slug restricted to nd-ltx-* transient kernels');
+  if(!/^nd-ltx(?:23-wan2gp)?-[a-z0-9-]+$/i.test(slug)) throw new Error('retire-slug restricted to ND LTX transient kernels');
   const {username}=await kaggleLtxIdentity();
   const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
   const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
@@ -1799,7 +1799,7 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='diagnose-sessions') return ltxKaggleDiagnoseSessions();
   const publicKernel=compat.match(/^public-kernel:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+):v(\d+)$/);
   if(publicKernel) return ltxKaggleInspectPublicKernel({owner:publicKernel[1],slug:publicKernel[2],version:Number(publicKernel[3])});
-  const retireSlug=compat.match(/^retire-slug:(nd-ltx-[a-z0-9-]+)$/i);
+  const retireSlug=compat.match(/^retire-slug:(nd-ltx(?:23-wan2gp)?-[a-z0-9-]+)$/i);
   if(retireSlug) return ltxKaggleRetireSlug({slug:retireSlug[1]});
   const retireKernel=compat.match(/^retire-kernel:(kbatch-[a-z0-9-]+)$/i);
   if(retireKernel) return ltxKaggleRetireKernel({request_id:retireKernel[1]});
