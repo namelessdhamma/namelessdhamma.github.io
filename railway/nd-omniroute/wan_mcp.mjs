@@ -1,6 +1,5 @@
 import { Client, handle_file } from '@gradio/client';
 import AdmZip from 'adm-zip';
-import { modalLtxSandboxSubmit, modalLtxSandboxStatus, modalLtxSandboxResultBytes, modalLtxSandboxConfigured, modalLtxFunctionBootstrapSubmit, modalLtxFunctionBootstrapStatus, isModalSandboxRequestId } from './modal_ltx_sandbox.mjs';
 
 const DEFAULT_SPACE = process.env.ND_WAN_DEFAULT_SPACE || 'Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom';
 const HF_TOKEN = String(process.env.HF_TOKEN || '').trim();
@@ -26,12 +25,6 @@ const GITHUB_PAT = String(process.env.ND_GITHUB_PAT || '').trim();
 const LTX_HFJOBS_ENABLED = /^(1|true|yes)$/i.test(String(process.env.ND_LTX_HFJOBS_PAID_ENABLED || 'false').trim());
 const LTX_HFJOBS_REPO = 'namelessdhamma/ND-app';
 const LTX_HFJOBS_MAX_COST_USD = 0.405;
-const LTX_MODAL_ENABLED = /^(1|true|yes)$/i.test(String(process.env.ND_LTX_MODAL_ENABLED || 'false').trim());
-const LTX_MODAL_GENERATE_URL = String(process.env.ND_LTX_MODAL_GENERATE_URL || '').trim();
-const LTX_MODAL_HEALTH_URL = String(process.env.ND_LTX_MODAL_HEALTH_URL || '').trim();
-const LTX_MODAL_PROXY_KEY = String(process.env.ND_LTX_MODAL_PROXY_KEY || '').trim();
-const LTX_MODAL_PROXY_SECRET = String(process.env.ND_LTX_MODAL_PROXY_SECRET || '').trim();
-
 
 const STORYBOARD_REPO = 'namelessdhamma/namelessdhamma.github.io';
 const STORYBOARD_EVENT = 'nd_storyboard_render';
@@ -354,26 +347,7 @@ async function ltxCapabilities(args={}){
 }
 
 async function ltxRawCall(args={}){
-  const spaceId=String(args.space_id||DEFAULT_LTX_SPACE);
-  if(spaceId==='nd-modal-configure'){
-    if(String(args.api_name||'')!=='/configure') throw new Error('nd-modal-configure requires api_name=/configure');
-    let payload=args.payload;
-    if(payload===undefined && typeof args.payload_json==='string') payload=JSON.parse(args.payload_json||'{}');
-    return ltxModalConfigure(payload||{});
-  }
-  if(spaceId==='nd-modal-function-bootstrap'){
-    if(String(args.api_name||'')!=='/bootstrap') throw new Error('nd-modal-function-bootstrap requires api_name=/bootstrap');
-    return modalLtxFunctionBootstrapSubmit();
-  }
-  if(spaceId==='nd-modal-function-bootstrap-status'){
-    if(String(args.api_name||'')!=='/status') throw new Error('nd-modal-function-bootstrap-status requires api_name=/status');
-    let payload=args.payload;
-    if(payload===undefined && typeof args.payload_json==='string') payload=JSON.parse(args.payload_json||'{}');
-    const status=await modalLtxFunctionBootstrapStatus(payload||{});
-    if(status.state!=='COMPLETED'||!status.config) return status;
-    return ltxModalConfigure(status.config);
-  }
-  return rawCall({...args,space_id:spaceId});
+  return rawCall({...args,space_id:String(args.space_id||DEFAULT_LTX_SPACE)});
 }
 
 async function ltxHfLinoytsFirstLast(args={}){
@@ -869,234 +843,6 @@ async function ltxKaggleStatus(args={}){
   };
 }
 
-async function driveImportLtxBytes(buf,name,mimeType){
-  if(!DRIVE_BRIDGE_KEY) throw new Error('ND_DRIVE_BRIDGE_TOKEN is not configured');
-  if(!Buffer.isBuffer(buf)||!buf.length) throw new Error('LTX output bytes missing');
-  const res=await fetch('http://127.0.0.1:'+OUTER_PORT+'/internal/ltx/import-bytes',{
-    method:'POST',
-    headers:{
-      'content-type':mimeType,
-      'content-length':String(buf.length),
-      'x-nd-bridge-key':DRIVE_BRIDGE_KEY,
-      'x-nd-name':encodeURIComponent(name),
-      'x-nd-parent-id':KAGGLE_LTX_DRIVE_FOLDER
-    },
-    body:buf
-  });
-  const txt=await res.text();
-  let data={};
-  try{data=txt?JSON.parse(txt):{};}catch{}
-  if(!res.ok||data?.ok!==true) throw new Error('Drive bytes import failed: '+String(data?.error||txt).slice(0,1000));
-  return data.result;
-}
-
-let ltxModalRuntimeCache=null;
-
-function ltxModalEnvConfig(){
-  if(!LTX_MODAL_ENABLED || !/^https:\/\//i.test(LTX_MODAL_GENERATE_URL) || !LTX_MODAL_PROXY_KEY || !LTX_MODAL_PROXY_SECRET) return null;
-  return {
-    generate_url:LTX_MODAL_GENERATE_URL,
-    health_url:LTX_MODAL_HEALTH_URL,
-    proxy_key:LTX_MODAL_PROXY_KEY,
-    proxy_secret:LTX_MODAL_PROXY_SECRET,
-    source:'environment'
-  };
-}
-
-function ltxModalConfigured(){
-  return !!(ltxModalRuntimeCache || ltxModalEnvConfig());
-}
-
-async function ltxModalConfig(){
-  if(ltxModalRuntimeCache) return ltxModalRuntimeCache;
-  if(DRIVE_BRIDGE_KEY){
-    const res=await fetch('http://127.0.0.1:'+OUTER_PORT+'/internal/ltx/modal-config',{
-      headers:{'x-nd-bridge-key':DRIVE_BRIDGE_KEY,'accept':'application/json'}
-    });
-    if(res.ok){
-      const data=await res.json();
-      if(data?.ok===true && data?.result?.generate_url && data?.result?.proxy_key && data?.result?.proxy_secret){
-        ltxModalRuntimeCache={...data.result,source:'encrypted_runtime_store'};
-        return ltxModalRuntimeCache;
-      }
-    }else if(res.status!==404){
-      const detail=(await res.text()).slice(0,800);
-      throw new Error('Modal config read failed '+res.status+': '+detail);
-    }
-  }
-  return ltxModalEnvConfig();
-}
-
-async function ltxModalCredentialProbe(){
-  try{
-    const {ModalClient}=await import('modal');
-    const modal=new ModalClient();
-    await modal.apps.fromName('nd-ltx2b-sandbox',{createIfMissing:true});
-    modal.close();
-    return {
-      ok:true,
-      state:'AUTHENTICATED',
-      provider:'Modal',
-      route:'modal_ltx2b_direct_sandbox',
-      sdk_auth:'environment',
-      cost_policy:'FREE_CREDIT_ONLY'
-    };
-  }catch(e){
-    return {
-      ok:false,
-      state:'AUTH_FAILED_OR_PROVIDER_ERROR',
-      provider:'Modal',
-      route:'modal_ltx2b_direct_sandbox',
-      error:errorText(e)
-    };
-  }
-}
-
-async function ltxModalConfigure(payload={}){
-  if(!DRIVE_BRIDGE_KEY) throw new Error('ND_DRIVE_BRIDGE_TOKEN is not configured');
-  const res=await fetch('http://127.0.0.1:'+OUTER_PORT+'/internal/ltx/modal-config',{
-    method:'POST',
-    headers:{'content-type':'application/json','x-nd-bridge-key':DRIVE_BRIDGE_KEY},
-    body:JSON.stringify(payload||{})
-  });
-  const txt=await res.text();
-  let data={};
-  try{data=txt?JSON.parse(txt):{};}catch{}
-  if(!res.ok||data?.ok!==true) throw new Error('Modal config write failed: '+String(data?.error||txt).slice(0,1000));
-  ltxModalRuntimeCache=null;
-  const cfg=await ltxModalConfig();
-  let health=null;
-  if(cfg?.health_url){
-    const hr=await fetch(cfg.health_url,{
-      headers:{'Modal-Key':cfg.proxy_key,'Modal-Secret':cfg.proxy_secret,'accept':'application/json'}
-    });
-    const htxt=await hr.text();
-    try{health=htxt?JSON.parse(htxt):{};}catch{health={raw:htxt.slice(0,1000)};}
-    if(!hr.ok) throw new Error('Modal health HTTP '+hr.status+': '+htxt.slice(0,1000));
-  }
-  return {
-    ok:true,
-    state:'CONFIGURED_HEALTH_PASS',
-    route:'modal_ltx2b_distilled_f2l',
-    provider:'Modal',
-    cost_policy:'FREE_CREDIT_ONLY',
-    store:data.result,
-    health
-  };
-}
-
-async function ltxModalBootstrapStatusAndConfigure(args={}){
-  const st=await modalLtxFunctionBootstrapStatus(args);
-  if(st?.state!=='COMPLETED' || !st?.config) return st;
-  const configured=await ltxModalConfigure(st.config);
-  return {
-    ok:true,
-    state:'CONFIGURED_HEALTH_PASS',
-    provider:'Modal',
-    route:'modal_ltx2b_distilled_f2l',
-    request_id:st.request_id||null,
-    sandbox_id:st.sandbox_id||null,
-    cost_policy:'FREE_CREDIT_ONLY',
-    store:configured.store||null,
-    health:configured.health||null
-  };
-}
-
-async function ltxModalFirstLast(args={}){
-  const [startInput,endInput]=await Promise.all([
-    prepareLtxKernelInput(args.start_image_url,'start'),
-    prepareLtxKernelInput(args.end_image_url,'end')
-  ]);
-  const cfg=await ltxModalConfig();
-  if(!cfg){
-    if(!modalLtxSandboxConfigured()){
-      return {
-        ok:false,
-        state:'NOT_CONFIGURED',
-        route:'modal_ltx2b_direct_sandbox',
-        provider:'Modal',
-        enabled:false,
-        cost_policy:'FREE_CREDIT_ONLY'
-      };
-    }
-    return modalLtxSandboxSubmit({
-      ...args,
-      start_image_url:startInput.url,
-      end_image_url:endInput.url
-    });
-  }
-  const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
-  const requestId='mltx-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
-  const body={
-    start_image_url:startInput.url,
-    end_image_url:endInput.url,
-    prompt:String(args.prompt||'').trim()||'Smooth cinematic transition between keyframes with natural motion and consistent lighting.',
-    negative_prompt:String(args.negative_prompt||'worst quality, inconsistent motion, blurry, jittery, distorted, sudden cut, duplicate subject, text, watermark'),
-    duration_seconds:Number(args.duration_seconds??2),
-    width:Number(args.width??512),
-    height:Number(args.height??288),
-    frame_rate:Number(args.frame_rate??24),
-    seed,
-    start_strength:Number(args.start_strength??1.0),
-    end_strength:Number(args.end_strength??0.9)
-  };
-  const res=await fetch(cfg.generate_url,{
-    method:'POST',
-    headers:{
-      'content-type':'application/json',
-      'accept':'video/mp4',
-      'Modal-Key':cfg.proxy_key,
-      'Modal-Secret':cfg.proxy_secret
-    },
-    body:JSON.stringify(body)
-  });
-  if(!res.ok){
-    const detail=(await res.text()).slice(0,7000);
-    throw new Error('Modal LTX HTTP '+res.status+': '+detail);
-  }
-  const ct=String(res.headers.get('content-type')||'').toLowerCase();
-  if(!ct.includes('video/mp4') && !ct.includes('application/octet-stream')) throw new Error('Modal LTX returned unexpected content-type '+ct);
-  const video=Buffer.from(await res.arrayBuffer());
-  if(!video.length) throw new Error('Modal LTX returned empty output');
-  if(video.length>150*1024*1024) throw new Error('Modal LTX output exceeds 150 MB');
-
-  const videoName='nd-ltx-modal-'+requestId+'.mp4';
-  const imported=await driveImportLtxBytes(video,videoName,'video/mp4');
-  const file=imported?.file||{};
-  const receipt={
-    ok:true,
-    state:'READY',
-    request_id:requestId,
-    route:'modal_ltx2b_distilled_f2l',
-    provider:'Modal',
-    model:'LTX-Video 2B 0.9.8 distilled',
-    cost_policy:'FREE_CREDIT_ONLY',
-    seed,
-    duration_seconds:body.duration_seconds,
-    width:body.width,
-    height:body.height,
-    frame_rate:body.frame_rate,
-    bytes:video.length,
-    drive_video_id:file.id||null,
-    created_at:new Date().toISOString()
-  };
-  const receiptBuf=Buffer.from(JSON.stringify(receipt,null,2));
-  const receiptImport=await driveImportLtxBytes(receiptBuf,'nd-ltx-modal-'+requestId+'.json','application/json');
-  const receiptFile=receiptImport?.file||{};
-  return {
-    ...receipt,
-    video_ref:file.webViewLink||null,
-    drive_video:{
-      id:file.id||null,name:file.name||null,size:Number(file.size||video.length),
-      mime_type:file.mimeType||'video/mp4',url:file.webViewLink||null,reused:imported?.reused===true
-    },
-    drive_receipt:{
-      id:receiptFile.id||null,name:receiptFile.name||null,size:Number(receiptFile.size||receiptBuf.length),
-      mime_type:receiptFile.mimeType||'application/json',url:receiptFile.webViewLink||null,reused:receiptImport?.reused===true
-    }
-  };
-}
-
 async function driveImportKaggleOutput(url,name,mimeType){
   if(!DRIVE_BRIDGE_KEY) throw new Error('ND_DRIVE_BRIDGE_TOKEN is not configured');
   const res=await fetch('http://127.0.0.1:'+OUTER_PORT+'/internal/kaggle-ltx/import-output',{
@@ -1109,41 +855,6 @@ async function driveImportKaggleOutput(url,name,mimeType){
   try{data=txt?JSON.parse(txt):{};}catch{}
   if(!res.ok||data?.ok!==true) throw new Error('Drive import failed: '+String(data?.error||txt).slice(0,1000));
   return data.result;
-}
-
-async function ltxKeyframeStatusAny(args={}){
-  if(isModalSandboxRequestId(args.request_id)) return modalLtxSandboxStatus(args);
-  return ltxKaggleStatus(args);
-}
-
-async function ltxKeyframeResultAny(args={}){
-  if(!isModalSandboxRequestId(args.request_id)) return ltxKaggleResult(args);
-  const result=await modalLtxSandboxResultBytes(args);
-  if(result.state!=='READY'||!result.video) return result;
-  const safeId=String(result.sandbox_id||'modal').replace(/[^A-Za-z0-9_-]+/g,'-').slice(0,80);
-  const imported=await driveImportLtxBytes(result.video,'nd-ltx-modal-'+safeId+'.mp4','video/mp4');
-  const file=imported?.file||{};
-  const receipt={
-    ...(result.receipt||{}),
-    ok:true,
-    state:'READY',
-    request_id:result.request_id,
-    route:'modal_ltx2b_direct_sandbox',
-    provider:'Modal',
-    cost_policy:'FREE_CREDIT_ONLY',
-    sandbox_id:result.sandbox_id,
-    drive_video_id:file.id||null,
-    completed_at:new Date().toISOString()
-  };
-  const receiptBuf=Buffer.from(JSON.stringify(receipt,null,2));
-  const receiptImport=await driveImportLtxBytes(receiptBuf,'nd-ltx-modal-'+safeId+'.json','application/json');
-  const receiptFile=receiptImport?.file||{};
-  return {
-    ...receipt,
-    video_ref:file.webViewLink||null,
-    drive_video:{id:file.id||null,name:file.name||null,size:Number(file.size||result.video.length),mime_type:file.mimeType||'video/mp4',url:file.webViewLink||null,reused:imported?.reused===true},
-    drive_receipt:{id:receiptFile.id||null,name:receiptFile.name||null,size:Number(receiptFile.size||receiptBuf.length),mime_type:receiptFile.mimeType||'application/json',url:receiptFile.webViewLink||null,reused:receiptImport?.reused===true}
-  };
 }
 
 async function ltxKaggleResult(args={}){
@@ -2256,10 +1967,6 @@ async function ltxKaggleAutoFinalize(requestId){
 
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
-  if(compat==='modal-probe') return ltxModalCredentialProbe();
-  if(compat==='modal-bootstrap') return modalLtxFunctionBootstrapSubmit();
-  if(compat.startsWith('modal-bootstrap-status:')) return ltxModalBootstrapStatusAndConfigure({sandbox_id:compat.slice('modal-bootstrap-status:'.length)});
-  if(compat==='modal'||compat==='modal-ltx2b'||compat==='modal_ltx2b_distilled_f2l') return ltxModalFirstLast(args);
   if(compat==='quota-readback') return kaggleLtxPreflight();
   if(compat==='hf-linoyts') return ltxHfLinoytsFirstLast(args);
   if(compat==='hf-studio') return ltxHfStudioFirstLast(args);
@@ -2423,7 +2130,7 @@ const TOOLS=[
   },
   {
     name:'ltx_generate_keyframes',
-    description:'Generate FREE-policy first-to-last-keyframe LTX video. Default remains Kaggle; set space_id=modal to use the Modal LTX 2B candidate when configured. Completed synchronous Modal results are copied to Google Drive.',
+    description:'Submit a FREE_ONLY first-to-last-keyframe LTX 13B generation to Kaggle T4x2 using the mounted model cache. Returns a request_id; use ltx_keyframe_status and ltx_keyframe_result. Completed results are copied to Google Drive.',
     inputSchema:{
       type:'object',
       properties:{
@@ -2622,13 +2329,12 @@ export function createWanMcpHandler(){
         else if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
         else if(name==='ltx_quota_independent_status') result=await ltxQuotaIndependentStatus(args);
         else if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
-        else if(name==='ltx_keyframe_status') result=await ltxKeyframeStatusAny(args);
-        else if(name==='ltx_keyframe_result') result=await ltxKeyframeResultAny(args);
-        else if(name==='ltx_list_routes'){ await ltxModalConfig().catch(()=>null); result={
+        else if(name==='ltx_keyframe_status') result=await ltxKaggleStatus(args);
+        else if(name==='ltx_keyframe_result') result=await ltxKaggleResult(args);
+        else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
           keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1',wan_public_video_import:'v3-durable-media'},
-          modal:{route:'modal_ltx2b_distilled_f2l',provider:'Modal',model:'LTX-Video 2B 0.9.8 distilled',state:ltxModalConfigured()?'CONFIGURED_UNQUALIFIED':'STAGED_NOT_CONFIGURED',enabled:LTX_MODAL_ENABLED,cost_policy:'FREE_CREDIT_ONLY',proxy_auth_required:true},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
@@ -2638,7 +2344,7 @@ export function createWanMcpHandler(){
             max_job_timeout_minutes:30,
             estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD
           }
-        };}
+        };
         else if(name==='ltx_get_capabilities') result=await ltxCapabilities(args);
         else if(name==='ltx_call_space_raw') result=await ltxRawCall(args);
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
@@ -2659,9 +2365,8 @@ export async function wanHealth(){
 }
 
 export async function ltxHealth({probe=false,spaceId}={}){
-  await ltxModalConfig().catch(()=>null);
   const selected=String(spaceId||DEFAULT_LTX_SPACE).trim();
-  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:'kaggle_ltx13b_mounted_cache_f2l',keyframe_provider:'Kaggle',keyframe_dataset_source:KAGGLE_LTX_DATASET,reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},modal:{enabled:LTX_MODAL_ENABLED,configured:ltxModalConfigured(),route:'modal_ltx2b_distilled_f2l',health_url_configured:!!LTX_MODAL_HEALTH_URL,cost_policy:'FREE_CREDIT_ONLY'},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
+  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:'kaggle_ltx13b_mounted_cache_f2l',keyframe_provider:'Kaggle',keyframe_dataset_source:KAGGLE_LTX_DATASET,reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
   if(!probe) return {...base,upstream:'VERIFY_AT_USE'};
   try{
     const cap=await capabilities(selected);
