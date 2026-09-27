@@ -221,7 +221,7 @@ func _refresh_surface() -> void:
 		for i in range(reserve.get_child_count()):
 			var piece := reserve.get_child(i) as Button
 			piece.text = "%d" % (i + 1) if reserve_available[player - 1][i] else "—"
-			piece.disabled = not reserve_available[player - 1][i]
+			piece.disabled = game_over or player != turn or not reserve_available[player - 1][i]
 
 func _update_status(event: String) -> void:
 	var status := get_node("SafeArea/Landscape/Center/Status") as Label
@@ -356,4 +356,7 @@ func _run_headless_interaction_smoke() -> void:
 	assert(blocked_player == 2 and turn == 1 and not game_over)
 	_reset_round()
 	assert(blocked_player == 0)
+	assert((_reserve_node(1).get_child(0) as Button).disabled == false)
+	assert((_reserve_node(2).get_child(0) as Button).disabled == true)
 	print("BLUE_SEA_BLOCKED_PLAYER_SMOKE_PASS blocked=P2 continuing=P1 reset=PASS")
+	print("BLUE_SEA_TURN_AWARE_RESERVES_SMOKE_PASS active=P1 inactive=P2")
