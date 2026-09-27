@@ -2526,7 +2526,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
         else if(name==='ltx_keyframe_status') result=await ltxKaggleStatus(args);
         else if(name==='ltx_keyframe_result') result=await ltxKaggleResult(args);
-        else if(name==='ltx_list_routes') result={
+        else if(name==='ltx_list_routes'){ await ltxModalConfig().catch(()=>null); result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
           keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1',wan_public_video_import:'v3-durable-media'},
@@ -2540,7 +2540,7 @@ export function createWanMcpHandler(){
             max_job_timeout_minutes:30,
             estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD
           }
-        };
+        };}
         else if(name==='ltx_get_capabilities') result=await ltxCapabilities(args);
         else if(name==='ltx_call_space_raw') result=await ltxRawCall(args);
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
@@ -2561,6 +2561,7 @@ export async function wanHealth(){
 }
 
 export async function ltxHealth({probe=false,spaceId}={}){
+  await ltxModalConfig().catch(()=>null);
   const selected=String(spaceId||DEFAULT_LTX_SPACE).trim();
   const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:'kaggle_ltx13b_mounted_cache_f2l',keyframe_provider:'Kaggle',keyframe_dataset_source:KAGGLE_LTX_DATASET,reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},modal:{enabled:LTX_MODAL_ENABLED,configured:ltxModalConfigured(),route:'modal_ltx2b_distilled_f2l',health_url_configured:!!LTX_MODAL_HEALTH_URL,cost_policy:'FREE_CREDIT_ONLY'},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
   if(!probe) return {...base,upstream:'VERIFY_AT_USE'};
