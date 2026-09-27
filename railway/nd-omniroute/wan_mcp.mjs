@@ -1,6 +1,6 @@
 import { Client, handle_file } from '@gradio/client';
 import AdmZip from 'adm-zip';
-import { modalLtxSandboxSubmit, modalLtxSandboxStatus, modalLtxSandboxResultBytes, modalLtxSandboxConfigured, modalLtxFunctionBootstrapRaw, isModalSandboxRequestId } from './modal_ltx_sandbox.mjs';
+import { modalLtxSandboxSubmit, modalLtxSandboxStatus, modalLtxSandboxResultBytes, modalLtxSandboxConfigured, modalLtxFunctionBootstrapSubmit, modalLtxFunctionBootstrapStatus, isModalSandboxRequestId } from './modal_ltx_sandbox.mjs';
 
 const DEFAULT_SPACE = process.env.ND_WAN_DEFAULT_SPACE || 'Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom';
 const HF_TOKEN = String(process.env.HF_TOKEN || '').trim();
@@ -363,8 +363,15 @@ async function ltxRawCall(args={}){
   }
   if(spaceId==='nd-modal-function-bootstrap'){
     if(String(args.api_name||'')!=='/bootstrap') throw new Error('nd-modal-function-bootstrap requires api_name=/bootstrap');
-    const cfg=await modalLtxFunctionBootstrapRaw();
-    return ltxModalConfigure(cfg);
+    return modalLtxFunctionBootstrapSubmit();
+  }
+  if(spaceId==='nd-modal-function-bootstrap-status'){
+    if(String(args.api_name||'')!=='/status') throw new Error('nd-modal-function-bootstrap-status requires api_name=/status');
+    let payload=args.payload;
+    if(payload===undefined && typeof args.payload_json==='string') payload=JSON.parse(args.payload_json||'{}');
+    const status=await modalLtxFunctionBootstrapStatus(payload||{});
+    if(status.state!=='COMPLETED'||!status.config) return status;
+    return ltxModalConfigure(status.config);
   }
   return rawCall({...args,space_id:spaceId});
 }
