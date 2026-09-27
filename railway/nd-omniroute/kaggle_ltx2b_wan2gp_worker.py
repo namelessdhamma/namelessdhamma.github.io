@@ -306,12 +306,16 @@ def main() -> None:
     # Direct headless LTXV construction does not initialize it.
     obj._interrupt = False
 
-    pipeline = obj.pipeline
+    # LTX 2B 0.9.6 distilled is an official base-pipeline config.
+    # Wan2GP's LTXV wrapper constructs a multi-scale wrapper unconditionally,
+    # so select its inner base pipeline for this model instead of borrowing
+    # 0.9.8-only multi-scale parameters.
+    multi_pipeline = obj.pipeline
+    obj.pipeline = multi_pipeline.video_pipeline
     pipe = {
-        "transformer": pipeline.video_pipeline.transformer,
-        "vae": pipeline.vae,
-        "text_encoder": pipeline.video_pipeline.text_encoder,
-        "latent_upsampler": pipeline.latent_upsampler,
+        "transformer": obj.pipeline.transformer,
+        "vae": obj.pipeline.vae,
+        "text_encoder": obj.pipeline.text_encoder,
     }
     print("ND_LTX2B_STAGE=profile", flush=True)
     offload_obj = offload.profile(
