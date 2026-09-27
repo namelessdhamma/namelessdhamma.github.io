@@ -279,6 +279,23 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
         raise RuntimeError("Wan2GP LTX loader patch point missing")
     if needle in src:
         src = src.replace(needle, replacement, 1)
+
+    heavy_utils_import = "from shared.utils.utils import calculate_new_dimensions"
+    lightweight_calculate_new_dimensions = """def calculate_new_dimensions(canvas_height, canvas_width, image_height, image_width, fit_into_canvas, block_size=16):
+    if fit_into_canvas is None or fit_into_canvas == 2:
+        return canvas_height, canvas_width
+    if fit_into_canvas == 1:
+        scale1 = min(canvas_height / image_height, canvas_width / image_width)
+        scale2 = min(canvas_width / image_height, canvas_height / image_width)
+        scale = max(scale1, scale2)
+    else:
+        scale = (canvas_height * canvas_width / (image_height * image_width)) ** (1 / 2)
+    new_height = round(image_height * scale / block_size) * block_size
+    new_width = round(image_width * scale / block_size) * block_size
+    return new_height, new_width
+"""
+    if heavy_utils_import in src:
+        src = src.replace(heavy_utils_import, lightweight_calculate_new_dimensions, 1)
     ltxv_py.write_text(src, encoding="utf-8")
 
     # Headless LTX uses shared.utils submodules directly. The package initializer
