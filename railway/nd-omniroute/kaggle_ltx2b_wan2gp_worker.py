@@ -157,6 +157,33 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
                 timeout=60,
             ).read()
         )
+
+    # Lightricks single-file checkpoints store the model config as a JSON string
+    # with a nested "transformer" object. MMGP 3.8.1 expects a plain config
+    # object when using its fast loader, so provide the nested transformer
+    # config explicitly instead of letting MMGP consume raw safetensors metadata.
+    from safetensors import safe_open
+    with safe_open(str(model), framework="pt", device="cpu") as sf:
+        raw_cfg = (sf.metadata() or {}).get("config")
+    if not raw_cfg:
+        raise RuntimeError("LTX checkpoint config metadata missing")
+    all_cfg = json.loads(raw_cfg) if isinstance(raw_cfg, str) else raw_cfg
+    transformer_cfg = all_cfg.get("transformer", all_cfg)
+    if not isinstance(transformer_cfg, dict):
+        raise RuntimeError("LTX transformer config is not an object")
+    forced_cfg = CK / "nd_ltx2b_transformer_config.json"
+    forced_cfg.write_text(json.dumps(transformer_cfg), encoding="utf-8")
+
+    ltxv_py = ROOT / "models" / "ltx_video" / "ltxv.py"
+    src = ltxv_py.read_text(encoding="utf-8")
+    needle = "offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False)"
+    replacement = "offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False, forcedConfigPath=os.environ['ND_LTX_TRANSFORMER_CONFIG_PATH'])"
+    if needle not in src and "ND_LTX_TRANSFORMER_CONFIG_PATH" not in src:
+        raise RuntimeError("Wan2GP LTX loader patch point missing")
+    if needle in src:
+        ltxv_py.write_text(src.replace(needle, replacement, 1), encoding="utf-8")
+    os.environ["ND_LTX_TRANSFORMER_CONFIG_PATH"] = str(forced_cfg)
+    print("ND_LTX2B_STAGE=transformer_config_ready", flush=True)
     return model, te, cfg
 
 
