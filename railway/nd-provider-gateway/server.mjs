@@ -163,6 +163,14 @@ if(name==='yandex_delete'){const path=String(a.path||'');if(!path)throw new Erro
 throw new Error('unknown tool');}
 async function yandexDispatch(q){const id=q&&q.id!=null?q.id:null;const m=q&&q.method;const p=(q&&q.params)||{};if(m==='initialize')return [200,result(id,{protocolVersion:p.protocolVersion||'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'ND Yandex Disk',version:'1.0.0'},instructions:'Direct read/write access to Yandex Disk API, including binary upload, ZIP import, and guarded deletion.'})];if(m==='notifications/initialized')return [202,null];if(m==='ping')return [200,result(id,{})];if(m==='tools/list')return [200,result(id,{tools:yandexTools()})];if(m==='tools/call'){try{const d=await yandexCall(p.name,p.arguments||{});return [200,result(id,{content:[{type:'text',text:JSON.stringify(d)}],structuredContent:d,isError:false})];}catch(e){return [200,result(id,{content:[{type:'text',text:clean(e)}],isError:true})];}}return [404,error(id,-32601,'Method not found')];}
 
+const ND_TELEGRAM_MUX_CODE_REV="telegram-publisher-v1-20260927";
+const TG_TOKEN=String(process.env.ND_TELEGRAM_PUBLISHER_BOT_TOKEN||"").trim();
+const TG_CHANNEL=String(process.env.ND_TELEGRAM_CHANNEL_ID||"@Namelessdhamma").trim()||"@Namelessdhamma";
+const TG_USERNAME=String(process.env.ND_TELEGRAM_PUBLISHER_BOT_USERNAME||"").trim();
+const TG_PATH_TOKEN=String(process.env.ND_TELEGRAM_MCP_PATH_TOKEN||"").trim();
+const TELEGRAM_MCP_PATH=TG_PATH_TOKEN?"/nd/telegram/mcp/"+TG_PATH_TOKEN:"";
+const TG_WRITES=/^(1|true|yes|on)$/i.test(String(process.env.ND_SOCIAL_WRITES_ENABLED||"false"));
+
 const YT_PATH_TOKEN=String(process.env.ND_YOUTUBE_MCP_PATH_TOKEN||"").trim();
 const YT_CLIENT_ID=String(process.env.ND_YOUTUBE_CLIENT_ID||"").trim();
 const YT_CLIENT_SECRET=String(process.env.ND_YOUTUBE_CLIENT_SECRET||"").trim();
@@ -281,6 +289,104 @@ async function ytCallTool(name,a={}){
   if(name==="youtube_analytics"){const q={ids:"channel==MINE",startDate:String(a.start_date||""),endDate:String(a.end_date||""),metrics:String(a.metrics||"views,estimatedMinutesWatched,averageViewDuration,subscribersGained,subscribersLost")};for(const k of ["dimensions","filters","sort"])if(a[k])q[k]=String(a[k]);const u=new URL("https://youtubeanalytics.googleapis.com/v2/reports");for(const[k,v]of Object.entries(q))u.searchParams.set(k,v);return {ok:true,result:await yfetch("GET",u.toString())};}
   if(name==="youtube_api"){const m=String(a.method||"GET").toUpperCase();if(!["GET","POST","PUT","PATCH","DELETE"].includes(m))throw new Error("unsupported_http_method");if(m!=="GET"&&!YT_WRITES)throw new Error("youtube_writes_disabled");if(m==="DELETE"&&a.confirm_destructive!==true)throw new Error("confirm_required");return {ok:true,result:await yapi(m,String(a.resource||""),a.query||{},["GET","DELETE"].includes(m)?undefined:(a.body||{}))};}
   throw new Error("unknown_tool");
+}
+
+
+function tgClean(e){
+  let x=String(e?.message||e||"error");
+  for(const v of [TG_TOKEN,TG_PATH_TOKEN])if(v)x=x.split(v).join("[REDACTED]");
+  return x.slice(0,1800);
+}
+async function tgApi(method,body){
+  if(!TG_TOKEN)throw new Error("telegram_token_missing");
+  const u="https://api.telegram.org/bot"+TG_TOKEN+"/"+String(method||"");
+  const init=body===undefined?{method:"GET",headers:{accept:"application/json"}}:{
+    method:"POST",headers:{accept:"application/json","content-type":"application/json; charset=utf-8"},body:JSON.stringify(body)
+  };
+  const r=await fetch(u,init); const t=await r.text();
+  let o={}; try{o=t?JSON.parse(t):{};}catch{o={ok:false,description:t.slice(0,900)};}
+  if(!r.ok||o.ok===false)throw new Error("telegram_http_"+r.status+":"+(o.description||"request_failed"));
+  return o.result;
+}
+const TG_TOOLS=[
+  {name:"telegram_status",description:"Read publisher bot identity, target channel identity, publisher permissions, and channel administrator bot usernames.",inputSchema:{type:"object",properties:{},additionalProperties:false},annotations:RO},
+  {name:"telegram_send_text",description:"Publish a text message to the configured Nameless Dhamma Telegram channel.",inputSchema:{type:"object",properties:{text:{type:"string",minLength:1,maxLength:4096},disable_notification:{type:"boolean",default:false}},required:["text"],additionalProperties:false},annotations:WR},
+  {name:"telegram_edit_text",description:"Edit a text message previously published by the publisher bot.",inputSchema:{type:"object",properties:{message_id:{type:"integer",minimum:1},text:{type:"string",minLength:1,maxLength:4096}},required:["message_id","text"],additionalProperties:false},annotations:WR},
+  {name:"telegram_delete_message",description:"Delete a Telegram channel message; confirm=true required.",inputSchema:{type:"object",properties:{message_id:{type:"integer",minimum:1},confirm:{type:"boolean"}},required:["message_id","confirm"],additionalProperties:false},annotations:DEL},
+  {name:"telegram_send_photo",description:"Publish an image by HTTPS URL with optional caption.",inputSchema:{type:"object",properties:{photo_url:{type:"string",minLength:8},caption:{type:"string",maxLength:1024},disable_notification:{type:"boolean",default:false}},required:["photo_url"],additionalProperties:false},annotations:WR},
+  {name:"telegram_send_video",description:"Publish a video by HTTPS URL with optional caption.",inputSchema:{type:"object",properties:{video_url:{type:"string",minLength:8},caption:{type:"string",maxLength:1024},disable_notification:{type:"boolean",default:false}},required:["video_url"],additionalProperties:false},annotations:WR}
+];
+async function tgStatus(){
+  const me=await tgApi("getMe");
+  const chat=await tgApi("getChat",{chat_id:TG_CHANNEL});
+  const member=await tgApi("getChatMember",{chat_id:TG_CHANNEL,user_id:me.id});
+  const admins=await tgApi("getChatAdministrators",{chat_id:TG_CHANNEL});
+  const adminBots=(admins||[]).filter(x=>x?.user?.is_bot).map(x=>({
+    id:x.user.id,username:x.user.username||null,status:x.status,
+    can_post_messages:x.can_post_messages??null,
+    can_edit_messages:x.can_edit_messages??null,
+    can_delete_messages:x.can_delete_messages??null,
+    can_promote_members:x.can_promote_members??null
+  }));
+  return {ok:true,configured:Boolean(TG_TOKEN&&TG_CHANNEL&&TG_PATH_TOKEN),writes:TG_WRITES,
+    bot:{id:me.id,username:me.username||null,is_bot:me.is_bot},
+    channel:{id:chat.id,title:chat.title||null,username:chat.username||null,type:chat.type},
+    membership:{status:member.status,
+      can_manage_chat:member.can_manage_chat??null,
+      can_post_messages:member.can_post_messages??null,
+      can_edit_messages:member.can_edit_messages??null,
+      can_delete_messages:member.can_delete_messages??null,
+      can_promote_members:member.can_promote_members??null,
+      can_invite_users:member.can_invite_users??null},
+    admin_bots:adminBots,
+    zen_sync_present:adminBots.some(x=>String(x.username||"").toLowerCase()==="zen_sync_bot")
+  };
+}
+async function tgCall(name,a={}){
+  if(name==="telegram_status")return await tgStatus();
+  if(!TG_WRITES)throw new Error("telegram_writes_disabled");
+  if(name==="telegram_send_text"){
+    const m=await tgApi("sendMessage",{chat_id:TG_CHANNEL,text:String(a.text||""),disable_notification:Boolean(a.disable_notification)});
+    return {ok:true,message:{message_id:m.message_id,date:m.date,chat_id:m.chat?.id,text:m.text||null}};
+  }
+  if(name==="telegram_edit_text"){
+    const m=await tgApi("editMessageText",{chat_id:TG_CHANNEL,message_id:Number(a.message_id),text:String(a.text||"")});
+    return {ok:true,message:{message_id:m.message_id,date:m.date,edit_date:m.edit_date,text:m.text||null}};
+  }
+  if(name==="telegram_delete_message"){
+    if(a.confirm!==true)throw new Error("confirm_required");
+    const out=await tgApi("deleteMessage",{chat_id:TG_CHANNEL,message_id:Number(a.message_id)});
+    return {ok:Boolean(out),message_id:Number(a.message_id)};
+  }
+  if(name==="telegram_send_photo"){
+    const m=await tgApi("sendPhoto",{chat_id:TG_CHANNEL,photo:String(a.photo_url||""),caption:a.caption===undefined?undefined:String(a.caption),disable_notification:Boolean(a.disable_notification)});
+    return {ok:true,message:{message_id:m.message_id,date:m.date,chat_id:m.chat?.id,caption:m.caption||null,photo_sizes:Array.isArray(m.photo)?m.photo.length:0}};
+  }
+  if(name==="telegram_send_video"){
+    const m=await tgApi("sendVideo",{chat_id:TG_CHANNEL,video:String(a.video_url||""),caption:a.caption===undefined?undefined:String(a.caption),disable_notification:Boolean(a.disable_notification)});
+    return {ok:true,message:{message_id:m.message_id,date:m.date,chat_id:m.chat?.id,caption:m.caption||null,duration:m.video?.duration||null}};
+  }
+  throw new Error("unknown_telegram_tool");
+}
+async function telegramMcp(req,res){
+  let msg;try{msg=JSON.parse(await readBody(req)||"{}");}
+  catch{return j(res,400,{jsonrpc:"2.0",id:null,error:{code:-32700,message:"parse error"}});}
+  const id=msg.id,method=String(msg.method||"");
+  if(method==="notifications/initialized"){res.writeHead(204);return res.end();}
+  if(method==="initialize")return j(res,200,{jsonrpc:"2.0",id,result:{protocolVersion:"2025-06-18",capabilities:{tools:{listChanged:false}},serverInfo:{name:"nd-telegram-publisher-mcp",version:"1.0.0"},instructions:"Nameless Dhamma Telegram publisher for the configured production channel. Writes obey ND_SOCIAL_WRITES_ENABLED; deletion requires explicit confirm=true."}});
+  if(method==="ping")return j(res,200,{jsonrpc:"2.0",id,result:{}});
+  if(method==="tools/list")return j(res,200,{jsonrpc:"2.0",id,result:{tools:TG_TOOLS}});
+  if(method==="tools/call"){
+    const p=msg.params||{};
+    try{
+      const out=await tgCall(String(p.name||""),p.arguments||{});
+      return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:false}});
+    }catch(e){
+      const out={ok:false,error:tgClean(e)};
+      return j(res,200,{jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:true}});
+    }
+  }
+  return j(res,200,{jsonrpc:"2.0",id,error:{code:-32601,message:"Method not found"}});
 }
 
 async function readBody(req){const chunks=[];for await(const c of req)chunks.push(c);return chunks.length?Buffer.concat(chunks).toString("utf8"):"";}
@@ -840,6 +946,7 @@ const muxServer=http.createServer(async(req,res)=>{
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
         youtube:{configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),writes:YT_WRITES,tools:YT_TOOLS.length},
+        telegram:{configured:Boolean(TG_TOKEN&&TG_CHANNEL&&TG_PATH_TOKEN),writes:TG_WRITES,tools:TG_TOOLS.length,code_rev:ND_TELEGRAM_MUX_CODE_REV},
         lightpanda:{configured:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_stage:lpCdp.stage,cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:String(lpCdp.lastError||"").slice(0,300)},
         cloudflare_browser:{configured:Boolean(CLOUDFLARE_ACCOUNT_ID&&CLOUDFLARE_API_TOKEN&&CLOUDFLARE_PATH_TOKEN),tools:CF_TOOLS.length,code_rev:ND_CLOUDFLARE_MUX_CODE_REV,cdp_stage:cfCdp.stage,cdp_active:Boolean(cfCdp.browser&&cfCdp.page),cdp_last_error:String(cfCdp.lastError||"").slice(0,300)}
       };
@@ -892,11 +999,19 @@ const muxServer=http.createServer(async(req,res)=>{
         yandex_mcp_configured:Boolean(YANDEX_MCP_PATH),
         youtube_mcp_configured:Boolean(YOUTUBE_MCP_PATH),
         youtube_read_write:YT_WRITES,
+        telegram_mcp_configured:Boolean(TELEGRAM_MCP_PATH),
+        telegram_read_write:TG_WRITES,
         lightpanda_mcp_configured:Boolean(LIGHTPANDA_MCP_PATH)
       };
       const raw=Buffer.from(JSON.stringify(body));
       res.writeHead(200,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
       res.end(raw);return;
+    }
+
+    if(TELEGRAM_MCP_PATH && path===TELEGRAM_MCP_PATH){
+      if(req.method==='GET') return j(res,200,{ok:true,service:'nd-telegram-publisher-mcp',transport:'streamable-http',methods:['POST'],tools:TG_TOOLS.length,configured:Boolean(TG_TOKEN&&TG_CHANNEL),writes:TG_WRITES,code_rev:ND_TELEGRAM_MUX_CODE_REV});
+      if(req.method!=='POST'){res.writeHead(405,{Allow:'POST','content-length':'0'});res.end();return;}
+      return await telegramMcp(req,res);
     }
 
     if(CLOUDFLARE_MCP_PATH && path===CLOUDFLARE_MCP_PATH){
@@ -950,6 +1065,10 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   youtube_configured:Boolean(YT_CLIENT_ID&&YT_CLIENT_SECRET&&YT_REFRESH_TOKEN&&YT_PATH_TOKEN),
   youtube_writes:YT_WRITES,
   youtube_tools:YT_TOOLS.length,
+  telegram_configured:Boolean(TG_TOKEN&&TG_CHANNEL&&TG_PATH_TOKEN),
+  telegram_writes:TG_WRITES,
+  telegram_tools:TG_TOOLS.length,
+  telegram_code_rev:ND_TELEGRAM_MUX_CODE_REV,
   code_rev:ND_YOUTUBE_MUX_CODE_REV,
   qualification_rev:YT_QUALIFY_REV||null
 }));
