@@ -166,9 +166,22 @@ logging:
 async function initCore() {
   try {
     writeConfig();
-    core = await bootstrapMemoryCore({ agent: "porfirchik", namespace: NAMESPACE, pkgVersion: "porfirchik-memos-1.0.0" });
+    core = await bootstrapMemoryCore({ agent: "porfirchik", namespace: NAMESPACE, pkgVersion: "porfirchik-memos-1.0.1" });
+    try {
+      await core.searchMemory({
+        agent: "porfirchik",
+        namespace: NAMESPACE,
+        sessionId: "startup-warmup",
+        query: "проверка готовности памяти",
+        reason: "tool_driven",
+        topK: { tier1: 1, tier2: 1, tier3: 1 }
+      });
+      console.log("PORFIRCHIK_MEMOS_EMBEDDING_WARM", JSON.stringify({ ok: true }));
+    } catch (warmErr) {
+      console.warn("PORFIRCHIK_MEMOS_EMBEDDING_WARM", JSON.stringify({ ok: false, error: cleanError(warmErr) }));
+    }
     coreReady = true;
-    console.log("PORFIRCHIK_MEMOS_LOCAL_READY", JSON.stringify({ home: HOME, groqEvolution: Boolean(GROQ_KEY) }));
+    console.log("PORFIRCHIK_MEMOS_LOCAL_READY", JSON.stringify({ home: HOME, groqEvolution: Boolean(GROQ_KEY), fullEvolution: true }));
   } catch (e) {
     coreInitError = cleanError(e);
     console.error("PORFIRCHIK_MEMOS_LOCAL_FAILED", coreInitError);
@@ -284,6 +297,7 @@ async function handleTurnStart(req, res) {
   const userText = String(input.user_text || "");
   if (!userText.trim()) return sendJson(res, 400, { ok:false, error:"user_text_required" });
   const conversationId = String(input.conversation_id || "porfirchik-main");
+  const localOnly = input.local_only === true;
   let local = null, cloud = null, localError = null, cloudError = null;
 
   const localP = coreReady ? core.onTurnStart({
@@ -298,7 +312,7 @@ async function handleTurnStart(req, res) {
     llmFilterMalformedRetries:0,
   }).catch(e => { localError=cleanError(e); return null; }) : Promise.resolve(null);
 
-  const cloudP = CLOUD_KEY ? cloudSearch(userText, conversationId).catch(e => { cloudError=cleanError(e); return null; }) : Promise.resolve(null);
+  const cloudP = CLOUD_KEY && !localOnly ? cloudSearch(userText, conversationId).catch(e => { cloudError=cleanError(e); return null; }) : Promise.resolve(null);
   [local, cloud] = await Promise.all([localP, cloudP]);
 
   let episodeId = local?.query?.episodeId || local?.episodeId || null;
@@ -314,7 +328,7 @@ async function handleTurnStart(req, res) {
   }
   return sendJson(res, 200, {
     ok:true, memory_context:mergedContext(local?.injectedContext, cloudContext(cloud)), episode_id:episodeId,
-    local_ok:Boolean(local), cloud_ok:Boolean(cloud), degraded:Boolean(localError || cloudError || !coreReady),
+    local_ok:Boolean(local), cloud_ok:localOnly ? null : Boolean(cloud), local_only:localOnly, degraded:Boolean(localError || cloudError || !coreReady),
     errors:{ local:localError || (coreReady?null:coreInitError || "initializing"), cloud:cloudError }
   });
 }
@@ -325,15 +339,16 @@ async function handleTurnEnd(req, res) {
   const sessionId=String(input.session_id || "vk-father"), episodeId=String(input.episode_id || "");
   const userText=String(input.user_text || ""), agentText=String(input.agent_text || "");
   const conversationId=String(input.conversation_id || "porfirchik-main");
+  const localOnly=input.local_only === true;
   let localResult=null, cloudResult=null, localError=null, cloudError=null;
   if (coreReady && episodeId) {
     try { localResult = await core.onTurnEnd({ agent:"porfirchik", sessionId, episodeId, namespace:NAMESPACE, agentText:agentText.slice(0,12000), toolCalls:[], contextHints:{source:"vk"}, ts:Date.now() }); }
     catch(e){ localError=cleanError(e); }
   }
-  if (CLOUD_KEY && userText.trim()) {
+  if (CLOUD_KEY && !localOnly && userText.trim()) {
     try { cloudResult = await cloudAdd(userText,agentText,conversationId); } catch(e){ cloudError=cleanError(e); }
   }
-  return sendJson(res,200,{ ok:true, local_ok:Boolean(localResult)||!episodeId, cloud_ok:Boolean(cloudResult)||!CLOUD_KEY, degraded:Boolean(localError||cloudError||!coreReady), trace_id:localResult?.traceId||null, errors:{local:localError,cloud:cloudError} });
+  return sendJson(res,200,{ ok:true, local_ok:Boolean(localResult)||!episodeId, cloud_ok:localOnly ? null : (Boolean(cloudResult)||!CLOUD_KEY), local_only:localOnly, degraded:Boolean(localError||cloudError||!coreReady), trace_id:localResult?.traceId||null, errors:{local:localError,cloud:cloudError} });
 }
 
 const RO={readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false};
