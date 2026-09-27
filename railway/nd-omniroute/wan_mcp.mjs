@@ -936,15 +936,24 @@ async function ltxKaggle2bResult(args={}){
     provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null
   };
-  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
-    userName:username,kernelSlug:ref.kernel_slug,pageSize:100
-  });
-  const files=Array.isArray(out?.files)?out.files:[];
+  const files=[];
+  const logs=[];
+  let pageToken=null;
+  for(let page=0;page<20;page++){
+    const body={userName:username,kernelSlug:ref.kernel_slug,pageSize:100};
+    if(pageToken) body.pageToken=pageToken;
+    const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',body);
+    if(Array.isArray(out?.files)) files.push(...out.files);
+    if(out?.log) logs.push(String(out.log));
+    const next=String(out?.nextPageToken||out?.next_page_token||'').trim();
+    if(!next||next===pageToken) break;
+    pageToken=next;
+  }
   const byName=name=>files.find(x=>(x?.fileName||x?.name||x?.path)===name);
   const mp4=byName('result.mp4');
   const receiptFile=byName('result.json');
-  if(!mp4?.url) throw new Error('LTX2B result.mp4 missing from Kaggle output');
-  const receipt=extractKaggleMarker(out?.log||'','ND_LTX2B_F2L_JSON=');
+  if(!mp4?.url) throw new Error('LTX2B result.mp4 missing from Kaggle output after pagination');
+  const receipt=extractKaggleMarker(logs.join('\n'),'ND_LTX2B_F2L_JSON=');
   const driveVideo=await driveImportKaggleOutput(mp4.url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
   let driveReceipt=null;
   if(receiptFile?.url) driveReceipt=await driveImportKaggleOutput(receiptFile.url,'nd-ltx2b-'+ref.request_id+'.json','application/json');
