@@ -1513,19 +1513,19 @@ async function ltxKaggle2bLoadProbe(){
     "run([sys.executable,'-m','pip','install','--no-cache-dir','-q','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],1200)",
     "from huggingface_hub import hf_hub_download",
     "CK.mkdir(parents=True,exist_ok=True); T5.mkdir(parents=True,exist_ok=True)",
-    "model=hf_hub_download('Lightricks/LTX-Video','ltxv-2b-0.9.8-distilled-fp8.safetensors',local_dir=str(CK))",
+    "mounted=list(Path('/kaggle/input').glob('**/diffusion_pytorch_model.bf16.safetensors'))",
+    "model=str(mounted[0]) if mounted else hf_hub_download('multimodalart/ltxv-2b-0.9.6-distilled','transformer/diffusion_pytorch_model.bf16.safetensors',local_dir=str(CK))",
     "te=hf_hub_download('DeepBeepMeep/LTX_Video','T5_xxl_1.1/T5_xxl_1.1_enc_quanto_bf16_int8.safetensors',local_dir=str(CK))",
     "for f in ['T5_xxl_1.1/added_tokens.json','T5_xxl_1.1/special_tokens_map.json','T5_xxl_1.1/spiece.model','T5_xxl_1.1/tokenizer_config.json','ltxv_0.9.7_VAE.safetensors','ltxv_0.9.7_spatial_upscaler.safetensors','ltxv_scheduler.json']:",
     "    hf_hub_download('DeepBeepMeep/LTX_Video',f,local_dir=str(CK))",
-    "cfg=Path('/kaggle/working/ltxv-2b-0.9.8-distilled-fp8.yaml')",
-    "cfg.write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Lightricks/LTX-Video/4b2d053057623ddd4d0a1d3e9cd28890e9ef487f/configs/ltxv-2b-0.9.8-distilled-fp8.yaml',timeout=60).read())",
-    "from safetensors import safe_open",
-    "with safe_open(str(model),framework='pt',device='cpu') as sf: raw_cfg=(sf.metadata() or {}).get('config')",
-    "if not raw_cfg: raise RuntimeError('LTX checkpoint config metadata missing')",
-    "all_cfg=json.loads(raw_cfg) if isinstance(raw_cfg,str) else raw_cfg",
-    "transformer_cfg=all_cfg.get('transformer',all_cfg)",
-    "if not isinstance(transformer_cfg,dict): raise RuntimeError('LTX transformer config is not an object')",
-    "forced_cfg=CK/'nd_ltx2b_transformer_config.json'; forced_cfg.write_text(json.dumps(transformer_cfg),encoding='utf-8')",
+    "cfg=Path('/kaggle/working/ltxv-2b-0.9.6-distilled.yaml')",
+    "cfg.write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/Lightricks/LTX-Video/4b2d053057623ddd4d0a1d3e9cd28890e9ef487f/configs/ltxv-2b-0.9.6-distilled.yaml',timeout=60).read())",
+    "mounted_cfg=list(Path('/kaggle/input').glob('**/ltxv-2b-distilled/transformer/config.json'))",
+    "if mounted_cfg: forced_cfg=mounted_cfg[0]",
+    "else:",
+    "    forced_cfg=CK/'nd_ltx2b_transformer_config.json'",
+    "    forced_cfg.parent.mkdir(parents=True,exist_ok=True)",
+    "    urllib.request.urlretrieve('https://huggingface.co/multimodalart/ltxv-2b-0.9.6-distilled/resolve/main/transformer/config.json?download=true',str(forced_cfg))",
     "ltxv_py=ROOT/'models/ltx_video/ltxv.py'",
     "src=ltxv_py.read_text(encoding='utf-8')",
     "needle='offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False)'",
@@ -1551,7 +1551,7 @@ async function ltxKaggle2bLoadProbe(){
   ].join('\n');
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+slug,newTitle:'ND LTX2B Load Probe '+token,text:script,
-    language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:[preflight.username+'/nd-ltx-2b-distilled-cache'],competitionDataSources:[],categoryIds:[],modelDataSources:[],
     isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:2400
   });
   const version=Number(save?.versionNumber||save?.version_number||0);
