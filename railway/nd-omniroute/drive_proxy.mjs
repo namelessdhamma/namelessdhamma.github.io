@@ -2828,6 +2828,36 @@ async function remoteKaggleOutputToDrive(args={}){
   });
 }
 
+async function localLtxBytesToDrive(name,mimeType,parentId,buf){
+  name=String(name||'').trim();
+  mimeType=String(mimeType||'application/octet-stream').trim();
+  parentId=String(parentId||'').trim();
+  if(!name||!parentId) throw new Error('name and parent_id required');
+  if(!['video/mp4','application/json'].includes(mimeType)) throw new Error('local mime type not allowed');
+  if(!Buffer.isBuffer(buf)||!buf.length) throw new Error('local output is empty');
+  if(buf.length>150*1024*1024) throw new Error('local output exceeds 150 MB');
+  return authContext.run({user:true},async()=>{
+    await requireMcpParent(parentId);
+    const escapedName=name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const escapedParent=parentId.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const q=new URLSearchParams({
+      q:"name = '"+escapedName+"' and '"+escapedParent+"' in parents and trashed = false",
+      pageSize:'10',
+      spaces:'drive',
+      fields:'files(id,name,mimeType,size,parents,webViewLink,modifiedTime)'
+    });
+    const existing=await gjson('https://www.googleapis.com/drive/v3/files?'+q.toString());
+    const found=(existing.files||[])[0]||null;
+    if(found){
+      const rb=await metadata(found.id);
+      return {reused:true,created:false,file:rb};
+    }
+    const created=await multipartCreate(name,mimeType,parentId,buf);
+    const rb=await metadata(created.id);
+    return {reused:false,created:true,file:rb};
+  });
+}
+
 function proxy(req,res) {
   const pr = http.request({
     hostname:'127.0.0.1', port:INNER_PORT, path:req.url, method:req.method,
@@ -2864,6 +2894,25 @@ const server = http.createServer(async (req,res) => {
       return res.end(result.buffer);
     }catch(e){
       return json(res,502,{ok:false,error:String(e?.message||e).slice(0,800)});
+    }
+  }
+  if (req.method === 'POST' && req.url === '/internal/ltx/import-bytes') {
+    if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
+    const name=decodeURIComponent(String(req.headers['x-nd-name']||'')).replace(/[^A-Za-z0-9._-]+/g,'-').slice(0,120);
+    const parentId=String(req.headers['x-nd-parent-id']||'').trim();
+    const mimeType=String(req.headers['content-type']||'application/octet-stream').split(';',1)[0].trim();
+    if(!name||!parentId) return json(res,400,{ok:false,error:'name_and_parent_required'});
+    const chunks=[]; let total=0;
+    for await(const ch of req){
+      total+=ch.length;
+      if(total>150*1024*1024) return json(res,413,{ok:false,error:'output_too_large'});
+      chunks.push(ch);
+    }
+    try{
+      const result=await localLtxBytesToDrive(name,mimeType,parentId,Buffer.concat(chunks));
+      return json(res,200,{ok:true,result});
+    }catch(e){
+      return json(res,502,{ok:false,error:String(e?.message||e).slice(0,1200)});
     }
   }
   if (req.method === 'POST' && req.url === '/internal/kaggle-ltx/import-output') {
