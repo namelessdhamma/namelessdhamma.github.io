@@ -1539,6 +1539,95 @@ async function ltxKaggle2bLatestProbe(){
   };
 }
 
+async function ltxKaggle2bImportProbe(){
+  const preflight=await kaggleLtxIdentity();
+  const slug='nd-ltx2b-import-probe';
+  const commit='2345ae148f82740f66e82c41292dbbdd592e713d';
+  const marker='ND_LTX2B_IMPORT_JSON=';
+  const child=[
+    "import os,sys,time",
+    "from pathlib import Path",
+    "ROOT=Path('/kaggle/working/Wan2GP')",
+    "sys.path.insert(0,str(ROOT)); os.chdir(ROOT)",
+    "print('ND_LTX2B_IMPORT=child_start',flush=True)",
+    "t=time.time(); import torch; print('ND_LTX2B_IMPORT=torch_done sec=%.3f'%(time.time()-t),flush=True)",
+    "t=time.time(); from mmgp import offload, profile_type; print('ND_LTX2B_IMPORT=mmgp_done sec=%.3f'%(time.time()-t),flush=True)",
+    "t=time.time(); from shared.attention import attention_config_shared_state; print('ND_LTX2B_IMPORT=attention_done sec=%.3f'%(time.time()-t),flush=True)",
+    "t=time.time(); from shared.utils import files_locator as fl; print('ND_LTX2B_IMPORT=files_locator_done sec=%.3f'%(time.time()-t),flush=True)",
+    "t=time.time(); from models.ltx_video.ltxv import LTXV; print('ND_LTX2B_IMPORT=ltxv_done sec=%.3f'%(time.time()-t),flush=True)"
+  ].join('\n');
+  const script=[
+    "from pathlib import Path",
+    "import json,os,subprocess,sys,time",
+    "ROOT=Path('/kaggle/working/Wan2GP')",
+    "COMMIT='"+commit+"'",
+    "def run(cmd,timeout):",
+    "    env={**os.environ,'PIP_NO_CACHE_DIR':'1','HF_HUB_DISABLE_XET':'1','HF_HOME':'/kaggle/working/hf-cache'}",
+    "    p=subprocess.run(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=timeout,env=env)",
+    "    print(p.stdout[-12000:],flush=True)",
+    "    if p.returncode!=0: raise RuntimeError('command failed: '+str(cmd))",
+    "    return p.stdout",
+    "print('ND_LTX2B_IMPORT=clone_begin',flush=True)",
+    "run(['git','clone','--filter=blob:none','https://github.com/deepbeepmeep/Wan2GP.git',str(ROOT)],240)",
+    "run(['git','-C',str(ROOT),'checkout',COMMIT],90)",
+    "print('ND_LTX2B_IMPORT=pip_begin',flush=True)",
+    "started=time.time()",
+    "run([sys.executable,'-m','pip','install','--no-cache-dir','-q','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],1200)",
+    "pip_sec=time.time()-started",
+    "print('ND_LTX2B_IMPORT=pip_done sec=%.3f'%pip_sec,flush=True)",
+    "probe=Path('/kaggle/working/nd_ltx2b_import_child.py')",
+    "probe.write_text("+JSON.stringify(child)+",encoding='utf-8')",
+    "started=time.time()",
+    "p=subprocess.run([sys.executable,str(probe)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=900,cwd=str(ROOT))",
+    "print(p.stdout,flush=True)",
+    "out={'ok':p.returncode==0,'returncode':p.returncode,'pip_seconds':round(pip_sec,3),'import_seconds':round(time.time()-started,3)}",
+    "print('"+marker+"'+json.dumps(out,separators=(',',':'),sort_keys=True),flush=True)",
+    "raise SystemExit(0 if p.returncode==0 else p.returncode)"
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+slug,
+    newTitle:'ND LTX2B CPU Import Probe',
+    text:script,
+    language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    isPrivate:true,enableGpu:false,enableTpu:false,enableInternet:true,
+    kernelExecutionType:'SaveAndRunAll',
+    sessionTimeoutSeconds:1800
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('LTX2B import probe submit failed '+JSON.stringify({error:save?.error||null}));
+  return {ok:true,state:'SUBMITTED',request_id:'ltx2b-import-v'+version,provider_ref:preflight.username+'/'+slug+'/'+version};
+}
+
+async function ltxKaggle2bImportProbeStatus(args={}){
+  const {username}=await kaggleLtxIdentity();
+  const slug='nd-ltx2b-import-probe';
+  const m=String(args.request_id||'').trim().match(/^ltx2b-import-v(\d+)$/i);
+  if(!m) throw new Error('valid ltx2b-import-vN request_id required');
+  const version=Number(m[1]);
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
+  const state=kaggleState(st?.status);
+  let output=null;
+  if(['RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:slug,pageSize:100});
+      output={
+        receipt:extractKaggleMarker(out?.log||'','ND_LTX2B_IMPORT_JSON='),
+        files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+        log_tail:String(out?.log||'').slice(-22000)
+      };
+    }catch(e){output={error:errorText(e)};}
+  }
+  return {
+    ok:state==='COMPLETED'&&!!output?.receipt?.ok,
+    request_id:'ltx2b-import-v'+version,
+    state,provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:username+'/'+slug+'/'+version,
+    output
+  };
+}
+
 async function ltxKaggle2bLoadProbe(){
   const preflight=await kaggleLtxIdentity();
   const token='fixed';
@@ -2225,6 +2314,9 @@ async function ltxGenerateKeyframes(args={}){
   const abandonQueued=compat.match(/^abandon:(k(?:ltx|batch|2b)-[a-z0-9-]+)$/i);
   if(abandonQueued) return ltxKaggleAbandonQueued({request_id:abandonQueued[1]});
   if(compat==='inspect-cache') return ltxKaggleCacheInventory();
+  if(compat==='probe-2b-import') return ltxKaggle2bImportProbe();
+  const import2bStatus=compat.match(/^probe-2b-import-status:(ltx2b-import-v\d+)$/i);
+  if(import2bStatus) return ltxKaggle2bImportProbeStatus({request_id:import2bStatus[1]});
   if(compat==='probe-2b-load') return ltxKaggle2bLoadProbe();
   const load2bStatus=compat.match(/^probe-2b-status:(ltx2b-load-v\d+)$/i);
   if(load2bStatus) return ltxKaggle2bFixedStatus({request_id:load2bStatus[1]});
