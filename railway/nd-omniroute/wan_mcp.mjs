@@ -2456,6 +2456,7 @@ export function createWanMcpHandler(){
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
           keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1',wan_public_video_import:'v3-durable-media'},
+          modal:{route:'modal_ltx2b_distilled_f2l',provider:'Modal',model:'LTX-Video 2B 0.9.8 distilled',state:ltxModalConfigured()?'CONFIGURED_UNQUALIFIED':'STAGED_NOT_CONFIGURED',enabled:LTX_MODAL_ENABLED,cost_policy:'FREE_CREDIT_ONLY',proxy_auth_required:true},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
