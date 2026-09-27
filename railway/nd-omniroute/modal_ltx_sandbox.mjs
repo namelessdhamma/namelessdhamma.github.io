@@ -76,7 +76,7 @@ export async function modalLtxSandboxSubmit(args={}){
       'python /tmp/nd-ltx-worker.py'
     ].join('; ');
     const sb=await modal.sandboxes.create(app,image,{
-      gpu:'L4',
+      gpu:String(process.env.ND_LTX_MODAL_GPU||'T4'),
       timeoutMs:20*60*1000,
       memoryMiB:24576,
       command:['bash','-lc',setup],
@@ -85,7 +85,7 @@ export async function modalLtxSandboxSubmit(args={}){
     const result={
       ok:true,state:'SUBMITTED',provider:'Modal',route:'modal_ltx2b_direct_sandbox',
       request_id:REQUEST_PREFIX+sb.sandboxId,sandbox_id:sb.sandboxId,
-      gpu:'L4',model:'ltxv-2b-0.9.8-distilled-fp8',cost_policy:'FREE_CREDIT_ONLY',
+      gpu:String(process.env.ND_LTX_MODAL_GPU||'T4'),model:'ltxv-2b-0.9.8-distilled-fp8',cost_policy:'FREE_CREDIT_ONLY',
       width:req.width,height:req.height,num_frames:req.num_frames,frame_rate:req.frame_rate,seed:req.seed
     };
     sb.detach();
