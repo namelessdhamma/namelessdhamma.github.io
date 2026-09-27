@@ -6,11 +6,12 @@
     "node": ">=24 <27"
   },
   "scripts": {
-    "start": "sh ./start.sh"
+    "start": "node memos_front.mjs"
   },
   "dependencies": {
     "omniroute": "3.8.50",
     "@gradio/client": "^1.19.0",
-    "adm-zip": "^0.5.16"
+    "adm-zip": "^0.5.16",
+    "@memtensor/memos-local-plugin": "2.0.16-beta.1"
   }
 }
