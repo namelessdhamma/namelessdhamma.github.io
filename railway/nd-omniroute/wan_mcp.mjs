@@ -1655,7 +1655,7 @@ async function ltxKaggleDiagnoseSessions(){
     current_version_number:Number(k?.currentVersionNumber??k?.current_version_number??0),
     machine_shape:k?.machineShape??k?.machine_shape??null,
     last_run_time:k?.lastRunTime??k?.last_run_time??null
-  })).filter(k=>/^nd-ltx-/i.test(k.slug)).slice(0,100);
+  })).filter(k=>/^nd-ltx(?:2b|-)/i.test(k.slug)).slice(0,100);
   const sessions=[];
   for(const k of targets){
     let version=k.current_version_number;
@@ -1682,7 +1682,7 @@ async function ltxKaggleDiagnoseSessions(){
     }
     try{
       const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-        userName:username,kernelSlug:k.slug,versionLabel:'v'+version
+        userName:username,kernelSlug:k.slug
       });
       sessions.push({
         ...k,
