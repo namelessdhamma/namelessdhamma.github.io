@@ -1639,16 +1639,23 @@ async function ltxKaggle2bImportProbeStatus(args={}){
   const m=String(args.request_id||'').trim().match(/^ltx2b-import-v(\d+)$/i);
   if(!m) throw new Error('valid ltx2b-import-vN request_id required');
   const version=Number(m[1]);
-  let slug='nd-ltx2b-import-probe';
-  let st=null;
-  try{
-    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
-  }catch(e){
-    const msg=errorText(e);
-    if(!msg.includes("Permission 'kernels.get' was denied") && !msg.includes('Kaggle HTTP 404')) throw e;
-    slug='nd-ltx2b-cpu-import-probe';
-    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
+  const candidates=[
+    'nd-ltx2b-cpu-minimal-import-probe',
+    'nd-ltx2b-cpu-import-probe',
+    'nd-ltx2b-import-probe'
+  ];
+  let slug=null,st=null,lastError=null;
+  for(const candidate of candidates){
+    try{
+      const cur=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:candidate});
+      slug=candidate; st=cur; break;
+    }catch(e){
+      lastError=e;
+      const msg=errorText(e);
+      if(!msg.includes("Permission 'kernels.get' was denied") && !msg.includes('Kaggle HTTP 404')) throw e;
+    }
   }
+  if(!st||!slug) throw lastError||new Error('LTX2B import probe not found');
   const state=kaggleState(st?.status);
   let output=null;
   if(['RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
