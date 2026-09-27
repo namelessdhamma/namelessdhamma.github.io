@@ -79,7 +79,7 @@ def _memos_local_conn():
 def _memos_local_init():
     c=_memos_local_conn()
     try:
-        c.execute('''CREATE TABLE IF NOT EXISTS porfirchik_memory(
+        c.execute("""CREATE TABLE IF NOT EXISTS porfirchik_memory(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             uid TEXT NOT NULL,
             ts INTEGER NOT NULL,
@@ -87,7 +87,7 @@ def _memos_local_init():
             assistant_text TEXT NOT NULL,
             weight REAL NOT NULL DEFAULT 1.0,
             tags TEXT NOT NULL DEFAULT ''
-        )''')
+        )""")
         c.execute('CREATE INDEX IF NOT EXISTS idx_porf_mem_uid_id ON porfirchik_memory(uid,id DESC)')
         c.commit()
     finally:
@@ -118,12 +118,12 @@ def _memos_local_add(uid,user_text,assistant_text):
         )
         rid=int(cur.lastrowid)
         # Bound only ordinary low-priority history. Explicit/high-priority memories are kept.
-        c.execute('''DELETE FROM porfirchik_memory WHERE id IN (
+        c.execute("""DELETE FROM porfirchik_memory WHERE id IN (
             SELECT id FROM porfirchik_memory
             WHERE weight<=1.0
             ORDER BY id DESC
             LIMIT -1 OFFSET 7000
-        )''')
+        )""")
         c.commit()
         return rid
     finally:
