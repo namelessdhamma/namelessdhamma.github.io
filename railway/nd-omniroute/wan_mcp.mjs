@@ -1645,7 +1645,7 @@ async function ltxKaggle2bImportProbeStatus(args={}){
     st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
   }catch(e){
     const msg=errorText(e);
-    if(!msg.includes("Permission 'kernels.get' was denied")) throw e;
+    if(!msg.includes("Permission 'kernels.get' was denied") && !msg.includes('Kaggle HTTP 404')) throw e;
     slug='nd-ltx2b-cpu-import-probe';
     st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
   }
