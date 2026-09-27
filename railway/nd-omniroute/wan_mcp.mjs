@@ -657,7 +657,7 @@ function resolveLtxInputRef(value){
 async function prepareLtxKernelInput(value,label){
   const ref=String(value||'').trim();
   const m=ref.match(/^drive:([A-Za-z0-9_-]{10,200})$/i);
-  if(!m) return {url:resolveLtxInputRef(ref),base64:null};
+  if(!m) return {url:resolveLtxInputRef(ref),base64:null,content_type:null,size_bytes:null};
   if(!LTX_INPUT_TOKEN) throw new Error('ND_LTX_INPUT_TOKEN is not configured');
   const publicUrl=LTX_PUBLIC_BASE+'/ltx-input/'+LTX_INPUT_TOKEN+'/'+encodeURIComponent(m[1]);
   const local='http://127.0.0.1:'+OUTER_PORT+'/ltx-input/'+LTX_INPUT_TOKEN+'/'+encodeURIComponent(m[1]);
@@ -667,7 +667,10 @@ async function prepareLtxKernelInput(value,label){
   if(!ct.startsWith('image/')) throw new Error(label+' Drive input is not an image');
   const declared=Number(res.headers.get('content-length')||0);
   if(declared<=0||declared>20*1024*1024) throw new Error(label+' Drive input size invalid');
-  return {url:publicUrl,base64:null,content_type:ct,size_bytes:declared};
+  const bytes=Buffer.from(await res.arrayBuffer());
+  if(bytes.length<=0||bytes.length>20*1024*1024) throw new Error(label+' Drive input body size invalid');
+  if(declared!==bytes.length) throw new Error(label+' Drive input content-length mismatch');
+  return {url:publicUrl,base64:bytes.toString('base64'),content_type:ct,size_bytes:bytes.length};
 }
 
 async function ltxKaggleWan2gpSubmit(args={}){
@@ -864,31 +867,40 @@ async function ltxKaggle2bSubmit(args={}){
   ]);
   const preflight=await kaggleLtxPreflight();
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
-  const request={
-    start_image_url:startInput.url||undefined,
-    end_image_url:endInput.url||undefined,
-    start_image_base64:startInput.base64||undefined,
-    end_image_base64:endInput.base64||undefined,
-    prompt:String(args.prompt||'').trim(),
-    negative_prompt:String(args.negative_prompt||'').trim()||undefined,
-    duration_seconds:Number(args.duration_seconds??2),
-    width:Number(args.width??512),
-    height:Number(args.height??288),
-    seed
-  };
-  const reqB64=Buffer.from(JSON.stringify(request),'utf8').toString('base64');
   const workerUrl='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py';
-  const script=[
-    'import base64,sys,urllib.request',
-    'from pathlib import Path',
-    "request_path=Path('/kaggle/working/nd-ltx2b-request.json')",
-    "request_path.write_bytes(base64.b64decode('"+reqB64+"'))",
-    "worker=Path('/kaggle/working/kaggle_ltx2b_wan2gp_worker.py')",
-    "req=urllib.request.Request('"+workerUrl+"',headers={'User-Agent':'nd-kaggle-ltx2b/1.0'})",
-    "worker.write_bytes(urllib.request.urlopen(req,timeout=120).read())",
-    "sys.argv=['kaggle_ltx2b_wan2gp_worker.py',str(request_path)]",
-    "exec(compile(worker.read_text(encoding='utf-8'),'kaggle_ltx2b_wan2gp_worker.py','exec'),{'__name__':'__main__'})"
-  ].join('\n');
+  const buildKernelScript=(useInline)=>{
+    const request={
+      start_image_url:useInline?undefined:(startInput.url||undefined),
+      end_image_url:useInline?undefined:(endInput.url||undefined),
+      start_image_base64:useInline?(startInput.base64||undefined):undefined,
+      end_image_base64:useInline?(endInput.base64||undefined):undefined,
+      prompt:String(args.prompt||'').trim(),
+      negative_prompt:String(args.negative_prompt||'').trim()||undefined,
+      duration_seconds:Number(args.duration_seconds??2),
+      width:Number(args.width??512),
+      height:Number(args.height??288),
+      seed
+    };
+    const reqB64=Buffer.from(JSON.stringify(request),'utf8').toString('base64');
+    return [
+      'import base64,sys,urllib.request',
+      'from pathlib import Path',
+      "request_path=Path('/kaggle/working/nd-ltx2b-request.json')",
+      "request_path.write_bytes(base64.b64decode('"+reqB64+"'))",
+      "worker=Path('/kaggle/working/kaggle_ltx2b_wan2gp_worker.py')",
+      "req=urllib.request.Request('"+workerUrl+"',headers={'User-Agent':'nd-kaggle-ltx2b/1.0'})",
+      "worker.write_bytes(urllib.request.urlopen(req,timeout=120).read())",
+      "sys.argv=['kaggle_ltx2b_wan2gp_worker.py',str(request_path)]",
+      "exec(compile(worker.read_text(encoding='utf-8'),'kaggle_ltx2b_wan2gp_worker.py','exec'),{'__name__':'__main__'})"
+    ].join('\n');
+  };
+  const inlineCandidate=!!(startInput.base64||endInput.base64);
+  let inputTransport=inlineCandidate?'inline_base64':'url';
+  let script=buildKernelScript(inlineCandidate);
+  if(Buffer.byteLength(script,'utf8')>=900000&&inlineCandidate){
+    inputTransport='url_fallback';
+    script=buildKernelScript(false);
+  }
   if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle LTX2B kernel source preflight exceeds 900 KB');
   const jobRef=newKaggleLtx2bKernelRef();
   const cacheSources=[
@@ -926,6 +938,8 @@ async function ltxKaggle2bSubmit(args={}){
     route:'kaggle_ltx2b_wan2gp_f2l',
     cache_source:cacheSources[0],
     cache_sources:cacheSources,
+    input_transport:inputTransport,
+    input_sizes:{start:startInput.size_bytes||null,end:endInput.size_bytes||null},
     machine_shape_requested:'NvidiaTeslaT4',
     cost_policy:'FREE_ONLY',
     gpu_quota:preflight.gpu,
