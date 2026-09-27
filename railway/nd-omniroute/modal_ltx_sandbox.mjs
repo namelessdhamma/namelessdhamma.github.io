@@ -149,7 +149,7 @@ export async function modalLtxFunctionBootstrapSubmit(){
       MODAL_TOKEN_SECRET:String(process.env.MODAL_TOKEN_SECRET||'')
     });
     const script=[
-      'set -euo pipefail',
+      'set -eu',
       "python -m pip install -q --disable-pip-version-check 'modal>=1.5.1'",
       "python - <<'PY'",
       'from urllib.request import urlopen',
