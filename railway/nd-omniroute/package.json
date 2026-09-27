@@ -12,6 +12,6 @@
     "omniroute": "3.8.50",
     "@gradio/client": "^1.19.0",
     "adm-zip": "^0.5.16",
-    "modal": "^0.9.0"
+    "modal": "^0.10.1"
   }
 }
