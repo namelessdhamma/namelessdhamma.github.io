@@ -1182,5 +1182,4 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   qualification_rev:YT_QUALIFY_REV||null
 }));
 muxServer.listen(PORT,'0.0.0.0');
-try{fs.rmSync('/memos-data/porfirchik',{recursive:true,force:true});console.log('PORFIRCHIK_LEGACY_MEMOS_DATA_REMOVED');}catch(e){console.warn('PORFIRCHIK_LEGACY_MEMOS_DATA_REMOVE_ERROR',String(e?.message||e).slice(0,300));}
 setTimeout(runYoutubeQualification,2000);
