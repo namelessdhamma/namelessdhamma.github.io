@@ -11,6 +11,9 @@ INLINE_MAX=int(os.environ.get('ND_GITHUB_INLINE_MAX','600000') or '600000')
 VK_TOKEN=os.environ.get('VK_GROUP_TOKEN','').strip()
 VK_SCREEN=os.environ.get('VK_GROUP_SCREEN_NAME','namelessdhamma').strip().lstrip('@') or 'namelessdhamma'
 VK_VERSION=os.environ.get('VK_API_VERSION','5.199').strip() or '5.199'
+VK_MCP_TOKEN=os.environ.get('ND_VK_MCP_ROUTE_TOKEN','').strip()
+VK_ALLOWED={int(x.strip()) for x in os.environ.get('VK_ALLOWED_USER_IDS','').split(',') if x.strip().isdigit()}
+VK_MUTATIONS=set()
 VK_VIDEO_PATH_TOKEN=(os.environ.get('ND_VK_VIDEO_MCP_PATH_TOKEN','') or os.environ.get('ND_VK_MCP_ROUTE_TOKEN','')).strip()
 VK_VIDEO_MUTATIONS=set()
 VK_ID_CLIENT_ID='54776731'
@@ -31,7 +34,7 @@ INNER='http://127.0.0.1:%d' % INNER_PORT
 
 def clean(x):
     z=str(x)
-    for secret in (GITHUB_PAT,PATH_TOKEN,VK_TOKEN,VK_VIDEO_PATH_TOKEN):
+    for secret in (GITHUB_PAT,PATH_TOKEN,VK_TOKEN,VK_MCP_TOKEN,VK_VIDEO_PATH_TOKEN):
         if secret: z=z.replace(secret,'[REDACTED]')
     return z[:2000]
 
@@ -277,6 +280,127 @@ def vk_video_upload_stream(upload_url,file_url,timeout=1800):
         try: src.close()
         except Exception: pass
 
+
+def vk_peer_allowed(peer_id):
+    p=int(peer_id)
+    if VK_ALLOWED and p not in VK_ALLOWED:
+        raise RuntimeError('peer_not_allowlisted')
+    return p
+
+def vk_mutation_guard(mutation_id,confirm):
+    mid=str(mutation_id or '').strip()
+    if confirm is not True:
+        raise RuntimeError('confirm_true_required')
+    if not mid:
+        raise RuntimeError('mutation_id_required')
+    if mid in VK_MUTATIONS:
+        raise RuntimeError('duplicate_mutation_id')
+    VK_MUTATIONS.add(mid)
+    return mid
+
+def vk_tools():
+    return [
+      {'name':'vk_status','description':'Verify direct VK API reachability and community identity without returning message contents.','inputSchema':{'type':'object','properties':{},'additionalProperties':False}},
+      {'name':'vk_get_users','description':'Read basic VK profile data for allow-listed users.','inputSchema':{'type':'object','properties':{'user_ids':{'type':'array','items':{'type':'integer'}}},'additionalProperties':False}},
+      {'name':'vk_get_conversations','description':'Read recent direct VK conversations, filtered to allow-listed users.','inputSchema':{'type':'object','properties':{'count':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0},'unread_only':{'type':'boolean'}},'additionalProperties':False}},
+      {'name':'vk_get_history','description':'Read message history for one allow-listed VK peer.','inputSchema':{'type':'object','properties':{'peer_id':{'type':'integer'},'count':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0}},'required':['peer_id'],'additionalProperties':False}},
+      {'name':'vk_send_message','description':'Send a plain-text VK message to one allow-listed peer.','inputSchema':{'type':'object','properties':{'peer_id':{'type':'integer'},'message':{'type':'string','minLength':1,'maxLength':3500},'reply_to':{'type':'integer'}},'required':['peer_id','message'],'additionalProperties':False}},
+      {'name':'vk_mark_as_read','description':'Mark messages from one allow-listed VK peer as read.','inputSchema':{'type':'object','properties':{'peer_id':{'type':'integer'}},'required':['peer_id'],'additionalProperties':False}},
+      {'name':'vk_wall_posts','description':'List, create, edit, or delete posts on the configured ND VK community wall. Mutations require confirm=true and a unique mutation_id.','inputSchema':{'type':'object','properties':{'action':{'type':'string','enum':['list','create','edit','delete']},'count':{'type':'integer','minimum':1,'maximum':100},'offset':{'type':'integer','minimum':0},'post_id':{'type':'integer'},'message':{'type':'string'},'attachments':{'type':'string'},'publish_date':{'type':'integer'},'confirm':{'type':'boolean'},'mutation_id':{'type':'string'}},'required':['action'],'additionalProperties':False}},
+      {'name':'vk_api','description':'Call an arbitrary VK API method. Read-style methods are direct; all other methods require confirm=true and a unique mutation_id. VK Video mutations use the persisted user OAuth session.','inputSchema':{'type':'object','properties':{'method':{'type':'string'},'params':{'type':'object'},'confirm':{'type':'boolean'},'mutation_id':{'type':'string'}},'required':['method'],'additionalProperties':False}},
+    ]
+
+def vk_call(name,a):
+    a=a or {}
+    if not isinstance(a,dict):
+        raise RuntimeError('arguments_must_be_object')
+    g=vk_video_group()
+    owner=-int(g['id'])
+    if name=='vk_status':
+        return {'ok':True,'route':'railway-direct','provider':'vk','api_version':VK_VERSION,'group':g,'allowed_users':len(VK_ALLOWED),'video_oauth':vk_oauth_status(),'video_tools':len(vk_video_tools()),'outcome':'READ_PASS'}
+    if name=='vk_get_users':
+        ids=a.get('user_ids')
+        if ids is None: ids=sorted(VK_ALLOWED)
+        ids=[vk_peer_allowed(x) for x in ids]
+        if not ids: return {'ok':True,'users':[]}
+        rows=vk_api_call('users.get',{'user_ids':','.join(str(x) for x in ids),'fields':'screen_name,first_name,last_name'})
+        return {'ok':True,'users':rows or []}
+    if name=='vk_get_conversations':
+        count=max(1,min(100,int(a.get('count') or 20)))
+        offset=max(0,int(a.get('offset') or 0))
+        p={'count':count,'offset':offset,'extended':0}
+        if a.get('unread_only') is True: p['filter']='unread'
+        obj=vk_api_call('messages.getConversations',p) or {}
+        out=[]
+        for row in (obj.get('items') or []):
+            conv=row.get('conversation') or {}
+            peer=conv.get('peer') or {}
+            pid=peer.get('id')
+            if peer.get('type')!='user' or pid is None: continue
+            if VK_ALLOWED and int(pid) not in VK_ALLOWED: continue
+            out.append(row)
+        return {'ok':True,'count':len(out),'items':out}
+    if name=='vk_get_history':
+        peer=vk_peer_allowed(a.get('peer_id'))
+        count=max(1,min(100,int(a.get('count') or 30)))
+        offset=max(0,int(a.get('offset') or 0))
+        return {'ok':True,'peer_id':peer,'history':vk_api_call('messages.getHistory',{'peer_id':peer,'count':count,'offset':offset})}
+    if name=='vk_send_message':
+        peer=vk_peer_allowed(a.get('peer_id'))
+        msg=str(a.get('message') or '')
+        if not msg or len(msg)>3500: raise RuntimeError('invalid_message')
+        p={'peer_id':peer,'message':msg,'random_id':secrets.randbelow(2000000000)+1}
+        if a.get('reply_to') is not None: p['reply_to']=int(a.get('reply_to'))
+        rid=vk_api_call('messages.send',p)
+        return {'ok':True,'peer_id':peer,'message_id':rid,'outcome':'CONFIRMED_APPLIED'}
+    if name=='vk_mark_as_read':
+        peer=vk_peer_allowed(a.get('peer_id'))
+        res=vk_api_call('messages.markAsRead',{'peer_id':peer})
+        return {'ok':True,'peer_id':peer,'response':res,'outcome':'CONFIRMED_APPLIED'}
+    if name=='vk_wall_posts':
+        action=str(a.get('action') or '').strip().lower()
+        if action=='list':
+            count=max(1,min(100,int(a.get('count') or 20)))
+            offset=max(0,int(a.get('offset') or 0))
+            return {'ok':True,'group':g,'wall':vk_api_call('wall.get',{'owner_id':owner,'count':count,'offset':offset})}
+        mid=vk_mutation_guard(a.get('mutation_id'),a.get('confirm'))
+        if action=='create':
+            p={'owner_id':owner,'from_group':1,'message':str(a.get('message') or '')}
+            if a.get('attachments'): p['attachments']=str(a.get('attachments'))
+            if a.get('publish_date') is not None: p['publish_date']=int(a.get('publish_date'))
+            res=vk_api_call('wall.post',p)
+            post_id=int((res or {}).get('post_id'))
+            rb=vk_api_call('wall.getById',{'posts':'%s_%s'%(owner,post_id)})
+            return {'ok':True,'action':action,'mutation_id':mid,'post_id':post_id,'readback':rb,'outcome':'CONFIRMED_APPLIED'}
+        post_id=int(a.get('post_id') or 0)
+        if post_id<=0: raise RuntimeError('post_id_required')
+        if action=='edit':
+            p={'owner_id':owner,'post_id':post_id,'message':str(a.get('message') or '')}
+            if a.get('attachments') is not None: p['attachments']=str(a.get('attachments') or '')
+            res=vk_api_call('wall.edit',p)
+            rb=vk_api_call('wall.getById',{'posts':'%s_%s'%(owner,post_id)})
+            return {'ok':True,'action':action,'mutation_id':mid,'post_id':post_id,'response':res,'readback':rb,'outcome':'CONFIRMED_APPLIED'}
+        if action=='delete':
+            res=vk_api_call('wall.delete',{'owner_id':owner,'post_id':post_id})
+            rb=vk_api_call('wall.getById',{'posts':'%s_%s'%(owner,post_id)})
+            return {'ok':True,'action':action,'mutation_id':mid,'post_id':post_id,'response':res,'readback':rb,'outcome':'CONFIRMED_APPLIED'}
+        raise RuntimeError('unsupported_wall_action')
+    if name=='vk_api':
+        method=str(a.get('method') or '').strip()
+        params=a.get('params') or {}
+        if not method or not isinstance(params,dict): raise RuntimeError('method_and_params_required')
+        low=method.lower()
+        readish=('.get' in low or '.search' in low or low.startswith('utils.') or low.startswith('users.get') or low.startswith('groups.get') or low.startswith('wall.get') or low.startswith('messages.get'))
+        mid=None
+        if not readish:
+            mid=vk_mutation_guard(a.get('mutation_id'),a.get('confirm'))
+        if low.startswith('video.') and not readish:
+            res=vk_video_user_api(method,params)
+        else:
+            res=vk_api_call(method,params)
+        return {'ok':True,'method':method,'mutation':not readish,'mutation_id':mid,'response':res,'outcome':'CONFIRMED_APPLIED'}
+    raise RuntimeError('unknown_vk_tool')
+
 def vk_video_tools():
     return [
       {'name':'vk_video_status','description':'Verify direct VK Video API reachability and list recent videos for the configured ND community.','inputSchema':{'type':'object','properties':{'count':{'type':'integer','minimum':1,'maximum':100}},'additionalProperties':False}},
@@ -456,6 +580,38 @@ class H(BaseHTTPRequestHandler):
     def is_mcp(self):
         expected=('/nd/github/mcp/'+PATH_TOKEN) if PATH_TOKEN else ''
         return bool(expected and self.path.split('?',1)[0]==expected)
+    def is_vk_mcp(self):
+        expected=('/vk/mcp/'+VK_MCP_TOKEN) if VK_MCP_TOKEN else ''
+        return bool(expected and self.path.split('?',1)[0]==expected)
+    def vk_mcp(self):
+        try:
+            n=int(self.headers.get('Content-Length','0') or 0)
+            if n<0 or n>1048576: raise RuntimeError('request_too_large')
+            msg=json.loads(self.rfile.read(n).decode('utf-8') or '{}')
+            if not isinstance(msg,dict): raise RuntimeError('invalid_jsonrpc')
+        except Exception as e:
+            self.send_json(400,{'jsonrpc':'2.0','error':{'code':-32700,'message':clean(e)},'id':None}); return
+        mid=msg.get('id'); method=str(msg.get('method') or '')
+        if method=='notifications/initialized':
+            self.send_response(204); self.end_headers(); return
+        if method=='initialize':
+            self.send_json(200,{'jsonrpc':'2.0','id':mid,'result':{'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'nd-vk-direct-mcp','version':'3.0.0'},'instructions':'Direct Nameless Dhamma VK MCP: messaging, wall, arbitrary VK API and native VK Video upload. VK Video uses persisted rotating user OAuth; no browser or Make runtime dependency.'}}); return
+        if method=='ping':
+            self.send_json(200,{'jsonrpc':'2.0','id':mid,'result':{}}); return
+        if method=='tools/list':
+            self.send_json(200,{'jsonrpc':'2.0','id':mid,'result':{'tools':vk_tools()+vk_video_tools()}}); return
+        if method=='tools/call':
+            p=msg.get('params') or {}
+            name=str(p.get('name') or '')
+            args=p.get('arguments') or {}
+            try:
+                obj=vk_video_call(name,args) if name.startswith('vk_video_') else vk_call(name,args)
+                err=False
+            except Exception as e:
+                obj={'ok':False,'error':clean(e)}
+                err=True
+            self.send_json(200,{'jsonrpc':'2.0','id':mid,'result':{'content':[{'type':'text','text':json.dumps(obj,ensure_ascii=False)}],'structuredContent':obj,'isError':err}}); return
+        self.send_json(200,{'jsonrpc':'2.0','id':mid,'error':{'code':-32601,'message':'Method not found'}})
     def is_vk_video_mcp(self):
         expected=('/nd/vk-video/mcp/'+VK_VIDEO_PATH_TOKEN) if VK_VIDEO_PATH_TOKEN else ''
         return bool(expected and self.path.split('?',1)[0]==expected)
@@ -520,6 +676,7 @@ class H(BaseHTTPRequestHandler):
             self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
         except Exception as e: self.send_json(502,{'ok':False,'error':'existing_gateway_unavailable','detail':clean(e)})
     def do_POST(self):
+        if self.is_vk_mcp(): self.vk_mcp(); return
         if self.is_vk_video_mcp(): self.vk_video_mcp(); return
         if self.is_mcp(): self.mcp(); return
         self.forward()
@@ -600,6 +757,8 @@ class H(BaseHTTPRequestHandler):
             self.vk_oauth_start(); return
         if _p=='/vk/oauth/callback':
             self.vk_oauth_callback(); return
+        if self.is_vk_mcp():
+            self.send_json(405,{'ok':False,'error':'method_not_allowed','transport':'streamable_http','allowed':['POST']}); return
         if _p=='/nd/vk-video/health':
             try:
                 g=vk_video_group()
