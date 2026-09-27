@@ -149,7 +149,13 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
         env = dict(os.environ)
         env["ND_LTX2B_RUNTIME_READY"] = "1"
         worker_path = WORK / "kaggle_ltx2b_wan2gp_worker.py"
-        os.execvpe(sys.executable, [sys.executable, str(worker_path), sys.argv[1]], env)
+        print("ND_LTX2B_STAGE=clean_child_begin", flush=True)
+        child = subprocess.run(
+            [sys.executable, str(worker_path), sys.argv[1]],
+            env=env,
+        )
+        print(f"ND_LTX2B_STAGE=clean_child_rc_{child.returncode}", flush=True)
+        raise SystemExit(child.returncode)
 
     from huggingface_hub import hf_hub_download
 
