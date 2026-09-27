@@ -899,7 +899,7 @@ async function ltxKaggle2bStatus(args={}){
   const ref=kaggleLtx2bRequestRef(args.request_id);
   const {username}=await kaggleLtxIdentity();
   const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+    userName:username,kernelSlug:ref.kernel_slug
   });
   const state=kaggleState(st?.status);
   let diagnostics=null;
@@ -927,7 +927,7 @@ async function ltxKaggle2bResult(args={}){
   const ref=kaggleLtx2bRequestRef(args.request_id);
   const {username}=await kaggleLtxIdentity();
   const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+    userName:username,kernelSlug:ref.kernel_slug
   });
   const state=kaggleState(st?.status);
   if(state!=='COMPLETED') return {
