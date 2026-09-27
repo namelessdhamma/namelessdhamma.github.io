@@ -1855,6 +1855,7 @@ async function ltxKaggleFindSession(args={}){
   const requestId=String(args.request_id||'').trim();
   let ref;
   if(/^kbatch-/i.test(requestId)) ref=kaggleLtxBatchRequestRef(requestId);
+  else if(/^k2b-/i.test(requestId)) ref=kaggleLtx2bRequestRef(requestId);
   else ref=kaggleLtxRequestRef(requestId);
   const {username}=await kaggleLtxIdentity();
   const query=ref.kernel_slug;
