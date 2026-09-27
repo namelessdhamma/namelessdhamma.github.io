@@ -322,6 +322,35 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
 """
     if heavy_utils_import in src:
         src = src.replace(heavy_utils_import, lightweight_calculate_new_dimensions, 1)
+
+    import_markers = [
+        ("from shared.utils.phase_progress import generation_progress", "phase_progress"),
+        ("from mmgp import offload", "mmgp_offload"),
+        ("from diffusers.utils import logging", "diffusers_logging"),
+        ("import imageio", "imageio"),
+        ("import numpy as np", "numpy"),
+        ("import torch", "torch"),
+        ("from safetensors import safe_open", "safetensors"),
+        ("from transformers import (", "transformers_begin"),
+        ("from huggingface_hub import hf_hub_download", "huggingface_hub"),
+        ("from .models.autoencoders.causal_video_autoencoder import (", "autoencoder_begin"),
+        ("from .models.transformers.symmetric_patchifier import SymmetricPatchifier", "patchifier"),
+        ("from .models.transformers.transformer3d import Transformer3DModel", "transformer3d"),
+        ("from .pipelines.pipeline_ltx_video import (", "pipeline_begin"),
+        ("from .schedulers.rf import RectifiedFlowScheduler", "scheduler"),
+        ("from .utils.skip_layer_strategy import SkipLayerStrategy", "skip_layer"),
+        ("from .models.autoencoders.latent_upsampler import LatentUpsampler", "latent_upsampler"),
+        ("from .pipelines import crf_compressor", "crf_compressor"),
+        ("import cv2", "cv2"),
+        ("from shared.utils import files_locator as fl", "files_locator"),
+    ]
+    for statement, marker in import_markers:
+        if statement in src:
+            src = src.replace(
+                statement,
+                statement + "\nprint('ND_LTX2B_LTXV_IMPORT=" + marker + "', flush=True)",
+                1,
+            )
     ltxv_py.write_text(src, encoding="utf-8")
 
     # Headless LTX uses shared.utils submodules directly. The package initializer
