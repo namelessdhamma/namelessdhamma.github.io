@@ -39,7 +39,7 @@ for name in ('WRITE_SYSTEM','RESEARCH_SYSTEM','DEEP_SYSTEM'):
 # Nemotron 3 Ultra does not list Russian among its supported post-training languages.
 # Prefer current multilingual models whose published support includes Russian.
 old_models="""STRONG_OPENROUTER_MODEL='nvidia/nemotron-3-ultra-550b-a55b:free'\nSTRONG_CLOUDFLARE_MODEL='@cf/nvidia/nemotron-3-120b-a12b'\nSTRONG_GROQ_MODEL='openai/gpt-oss-120b'\nMODEL_ROUTE_TABLE={\n    'write':[\n        ('openrouter',STRONG_OPENROUTER_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_MODEL),\n        ('groq',STRONG_GROQ_MODEL),\n    ],\n    'deep_research':[\n        ('openrouter',STRONG_OPENROUTER_MODEL),\n        ('groq',STRONG_GROQ_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_MODEL),\n    ],\n}\n"""
-new_models="""STRONG_GROQ_MODEL='qwen/qwen3.8-27b'\nSTRONG_CLOUDFLARE_MODEL='@cf/qwen/qwen3.8-27b'\nSTRONG_CLOUDFLARE_ALT_MODEL='@cf/zai-org/glm-4.7-flash'\nMODEL_ROUTE_TABLE={\n    'write':[\n        ('groq',STRONG_GROQ_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_ALT_MODEL),\n    ],\n    'deep_research':[\n        ('groq',STRONG_GROQ_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_ALT_MODEL),\n    ],\n}\n"""
+new_models="""STRONG_GROQ_MODEL='qwen/qwen3.8-27b'\nSTRONG_CLOUDFLARE_MODEL='@cf/qwen/qwen3.8-27b'\nSTRONG_CLOUDFLARE_ALT_MODEL='@cf/openai/gpt-oss-120b'\nMODEL_ROUTE_TABLE={\n    'write':[\n        ('groq',STRONG_GROQ_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_ALT_MODEL),\n    ],\n    'deep_research':[\n        ('groq',STRONG_GROQ_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_MODEL),\n        ('cloudflare',STRONG_CLOUDFLARE_ALT_MODEL),\n    ],\n}\n"""
 if src.count(old_models)!=1:
     raise RuntimeError('v20_3_model_table_anchor_mismatch')
 src=src.replace(old_models,new_models,1)
@@ -62,7 +62,7 @@ src=src.replace("state['adaptive_router']='v20.1-strong-primary-emergency-reserv
 state_anchor="state['semantic_routes']=['write','deep_research']\n"
 if state_anchor not in src:
     raise RuntimeError('v20_3_state_anchor_missing')
-src=src.replace(state_anchor,state_anchor+"state['russian_quality_policy']='native-ru-v1'\nstate['russian_primary_models']=['groq:qwen/qwen3.8-27b','cloudflare:@cf/qwen/qwen3.8-27b','cloudflare:@cf/zai-org/glm-4.7-flash']\n",1)
+src=src.replace(state_anchor,state_anchor+"state['russian_quality_policy']='native-ru-v1'\nstate['russian_primary_models']=['groq:qwen/qwen3.8-27b','cloudflare:@cf/qwen/qwen3.8-27b','cloudflare:@cf/openai/gpt-oss-120b']\n",1)
 src=src.replace('ND_VK_GATEWAY_V20_2_STRONG_PRIMARY_RESERVE_START','ND_VK_GATEWAY_V20_3_RUSSIAN_QUALITY_START',1)
 
 required=(
