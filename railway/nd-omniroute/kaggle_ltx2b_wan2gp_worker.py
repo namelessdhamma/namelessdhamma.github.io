@@ -124,7 +124,28 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
     # NumPy/SciPy on disk, so restart once into a clean interpreter before importing
     # the scientific stack. This avoids mixed in-memory/on-disk binary state.
     if os.environ.get("ND_LTX2B_RUNTIME_READY") != "1":
-        run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "-q", "--disable-pip-version-check", "-r", str(ROOT / "requirements.txt")], 1200)
+        minimal_requirements = [
+            "mmgp==3.8.1",
+            "diffusers==0.36.0",
+            "transformers==4.54.0",
+            "tokenizers>=0.20.3",
+            "accelerate>=1.1.1",
+            "tqdm",
+            "imageio",
+            "imageio-ffmpeg",
+            "einops",
+            "rotary-embedding-torch>=0.5.3",
+            "sentencepiece",
+            "numpy==2.1.2",
+            "scipy",
+            "opencv-python-headless>=4.12.0.88",
+            "av",
+            "pyyaml",
+            "safetensors",
+            "huggingface_hub[hf_xet]",
+            "hf_xet>=1.5.2",
+        ]
+        run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "-q", "--disable-pip-version-check", *minimal_requirements], 900)
         env = dict(os.environ)
         env["ND_LTX2B_RUNTIME_READY"] = "1"
         worker_path = WORK / "kaggle_ltx2b_wan2gp_worker.py"
@@ -220,6 +241,24 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
 
     ltxv_py = ROOT / "models" / "ltx_video" / "ltxv.py"
     src = ltxv_py.read_text(encoding="utf-8")
+
+    heavy_utils_import = "from shared.utils.utils import calculate_new_dimensions"
+    if heavy_utils_import in src:
+        minimal_dims = """def calculate_new_dimensions(canvas_height, canvas_width, image_height, image_width, fit_into_canvas, block_size=16):
+    if fit_into_canvas is None or fit_into_canvas == 2:
+        return canvas_height, canvas_width
+    if fit_into_canvas == 1:
+        scale = max(
+            min(canvas_height / image_height, canvas_width / image_width),
+            min(canvas_width / image_height, canvas_height / image_width),
+        )
+    else:
+        scale = (canvas_height * canvas_width / (image_height * image_width)) ** 0.5
+    new_height = round(image_height * scale / block_size) * block_size
+    new_width = round(image_width * scale / block_size) * block_size
+    return new_height, new_width"""
+        src = src.replace(heavy_utils_import, minimal_dims, 1)
+
     needle = "offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False)"
     replacement = (
         "offload.fast_load_transformers_model("
@@ -233,7 +272,20 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
     if needle not in src and "ND_LTX_TRANSFORMER_CONFIG_PATH" not in src:
         raise RuntimeError("Wan2GP LTX loader patch point missing")
     if needle in src:
-        ltxv_py.write_text(src.replace(needle, replacement, 1), encoding="utf-8")
+        src = src.replace(needle, replacement, 1)
+    ltxv_py.write_text(src, encoding="utf-8")
+
+    pipeline_py = ROOT / "models" / "ltx_video" / "pipelines" / "pipeline_ltx_video.py"
+    pipeline_src = pipeline_py.read_text(encoding="utf-8")
+    enhancer_import = "from shared.prompt_enhancer.prompt_enhance_utils import generate_cinematic_prompt"
+    if enhancer_import in pipeline_src:
+        pipeline_src = pipeline_src.replace(
+            enhancer_import,
+            "def generate_cinematic_prompt(prompt, *args, **kwargs):\n    return prompt",
+            1,
+        )
+        pipeline_py.write_text(pipeline_src, encoding="utf-8")
+
     os.environ["ND_LTX_TRANSFORMER_CONFIG_PATH"] = str(forced_cfg)
     print("ND_LTX2B_STAGE=transformer_config_ready", flush=True)
     return model, te, cfg
