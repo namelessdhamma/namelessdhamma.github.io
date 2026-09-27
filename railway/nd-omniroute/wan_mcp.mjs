@@ -423,7 +423,13 @@ async function ltxHfStudioFirstLast(args={}){
     }
   });
   const videoUrl=findVideoRef(result);
-  if(!videoUrl||!/^https?:\/\//i.test(videoUrl)) throw new Error('LTX Studio reserve returned no importable video URL');
+  if(!videoUrl||!/^https?:\/\//i.test(videoUrl)){
+    const safe=JSON.parse(JSON.stringify(result,(key,value)=>{
+      if(typeof value==='string' && value.includes('/ltx-input/')) return '[REDACTED_INPUT_URL]';
+      return value;
+    }));
+    return {ok:false,state:'OUTPUT_UNRESOLVED',request_id:requestId,route:'hf_techfreakworm_ltx23_first_last',provider:'Hugging Face Space',space_id:spaceId,api_name:'/handler_4',cost_policy:'FREE_ONLY',seed,provider_result:safe};
+  }
   const imported=await driveImportKaggleOutput(videoUrl,'nd-ltx-'+requestId+'.mp4','video/mp4');
   const file=imported?.file||{};
   return {
@@ -2253,7 +2259,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v2-module-scope'},
+          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
