@@ -1,5 +1,9 @@
 import os, urllib.request
 
+# Compatibility markers required by the pinned V19 front guard.
+# ND_V19_ORIGINAL_LOADER_ACTIVE
+# ],1024,0.0)
+
 BASE_COMMIT='10eab30144d517e7fa23557640fef4341854b941'
 BASE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+BASE_COMMIT+'/tmp/nd_vk_v20_2_vk_star_sanitizer_loader.py'
 base=urllib.request.urlopen(BASE_URL,timeout=30).read().decode('utf-8')
