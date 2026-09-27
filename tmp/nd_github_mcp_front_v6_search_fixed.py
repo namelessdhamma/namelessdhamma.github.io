@@ -1,4 +1,4 @@
-import base64, json, os, subprocess, sys, urllib.parse, urllib.request, http.client, secrets, time
+import base64, json, os, subprocess, sys, urllib.parse, urllib.request, http.client, secrets, time, hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
 
@@ -13,6 +13,9 @@ VK_SCREEN=os.environ.get('VK_GROUP_SCREEN_NAME','namelessdhamma').strip().lstrip
 VK_VERSION=os.environ.get('VK_API_VERSION','5.199').strip() or '5.199'
 VK_VIDEO_PATH_TOKEN=(os.environ.get('ND_VK_VIDEO_MCP_PATH_TOKEN','') or os.environ.get('ND_VK_MCP_ROUTE_TOKEN','')).strip()
 VK_VIDEO_MUTATIONS=set()
+VK_ID_CLIENT_ID='54776731'
+VK_ID_REDIRECT='https://nd-qstash-control-v2-production.up.railway.app/vk/oauth/callback'
+VK_OAUTH_PENDING={}
 
 LAUNCHER=os.environ.get('ND_VK_V19_PINNED_FRONT_LAUNCHER','')
 if not LAUNCHER:
@@ -395,8 +398,83 @@ class H(BaseHTTPRequestHandler):
         if self.is_vk_video_mcp(): self.vk_video_mcp(); return
         if self.is_mcp(): self.mcp(); return
         self.forward()
+    def vk_oauth_start(self):
+        state=secrets.token_urlsafe(32)
+        verifier=secrets.token_urlsafe(64)
+        challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode('ascii')).digest()).decode('ascii').rstrip('=')
+        VK_OAUTH_PENDING[state]={'verifier':verifier,'created':time.time()}
+        q=urllib.parse.urlencode({
+          'response_type':'code',
+          'client_id':VK_ID_CLIENT_ID,
+          'redirect_uri':VK_ID_REDIRECT,
+          'state':state,
+          'code_challenge':challenge,
+          'code_challenge_method':'S256',
+          'scope':'video',
+          'prompt':'consent',
+        })
+        self.send_response(302)
+        self.send_header('Location','https://id.vk.ru/authorize?'+q)
+        self.send_header('Cache-Control','no-store')
+        self.end_headers()
+    def vk_oauth_callback(self):
+        qs=urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        if qs.get('error'):
+            self.send_json(400,{'ok':False,'stage':'authorize','error':qs.get('error',[None])[0],'error_description':qs.get('error_description',[None])[0]}); return
+        state=str(qs.get('state',[''])[0]); code=str(qs.get('code',[''])[0]); device=str(qs.get('device_id',[''])[0])
+        rec=VK_OAUTH_PENDING.pop(state,None)
+        if not rec or (time.time()-float(rec.get('created') or 0))>600:
+            self.send_json(400,{'ok':False,'stage':'callback','error':'state_missing_or_expired'}); return
+        if not code or not device:
+            self.send_json(400,{'ok':False,'stage':'callback','error':'code_or_device_missing'}); return
+        form={
+          'grant_type':'authorization_code',
+          'code':code,
+          'code_verifier':rec['verifier'],
+          'client_id':VK_ID_CLIENT_ID,
+          'device_id':device,
+          'redirect_uri':VK_ID_REDIRECT,
+          'state':state,
+        }
+        req=urllib.request.Request('https://id.vk.ru/oauth2/auth',data=urllib.parse.urlencode(form).encode('utf-8'),headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'ND-VK-VIDEO-OAUTH-PROBE/1.0'},method='POST')
+        try:
+            with urllib.request.urlopen(req,timeout=30) as rr:
+                tok=json.loads(rr.read().decode('utf-8','replace') or '{}')
+        except HTTPError as e:
+            raw=e.read().decode('utf-8','replace')
+            self.send_json(400,{'ok':False,'stage':'token_exchange','error':clean(raw or e.reason)}); return
+        access=str(tok.get('access_token') or '')
+        if not access:
+            self.send_json(400,{'ok':False,'stage':'token_exchange','error':'access_token_missing'}); return
+        try:
+            params={'group_id':228330620,'name':'ND direct VK Video OAuth probe','description':'Temporary authorization probe; no video bytes are uploaded.','wallpost':0,'access_token':access,'v':VK_VERSION}
+            req2=urllib.request.Request('https://api.vk.com/method/video.save',data=urllib.parse.urlencode(params).encode('utf-8'),headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'ND-VK-VIDEO-OAUTH-PROBE/1.0'},method='POST')
+            with urllib.request.urlopen(req2,timeout=30) as rr:
+                obj=json.loads(rr.read().decode('utf-8','replace') or '{}')
+            if obj.get('error'):
+                err=obj.get('error') or {}
+                self.send_json(403,{'ok':False,'stage':'video_save','error_code':err.get('error_code'),'error':err.get('error_msg'),'scope':tok.get('scope'),'token_persisted':False}); return
+            saved=obj.get('response') or {}
+            vid=int(saved.get('video_id') or 0); own=int(saved.get('owner_id') or -228330620)
+            cleanup=None
+            if vid:
+                p={'video_id':vid,'owner_id':own,'target_id':-228330620,'access_token':access,'v':VK_VERSION}
+                qreq=urllib.request.Request('https://api.vk.com/method/video.delete',data=urllib.parse.urlencode(p).encode('utf-8'),headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'ND-VK-VIDEO-OAUTH-PROBE/1.0'},method='POST')
+                try:
+                    with urllib.request.urlopen(qreq,timeout=30) as qr:
+                        cleanup=json.loads(qr.read().decode('utf-8','replace') or '{}')
+                except Exception as ce:
+                    cleanup={'error':clean(ce)}
+            self.send_json(200,{'ok':True,'stage':'complete','app_id':VK_ID_CLIENT_ID,'scope':tok.get('scope'),'video_save':{'owner_id':own,'video_id':vid,'upload_url_present':bool(saved.get('upload_url'))},'cleanup':cleanup,'refresh_token_present':bool(tok.get('refresh_token')),'token_persisted':False})
+        finally:
+            access=''; tok={}
     def do_GET(self):
-        if self.path.split('?',1)[0]=='/nd/vk-video/health':
+        _p=self.path.split('?',1)[0]
+        if _p=='/vk/oauth/start':
+            self.vk_oauth_start(); return
+        if _p=='/vk/oauth/callback':
+            self.vk_oauth_callback(); return
+        if _p=='/nd/vk-video/health':
             try:
                 g=vk_video_group()
                 self.send_json(200,{'ok':True,'service':'nd-vk-video-direct-mcp','version':'1.0.0','configured':bool(VK_TOKEN and VK_VIDEO_PATH_TOKEN),'group':g,'browser_required':False,'make_required':False})
@@ -411,18 +489,4 @@ class H(BaseHTTPRequestHandler):
     def do_PATCH(self): self.forward()
 
 print('ND_GITHUB_MCP_FRONT_V6_SEARCH_FIXED '+json.dumps({'port':PORT,'inner_port':INNER_PORT,'configured':bool(GITHUB_PAT and PATH_TOKEN),'owner':OWNER,'inline_only':True,'attachments':False,'vk_video_configured':bool(VK_TOKEN and VK_VIDEO_PATH_TOKEN)}),flush=True)
-try:
-    _g=vk_video_group()
-    _probe=vk_api_call('video.save',{'group_id':int(_g['id']),'name':'ND direct VK Video auth probe','description':'Temporary authorization probe; no bytes uploaded.','wallpost':0})
-    _vid=int((_probe or {}).get('video_id') or 0)
-    _own=int((_probe or {}).get('owner_id') or -int(_g['id']))
-    _cleanup=None
-    if _vid>0:
-        try:
-            _cleanup=vk_api_call('video.delete',{'video_id':_vid,'owner_id':_own,'target_id':-int(_g['id'])})
-        except Exception as _ce:
-            _cleanup='cleanup_failed:'+clean(_ce)
-    print('ND_VK_VIDEO_AUTH_PROBE '+json.dumps({'ok':True,'group_id':int(_g['id']),'owner_id':_own,'video_id':_vid,'upload_url_present':bool((_probe or {}).get('upload_url')),'cleanup':_cleanup},ensure_ascii=False),flush=True)
-except Exception as _e:
-    print('ND_VK_VIDEO_AUTH_PROBE '+json.dumps({'ok':False,'error':clean(_e)},ensure_ascii=False),flush=True)
 ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
