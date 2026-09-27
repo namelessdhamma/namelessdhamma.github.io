@@ -636,15 +636,31 @@ async function lpVkGenerateQr(){
   let captchaClicked=false;
   let methodVisible=false;
   for(let i=0;i<120;i++){
-    const state=await p.evaluate(()=>{
-      const method=[...document.querySelectorAll('button')].some(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
+    methodVisible=await p.evaluate(()=>[...document.querySelectorAll('button')].some(x=>(x.textContent||'').trim()==='Подтвердить другим способом')).catch(()=>false);
+    if(methodVisible)break;
+
+    for(const fr of p.frames()){
+      try{
+        const box=fr.locator('#not-robot-captcha-checkbox');
+        if(await box.count()){
+          await box.click({force:true,timeout:5000});
+          captchaClicked=true;
+          break;
+        }
+      }catch{}
+    }
+    if(captchaClicked)break;
+
+    const fallback=await p.evaluate(()=>{
       const d=document.querySelector('iframe')?.contentDocument;
       const box=d?.querySelector('#not-robot-captcha-checkbox');
-      if(box){box.click();return {clicked:true,method};}
-      return {clicked:false,method};
-    }).catch(()=>({clicked:false,method:false}));
-    if(state.clicked){captchaClicked=true;break;}
-    if(state.method){methodVisible=true;break;}
+      if(!box)return false;
+      box.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+      box.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+      box.click();
+      return true;
+    }).catch(()=>false);
+    if(fallback){captchaClicked=true;break;}
     await new Promise(r=>setTimeout(r,500));
   }
   if(!captchaClicked&&!methodVisible)throw new Error("vk_captcha_not_ready");
