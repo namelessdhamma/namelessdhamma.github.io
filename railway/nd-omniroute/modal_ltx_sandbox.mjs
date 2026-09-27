@@ -138,7 +138,7 @@ export async function modalLtxSandboxResultBytes(args={}){
   }
 }
 
-export async function modalLtxFunctionBootstrapRaw(){
+export async function modalLtxFunctionBootstrapSubmit(){
   if(!modalLtxSandboxConfigured()) throw new Error('Modal credentials are not configured');
   const modal=new ModalClient();
   try{
@@ -175,15 +175,31 @@ export async function modalLtxFunctionBootstrapRaw(){
       timeoutMs:20*60*1000,
       memoryMiB:2048
     });
-    const code=await sb.wait();
-    const [stdout,stderr]=await Promise.all([sb.stdout.readText(),sb.stderr.readText()]);
-    if(code!==0) throw new Error('Modal bootstrap failed: '+String(stderr||stdout).slice(-5000));
+    const result={ok:true,state:'SUBMITTED',provider:'Modal',route:'modal_function_bootstrap',request_id:'modal-bootstrap:'+sb.sandboxId,sandbox_id:sb.sandboxId};
+    sb.detach();
+    return result;
+  }finally{
+    modal.close();
+  }
+}
+
+export async function modalLtxFunctionBootstrapStatus(args={}){
+  const raw=String(args.request_id||'').trim();
+  const sandboxId=String(args.sandbox_id||(raw.startsWith('modal-bootstrap:')?raw.slice('modal-bootstrap:'.length):'')).trim();
+  if(!sandboxId) throw new Error('Modal bootstrap request_id required');
+  const modal=new ModalClient();
+  try{
+    const sb=await modal.sandboxes.fromId(sandboxId);
+    const code=await sb.poll();
+    if(code===null) return {ok:true,state:'RUNNING',provider:'Modal',route:'modal_function_bootstrap',request_id:'modal-bootstrap:'+sandboxId,sandbox_id:sandboxId};
+    const [stdout,stderr]=await Promise.all([sb.stdout.readText().catch(()=>''),sb.stderr.readText().catch(()=>'')]);
+    if(code!==0) return {ok:false,state:'FAILED',provider:'Modal',route:'modal_function_bootstrap',request_id:'modal-bootstrap:'+sandboxId,sandbox_id:sandboxId,exit_code:code,stdout_tail:String(stdout).slice(-2500),stderr_tail:cleanError(String(stderr).slice(-3500))};
     const marker='ND_MODAL_BOOTSTRAP=';
     const line=String(stdout||'').split(/\r?\n/).find(x=>x.startsWith(marker));
-    if(!line) throw new Error('Modal bootstrap receipt missing');
-    const cfg=JSON.parse(line.slice(marker.length));
-    if(!cfg.generate_url||!cfg.health_url||!cfg.proxy_key||!cfg.proxy_secret) throw new Error('Modal bootstrap receipt incomplete');
-    return cfg;
+    if(!line) return {ok:false,state:'COMPLETED_OUTPUT_UNRESOLVED',provider:'Modal',route:'modal_function_bootstrap',request_id:'modal-bootstrap:'+sandboxId,sandbox_id:sandboxId,exit_code:code,stdout_tail:String(stdout).slice(-3000)};
+    const config=JSON.parse(line.slice(marker.length));
+    if(!config.generate_url||!config.health_url||!config.proxy_key||!config.proxy_secret) throw new Error('Modal bootstrap receipt incomplete');
+    return {ok:true,state:'COMPLETED',provider:'Modal',route:'modal_function_bootstrap',request_id:'modal-bootstrap:'+sandboxId,sandbox_id:sandboxId,config};
   }finally{
     modal.close();
   }
