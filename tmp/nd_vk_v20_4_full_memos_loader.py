@@ -414,6 +414,7 @@ def _memos_admin_tools():
         {'name':'memos_local_delete','description':'Delete one incorrect local memory; confirm=true required.','inputSchema':{'type':'object','properties':{'id':{'type':'integer'},'confirm':{'type':'boolean'}},'required':['id','confirm'],'additionalProperties':False},'annotations':de},
         {'name':'memos_cloud_search','description':'Search MemOS Cloud for a topic across known Porfirchik profiles or one profile.','inputSchema':{'type':'object','properties':{'query':{'type':'string'},'profile':{'type':'string'}},'required':['query'],'additionalProperties':False},'annotations':ro},
         {'name':'memos_cloud_delete','description':'Delete incorrect MemOS Cloud memory IDs; confirm=true required.','inputSchema':{'type':'object','properties':{'memory_ids':{'type':'array','items':{'type':'string'}},'confirm':{'type':'boolean'}},'required':['memory_ids','confirm'],'additionalProperties':False},'annotations':de},
+        {'name':'memos_qualify','description':'Run an isolated synthetic local + MemOS Cloud add/recall/cleanup qualification.','inputSchema':{'type':'object','properties':{},'additionalProperties':False},'annotations':wr},
     ]
 
 def _memos_admin_cloud_search(query,profile=None):
@@ -454,6 +455,37 @@ def _memos_admin_call(name,a):
     if name=='memos_cloud_delete':
         if a.get('confirm') is not True: raise RuntimeError('confirm_true_required')
         return {'ok':True,'cloud':_memos_cloud_delete(a.get('memory_ids') or [])}
+    if name=='memos_qualify':
+        marker='малахит-'+str(int(time.time()*1000))
+        uid='__qualification__'
+        local_id=None; local_ok=False; cloud_ok=False; cloud_cleanup=False; cloud_ids=[]; errors=[]
+        try:
+            local_id=_memos_local_add(uid,'Квалификация памяти: контрольное слово '+marker+'.','Запомнил контрольное слово.')
+            local_ok=any(marker in ((x.get('user_text') or '')+' '+(x.get('assistant_text') or '')) for x in _memos_local_search(uid,marker,5))
+        except Exception as e:
+            errors.append('local:'+_memos_clean(e))
+        finally:
+            if local_id is not None:
+                try:_memos_local_delete(local_id)
+                except Exception as e:errors.append('local_cleanup:'+_memos_clean(e))
+        if MEMOS_API_KEY:
+            try:
+                _memos_cloud_add(uid,'Квалификация памяти: контрольное слово '+marker+'.','Запомнил контрольное слово.')
+                for wait_s in (1,2,3,4,5):
+                    time.sleep(wait_s)
+                    obj=_memos_cloud_search(uid,'контрольное слово '+marker,10)
+                    entries=_memos_cloud_entries(obj)
+                    matched=[x for x in entries if marker in str(x.get('text') or '')]
+                    if matched:
+                        cloud_ok=True
+                        cloud_ids=[str(x.get('id')) for x in matched if x.get('id')]
+                        break
+                if cloud_ids:
+                    _memos_cloud_delete(cloud_ids)
+                    cloud_cleanup=True
+            except Exception as e:
+                errors.append('cloud:'+_memos_clean(e))
+        return {'ok':bool(local_ok and (cloud_ok if MEMOS_API_KEY else True)),'local_ok':local_ok,'cloud_configured':bool(MEMOS_API_KEY),'cloud_ok':cloud_ok if MEMOS_API_KEY else None,'cloud_cleanup':cloud_cleanup if MEMOS_API_KEY else None,'marker':marker,'errors':errors}
     if name=='memos_search':
         query=str(a.get('query') or '')
         local=_memos_local_list(50,0,query)
@@ -473,7 +505,7 @@ def _memos_admin_handle(h):
     if method=='notifications/initialized':
         h.out(200,{'jsonrpc':'2.0','id':mid,'result':{}});return
     if method=='initialize':
-        h.out(200,{'jsonrpc':'2.0','id':mid,'result':{'protocolVersion':params.get('protocolVersion') or '2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'Porfirchik MemOS Admin','version':'1.0.0'},'instructions':'Inspect and correct Porfirchik long-term memory. Destructive operations require confirm=true.'}});return
+        h.out(200,{'jsonrpc':'2.0','id':mid,'result':{'protocolVersion':params.get('protocolVersion') or '2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'Porfirchik MemOS Admin','version':'1.1.0'},'instructions':'Inspect and correct Porfirchik long-term memory. Destructive operations require confirm=true.'}});return
     if method=='ping':
         h.out(200,{'jsonrpc':'2.0','id':mid,'result':{}});return
     if method=='tools/list':
