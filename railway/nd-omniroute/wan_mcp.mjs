@@ -353,7 +353,14 @@ async function ltxCapabilities(args={}){
 }
 
 async function ltxRawCall(args={}){
-  return rawCall({...args,space_id:String(args.space_id||DEFAULT_LTX_SPACE)});
+  const spaceId=String(args.space_id||DEFAULT_LTX_SPACE);
+  if(spaceId==='nd-modal-configure'){
+    if(String(args.api_name||'')!=='/configure') throw new Error('nd-modal-configure requires api_name=/configure');
+    let payload=args.payload;
+    if(payload===undefined && typeof args.payload_json==='string') payload=JSON.parse(args.payload_json||'{}');
+    return ltxModalConfigure(payload||{});
+  }
+  return rawCall({...args,space_id:spaceId});
 }
 
 async function ltxHfLinoytsFirstLast(args={}){
@@ -870,20 +877,87 @@ async function driveImportLtxBytes(buf,name,mimeType){
   return data.result;
 }
 
+let ltxModalRuntimeCache=null;
+
+function ltxModalEnvConfig(){
+  if(!LTX_MODAL_ENABLED || !/^https:\/\//i.test(LTX_MODAL_GENERATE_URL) || !LTX_MODAL_PROXY_KEY || !LTX_MODAL_PROXY_SECRET) return null;
+  return {
+    generate_url:LTX_MODAL_GENERATE_URL,
+    health_url:LTX_MODAL_HEALTH_URL,
+    proxy_key:LTX_MODAL_PROXY_KEY,
+    proxy_secret:LTX_MODAL_PROXY_SECRET,
+    source:'environment'
+  };
+}
+
 function ltxModalConfigured(){
-  return LTX_MODAL_ENABLED && /^https:\/\//i.test(LTX_MODAL_GENERATE_URL) && !!LTX_MODAL_PROXY_KEY && !!LTX_MODAL_PROXY_SECRET;
+  return !!(ltxModalRuntimeCache || ltxModalEnvConfig());
+}
+
+async function ltxModalConfig(){
+  if(ltxModalRuntimeCache) return ltxModalRuntimeCache;
+  if(DRIVE_BRIDGE_KEY){
+    const res=await fetch('http://127.0.0.1:'+OUTER_PORT+'/internal/ltx/modal-config',{
+      headers:{'x-nd-bridge-key':DRIVE_BRIDGE_KEY,'accept':'application/json'}
+    });
+    if(res.ok){
+      const data=await res.json();
+      if(data?.ok===true && data?.result?.generate_url && data?.result?.proxy_key && data?.result?.proxy_secret){
+        ltxModalRuntimeCache={...data.result,source:'encrypted_runtime_store'};
+        return ltxModalRuntimeCache;
+      }
+    }else if(res.status!==404){
+      const detail=(await res.text()).slice(0,800);
+      throw new Error('Modal config read failed '+res.status+': '+detail);
+    }
+  }
+  return ltxModalEnvConfig();
+}
+
+async function ltxModalConfigure(payload={}){
+  if(!DRIVE_BRIDGE_KEY) throw new Error('ND_DRIVE_BRIDGE_TOKEN is not configured');
+  const res=await fetch('http://127.0.0.1:'+OUTER_PORT+'/internal/ltx/modal-config',{
+    method:'POST',
+    headers:{'content-type':'application/json','x-nd-bridge-key':DRIVE_BRIDGE_KEY},
+    body:JSON.stringify(payload||{})
+  });
+  const txt=await res.text();
+  let data={};
+  try{data=txt?JSON.parse(txt):{};}catch{}
+  if(!res.ok||data?.ok!==true) throw new Error('Modal config write failed: '+String(data?.error||txt).slice(0,1000));
+  ltxModalRuntimeCache=null;
+  const cfg=await ltxModalConfig();
+  let health=null;
+  if(cfg?.health_url){
+    const hr=await fetch(cfg.health_url,{
+      headers:{'Modal-Key':cfg.proxy_key,'Modal-Secret':cfg.proxy_secret,'accept':'application/json'}
+    });
+    const htxt=await hr.text();
+    try{health=htxt?JSON.parse(htxt):{};}catch{health={raw:htxt.slice(0,1000)};}
+    if(!hr.ok) throw new Error('Modal health HTTP '+hr.status+': '+htxt.slice(0,1000));
+  }
+  return {
+    ok:true,
+    state:'CONFIGURED_HEALTH_PASS',
+    route:'modal_ltx2b_distilled_f2l',
+    provider:'Modal',
+    cost_policy:'FREE_CREDIT_ONLY',
+    store:data.result,
+    health
+  };
 }
 
 async function ltxModalFirstLast(args={}){
-  if(!ltxModalConfigured()){
+  const cfg=await ltxModalConfig();
+  if(!cfg){
     return {
       ok:false,
       state:'NOT_CONFIGURED',
       route:'modal_ltx2b_distilled_f2l',
       provider:'Modal',
-      enabled:LTX_MODAL_ENABLED,
-      generate_url_configured:!!LTX_MODAL_GENERATE_URL,
-      proxy_auth_configured:!!LTX_MODAL_PROXY_KEY && !!LTX_MODAL_PROXY_SECRET,
+      enabled:false,
+      generate_url_configured:false,
+      proxy_auth_configured:false,
       cost_policy:'FREE_CREDIT_ONLY'
     };
   }
@@ -906,13 +980,13 @@ async function ltxModalFirstLast(args={}){
     start_strength:Number(args.start_strength??1.0),
     end_strength:Number(args.end_strength??0.9)
   };
-  const res=await fetch(LTX_MODAL_GENERATE_URL,{
+  const res=await fetch(cfg.generate_url,{
     method:'POST',
     headers:{
       'content-type':'application/json',
       'accept':'video/mp4',
-      'Modal-Key':LTX_MODAL_PROXY_KEY,
-      'Modal-Secret':LTX_MODAL_PROXY_SECRET
+      'Modal-Key':cfg.proxy_key,
+      'Modal-Secret':cfg.proxy_secret
     },
     body:JSON.stringify(body)
   });
