@@ -147,7 +147,7 @@ export async function modalLtxFunctionBootstrapSubmit(){
     const script=[
       'echo ND_MODAL_BOOTSTRAP_START',
       'set -eu',
-      "python -m pip install --disable-pip-version-check 'modal>=1.5.1'",
+      "python -m pip install --disable-pip-version-check 'modal>=1.5.1' 'pydantic>=2.0'",
       'echo ND_MODAL_BOOTSTRAP_MODAL_INSTALLED',
       "python - <<'PY'",
       'from urllib.request import urlopen',
