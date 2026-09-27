@@ -906,7 +906,7 @@ async function ltxKaggle2bStatus(args={}){
   if(['QUEUED','RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
     try{
       const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
-        userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:100
+        userName:username,kernelSlug:ref.kernel_slug,pageSize:100
       });
       diagnostics={
         files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
@@ -936,7 +936,7 @@ async function ltxKaggle2bResult(args={}){
     failure_message:st?.failureMessage||st?.failure_message||null
   };
   const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
-    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:100
+    userName:username,kernelSlug:ref.kernel_slug,pageSize:100
   });
   const files=Array.isArray(out?.files)?out.files:[];
   const byName=name=>files.find(x=>(x?.fileName||x?.name||x?.path)===name);
