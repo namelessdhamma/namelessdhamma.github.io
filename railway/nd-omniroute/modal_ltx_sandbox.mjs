@@ -64,7 +64,7 @@ export async function modalLtxSandboxSubmit(args={}){
     const encoded=Buffer.from(JSON.stringify(req),'utf8').toString('base64url');
     const workerB64=Buffer.from(WORKER,'utf8').toString('base64');
     const setup=[
-      'set -euo pipefail',
+      'set -eu',
       'apt-get update -qq',
       'DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ffmpeg',
       'rm -rf /var/lib/apt/lists/*',
