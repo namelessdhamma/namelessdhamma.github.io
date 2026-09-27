@@ -1601,11 +1601,19 @@ async function ltxKaggle2bImportProbe(){
 
 async function ltxKaggle2bImportProbeStatus(args={}){
   const {username}=await kaggleLtxIdentity();
-  const slug='nd-ltx2b-import-probe';
   const m=String(args.request_id||'').trim().match(/^ltx2b-import-v(\d+)$/i);
   if(!m) throw new Error('valid ltx2b-import-vN request_id required');
   const version=Number(m[1]);
-  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
+  let slug='nd-ltx2b-import-probe';
+  let st=null;
+  try{
+    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
+  }catch(e){
+    const msg=errorText(e);
+    if(!msg.includes("Permission 'kernels.get' was denied")) throw e;
+    slug='nd-ltx2b-cpu-import-probe';
+    st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug});
+  }
   const state=kaggleState(st?.status);
   let output=null;
   if(['RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
