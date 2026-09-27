@@ -169,7 +169,7 @@ const TG_CHANNEL=String(process.env.ND_TELEGRAM_CHANNEL_ID||"@Namelessdhamma").t
 const TG_USERNAME=String(process.env.ND_TELEGRAM_PUBLISHER_BOT_USERNAME||"").trim();
 const TG_PATH_TOKEN=String(process.env.ND_TELEGRAM_MCP_PATH_TOKEN||"").trim();
 const TELEGRAM_MCP_PATH=TG_PATH_TOKEN?"/nd/telegram/mcp/"+TG_PATH_TOKEN:"";
-const TG_WRITES=/^(1|true|yes|on)$/i.test(String(process.env.ND_SOCIAL_WRITES_ENABLED||"false"));
+const TG_WRITES=/^(1|true|yes|on)$/i.test(String(process.env.ND_TELEGRAM_WRITES_ENABLED||"false"));
 
 const YT_PATH_TOKEN=String(process.env.ND_YOUTUBE_MCP_PATH_TOKEN||"").trim();
 const YT_CLIENT_ID=String(process.env.ND_YOUTUBE_CLIENT_ID||"").trim();
