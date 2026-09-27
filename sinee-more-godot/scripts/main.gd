@@ -12,6 +12,10 @@ var reserve_available: Array[Array] = [[true,true,true,true,true,true,true,true,
 var winner := 0
 var win_line: Array = []
 var game_over := false
+const MATCH_TARGET := 3
+var round_number := 1
+var match_score: Array[int] = [0, 0]
+var match_winner := 0
 
 func _ready() -> void:
 	set_process(true)
@@ -46,7 +50,11 @@ func _apply_requested_test_viewport() -> void:
 func _process(_delta: float) -> void:
 	var size := get_viewport_rect().size
 	var status := get_node("SafeArea/Landscape/Center/Status") as Label
-	var base := "P%d • %d×%d • moves %d" % [turn, int(size.x), int(size.y), moves]
+	var base := "R%d • P%d • score %d–%d • %d×%d • moves %d" % [round_number, turn, match_score[0], match_score[1], int(size.x), int(size.y), moves]
+	if match_winner != 0:
+		base = "MATCH • P%d wins • %d–%d • Menu: new match" % [match_winner, match_score[0], match_score[1]]
+	elif game_over and winner != 0:
+		base = "ROUND %d • P%d wins • %d–%d • Menu: next round" % [round_number, winner, match_score[0], match_score[1]]
 	if size.x < size.y:
 		base += " • rotate device"
 	if selected_reserve >= 0:
@@ -144,6 +152,9 @@ func _on_primary() -> void:
 	if not win_line.is_empty():
 		winner = moving_player
 		game_over = true
+		match_score[moving_player - 1] += 1
+		if match_score[moving_player - 1] >= MATCH_TARGET:
+			match_winner = moving_player
 	else:
 		turn = 2 if moving_player == 1 else 1
 		if not _has_legal_move(turn):
@@ -160,8 +171,32 @@ func _on_secondary() -> void:
 	selected_cell = -1
 	_update_status("selection cleared")
 
+func _reset_round() -> void:
+	board_stacks = [[],[],[],[],[],[],[],[],[]]
+	reserve_available = [[true,true,true,true,true,true,true,true,true],[true,true,true,true,true,true,true,true,true]]
+	winner = 0
+	win_line = []
+	game_over = false
+	selected_reserve = -1
+	selected_cell = -1
+	moves = 0
+	turn = 1 if round_number % 2 == 1 else 2
+	_refresh_surface()
+
 func _on_menu() -> void:
-	_update_status("menu action")
+	if not game_over:
+		_update_status("menu action")
+		return
+	if match_winner != 0:
+		match_score = [0, 0]
+		match_winner = 0
+		round_number = 1
+		_reset_round()
+		_update_status("new match")
+	else:
+		round_number += 1
+		_reset_round()
+		_update_status("next round")
 
 func _refresh_surface() -> void:
 	for i in range(CELL_NAMES.size()):
@@ -279,4 +314,10 @@ func _run_headless_interaction_smoke() -> void:
 	assert(game_over and winner == 1)
 	assert(win_line == [3,4,5])
 	assert(_top_piece(3).rank == 3 and _top_piece(4).rank == 4 and _top_piece(5).rank == 5)
-	print("BLUE_SEA_D2_RULES_SMOKE_PASS winner=", winner, " line=", win_line, " moves=", moves)
+	assert(match_score == [1, 0])
+	_on_menu()
+	assert(round_number == 2 and turn == 2 and not game_over and winner == 0 and moves == 0)
+	assert(match_score == [1, 0])
+	for stack in board_stacks:
+		assert(stack.is_empty())
+	print("BLUE_SEA_D2_RULES_SMOKE_PASS round=", round_number, " starter=", turn, " score=", match_score)
