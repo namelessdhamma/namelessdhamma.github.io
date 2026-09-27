@@ -1161,7 +1161,16 @@ const muxServer=http.createServer(async(req,res)=>{
     if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-auth-status/'+LIGHTPANDA_VK_QR_TOKEN){
       if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
       try{if(lpVkCdp.context)await lpMaybePersistVkState(lpVkCdp.context);}catch{}
-      return j(res,200,{ok:true,vk_session:lpVkStateMeta(),stage:lpVkCdp.stage,url:lpVkCdp.page?lpVkCdp.page.url():null});
+      let ui=null;
+      try{
+        if(lpVkCdp.page)ui=await lpVkCdp.page.evaluate(()=>({
+          text:(document.body?.innerText||'').slice(0,1800),
+          inputs:[...document.querySelectorAll('input')].map(x=>({type:x.type,name:x.name,placeholder:x.placeholder,autocomplete:x.autocomplete})).slice(0,30),
+          buttons:[...document.querySelectorAll('button,[role=button],a')].map(x=>({tag:x.tagName,text:(x.innerText||x.textContent||'').trim(),aria:x.getAttribute('aria-label')})).filter(x=>x.text||x.aria).slice(0,50),
+          iframe_count:document.querySelectorAll('iframe').length
+        }));
+      }catch{}
+      return j(res,200,{ok:true,vk_session:lpVkStateMeta(),stage:lpVkCdp.stage,url:lpVkCdp.page?lpVkCdp.page.url():null,ui});
     }
 
     if(path==='/lightpanda/diagnostic'){
