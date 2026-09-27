@@ -2797,7 +2797,7 @@ async function remoteKaggleOutputToDrive(args={}){
   let remote;
   try{remote=new URL(rawUrl);}catch{throw new Error('invalid remote url');}
   const remoteHost=remote.hostname.toLowerCase();
-  const remoteHostAllowed=remoteHost==='www.kaggleusercontent.com' || remoteHost.endsWith('.hf.space');
+  const remoteHostAllowed=remoteHost==='www.kaggleusercontent.com' || remoteHost.endsWith('.hf.space') || remoteHost==='d2ol7oe51mr4n9.cloudfront.net';
   if(remote.protocol!=='https:' || !remoteHostAllowed) throw new Error('remote host not allowed');
   if(!['video/mp4','application/json'].includes(mimeType)) throw new Error('remote mime type not allowed');
   return authContext.run({user:true},async()=>{
