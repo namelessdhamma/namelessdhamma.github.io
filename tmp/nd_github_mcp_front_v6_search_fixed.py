@@ -615,4 +615,21 @@ class H(BaseHTTPRequestHandler):
     def do_PATCH(self): self.forward()
 
 print('ND_GITHUB_MCP_FRONT_V6_SEARCH_FIXED '+json.dumps({'port':PORT,'inner_port':INNER_PORT,'configured':bool(GITHUB_PAT and PATH_TOKEN),'owner':OWNER,'inline_only':True,'attachments':False,'vk_video_configured':bool(VK_TOKEN and VK_VIDEO_PATH_TOKEN)}),flush=True)
+if str(os.environ.get('ND_VK_VIDEO_SELFTEST_ONCE','')).strip().lower() in ('1','true','yes','on'):
+    try:
+        _token,_bundle=vk_video_user_token(True)
+        _params={'group_id':228330620,'name':'ND direct VK Video refresh self-test','description':'Temporary refresh-token qualification; no video bytes uploaded.','wallpost':0}
+        _obj=vk_api_call_with_token('video.save',_params,_token,30)
+        if _obj.get('error'):
+            _err=_obj.get('error') or {}
+            raise RuntimeError('video_save_%s:%s'%(_err.get('error_code'),clean(_err.get('error_msg'))))
+        _saved=_obj.get('response') or {}
+        _vid=int(_saved.get('video_id') or 0); _own=int(_saved.get('owner_id') or -228330620)
+        _cleanup=None
+        if _vid:
+            _del=vk_api_call_with_token('video.delete',{'video_id':_vid,'owner_id':_own,'target_id':-228330620},_token,30)
+            _cleanup=_del
+        print('ND_VK_VIDEO_REFRESH_SELFTEST '+json.dumps({'ok':True,'owner_id':_own,'video_id':_vid,'upload_url_present':bool(_saved.get('upload_url')),'cleanup':_cleanup,'oauth':vk_oauth_status()},ensure_ascii=False),flush=True)
+    except Exception as _e:
+        print('ND_VK_VIDEO_REFRESH_SELFTEST '+json.dumps({'ok':False,'error':clean(_e),'oauth':vk_oauth_status()},ensure_ascii=False),flush=True)
 ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
