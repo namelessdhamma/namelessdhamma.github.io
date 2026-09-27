@@ -389,6 +389,51 @@ async function ltxHfLinoytsFirstLast(args={}){
       reused:imported?.reused===true
     }
   };
+async function ltxHfStudioFirstLast(args={}){
+  const [startInput,endInput]=await Promise.all([
+    prepareLtxKernelInput(args.start_image_url,'start'),
+    prepareLtxKernelInput(args.end_image_url,'end')
+  ]);
+  const spaceId='techfreakworm/LTX2.3-Studio';
+  const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
+  const requestId='hfltx-'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  const result=await rawCall({
+    space_id:spaceId,
+    api_name:'/handler_4',
+    payload:{
+      param_0:String(args.prompt||'').trim()||'Smooth cinematic transition between first and last frames with natural motion and consistent lighting',
+      param_1:'Fast',
+      param_2:Number(args.width??512),
+      param_3:Number(args.height??288),
+      param_4:Number(args.duration_seconds??1),
+      param_5:24,
+      param_6:seed,
+      param_7:false,
+      param_8:'@file:'+startInput.url,
+      param_9:'@file:'+endInput.url,
+      param_10:String(args.negative_prompt||'shaky, glitchy, low quality, distorted, morphing, duplicate subject, sudden cut, text, watermark'),
+      param_11:'none',
+      param_12:0.8,
+      param_13:false,
+      param_14:0.5,
+      param_15:'union',
+      param_16:0.5
+    }
+  });
+  const videoUrl=findVideoRef(result);
+  if(!videoUrl||!/^https?:\/\//i.test(videoUrl)) throw new Error('LTX Studio reserve returned no importable video URL');
+  const imported=await driveImportKaggleOutput(videoUrl,'nd-ltx-'+requestId+'.mp4','video/mp4');
+  const file=imported?.file||{};
+  return {
+    ok:true,state:'READY',request_id:requestId,
+    route:'hf_techfreakworm_ltx23_first_last',
+    provider:'Hugging Face Space',space_id:spaceId,api_name:'/handler_4',
+    cost_policy:'FREE_ONLY',seed,
+    video_ref:file.webViewLink||null,
+    drive_video:{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:imported?.reused===true}
+  };
+}
+
 }
 
 function findVideoRef(value){
@@ -1844,6 +1889,7 @@ async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='quota-readback') return kaggleLtxPreflight();
   if(compat==='hf-linoyts') return ltxHfLinoytsFirstLast(args);
+  if(compat==='hf-studio') return ltxHfStudioFirstLast(args);
   if(compat==='wan2gp-runtime') return ltxKaggleWan2gpSubmit(args);
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
@@ -2207,7 +2253,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame'},
+          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
