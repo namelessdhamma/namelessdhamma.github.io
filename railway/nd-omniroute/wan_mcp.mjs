@@ -1542,7 +1542,7 @@ async function ltxKaggle2bLoadProbe(){
     "ltxv_py=ROOT/'models/ltx_video/ltxv.py'",
     "src=ltxv_py.read_text(encoding='utf-8')",
     "needle='offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False)'",
-    "replacement=\"offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False, forcedConfigPath=os.environ['ND_LTX_TRANSFORMER_CONFIG_PATH'])\"",
+    "replacement=\"offload.fast_load_transformers_model(model_filepath, modelClass=Transformer3DModel, writable_tensors=False, forcedConfigPath=os.environ['ND_LTX_TRANSFORMER_CONFIG_PATH'], preprocess_sd={**{'proj_in':'patchify_proj','time_embed':'adaln_single'}, **{f'transformer_blocks.{i}.{a}.{src}':f'transformer_blocks.{i}.{a}.{dst}' for i in range(28) for a in ['attn1','attn2'] for src,dst in [('norm_q','q_norm'),('norm_k','k_norm')]}})\"",
     "if needle not in src and 'ND_LTX_TRANSFORMER_CONFIG_PATH' not in src: raise RuntimeError('Wan2GP LTX loader patch point missing')",
     "if needle in src: ltxv_py.write_text(src.replace(needle,replacement,1),encoding='utf-8')",
     "os.environ['ND_LTX_TRANSFORMER_CONFIG_PATH']=str(forced_cfg)",
