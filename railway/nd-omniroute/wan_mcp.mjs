@@ -505,6 +505,66 @@ async function prepareLtxKernelInput(value,label){
   return {url:publicUrl,base64:null,content_type:ct,size_bytes:declared};
 }
 
+async function ltxKaggleWan2gpSubmit(args={}){
+  const [startInput,endInput]=await Promise.all([
+    prepareLtxKernelInput(args.start_image_url,'start'),
+    prepareLtxKernelInput(args.end_image_url,'end')
+  ]);
+  const preflight=await kaggleLtxPreflight();
+  const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
+  const request={
+    start_image_url:startInput.url||undefined,
+    end_image_url:endInput.url||undefined,
+    prompt:String(args.prompt||'').trim(),
+    duration_seconds:Number(args.duration_seconds??1),
+    width:Number(args.width??512),
+    height:Number(args.height??288),
+    seed
+  };
+  const reqB64=Buffer.from(JSON.stringify(request),'utf8').toString('base64');
+  const workerUrl='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx23_wan2gp_worker.py';
+  const script=[
+    'import base64,sys,urllib.request',
+    'from pathlib import Path',
+    "request_path=Path('/kaggle/working/nd-ltx23-request.json')",
+    "request_path.write_bytes(base64.b64decode('"+reqB64+"'))",
+    "sys.argv=['kaggle_ltx23_wan2gp_worker.py',str(request_path)]",
+    "req=urllib.request.Request('"+workerUrl+"',headers={'User-Agent':'nd-kaggle-ltx23/1.0'})",
+    "source=urllib.request.urlopen(req,timeout=120).read().decode('utf-8')",
+    "exec(compile(source,'kaggle_ltx23_wan2gp_worker.py','exec'),{'__name__':'__main__'})"
+  ].join('\n');
+  if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle LTX23 source preflight exceeds provider limit');
+  const jobRef=newKaggleLtxKernelRef();
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+jobRef.kernel_slug,
+    newTitle:'ND LTX23 Wan2GP '+jobRef.token,
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    modelDataSources:[],
+    isPrivate:true,enableTpu:false,enableInternet:true,
+    machineShape:'NvidiaTeslaP100',
+    sessionTimeoutSeconds:3600
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('Kaggle LTX23 submit failed '+JSON.stringify({error:save?.error||null}));
+  const requestId='kltx-'+jobRef.token+'-v'+version;
+  setTimeout(()=>ltxKaggleAutoFinalize(requestId).catch(e=>console.error(JSON.stringify({event:'ND_LTX23_KAGGLE_AUTO_FINALIZE',request_id:requestId,state:'ERROR',error:errorText(e)}))),10000);
+  return {
+    ok:true,state:'SUBMITTED',request_id:requestId,
+    provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
+    route:'kaggle_ltx23_wan2gp_runtime_f2l',
+    machine_shape_requested:'NvidiaTeslaP100',
+    cost_policy:'FREE_ONLY',
+    gpu_quota:preflight.gpu,
+    seed
+  };
+}
+
 async function ltxKaggleSubmit(args={}){
   const [startInput,endInput]=await Promise.all([
     prepareLtxKernelInput(args.start_image_url,'start'),
@@ -648,7 +708,7 @@ async function ltxKaggleResult(args={}){
     ok:true,
     request_id:ref.request_id,
     state:'READY',
-    route:'kaggle_ltx13b_mounted_cache_f2l',
+    route:receipt?.route||'kaggle_ltx13b_mounted_cache_f2l',
     provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
     receipt,
     video_ref:file.webViewLink||null,
@@ -1727,6 +1787,7 @@ async function ltxKaggleAutoFinalize(requestId){
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='quota-readback') return kaggleLtxPreflight();
+  if(compat==='wan2gp-runtime') return ltxKaggleWan2gpSubmit(args);
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   if(compat==='probe-adaptive-init') return ltxKaggleAdaptiveInitProbe();
