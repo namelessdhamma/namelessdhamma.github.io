@@ -411,4 +411,18 @@ class H(BaseHTTPRequestHandler):
     def do_PATCH(self): self.forward()
 
 print('ND_GITHUB_MCP_FRONT_V6_SEARCH_FIXED '+json.dumps({'port':PORT,'inner_port':INNER_PORT,'configured':bool(GITHUB_PAT and PATH_TOKEN),'owner':OWNER,'inline_only':True,'attachments':False,'vk_video_configured':bool(VK_TOKEN and VK_VIDEO_PATH_TOKEN)}),flush=True)
+try:
+    _g=vk_video_group()
+    _probe=vk_api_call('video.save',{'group_id':int(_g['id']),'name':'ND direct VK Video auth probe','description':'Temporary authorization probe; no bytes uploaded.','wallpost':0})
+    _vid=int((_probe or {}).get('video_id') or 0)
+    _own=int((_probe or {}).get('owner_id') or -int(_g['id']))
+    _cleanup=None
+    if _vid>0:
+        try:
+            _cleanup=vk_api_call('video.delete',{'video_id':_vid,'owner_id':_own,'target_id':-int(_g['id'])})
+        except Exception as _ce:
+            _cleanup='cleanup_failed:'+clean(_ce)
+    print('ND_VK_VIDEO_AUTH_PROBE '+json.dumps({'ok':True,'group_id':int(_g['id']),'owner_id':_own,'video_id':_vid,'upload_url_present':bool((_probe or {}).get('upload_url')),'cleanup':_cleanup},ensure_ascii=False),flush=True)
+except Exception as _e:
+    print('ND_VK_VIDEO_AUTH_PROBE '+json.dumps({'ok':False,'error':clean(_e)},ensure_ascii=False),flush=True)
 ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
