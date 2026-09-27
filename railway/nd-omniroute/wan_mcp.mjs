@@ -985,6 +985,23 @@ async function ltxModalConfigure(payload={}){
   };
 }
 
+async function ltxModalBootstrapStatusAndConfigure(args={}){
+  const st=await modalLtxFunctionBootstrapStatus(args);
+  if(st?.state!=='COMPLETED' || !st?.config) return st;
+  const configured=await ltxModalConfigure(st.config);
+  return {
+    ok:true,
+    state:'CONFIGURED_HEALTH_PASS',
+    provider:'Modal',
+    route:'modal_ltx2b_distilled_f2l',
+    request_id:st.request_id||null,
+    sandbox_id:st.sandbox_id||null,
+    cost_policy:'FREE_CREDIT_ONLY',
+    store:configured.store||null,
+    health:configured.health||null
+  };
+}
+
 async function ltxModalFirstLast(args={}){
   const [startInput,endInput]=await Promise.all([
     prepareLtxKernelInput(args.start_image_url,'start'),
@@ -2240,6 +2257,8 @@ async function ltxKaggleAutoFinalize(requestId){
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='modal-probe') return ltxModalCredentialProbe();
+  if(compat==='modal-bootstrap') return modalLtxFunctionBootstrapSubmit();
+  if(compat.startsWith('modal-bootstrap-status:')) return ltxModalBootstrapStatusAndConfigure({sandbox_id:compat.slice('modal-bootstrap-status:'.length)});
   if(compat==='modal'||compat==='modal-ltx2b'||compat==='modal_ltx2b_distilled_f2l') return ltxModalFirstLast(args);
   if(compat==='quota-readback') return kaggleLtxPreflight();
   if(compat==='hf-linoyts') return ltxHfLinoytsFirstLast(args);
