@@ -670,6 +670,67 @@ async function ltxKaggleWan2gpSubmit(args={}){
   };
 }
 
+async function ltxKaggleLegacyFixedSubmit(args={}){
+  const [startInput,endInput]=await Promise.all([
+    prepareLtxKernelInput(args.start_image_url,'start'),
+    prepareLtxKernelInput(args.end_image_url,'end')
+  ]);
+  const preflight=await kaggleLtxPreflight();
+  const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
+  const request={
+    start_image_url:startInput.url||undefined,
+    end_image_url:endInput.url||undefined,
+    prompt:String(args.prompt||'').trim(),
+    negative_prompt:String(args.negative_prompt||'').trim()||undefined,
+    duration_seconds:Number(args.duration_seconds??1),
+    width:Number(args.width??512),
+    height:Number(args.height??288),
+    seed
+  };
+  const reqB64=Buffer.from(JSON.stringify(request),'utf8').toString('base64');
+  const workerUrl='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx_worker.py';
+  const script=[
+    'import base64,sys,urllib.request',
+    'from pathlib import Path',
+    "request_path=Path('/kaggle/working/nd-ltx-request.json')",
+    "request_path.write_bytes(base64.b64decode('"+reqB64+"'))",
+    "sys.argv=['kaggle_ltx_worker.py',str(request_path)]",
+    "req=urllib.request.Request('"+workerUrl+"',headers={'User-Agent':'nd-kaggle-ltx-legacy-fixed/1.0'})",
+    "source=urllib.request.urlopen(req,timeout=120).read().decode('utf-8')",
+    "exec(compile(source,'kaggle_ltx_worker.py','exec'),{'__name__':'__main__'})"
+  ].join('\n');
+  if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle fixed-kernel source preflight exceeds provider limit');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+KAGGLE_LTX_KERNEL,
+    newTitle:'ND LTX First Last Production',
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[KAGGLE_LTX_DATASET],
+    kernelDataSources:[],
+    competitionDataSources:[],
+    categoryIds:[],
+    modelDataSources:[],
+    isPrivate:true,enableTpu:false,enableInternet:true,
+    machineShape:'NvidiaTeslaT4',
+    sessionTimeoutSeconds:3600
+  });
+  const invalid=save?.invalidDatasetSources||save?.invalid_dataset_sources||[];
+  if(save?.error||invalid.length) throw new Error('Kaggle fixed-kernel submit failed '+JSON.stringify({error:save?.error||null,invalid_dataset_sources:invalid}));
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version) throw new Error('Kaggle fixed-kernel submit returned no version');
+  return {
+    ok:true,state:'SUBMITTED',request_id:'kltx-v'+version,
+    provider_ref:preflight.username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
+    route:'kaggle_ltx13b_legacy_fixed_kernel_manual',
+    kernel_slug:KAGGLE_LTX_KERNEL,
+    machine_shape_requested:'NvidiaTeslaT4',
+    cost_policy:'FREE_ONLY',
+    gpu_quota:preflight.gpu,
+    seed
+  };
+}
+
 async function ltxKaggleSubmit(args={}){
   const [startInput,endInput]=await Promise.all([
     prepareLtxKernelInput(args.start_image_url,'start'),
@@ -1896,6 +1957,7 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='hf-linoyts') return ltxHfLinoytsFirstLast(args);
   if(compat==='hf-studio') return ltxHfStudioFirstLast(args);
   if(compat==='wan2gp-runtime') return ltxKaggleWan2gpSubmit(args);
+  if(compat==='legacy-fixed') return ltxKaggleLegacyFixedSubmit(args);
   if(compat==='probe-inputs') return ltxKaggleInputProbe(args);
   if(compat==='probe-p100') return ltxKaggleAcceleratorProbe('NvidiaTeslaP100');
   if(compat==='probe-adaptive-init') return ltxKaggleAdaptiveInitProbe();
@@ -2258,7 +2320,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry'},
+          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
