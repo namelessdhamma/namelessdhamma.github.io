@@ -278,18 +278,26 @@ def main() -> None:
 
     model, te, cfg = prepare_runtime()
 
+    print("ND_LTX2B_STAGE=materialize_start_begin", flush=True)
     materialize_image(request, "start", start_path)
+    print(f"ND_LTX2B_STAGE=materialize_start_done bytes={start_path.stat().st_size}", flush=True)
+    print("ND_LTX2B_STAGE=materialize_end_begin", flush=True)
     materialize_image(request, "end", end_path)
+    print(f"ND_LTX2B_STAGE=materialize_end_done bytes={end_path.stat().st_size}", flush=True)
 
+    print("ND_LTX2B_STAGE=import_torch_begin", flush=True)
     import torch
+    print("ND_LTX2B_STAGE=import_torch_done", flush=True)
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA GPU required for LTX 2B generation")
 
     sys.path.insert(0, str(ROOT))
     os.chdir(ROOT)
+    print("ND_LTX2B_STAGE=import_wan2gp_begin", flush=True)
     from mmgp import offload, profile_type
     from shared.attention import attention_config_shared_state
     from shared.utils import files_locator as fl
+    print("ND_LTX2B_STAGE=import_wan2gp_done", flush=True)
     fl.set_checkpoints_paths([str(CK)])
     from models.ltx_video.ltxv import LTXV
 
