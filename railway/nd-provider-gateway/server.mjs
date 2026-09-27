@@ -708,6 +708,7 @@ async function lpVkGenerateQr(){
 
 function lpVkStartQrGeneration(force=false){
   if(force){lpVkQrCache.svg="";lpVkQrCache.generatedAt=0;lpVkQrCache.error="";}
+  if(!force&&lpVkQrCache.svg&&Date.now()-lpVkQrCache.generatedAt<90000)return Promise.resolve({svg:lpVkQrCache.svg,cached:true});
   if(lpVkQrCache.running)return lpVkQrCache.running;
   lpVkQrCache.running=(async()=>{
     try{
