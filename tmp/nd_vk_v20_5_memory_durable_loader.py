@@ -359,7 +359,9 @@ src=src.replace("'User-Agent':'porfirchik-v20.4'","'User-Agent':'porfirchik-v20.
 src=src.replace("'version':'1.1.0'","'version':'1.2.0'",1)
 src=src.replace("state['adaptive_router']='v20.4-memos-hybrid'","state['adaptive_router']='v20.5-memory-durable'",1)
 src=src.replace("state['memory_architecture']='MemOS Cloud full + local SQLite fail-open fallback'","state['memory_architecture']='MemOS Cloud + local SQLite + durable Cloud outbox/replay'",1)
-src=src.replace("state['memos_admin_configured']=bool(MEMOS_ADMIN_ROUTE)","state['memos_admin_configured']=bool(MEMOS_ADMIN_ROUTE)\\nstate['memos_outbox_pending']=0\\nstate['memos_recall_policy']='user-first-v1'",1)
+src=src.replace("state['memos_admin_configured']=bool(MEMOS_ADMIN_ROUTE)","""state['memos_admin_configured']=bool(MEMOS_ADMIN_ROUTE)
+state['memos_outbox_pending']=0
+state['memos_recall_policy']='user-first-v1'""",1)
 src=src.replace('ND_VK_GATEWAY_V20_4_MEMOS_HYBRID_START','ND_VK_GATEWAY_V20_5_MEMORY_DURABLE_START',1)
 
 required=(
