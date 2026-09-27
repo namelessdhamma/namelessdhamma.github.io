@@ -148,6 +148,32 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
         run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "-q", "--disable-pip-version-check", *minimal_requirements], 900)
         env = dict(os.environ)
         env["ND_LTX2B_RUNTIME_READY"] = "1"
+
+        probe_code = (
+            "import importlib.metadata as im;"
+            "import numpy,scipy,transformers;"
+            "print('ND_LTX2B_IMPORT_VERSIONS='+repr({"
+            "'numpy':numpy.__version__,'scipy':scipy.__version__,"
+            "'transformers':transformers.__version__,"
+            "'optimum_quanto':im.version('optimum-quanto'),"
+            "'mmgp':im.version('mmgp')}),flush=True);"
+            "from mmgp import offload;"
+            "print('ND_LTX2B_IMPORT_PROBE=mmgp_offload_ok',flush=True)"
+        )
+        probe = subprocess.run(
+            [sys.executable, "-c", probe_code],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+            timeout=180,
+        )
+        print(f"ND_LTX2B_IMPORT_PROBE_RC={probe.returncode}", flush=True)
+        if probe.stdout:
+            print(probe.stdout[-12000:], flush=True)
+        if probe.returncode != 0:
+            raise RuntimeError("LTX2B import probe failed")
+
         worker_path = WORK / "kaggle_ltx2b_wan2gp_worker.py"
         print("ND_LTX2B_STAGE=clean_child_begin", flush=True)
         child = subprocess.run(
