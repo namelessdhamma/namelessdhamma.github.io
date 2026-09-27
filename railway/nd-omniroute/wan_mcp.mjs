@@ -914,6 +914,31 @@ async function ltxModalConfig(){
   return ltxModalEnvConfig();
 }
 
+async function ltxModalCredentialProbe(){
+  try{
+    const {ModalClient}=await import('modal');
+    const modal=new ModalClient();
+    await modal.apps.fromName('nd-ltx2b-sandbox',{createIfMissing:true});
+    modal.close();
+    return {
+      ok:true,
+      state:'AUTHENTICATED',
+      provider:'Modal',
+      route:'modal_ltx2b_direct_sandbox',
+      sdk_auth:'environment',
+      cost_policy:'FREE_CREDIT_ONLY'
+    };
+  }catch(e){
+    return {
+      ok:false,
+      state:'AUTH_FAILED_OR_PROVIDER_ERROR',
+      provider:'Modal',
+      route:'modal_ltx2b_direct_sandbox',
+      error:errorText(e)
+    };
+  }
+}
+
 async function ltxModalConfigure(payload={}){
   if(!DRIVE_BRIDGE_KEY) throw new Error('ND_DRIVE_BRIDGE_TOKEN is not configured');
   const res=await fetch('http://127.0.0.1:'+OUTER_PORT+'/internal/ltx/modal-config',{
@@ -2161,6 +2186,7 @@ async function ltxKaggleAutoFinalize(requestId){
 
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
+  if(compat==='modal-probe') return ltxModalCredentialProbe();
   if(compat==='modal'||compat==='modal-ltx2b'||compat==='modal_ltx2b_distilled_f2l') return ltxModalFirstLast(args);
   if(compat==='quota-readback') return kaggleLtxPreflight();
   if(compat==='hf-linoyts') return ltxHfLinoytsFirstLast(args);
