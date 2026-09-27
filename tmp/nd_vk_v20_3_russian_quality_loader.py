@@ -50,14 +50,6 @@ if src.count(write_call)!=1:
     raise RuntimeError('v20_3_write_temperature_anchor_mismatch')
 src=src.replace(write_call,"adaptive_chat(msgs,'write',5200,0.45)",1)
 
-# Make the existing startup probe exercise Russian morphology/idiom rather than only
-# transport. It remains one small request per distinct strong model on process start.
-old_probe="""                out=_call_candidate(provider,model,[{'role':'user','content':'Reply exactly OK.'}],1024,0.0)\n                ok=bool(out)\n                state['provider_probes'][key]={'ok':ok,'model':model}\n                print('STRONG_PROVIDER_PROBE',json.dumps({'provider':provider,'model':model,'ok':ok},ensure_ascii=False),flush=True)\n"""
-new_probe="""                probe_messages=[\n                    {'role':'system','content':'Пиши только естественным современным русским. Ответь одной исправленной фразой, без пояснений.'},\n                    {'role':'user','content':'Исправь: Вчера я ходил к магазину и покупал хлеба, потому что дома закончилась еда.'}\n                ]\n                out=_call_candidate(provider,model,probe_messages,512,0.1)\n                low=out.lower()\n                quality=sum((\n                    'в магазин' in low,\n                    'купил хлеб' in low,\n                    'к магазину' not in low,\n                    'покупал хлеба' not in low,\n                ))\n                ok=bool(out) and quality>=4\n                state['provider_probes'][key]={'ok':ok,'model':model,'russian_quality_score':quality,'preview':out[:400]}\n                print('RUSSIAN_PROVIDER_PROBE',json.dumps({'provider':provider,'model':model,'ok':ok,'score':quality,'preview':out[:400]},ensure_ascii=False),flush=True)\n"""
-if src.count(old_probe)!=1:
-    raise RuntimeError('v20_3_probe_anchor_mismatch')
-src=src.replace(old_probe,new_probe,1)
-
 src=src.replace("state['adaptive_router']='v20.1-strong-primary-emergency-reserve'","state['adaptive_router']='v20.3-russian-quality'",1)
 state_anchor="state['semantic_routes']=['write','deep_research']\n"
 if state_anchor not in src:
@@ -69,7 +61,6 @@ required=(
     'RUSSIAN_QUALITY_SYSTEM',
     "STRONG_GROQ_MODEL='qwen/qwen3.8-27b'",
     "STRONG_CLOUDFLARE_MODEL='@cf/qwen/qwen3.8-27b'",
-    'RUSSIAN_PROVIDER_PROBE',
     "state['russian_quality_policy']='native-ru-v1'",
     'ND_VK_GATEWAY_V20_3_RUSSIAN_QUALITY_START',
     "text=str(text or '').replace('*','')",
