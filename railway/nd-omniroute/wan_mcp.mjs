@@ -546,6 +546,18 @@ function kaggleLtxRequestRef(requestId){
   throw new Error('valid request_id required');
 }
 
+function kaggleLtx2bRequestRef(requestId){
+  const id=String(requestId||'').trim();
+  const m=id.match(/^k2b-(r[a-z0-9]+-[a-z0-9]+)-v(\d+)$/i);
+  if(!m) throw new Error('valid k2b request_id required');
+  return {request_id:id,kernel_slug:'nd-ltx2b-'+m[1],version:Number(m[2])};
+}
+
+function newKaggleLtx2bKernelRef(){
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  return {token,kernel_slug:'nd-ltx2b-'+token};
+}
+
 function newKaggleLtxKernelRef(){
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
   return {token,kernel_slug:'nd-ltx-'+token};
@@ -809,6 +821,140 @@ async function ltxKaggleSubmit(args={}){
     cost_policy:'FREE_ONLY',
     gpu_quota:preflight.gpu,
     seed
+  };
+}
+
+async function ltxKaggle2bSubmit(args={}){
+  const [startInput,endInput]=await Promise.all([
+    prepareLtxKernelInput(args.start_image_url,'start'),
+    prepareLtxKernelInput(args.end_image_url,'end')
+  ]);
+  const preflight=await kaggleLtxPreflight();
+  const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
+  const request={
+    start_image_url:startInput.url||undefined,
+    end_image_url:endInput.url||undefined,
+    start_image_base64:startInput.base64||undefined,
+    end_image_base64:endInput.base64||undefined,
+    prompt:String(args.prompt||'').trim(),
+    negative_prompt:String(args.negative_prompt||'').trim()||undefined,
+    duration_seconds:Number(args.duration_seconds??2),
+    width:Number(args.width??512),
+    height:Number(args.height??288),
+    seed
+  };
+  const reqB64=Buffer.from(JSON.stringify(request),'utf8').toString('base64');
+  const workerUrl='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py';
+  const script=[
+    'import base64,sys,urllib.request',
+    'from pathlib import Path',
+    "request_path=Path('/kaggle/working/nd-ltx2b-request.json')",
+    "request_path.write_bytes(base64.b64decode('"+reqB64+"'))",
+    "worker=Path('/kaggle/working/kaggle_ltx2b_wan2gp_worker.py')",
+    "req=urllib.request.Request('"+workerUrl+"',headers={'User-Agent':'nd-kaggle-ltx2b/1.0'})",
+    "worker.write_bytes(urllib.request.urlopen(req,timeout=120).read())",
+    "sys.argv=['kaggle_ltx2b_wan2gp_worker.py',str(request_path)]",
+    "exec(compile(worker.read_text(encoding='utf-8'),'kaggle_ltx2b_wan2gp_worker.py','exec'),{'__name__':'__main__'})"
+  ].join('\n');
+  if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle LTX2B kernel source preflight exceeds 900 KB');
+  const jobRef=newKaggleLtx2bKernelRef();
+  const cacheSource=preflight.username+'/nd-ltx2b-load-probe-fixed';
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+jobRef.kernel_slug,
+    newTitle:'ND LTX2B '+jobRef.token,
+    text:script,
+    language:'python',
+    kernelType:'script',
+    datasetDataSources:[],
+    kernelDataSources:[cacheSource],
+    competitionDataSources:[],
+    categoryIds:[],
+    modelDataSources:[],
+    isPrivate:true,
+    enableTpu:false,
+    enableInternet:true,
+    machineShape:'NvidiaTeslaT4',
+    sessionTimeoutSeconds:3600
+  });
+  const invalid=save?.invalidKernelSources||save?.invalid_kernel_sources||[];
+  if(save?.error||invalid.length) throw new Error('Kaggle LTX2B submit failed '+JSON.stringify({error:save?.error||null,invalid_kernel_sources:invalid}));
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version) throw new Error('Kaggle LTX2B submit returned no version');
+  return {
+    ok:true,
+    state:'SUBMITTED',
+    request_id:'k2b-'+jobRef.token+'-v'+version,
+    provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
+    route:'kaggle_ltx2b_wan2gp_f2l',
+    cache_source:cacheSource,
+    machine_shape_requested:'NvidiaTeslaT4',
+    cost_policy:'FREE_ONLY',
+    gpu_quota:preflight.gpu,
+    seed
+  };
+}
+
+async function ltxKaggle2bStatus(args={}){
+  const ref=kaggleLtx2bRequestRef(args.request_id);
+  const {username}=await kaggleLtxIdentity();
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+  });
+  const state=kaggleState(st?.status);
+  let diagnostics=null;
+  if(['QUEUED','RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+        userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:100
+      });
+      diagnostics={
+        files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+        log_tail:String(out?.log||'').slice(-16000)
+      };
+    }catch(e){diagnostics={error:errorText(e)};}
+  }
+  return {
+    ok:true,request_id:ref.request_id,state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
+    diagnostics
+  };
+}
+
+async function ltxKaggle2bResult(args={}){
+  const ref=kaggleLtx2bRequestRef(args.request_id);
+  const {username}=await kaggleLtxIdentity();
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+  });
+  const state=kaggleState(st?.status);
+  if(state!=='COMPLETED') return {
+    ok:false,request_id:ref.request_id,state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null
+  };
+  const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:100
+  });
+  const files=Array.isArray(out?.files)?out.files:[];
+  const byName=name=>files.find(x=>(x?.fileName||x?.name||x?.path)===name);
+  const mp4=byName('result.mp4');
+  const receiptFile=byName('result.json');
+  if(!mp4?.url) throw new Error('LTX2B result.mp4 missing from Kaggle output');
+  const receipt=extractKaggleMarker(out?.log||'','ND_LTX2B_F2L_JSON=');
+  const driveVideo=await driveImportKaggleOutput(mp4.url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
+  let driveReceipt=null;
+  if(receiptFile?.url) driveReceipt=await driveImportKaggleOutput(receiptFile.url,'nd-ltx2b-'+ref.request_id+'.json','application/json');
+  const file=driveVideo?.file||{};
+  return {
+    ok:true,request_id:ref.request_id,state:'READY',
+    route:receipt?.route||'kaggle_ltx2b_wan2gp_f2l',
+    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
+    receipt,
+    video_ref:file.webViewLink||null,
+    drive_video:{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:driveVideo?.reused===true},
+    drive_receipt:driveReceipt?.file?{id:driveReceipt.file.id||null,name:driveReceipt.file.name||null,url:driveReceipt.file.webViewLink||null,reused:driveReceipt?.reused===true}:null
   };
 }
 
@@ -1968,6 +2114,11 @@ async function ltxKaggleAutoFinalize(requestId){
 async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||'').trim();
   if(compat==='quota-readback') return kaggleLtxPreflight();
+  if(compat==='kaggle-2b') return ltxKaggle2bSubmit(args);
+  const k2bStatus=compat.match(/^kaggle-2b-status:(k2b-[a-z0-9-]+)$/i);
+  if(k2bStatus) return ltxKaggle2bStatus({request_id:k2bStatus[1]});
+  const k2bResult=compat.match(/^kaggle-2b-result:(k2b-[a-z0-9-]+)$/i);
+  if(k2bResult) return ltxKaggle2bResult({request_id:k2bResult[1]});
   if(compat==='hf-linoyts') return ltxHfLinoytsFirstLast(args);
   if(compat==='hf-studio') return ltxHfStudioFirstLast(args);
   if(compat==='wan2gp-runtime') return ltxKaggleWan2gpSubmit(args);
@@ -2334,7 +2485,7 @@ export function createWanMcpHandler(){
         else if(name==='ltx_list_routes') result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'LIVE_QUALIFIED_FREE_ONLY',batch_execution:'in_process_cached_pipeline',hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1',wan_public_video_import:'v3-durable-media'},
+          keyframe:{primary:'kaggle_ltx13b_mounted_cache_f2l',provider:'Kaggle',dataset_source:KAGGLE_LTX_DATASET,reserves:LTX_KEYFRAME_RESERVES,state:'PROVIDER_RUNTIME_BLOCKED_RETAINED_RESERVE',batch_execution:'in_process_cached_pipeline',kaggle_ltx2b_candidate:{route:'kaggle_ltx2b_wan2gp_f2l',state:'STAGED_LOAD_QUALIFICATION',cache_source:'savvasavchenko/nd-ltx2b-load-probe-fixed',model:'ltxv-2b-0.9.8-distilled-fp8'},hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',wan2gp_candidate:'manual_poll_no_retry',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1',wan_public_video_import:'v3-durable-media'},
           all:configuredLtxSpaces(),
           state:'CONFIGURED / VERIFY_AT_USE',
           quota_independent:{
