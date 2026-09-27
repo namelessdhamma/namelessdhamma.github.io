@@ -1894,7 +1894,7 @@ async function ltxKaggleDiagnoseSessions(){
 
 async function ltxKaggleRetireSlug(args={}){
   const slug=String(args.slug||'').trim();
-  if(!/^nd-ltx(?:23-wan2gp)?-[a-z0-9-]+$/i.test(slug)) throw new Error('retire-slug restricted to ND LTX transient kernels');
+  if(!/^nd-ltx(?:(?:23-wan2gp)|2b)?-[a-z0-9-]+$/i.test(slug)) throw new Error('retire-slug restricted to ND LTX transient kernels');
   const {username}=await kaggleLtxIdentity();
   const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
   const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
@@ -1911,7 +1911,7 @@ async function ltxKaggleRetireSlug(args={}){
   const hit=exact[0];
   const exactRef=String(hit.ref||'').toLowerCase()===username.toLowerCase()+'/'+slug.toLowerCase();
   const ownedByUser=!hit.author||String(hit.author).toLowerCase()===username.toLowerCase()||String(hit.author).toLowerCase()==='savva savchenko';
-  const ndTitle=/^ND LTX(?:23 Wan2GP)?\b/i.test(String(hit.title||''));
+  const ndTitle=/^ND LTX(?:23 Wan2GP|2B)?\b/i.test(String(hit.title||''));
   if(!exactRef||!ownedByUser||!ndTitle) throw new Error('retire-slug blocked: ownership/title guard failed');
   const out=await kaggleRpc('kernels.KernelsApiService','DeleteKernel',{userName:username,kernelSlug:slug});
   const verify=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
@@ -2355,7 +2355,7 @@ async function ltxGenerateKeyframes(args={}){
   if(compat==='diagnose-sessions') return ltxKaggleDiagnoseSessions();
   const publicKernel=compat.match(/^public-kernel:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+):v(\d+)$/);
   if(publicKernel) return ltxKaggleInspectPublicKernel({owner:publicKernel[1],slug:publicKernel[2],version:Number(publicKernel[3])});
-  const retireSlug=compat.match(/^retire-slug:(nd-ltx(?:23-wan2gp)?-[a-z0-9-]+)$/i);
+  const retireSlug=compat.match(/^retire-slug:(nd-ltx(?:(?:23-wan2gp)|2b)?-[a-z0-9-]+)$/i);
   if(retireSlug) return ltxKaggleRetireSlug({slug:retireSlug[1]});
   const retireKernel=compat.match(/^retire-kernel:(kbatch-[a-z0-9-]+)$/i);
   if(retireKernel) return ltxKaggleRetireKernel({request_id:retireKernel[1]});
