@@ -1,5 +1,6 @@
 import { Client, handle_file } from '@gradio/client';
 import AdmZip from 'adm-zip';
+import { modalLtxSandboxSubmit, modalLtxSandboxStatus, modalLtxSandboxResultBytes, modalLtxSandboxConfigured, isModalSandboxRequestId } from './modal_ltx_sandbox.mjs';
 
 const DEFAULT_SPACE = process.env.ND_WAN_DEFAULT_SPACE || 'Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom';
 const HF_TOKEN = String(process.env.HF_TOKEN || '').trim();
@@ -1074,6 +1075,41 @@ async function driveImportKaggleOutput(url,name,mimeType){
   try{data=txt?JSON.parse(txt):{};}catch{}
   if(!res.ok||data?.ok!==true) throw new Error('Drive import failed: '+String(data?.error||txt).slice(0,1000));
   return data.result;
+}
+
+async function ltxKeyframeStatusAny(args={}){
+  if(isModalSandboxRequestId(args.request_id)) return modalLtxSandboxStatus(args);
+  return ltxKaggleStatus(args);
+}
+
+async function ltxKeyframeResultAny(args={}){
+  if(!isModalSandboxRequestId(args.request_id)) return ltxKaggleResult(args);
+  const result=await modalLtxSandboxResultBytes(args);
+  if(result.state!=='READY'||!result.video) return result;
+  const safeId=String(result.sandbox_id||'modal').replace(/[^A-Za-z0-9_-]+/g,'-').slice(0,80);
+  const imported=await driveImportLtxBytes(result.video,'nd-ltx-modal-'+safeId+'.mp4','video/mp4');
+  const file=imported?.file||{};
+  const receipt={
+    ...(result.receipt||{}),
+    ok:true,
+    state:'READY',
+    request_id:result.request_id,
+    route:'modal_ltx2b_direct_sandbox',
+    provider:'Modal',
+    cost_policy:'FREE_CREDIT_ONLY',
+    sandbox_id:result.sandbox_id,
+    drive_video_id:file.id||null,
+    completed_at:new Date().toISOString()
+  };
+  const receiptBuf=Buffer.from(JSON.stringify(receipt,null,2));
+  const receiptImport=await driveImportLtxBytes(receiptBuf,'nd-ltx-modal-'+safeId+'.json','application/json');
+  const receiptFile=receiptImport?.file||{};
+  return {
+    ...receipt,
+    video_ref:file.webViewLink||null,
+    drive_video:{id:file.id||null,name:file.name||null,size:Number(file.size||result.video.length),mime_type:file.mimeType||'video/mp4',url:file.webViewLink||null,reused:imported?.reused===true},
+    drive_receipt:{id:receiptFile.id||null,name:receiptFile.name||null,size:Number(receiptFile.size||receiptBuf.length),mime_type:receiptFile.mimeType||'application/json',url:receiptFile.webViewLink||null,reused:receiptImport?.reused===true}
+  };
 }
 
 async function ltxKaggleResult(args={}){
@@ -2550,8 +2586,8 @@ export function createWanMcpHandler(){
         else if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
         else if(name==='ltx_quota_independent_status') result=await ltxQuotaIndependentStatus(args);
         else if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
-        else if(name==='ltx_keyframe_status') result=await ltxKaggleStatus(args);
-        else if(name==='ltx_keyframe_result') result=await ltxKaggleResult(args);
+        else if(name==='ltx_keyframe_status') result=await ltxKeyframeStatusAny(args);
+        else if(name==='ltx_keyframe_result') result=await ltxKeyframeResultAny(args);
         else if(name==='ltx_list_routes'){ await ltxModalConfig().catch(()=>null); result={
           primary:DEFAULT_LTX_SPACE,
           i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
