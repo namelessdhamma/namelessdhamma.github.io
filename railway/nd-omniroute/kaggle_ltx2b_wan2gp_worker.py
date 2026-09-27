@@ -119,7 +119,16 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
     if not ROOT.exists():
         run(["git", "clone", "--filter=blob:none", "https://github.com/deepbeepmeep/Wan2GP.git", str(ROOT)], 240)
         run(["git", "-C", str(ROOT), "checkout", WANGP_COMMIT], 90)
-    run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "-q", "--disable-pip-version-check", "-r", str(ROOT / "requirements.txt")], 1200)
+
+    # Kaggle/hosted notebook images may preload NumPy. Installing Wan2GP can replace
+    # NumPy/SciPy on disk, so restart once into a clean interpreter before importing
+    # the scientific stack. This avoids mixed in-memory/on-disk binary state.
+    if os.environ.get("ND_LTX2B_RUNTIME_READY") != "1":
+        run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "-q", "--disable-pip-version-check", "-r", str(ROOT / "requirements.txt")], 1200)
+        env = dict(os.environ)
+        env["ND_LTX2B_RUNTIME_READY"] = "1"
+        worker_path = WORK / "kaggle_ltx2b_wan2gp_worker.py"
+        os.execvpe(sys.executable, [sys.executable, str(worker_path), sys.argv[1]], env)
 
     from huggingface_hub import hf_hub_download
 
@@ -266,10 +275,11 @@ def main() -> None:
     TMP.mkdir(parents=True, exist_ok=True)
     start_path = TMP / "start.png"
     end_path = TMP / "end.png"
-    materialize_image(request, "start", start_path)
-    materialize_image(request, "end", end_path)
 
     model, te, cfg = prepare_runtime()
+
+    materialize_image(request, "start", start_path)
+    materialize_image(request, "end", end_path)
 
     import torch
     if not torch.cuda.is_available():
