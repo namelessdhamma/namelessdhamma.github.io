@@ -193,79 +193,94 @@ def main() -> None:
         "gpus": [torch.cuda.get_device_name(i) for i in range(n_gpus)],
     }, separators=(",", ":"), sort_keys=True), flush=True)
 
-    nf4_diff = DiffusersBnBConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=dtype,
-    )
-    nf4_t5 = TransformersBnBConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=dtype,
-    )
+    runtime_cache = globals().get("_ND_LTX_RUNTIME_CACHE")
+    if not isinstance(runtime_cache, dict):
+        runtime_cache = {}
 
-    if not getattr(LTXVideoTransformer3DModel, "_no_split_modules", None):
-        LTXVideoTransformer3DModel._no_split_modules = []
+    if runtime_cache.get("pipe") is not None:
+        pipe = runtime_cache["pipe"]
+        gpu_gen = int(runtime_cache.get("gpu_gen", gpu_gen))
+        gpu_hold = int(runtime_cache.get("gpu_hold", gpu_hold))
+        pipe.vae.to(f"cuda:{gpu_gen}")
+        print("ND_LTX_STAGE=reuse_pipeline", flush=True)
+    else:
+        nf4_diff = DiffusersBnBConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=dtype,
+        )
+        nf4_t5 = TransformersBnBConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=dtype,
+        )
 
-    print("ND_LTX_STAGE=load_transformer", flush=True)
-    transformer = LTXVideoTransformer3DModel.from_pretrained(
-        str(MODEL),
-        subfolder="transformer",
-        quantization_config=nf4_diff,
-        torch_dtype=dtype,
-        device_map="auto",
-        max_memory=max_transformer,
-        local_files_only=True,
-    )
+        if not getattr(LTXVideoTransformer3DModel, "_no_split_modules", None):
+            LTXVideoTransformer3DModel._no_split_modules = []
 
-    class ChunkedFF(nn.Module):
-        def __init__(self, ff, chunk=512):
-            super().__init__()
-            self.ff = ff
-            self.chunk = chunk
+        print("ND_LTX_STAGE=load_transformer", flush=True)
+        transformer = LTXVideoTransformer3DModel.from_pretrained(
+            str(MODEL),
+            subfolder="transformer",
+            quantization_config=nf4_diff,
+            torch_dtype=dtype,
+            device_map="auto",
+            max_memory=max_transformer,
+            local_files_only=True,
+        )
 
-        def forward(self, x, *args, **kwargs):
-            if x.shape[1] <= self.chunk:
-                return self.ff(x, *args, **kwargs)
-            out = torch.empty_like(x)
-            for start in range(0, x.shape[1], self.chunk):
-                end = min(start + self.chunk, x.shape[1])
-                out[:, start:end] = self.ff(x[:, start:end], *args, **kwargs)
-            return out
+        class ChunkedFF(nn.Module):
+            def __init__(self, ff, chunk=512):
+                super().__init__()
+                self.ff = ff
+                self.chunk = chunk
 
-    for block in transformer.transformer_blocks:
-        if hasattr(block, "ff"):
-            block.ff = ChunkedFF(block.ff, 512)
+            def forward(self, x, *args, **kwargs):
+                if x.shape[1] <= self.chunk:
+                    return self.ff(x, *args, **kwargs)
+                out = torch.empty_like(x)
+                for start in range(0, x.shape[1], self.chunk):
+                    end = min(start + self.chunk, x.shape[1])
+                    out[:, start:end] = self.ff(x[:, start:end], *args, **kwargs)
+                return out
 
-    print("ND_LTX_STAGE=load_t5", flush=True)
-    text_encoder = T5EncoderModel.from_pretrained(
-        str(MODEL),
-        subfolder="text_encoder",
-        quantization_config=nf4_t5,
-        torch_dtype=dtype,
-        device_map="auto",
-        max_memory=max_t5,
-        local_files_only=True,
-    )
-    tokenizer = T5TokenizerFast.from_pretrained(
-        str(MODEL), subfolder="tokenizer", local_files_only=True
-    )
+        for block in transformer.transformer_blocks:
+            if hasattr(block, "ff"):
+                block.ff = ChunkedFF(block.ff, 512)
 
-    print("ND_LTX_STAGE=load_vae", flush=True)
-    vae = AutoencoderKLLTXVideo.from_pretrained(
-        str(MODEL), subfolder="vae", torch_dtype=dtype, local_files_only=True
-    ).to("cuda:0")
-    scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
-        str(MODEL), subfolder="scheduler", local_files_only=True
-    )
+        print("ND_LTX_STAGE=load_t5", flush=True)
+        text_encoder = T5EncoderModel.from_pretrained(
+            str(MODEL),
+            subfolder="text_encoder",
+            quantization_config=nf4_t5,
+            torch_dtype=dtype,
+            device_map="auto",
+            max_memory=max_t5,
+            local_files_only=True,
+        )
+        tokenizer = T5TokenizerFast.from_pretrained(
+            str(MODEL), subfolder="tokenizer", local_files_only=True
+        )
 
-    pipe = LTXConditionPipeline(
-        transformer=transformer,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
-        vae=vae,
-        scheduler=scheduler,
-    )
+        print("ND_LTX_STAGE=load_vae", flush=True)
+        vae = AutoencoderKLLTXVideo.from_pretrained(
+            str(MODEL), subfolder="vae", torch_dtype=dtype, local_files_only=True
+        ).to("cuda:0")
+        scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(
+            str(MODEL), subfolder="scheduler", local_files_only=True
+        )
+
+        pipe = LTXConditionPipeline(
+            transformer=transformer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            vae=vae,
+            scheduler=scheduler,
+        )
+        runtime_cache["pipe"] = pipe
+        runtime_cache["gpu_gen"] = gpu_gen
+        runtime_cache["gpu_hold"] = gpu_hold
+        print("ND_LTX_STAGE=pipeline_cached", flush=True)
 
     start = Image.open(start_path).convert("RGB").resize((width, height), Image.LANCZOS)
     end = Image.open(end_path).convert("RGB").resize((width, height), Image.LANCZOS)
