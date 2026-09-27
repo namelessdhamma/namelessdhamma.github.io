@@ -610,6 +610,9 @@ function lpVkStartMonitor(){
     }catch{}
   },2000);
 }
+
+let lpVkQrCache={svg:"",generatedAt:0,error:"",running:null};
+
 async function lpVkGenerateQr(){
   const st=await ensureLpVkCdp();
   const p=st.page;
@@ -629,39 +632,46 @@ async function lpVkGenerateQr(){
     if(b)setTimeout(()=>b.click(),0);
   });
 
-  st.stage="captcha";
+  st.stage="captcha_wait";
   let captchaClicked=false;
-  for(let i=0;i<24;i++){
-    captchaClicked=await p.evaluate(()=>{
+  let methodVisible=false;
+  for(let i=0;i<120;i++){
+    const state=await p.evaluate(()=>{
+      const method=[...document.querySelectorAll('button')].some(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
       const d=document.querySelector('iframe')?.contentDocument;
       const box=d?.querySelector('#not-robot-captcha-checkbox');
-      if(!box)return false;
-      box.click();return true;
-    }).catch(()=>false);
-    if(captchaClicked)break;
-    const hasNext=await p.evaluate(()=>[...document.querySelectorAll('button')].some(x=>(x.textContent||'').trim()==='Подтвердить другим способом')).catch(()=>false);
-    if(hasNext)break;
+      if(box){box.click();return {clicked:true,method};}
+      return {clicked:false,method};
+    }).catch(()=>({clicked:false,method:false}));
+    if(state.clicked){captchaClicked=true;break;}
+    if(state.method){methodVisible=true;break;}
     await new Promise(r=>setTimeout(r,500));
   }
+  if(!captchaClicked&&!methodVisible)throw new Error("vk_captcha_not_ready");
 
   st.stage="choose_method";
-  let opened=false;
-  for(let i=0;i<24;i++){
+  let opened=methodVisible;
+  for(let i=0;i<60&&!opened;i++){
     opened=await p.evaluate(()=>{
       const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
       if(!b)return false;
       b.click();return true;
     }).catch(()=>false);
     if(opened)break;
-    const qrAlready=await p.evaluate(()=>[...document.querySelectorAll('div.vkuiSimpleCell__host')].some(x=>(x.textContent||'').includes('QR-код'))).catch(()=>false);
-    if(qrAlready){opened=true;break;}
     await new Promise(r=>setTimeout(r,500));
+  }
+  if(methodVisible){
+    const did=await p.evaluate(()=>{
+      const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
+      if(!b)return false;b.click();return true;
+    }).catch(()=>false);
+    opened=opened||did;
   }
   if(!opened)throw new Error("vk_other_method_missing");
 
   st.stage="qr_method";
   let chosen=false;
-  for(let i=0;i<20;i++){
+  for(let i=0;i<60;i++){
     chosen=await p.evaluate(()=>{
       const cells=[...document.querySelectorAll('div.vkuiSimpleCell__host')];
       const q=cells.find(x=>(x.textContent||'').includes('QR-код'));
@@ -675,12 +685,36 @@ async function lpVkGenerateQr(){
 
   st.stage="qr";
   const qr=p.locator('svg.vkc__QRCode-module__image').first();
-  await qr.waitFor({state:"attached",timeout:15000});
+  await qr.waitFor({state:"attached",timeout:20000});
   let svg=await qr.evaluate(el=>el.outerHTML);
   if(!/\sxmlns=/.test(svg))svg=svg.replace(/^<svg/,'<svg xmlns="http://www.w3.org/2000/svg"');
   lpVkStartMonitor();
   return {svg,url:p.url()};
 }
+
+function lpVkStartQrGeneration(force=false){
+  if(force){lpVkQrCache.svg="";lpVkQrCache.generatedAt=0;lpVkQrCache.error="";}
+  if(lpVkQrCache.running)return lpVkQrCache.running;
+  lpVkQrCache.running=(async()=>{
+    try{
+      const out=await lpVkGenerateQr();
+      lpVkQrCache.svg=out.svg;
+      lpVkQrCache.generatedAt=Date.now();
+      lpVkQrCache.error="";
+      return out;
+    }catch(e){
+      lpVkQrCache.svg="";
+      lpVkQrCache.generatedAt=0;
+      lpVkQrCache.error=String(e?.message||e||"qr_error").slice(0,600);
+      throw e;
+    }finally{
+      lpVkQrCache.running=null;
+    }
+  })();
+  lpVkQrCache.running.catch(()=>{});
+  return lpVkQrCache.running;
+}
+
 
 let lpCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:"",stage:"idle"};
 async function lpStage(label,promise,ms=10000){
@@ -1142,19 +1176,31 @@ const muxServer=http.createServer(async(req,res)=>{
 
     if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-qr/'+LIGHTPANDA_VK_QR_TOKEN){
       if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
-      try{
-        if(lpVkStateMeta().persisted){
-          const html=Buffer.from('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui;margin:0;padding:32px;text-align:center}h1{font-size:22px}p{font-size:16px}</style><h1>VK уже авторизован</h1><p>Сессия сохранена. Вернитесь в ChatGPT.</p>');
-          res.writeHead(200,{'content-type':'text/html; charset=utf-8','content-length':String(html.length),'cache-control':'no-store'});
-          res.end(html);return;
-        }
-        const out=await lpVkGenerateQr();
-        const html=Buffer.from('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui;margin:0;padding:18px;text-align:center;background:white;color:#111}h1{font-size:20px;margin:8px 0}p{font-size:14px;margin:8px auto 18px;max-width:520px}svg{width:min(92vw,520px);height:auto;display:block;margin:auto;background:white;padding:12px;box-sizing:border-box}</style><h1>Вход VK для Video Transfer</h1><p>Сделайте скриншот QR и отсканируйте его сканером в приложении ВКонтакте. Код создаётся заново при каждом открытии страницы.</p>'+out.svg);
-        res.writeHead(200,{'content-type':'text/html; charset=utf-8','content-length':String(html.length),'cache-control':'no-store, max-age=0','x-content-type-options':'nosniff'});
+      if(lpVkStateMeta().persisted){
+        const html=Buffer.from('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui;margin:0;padding:32px;text-align:center}</style><h1>VK уже авторизован</h1><p>Сессия сохранена. Вернитесь в ChatGPT.</p>');
+        res.writeHead(200,{'content-type':'text/html; charset=utf-8','content-length':String(html.length),'cache-control':'no-store'});
         res.end(html);return;
-      }catch(e){
-        return j(res,503,{ok:false,error:'vk_qr_bootstrap_failed',detail:String(e?.message||e||'qr_error').slice(0,600),stage:lpVkCdp.stage});
       }
+      const force=requestUrl.searchParams.get('fresh')==='1';
+      lpVkStartQrGeneration(force);
+      const dataPath='/lightpanda/vk-qr-data/'+encodeURIComponent(LIGHTPANDA_VK_QR_TOKEN);
+      const htmlText='<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+        '<style>body{font-family:system-ui;margin:0;padding:18px;text-align:center;background:#fff;color:#111}h1{font-size:20px;margin:10px 0}p{font-size:14px;max-width:540px;margin:10px auto}#box{min-height:280px;display:flex;align-items:center;justify-content:center}svg{width:min(92vw,520px);height:auto;background:#fff;padding:12px;box-sizing:border-box}.err{color:#b00020;white-space:pre-wrap}</style>'+
+        '<h1>Вход VK для Video Transfer</h1><p>QR генерируется в изолированном Lightpanda-сеансе. Когда он появится, сделайте скриншот и отсканируйте его в приложении ВКонтакте.</p><div id="box">Генерирую QR…</div>'+
+        '<script>const box=document.getElementById("box");async function poll(){try{const r=await fetch('+JSON.stringify(dataPath)+'+"?t="+Date.now(),{cache:"no-store"});const d=await r.json();if(d.authenticated){box.textContent="VK уже авторизован. Вернитесь в ChatGPT.";return;}if(d.status==="ready"){box.innerHTML=d.svg;return;}if(d.status==="error"){box.innerHTML="<div class=err>Ошибка: "+(d.error||"unknown")+". Обновите страницу.</div>";return;}}catch(e){}setTimeout(poll,1500)}poll();</script>';
+      const html=Buffer.from(htmlText);
+      res.writeHead(200,{'content-type':'text/html; charset=utf-8','content-length':String(html.length),'cache-control':'no-store, max-age=0','x-content-type-options':'nosniff'});
+      res.end(html);return;
+    }
+
+    if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-qr-data/'+LIGHTPANDA_VK_QR_TOKEN){
+      if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
+      try{if(lpVkCdp.context)await lpMaybePersistVkState(lpVkCdp.context);}catch{}
+      const meta=lpVkStateMeta();
+      if(meta.persisted)return j(res,200,{ok:true,authenticated:true,status:'authenticated'});
+      if(lpVkQrCache.svg)return j(res,200,{ok:true,authenticated:false,status:'ready',svg:lpVkQrCache.svg,generated_at:lpVkQrCache.generatedAt});
+      if(lpVkQrCache.error)return j(res,200,{ok:false,authenticated:false,status:'error',error:lpVkQrCache.error,stage:lpVkCdp.stage});
+      return j(res,200,{ok:true,authenticated:false,status:'pending',stage:lpVkCdp.stage});
     }
 
     if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-auth-status/'+LIGHTPANDA_VK_QR_TOKEN){
