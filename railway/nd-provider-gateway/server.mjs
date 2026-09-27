@@ -555,6 +555,114 @@ async function lpMaybePersistVkState(context){
   }catch{return false;}
 }
 
+
+let lpVkCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,monitorTimer:null,lastError:"",stage:"idle"};
+function lpVkTouch(){
+  if(lpVkCdp.idleTimer)clearTimeout(lpVkCdp.idleTimer);
+  lpVkCdp.idleTimer=setTimeout(async()=>{
+    try{if(lpVkCdp.context)await lpMaybePersistVkState(lpVkCdp.context);}catch{}
+    try{if(lpVkCdp.browser)await lpVkCdp.browser.close();}catch{}
+    if(lpVkCdp.monitorTimer)clearInterval(lpVkCdp.monitorTimer);
+    lpVkCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,monitorTimer:null,lastError:"",stage:"idle"};
+  },600000);
+}
+async function ensureLpVkCdp(){
+  if(lpVkCdp.browser&&lpVkCdp.page){lpVkTouch();return lpVkCdp;}
+  if(lpVkCdp.connecting)return await lpVkCdp.connecting;
+  lpVkCdp.connecting=(async()=>{
+    if(!LIGHTPANDA_TOKEN)throw new Error("lightpanda_token_missing");
+    lpVkCdp.stage="connectOverCDP";
+    const browser=await Promise.race([
+      chromium.connectOverCDP(LIGHTPANDA_CDP_URL,{timeout:9000}),
+      new Promise((_,reject)=>setTimeout(()=>reject(new Error("vk_lightpanda_connect_timeout")),10000))
+    ]);
+    browser.on("disconnected",()=>{
+      if(lpVkCdp.monitorTimer)clearInterval(lpVkCdp.monitorTimer);
+      lpVkCdp.browser=null;lpVkCdp.context=null;lpVkCdp.page=null;lpVkCdp.connecting=null;lpVkCdp.monitorTimer=null;lpVkCdp.stage="disconnected";
+    });
+    const savedState=lpReadVkState();
+    const context=await browser.newContext({
+      viewport:{width:1365,height:900},
+      locale:"ru-RU",
+      ...(savedState?{storageState:savedState}:{})
+    });
+    const page=await context.newPage();
+    lpVkCdp.browser=browser;lpVkCdp.context=context;lpVkCdp.page=page;lpVkCdp.connecting=null;lpVkCdp.lastError="";lpVkCdp.stage="ready";
+    lpVkTouch();
+    return lpVkCdp;
+  })().catch(e=>{
+    lpVkCdp.connecting=null;lpVkCdp.lastError=String(e?.message||e||"vk_cdp_connect_error");lpVkCdp.stage="error";
+    throw e;
+  });
+  return await lpVkCdp.connecting;
+}
+function lpVkStartMonitor(){
+  if(lpVkCdp.monitorTimer)clearInterval(lpVkCdp.monitorTimer);
+  lpVkCdp.monitorTimer=setInterval(async()=>{
+    try{
+      if(!lpVkCdp.context)return;
+      const saved=await lpMaybePersistVkState(lpVkCdp.context);
+      if(saved){
+        clearInterval(lpVkCdp.monitorTimer);
+        lpVkCdp.monitorTimer=null;
+        lpVkCdp.stage="authenticated_saved";
+      }
+    }catch{}
+  },2000);
+}
+async function lpVkGenerateQr(){
+  const st=await ensureLpVkCdp();
+  const p=st.page;
+  lpVkTouch();
+  st.stage="login";
+  await p.goto("https://m.vk.com/login",{waitUntil:"commit",timeout:20000});
+  await new Promise(r=>setTimeout(r,1000));
+  await p.evaluate(()=>{
+    const rs=document.querySelectorAll('input[name="login-view"]');
+    for(const x of rs){if(x.value==="email"){x.click();break;}}
+  });
+  const login=p.locator('input[name="login"]');
+  await login.waitFor({state:"attached",timeout:10000});
+  await login.fill(LIGHTPANDA_VK_LOGIN_EMAIL);
+  await p.evaluate(()=>{
+    const b=document.querySelector('button[data-test-id="submit_btn"]');
+    if(b)setTimeout(()=>b.click(),0);
+  });
+  await new Promise(r=>setTimeout(r,1500));
+  st.stage="captcha";
+  for(let i=0;i<8;i++){
+    const clicked=await p.evaluate(()=>{
+      const d=document.querySelector('iframe')?.contentDocument;
+      const box=d?.querySelector('#not-robot-captcha-checkbox');
+      if(!box)return false;
+      box.click();return true;
+    }).catch(()=>false);
+    if(clicked)break;
+    await new Promise(r=>setTimeout(r,350));
+  }
+  await new Promise(r=>setTimeout(r,1100));
+  st.stage="choose_method";
+  const other=await p.evaluate(()=>{
+    const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
+    if(!b)return false;b.click();return true;
+  }).catch(()=>false);
+  if(!other)throw new Error("vk_other_method_missing");
+  await new Promise(r=>setTimeout(r,450));
+  const chosen=await p.evaluate(()=>{
+    const cells=[...document.querySelectorAll('div.vkuiSimpleCell__host')];
+    const q=cells.find(x=>(x.textContent||'').includes('QR-код'));
+    if(!q)return false;q.click();return true;
+  }).catch(()=>false);
+  if(!chosen)throw new Error("vk_qr_method_missing");
+  st.stage="qr";
+  const qr=p.locator('svg.vkc__QRCode-module__image').first();
+  await qr.waitFor({state:"attached",timeout:10000});
+  let svg=await qr.evaluate(el=>el.outerHTML);
+  if(!/\sxmlns=/.test(svg))svg=svg.replace(/^<svg/,'<svg xmlns="http://www.w3.org/2000/svg"');
+  lpVkStartMonitor();
+  return {svg,url:p.url()};
+}
+
 let lpCdp={browser:null,context:null,page:null,connecting:null,idleTimer:null,lastError:"",stage:"idle"};
 async function lpStage(label,promise,ms=10000){
   lpCdp.stage=label;
@@ -1016,53 +1124,24 @@ const muxServer=http.createServer(async(req,res)=>{
     if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-qr/'+LIGHTPANDA_VK_QR_TOKEN){
       if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
       try{
-        const st=await ensureLpCdp();
-        const fresh=requestUrl.searchParams.get('fresh')==='1';
-        let qr=st.page.locator('svg.vkc__QRCode-module__image').first();
-
-        if(fresh || !await qr.count()){
-          await st.page.goto('https://m.vk.com/login',{waitUntil:'commit',timeout:20000});
-          await new Promise(r=>setTimeout(r,900));
-          await st.page.evaluate(()=>{
-            const rs=document.querySelectorAll('input[name="login-view"]');
-            for(const x of rs){if(x.value==='email'){x.click();break;}}
-          });
-          await st.page.locator('input[name="login"]').fill(LIGHTPANDA_VK_LOGIN_EMAIL);
-          await st.page.evaluate(()=>{
-            const b=document.querySelector('button[data-test-id="submit_btn"]');
-            if(b)setTimeout(()=>b.click(),0);
-          });
-          await new Promise(r=>setTimeout(r,1500));
-
-          await st.page.evaluate(()=>{
-            const d=document.querySelector('iframe')?.contentDocument;
-            const box=d?.querySelector('#not-robot-captcha-checkbox');
-            if(box)box.click();
-          });
-          await new Promise(r=>setTimeout(r,1000));
-
-          await st.page.evaluate(()=>{
-            const b=[...document.querySelectorAll('button')].find(x=>(x.textContent||'').trim()==='Подтвердить другим способом');
-            if(b)b.click();
-          });
-          await new Promise(r=>setTimeout(r,350));
-
-          await st.page.evaluate(()=>{
-            const cells=[...document.querySelectorAll('div.vkuiSimpleCell__host')];
-            const q=cells.find(x=>(x.textContent||'').includes('QR-код'));
-            if(q)q.click();
-          });
-          await new Promise(r=>setTimeout(r,700));
-          qr=st.page.locator('svg.vkc__QRCode-module__image').first();
+        if(lpVkStateMeta().persisted){
+          const html=Buffer.from('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui;margin:0;padding:32px;text-align:center}h1{font-size:22px}p{font-size:16px}</style><h1>VK уже авторизован</h1><p>Сессия сохранена. Вернитесь в ChatGPT.</p>');
+          res.writeHead(200,{'content-type':'text/html; charset=utf-8','content-length':String(html.length),'cache-control':'no-store'});
+          res.end(html);return;
         }
-
-        if(!await qr.count())return j(res,503,{ok:false,error:'qr_generation_failed'});
-        const png=await qr.screenshot({type:'png',timeout:10000});
-        res.writeHead(200,{'content-type':'image/png','content-length':String(png.length),'cache-control':'no-store, max-age=0','x-content-type-options':'nosniff'});
-        res.end(png);return;
+        const out=await lpVkGenerateQr();
+        const html=Buffer.from('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{font-family:system-ui;margin:0;padding:18px;text-align:center;background:white;color:#111}h1{font-size:20px;margin:8px 0}p{font-size:14px;margin:8px auto 18px;max-width:520px}svg{width:min(92vw,520px);height:auto;display:block;margin:auto;background:white;padding:12px;box-sizing:border-box}</style><h1>Вход VK для Video Transfer</h1><p>Сделайте скриншот QR и отсканируйте его сканером в приложении ВКонтакте. Код создаётся заново при каждом открытии страницы.</p>'+out.svg);
+        res.writeHead(200,{'content-type':'text/html; charset=utf-8','content-length':String(html.length),'cache-control':'no-store, max-age=0','x-content-type-options':'nosniff'});
+        res.end(html);return;
       }catch(e){
-        return j(res,503,{ok:false,error:String(e?.message||e||'qr_error').slice(0,1200)});
+        return j(res,503,{ok:false,error:'vk_qr_bootstrap_failed',detail:String(e?.message||e||'qr_error').slice(0,600),stage:lpVkCdp.stage});
       }
+    }
+
+    if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-auth-status/'+LIGHTPANDA_VK_QR_TOKEN){
+      if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
+      try{if(lpVkCdp.context)await lpMaybePersistVkState(lpVkCdp.context);}catch{}
+      return j(res,200,{ok:true,vk_session:lpVkStateMeta(),stage:lpVkCdp.stage,url:lpVkCdp.page?lpVkCdp.page.url():null});
     }
 
     if(path==='/lightpanda/diagnostic'){
