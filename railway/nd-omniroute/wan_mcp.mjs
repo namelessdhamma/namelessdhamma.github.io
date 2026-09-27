@@ -727,6 +727,32 @@ async function ltxKaggle2bCacheStatus(){
   };
 }
 
+async function ltxKaggleInspectPublicKernel(args={}){
+  const owner=String(args.owner||'').trim();
+  const slug=String(args.slug||'').trim();
+  const version=Number(args.version||1);
+  if(!/^[A-Za-z0-9_-]+$/.test(owner)||!/^[A-Za-z0-9_-]+$/.test(slug)||!Number.isInteger(version)||version<1) throw new Error('invalid public kernel reference');
+  const pulled=await kaggleRpc('kernels.KernelsApiService','GetKernel',{
+    userName:owner,kernelSlug:slug,versionLabel:'v'+version
+  });
+  const source=String(pulled?.blob?.source||pulled?.blob?.text||'');
+  if(!source) return {ok:false,owner,slug,version,error:'source_unavailable'};
+  const lines=source.split(/\r?\n/);
+  const re=/(LARGE_FILES|hf_hub_download|MODEL_DIR|TMP_DIR|ltx2_model|model_filepath|model_type|image_start|image_end|Video_Generation|LTXV|ltx-2\.3|gguf|quanto|vae|text_encoder|gemma|generate\()/i;
+  const keep=new Set();
+  for(let i=0;i<lines.length;i++){
+    if(re.test(lines[i])) for(let j=Math.max(0,i-2);j<=Math.min(lines.length-1,i+3);j++) keep.add(j);
+  }
+  const snippets=[...keep].sort((a,b)=>a-b).slice(0,900).map(i=>(i+1)+': '+lines[i]).join('\n');
+  return {
+    ok:true,owner,slug,version,
+    title:pulled?.metadata?.title||null,
+    source_bytes:Buffer.byteLength(source,'utf8'),
+    line_count:lines.length,
+    snippets:snippets.slice(0,60000)
+  };
+}
+
 async function ltxKaggleRetry(args={}){
   const ref=kaggleLtxRequestRef(args.request_id);
   if(ref.legacy) throw new Error('retry is supported only for isolated Kaggle LTX requests');
@@ -1710,6 +1736,8 @@ async function ltxGenerateKeyframes(args={}){
   const inspectKernel=compat.match(/^inspect-kernel:(k(?:ltx|batch)-[a-z0-9-]+)$/i);
   if(inspectKernel) return ltxKaggleInspectKernel({request_id:inspectKernel[1]});
   if(compat==='diagnose-sessions') return ltxKaggleDiagnoseSessions();
+  const publicKernel=compat.match(/^public-kernel:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+):v(\d+)$/);
+  if(publicKernel) return ltxKaggleInspectPublicKernel({owner:publicKernel[1],slug:publicKernel[2],version:Number(publicKernel[3])});
   const retireSlug=compat.match(/^retire-slug:(nd-ltx-[a-z0-9-]+)$/i);
   if(retireSlug) return ltxKaggleRetireSlug({slug:retireSlug[1]});
   const retireKernel=compat.match(/^retire-kernel:(kbatch-[a-z0-9-]+)$/i);
