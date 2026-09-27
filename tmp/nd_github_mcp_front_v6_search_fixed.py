@@ -11,7 +11,7 @@ INLINE_MAX=int(os.environ.get('ND_GITHUB_INLINE_MAX','600000') or '600000')
 VK_TOKEN=os.environ.get('VK_GROUP_TOKEN','').strip()
 VK_SCREEN=os.environ.get('VK_GROUP_SCREEN_NAME','namelessdhamma').strip().lstrip('@') or 'namelessdhamma'
 VK_VERSION=os.environ.get('VK_API_VERSION','5.199').strip() or '5.199'
-VK_VIDEO_PATH_TOKEN=os.environ.get('ND_VK_VIDEO_MCP_PATH_TOKEN','').strip()
+VK_VIDEO_PATH_TOKEN=(os.environ.get('ND_VK_VIDEO_MCP_PATH_TOKEN','') or os.environ.get('ND_VK_MCP_ROUTE_TOKEN','')).strip()
 VK_VIDEO_MUTATIONS=set()
 
 LAUNCHER=os.environ.get('ND_VK_V19_PINNED_FRONT_LAUNCHER','')
