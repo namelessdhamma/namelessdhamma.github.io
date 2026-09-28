@@ -18,6 +18,7 @@ const KAGGLE_LTX_KERNEL = 'nd-ltx-first-last-production';
 const KAGGLE_LTX_DRIVE_FOLDER = String(process.env.ND_LTX_DRIVE_FOLDER_ID || '161aJEaILUp4KcZUBDAc6XwAKpljeoGHr').trim();
 const DRIVE_BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
 const LTX_INPUT_TOKEN = String(process.env.ND_LTX_INPUT_TOKEN || '').trim();
+const LTX_RESULT_TOKEN = String(process.env.ND_LTX_MCP_PATH_TOKEN || '').trim();
 const LTX_PUBLIC_BASE = String(process.env.ND_LTX_PUBLIC_BASE || 'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
 const OUTER_PORT = Number(process.env.PORT || 8080);
 
@@ -1048,6 +1049,8 @@ async function ltxKaggle2bResult(args={}){
     receipt,
     provider_video_url:mp4Url,
     provider_receipt_url:receiptUrl,
+    stable_video_url:LTX_RESULT_TOKEN?LTX_PUBLIC_BASE+'/ltx-result/'+encodeURIComponent(LTX_RESULT_TOKEN)+'/'+encodeURIComponent(ref.request_id)+'.mp4':null,
+    stable_receipt_url:LTX_RESULT_TOKEN?LTX_PUBLIC_BASE+'/ltx-result/'+encodeURIComponent(LTX_RESULT_TOKEN)+'/'+encodeURIComponent(ref.request_id)+'.json':null,
     video_ref:file.webViewLink||mp4Url,
     drive_video:driveVideo?.file?{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:driveVideo?.reused===true}:null,
     drive_receipt:driveReceipt?.file?{id:driveReceipt.file.id||null,name:driveReceipt.file.name||null,url:driveReceipt.file.webViewLink||null,reused:driveReceipt?.reused===true}:null,
