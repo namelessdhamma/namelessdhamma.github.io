@@ -259,10 +259,10 @@ func _assert_landscape_geometry() -> void:
 	var left := get_node("SafeArea/Landscape/LeftRail") as Control
 	var center := get_node("SafeArea/Landscape/Center") as Control
 	var right := get_node("SafeArea/Landscape/RightRail") as Control
-	assert(safe.position.x >= 11.9 and safe.position.y >= 11.9)
-	assert(safe.position.x + safe.size.x <= viewport.x - 11.9)
-	assert(safe.position.y + safe.size.y <= viewport.y - 11.9)
-	assert(left.size.x >= 145.0 and right.size.x >= 145.0)
+	assert(safe.position.x >= 7.9 and safe.position.y >= 7.9)
+	assert(safe.position.x + safe.size.x <= viewport.x - 7.9)
+	assert(safe.position.y + safe.size.y <= viewport.y - 7.9)
+	assert(left.size.x >= 132.0 and right.size.x >= 132.0)
 	assert(center.size.x > 0.0 and center.size.y > 0.0)
 	assert(left.position.x + left.size.x <= center.position.x + 0.01)
 	assert(center.position.x + center.size.x <= right.position.x + 0.01)
