@@ -50,6 +50,20 @@ func _apply_requested_test_viewport() -> void:
 					get_window().size = requested
 					print("BLUE_SEA_TEST_VIEWPORT_REQUEST ", requested)
 
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	match event.keycode:
+		KEY_ENTER, KEY_SPACE:
+			_on_primary()
+			get_viewport().set_input_as_handled()
+		KEY_ESCAPE, KEY_BACKSPACE:
+			_on_secondary()
+			get_viewport().set_input_as_handled()
+		KEY_M:
+			_on_menu()
+			get_viewport().set_input_as_handled()
+
 func _process(_delta: float) -> void:
 	var size := get_viewport_rect().size
 	var status := get_node("SafeArea/Landscape/Center/Status") as Label
@@ -280,6 +294,59 @@ func _assert_landscape_geometry() -> void:
 func _run_headless_geometry_and_interaction_smoke() -> void:
 	await _assert_landscape_geometry()
 	_run_headless_interaction_smoke()
+	await _run_headless_input_parity_smoke()
+	await _run_headless_orientation_reload_smoke()
+
+func _run_headless_input_parity_smoke() -> void:
+	_reset_round()
+	var pointer_reserve := 2
+	var pointer_cell := 4
+	_on_reserve_pressed(1, pointer_reserve)
+	_on_cell_pressed(pointer_cell)
+	var primary_key := InputEventKey.new()
+	primary_key.keycode = KEY_ENTER
+	primary_key.pressed = true
+	_unhandled_key_input(primary_key)
+	assert(_top_piece(pointer_cell) == {"player": 1, "rank": pointer_reserve + 1})
+	assert(turn == 2 and moves == 1)
+	var clear_key := InputEventKey.new()
+	clear_key.keycode = KEY_ESCAPE
+	clear_key.pressed = true
+	selected_reserve = 3
+	selected_cell = 3
+	_unhandled_key_input(clear_key)
+	assert(selected_reserve == -1 and selected_cell == -1)
+	var menu_key := InputEventKey.new()
+	menu_key.keycode = KEY_M
+	menu_key.pressed = true
+	game_over = true
+	round_draw = true
+	var before_round := round_number
+	_unhandled_key_input(menu_key)
+	assert(round_number == before_round + 1 and not game_over)
+	print("BLUE_SEA_INPUT_PARITY_PASS touch_pointer_buttons=PRIMARY/CLEAR/MENU keyboard=ENTER_ESCAPE_M")
+
+func _run_headless_orientation_reload_smoke() -> void:
+	var window := get_window()
+	var original := Vector2i(window.content_scale_size)
+	if original.x <= 0 or original.y <= 0:
+		original = Vector2i(int(get_viewport_rect().size.x), int(get_viewport_rect().size.y))
+	var portrait := Vector2i(mini(original.x, original.y), maxi(original.x, original.y))
+	window.content_scale_size = portrait
+	window.size = portrait
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_process(0.0)
+	var status := get_node("SafeArea/Landscape/Center/Status") as Label
+	assert(status.text.contains("rotate device"))
+	window.content_scale_size = original
+	window.size = original
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_process(0.0)
+	assert(not status.text.contains("rotate device"))
+	await _assert_landscape_geometry()
+	print("BLUE_SEA_ORIENTATION_RELOAD_PASS portrait=", portrait, " restored=", original)
 
 func _run_headless_interaction_smoke() -> void:
 	# D2 rules parity smoke: rank stacking, Stack-2 cap, ladder win and illegal preservation.
