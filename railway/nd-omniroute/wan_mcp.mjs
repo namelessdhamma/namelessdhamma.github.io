@@ -1027,22 +1027,31 @@ async function ltxKaggle2bResult(args={}){
   const receiptFile=byName('result.json');
   const receipt=extractKaggleMarker(logs.join('\n'),'ND_LTX2B_F2L_JSON=');
   const mp4Url=mp4?.url||await kaggleKernelOutputUrl(username,kernelSlug,'result.mp4',ref.version);
-  const driveVideo=await driveImportKaggleOutput(mp4Url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
-  let driveReceipt=null;
   let receiptUrl=receiptFile?.url||null;
   if(!receiptUrl){
     try{receiptUrl=await kaggleKernelOutputUrl(username,kernelSlug,'result.json',ref.version);}catch{}
   }
-  if(receiptUrl) driveReceipt=await driveImportKaggleOutput(receiptUrl,'nd-ltx2b-'+ref.request_id+'.json','application/json');
+  let driveVideo=null;
+  let driveReceipt=null;
+  let driveImportError=null;
+  try{
+    driveVideo=await driveImportKaggleOutput(mp4Url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
+    if(receiptUrl) driveReceipt=await driveImportKaggleOutput(receiptUrl,'nd-ltx2b-'+ref.request_id+'.json','application/json');
+  }catch(e){
+    driveImportError=errorText(e);
+  }
   const file=driveVideo?.file||{};
   return {
     ok:true,request_id:ref.request_id,state:'READY',
     route:receipt?.route||'kaggle_ltx2b_wan2gp_f2l',
     provider_ref:username+'/'+kernelSlug+'/'+ref.version,
     receipt,
-    video_ref:file.webViewLink||null,
-    drive_video:{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:driveVideo?.reused===true},
-    drive_receipt:driveReceipt?.file?{id:driveReceipt.file.id||null,name:driveReceipt.file.name||null,url:driveReceipt.file.webViewLink||null,reused:driveReceipt?.reused===true}:null
+    provider_video_url:mp4Url,
+    provider_receipt_url:receiptUrl,
+    video_ref:file.webViewLink||mp4Url,
+    drive_video:driveVideo?.file?{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:driveVideo?.reused===true}:null,
+    drive_receipt:driveReceipt?.file?{id:driveReceipt.file.id||null,name:driveReceipt.file.name||null,url:driveReceipt.file.webViewLink||null,reused:driveReceipt?.reused===true}:null,
+    drive_import_error:driveImportError
   };
 }
 
