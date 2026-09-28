@@ -1,0 +1,46 @@
+{
+  "id": "pirate_sea_opening_reefs_choice",
+  "version": 1,
+  "world": "pirate_sea",
+  "sequence": "opening_mutiny_duel",
+  "canon_source": "TRUE MEMORY — BLUE SEA SCRIPT / YANDEX COLLABORATION CHAT MIGRATION CHECKPOINT — 2026-09-28 04:24 ICT",
+  "presentation": {
+    "mode": "cinematic_choice",
+    "player_facing_stats": false
+  },
+  "preconditions": [
+    "Barmaley wounds Silas first",
+    "pure fencing establishes Barmaley as the better swordsman and former teacher",
+    "a sailor shouts Рифы!",
+    "Barmaley briefly looks toward the rocks as captain"
+  ],
+  "choice": {
+    "prompt_key": "pirate.opening.reefs.choice",
+    "options": [
+      {
+        "id": "hit_wheel",
+        "intent": "USE_THE_OPENING_HIT_THE_WHEEL",
+        "consequence": {
+          "silas_kills_barmaley": true,
+          "silas_worsens_ship_position": true,
+          "barmaley_fate": "mortally_wounded_then_swept_overboard"
+        }
+      },
+      {
+        "id": "hold",
+        "intent": "DO_NOT_TOUCH_THE_WHEEL",
+        "consequence": {
+          "silas_kills_barmaley": false,
+          "silas_worsens_ship_position": false,
+          "barmaley_fate": "swept_overboard_alive_unknown"
+        }
+      }
+    ]
+  },
+  "invariants": [
+    "Barmaley death is not forced by plot",
+    "no morality meter or numeric RPG stat is exposed",
+    "Silas does not know Barmaley fate in hold branch",
+    "do not use the rejected line Бармалей хотя бы в одном оказался прав"
+  ]
+}
