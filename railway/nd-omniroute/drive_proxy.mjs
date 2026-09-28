@@ -2907,7 +2907,7 @@ const server = http.createServer(async (req,res) => {
   if (req.method === 'GET' && req.url === '/ltx/health') {
     try {
       const h = await ltxHealth();
-      return json(res,200,{...h,mcp_path_configured:!!LTX_MCP_TOKEN,dedicated_mcp:true});
+      return json(res,200,{...h,mcp_path_configured:!!LTX_MCP_TOKEN,dedicated_mcp:true,media_bridge_auth:'service_account_v1'});
     } catch(e) {
       return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
     }
