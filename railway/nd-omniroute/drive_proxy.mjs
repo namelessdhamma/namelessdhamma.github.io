@@ -2866,7 +2866,7 @@ const server = http.createServer(async (req,res) => {
       return json(res,502,{ok:false,error:String(e?.message||e).slice(0,800)});
     }
   }
-  if (LTX_MCP_TOKEN && req.method === 'GET' && req.url?.startsWith('/ltx-result/'+LTX_MCP_TOKEN+'/')) {
+  if (LTX_MCP_TOKEN && (req.method === 'GET' || req.method === 'HEAD') && req.url?.startsWith('/ltx-result/'+LTX_MCP_TOKEN+'/')) {
     const prefix='/ltx-result/'+LTX_MCP_TOKEN+'/';
     const leaf=decodeURIComponent(req.url.slice(prefix.length).split('?')[0]||'').trim();
     const isMp4=leaf.endsWith('.mp4');
@@ -2883,8 +2883,10 @@ const server = http.createServer(async (req,res) => {
         'content-length':bundle.mp4.length,
         'content-disposition':'inline; filename="'+requestId+'.mp4"',
         'cache-control':'private, no-store',
-        'x-content-type-options':'nosniff'
+        'x-content-type-options':'nosniff',
+        'accept-ranges':'bytes'
       });
+      if(req.method==='HEAD') return res.end();
       return res.end(bundle.mp4);
     }catch(e){
       return json(res,502,{ok:false,error:String(e?.message||e).slice(0,1000)});
