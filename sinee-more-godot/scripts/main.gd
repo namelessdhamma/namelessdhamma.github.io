@@ -46,6 +46,7 @@ func _apply_requested_test_viewport() -> void:
 			if parts.size() == 2:
 				var requested := Vector2i(int(parts[0]), int(parts[1]))
 				if requested.x > 0 and requested.y > 0:
+					get_window().content_scale_size = requested
 					get_window().size = requested
 					print("BLUE_SEA_TEST_VIEWPORT_REQUEST ", requested)
 
