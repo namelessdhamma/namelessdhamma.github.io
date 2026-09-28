@@ -583,7 +583,25 @@ function kaggleLtx2bRequestRef(requestId){
   const id=String(requestId||'').trim();
   const m=id.match(/^k2b-(r[a-z0-9]+-[a-z0-9]+)-v(\d+)$/i);
   if(!m) throw new Error('valid k2b request_id required');
-  return {request_id:id,kernel_slug:'nd-ltx2b-'+m[1],version:Number(m[2])};
+  return {
+    request_id:id,
+    kernel_slug:'nd-ltx2b-'+m[1],
+    direct_kernel_slug:'nd-ltx2b-direct-'+m[1],
+    version:Number(m[2])
+  };
+}
+
+async function resolveKaggleLtx2bKernel(username,ref){
+  let lastError=null;
+  for(const slug of [ref.kernel_slug,ref.direct_kernel_slug]){
+    try{
+      const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+        userName:username,kernelSlug:slug
+      });
+      return {slug,st};
+    }catch(e){lastError=e;}
+  }
+  throw lastError||new Error('Kaggle LTX2B kernel resolution failed');
 }
 
 function newKaggleLtx2bKernelRef(){
@@ -913,7 +931,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
   ];
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+jobRef.kernel_slug,
-    newTitle:(direct?'ND LTX2B Direct ':'ND LTX2B ')+jobRef.token,
+    newTitle:'ND LTX2B '+jobRef.token,
     text:script,
     language:'python',
     kernelType:'script',
@@ -955,15 +973,15 @@ async function ltxKaggle2bSubmit(args={},opts={}){
 async function ltxKaggle2bStatus(args={}){
   const ref=kaggleLtx2bRequestRef(args.request_id);
   const {username}=await kaggleLtxIdentity();
-  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-    userName:username,kernelSlug:ref.kernel_slug
-  });
+  const resolved=await resolveKaggleLtx2bKernel(username,ref);
+  const kernelSlug=resolved.slug;
+  const st=resolved.st;
   const state=kaggleState(st?.status);
   let diagnostics=null;
   if(['QUEUED','RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
     try{
       const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
-        userName:username,kernelSlug:ref.kernel_slug,pageSize:100
+        userName:username,kernelSlug:kernelSlug,pageSize:100
       });
       diagnostics={
         files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
@@ -975,7 +993,7 @@ async function ltxKaggle2bStatus(args={}){
     ok:true,request_id:ref.request_id,state,
     provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null,
-    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
+    provider_ref:username+'/'+kernelSlug+'/'+ref.version,
     diagnostics
   };
 }
@@ -983,9 +1001,9 @@ async function ltxKaggle2bStatus(args={}){
 async function ltxKaggle2bResult(args={}){
   const ref=kaggleLtx2bRequestRef(args.request_id);
   const {username}=await kaggleLtxIdentity();
-  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-    userName:username,kernelSlug:ref.kernel_slug
-  });
+  const resolved=await resolveKaggleLtx2bKernel(username,ref);
+  const kernelSlug=resolved.slug;
+  const st=resolved.st;
   const state=kaggleState(st?.status);
   if(state!=='COMPLETED') return {
     ok:false,request_id:ref.request_id,state,
@@ -996,7 +1014,7 @@ async function ltxKaggle2bResult(args={}){
   const logs=[];
   let pageToken=null;
   for(let page=0;page<20;page++){
-    const body={userName:username,kernelSlug:ref.kernel_slug,pageSize:100};
+    const body={userName:username,kernelSlug:kernelSlug,pageSize:100};
     if(pageToken) body.pageToken=pageToken;
     const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',body);
     if(Array.isArray(out?.files)) files.push(...out.files);
@@ -1009,19 +1027,19 @@ async function ltxKaggle2bResult(args={}){
   const mp4=byName('result.mp4');
   const receiptFile=byName('result.json');
   const receipt=extractKaggleMarker(logs.join('\n'),'ND_LTX2B_F2L_JSON=');
-  const mp4Url=mp4?.url||await kaggleKernelOutputUrl(username,ref.kernel_slug,'result.mp4',ref.version);
+  const mp4Url=mp4?.url||await kaggleKernelOutputUrl(username,kernelSlug,'result.mp4',ref.version);
   const driveVideo=await driveImportKaggleOutput(mp4Url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
   let driveReceipt=null;
   let receiptUrl=receiptFile?.url||null;
   if(!receiptUrl){
-    try{receiptUrl=await kaggleKernelOutputUrl(username,ref.kernel_slug,'result.json',ref.version);}catch{}
+    try{receiptUrl=await kaggleKernelOutputUrl(username,kernelSlug,'result.json',ref.version);}catch{}
   }
   if(receiptUrl) driveReceipt=await driveImportKaggleOutput(receiptUrl,'nd-ltx2b-'+ref.request_id+'.json','application/json');
   const file=driveVideo?.file||{};
   return {
     ok:true,request_id:ref.request_id,state:'READY',
     route:receipt?.route||'kaggle_ltx2b_wan2gp_f2l',
-    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
+    provider_ref:username+'/'+kernelSlug+'/'+ref.version,
     receipt,
     video_ref:file.webViewLink||null,
     drive_video:{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:driveVideo?.reused===true},
