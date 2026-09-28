@@ -867,6 +867,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
     prepareLtxKernelInput(args.end_image_url,'end')
   ]);
   const preflight=await kaggleLtxPreflight();
+  const direct=opts.direct===true;
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
   const workerUrl=direct
     ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py'
