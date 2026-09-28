@@ -2,7 +2,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
+import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, ltxResultBytes, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
@@ -2866,6 +2866,30 @@ const server = http.createServer(async (req,res) => {
       return json(res,502,{ok:false,error:String(e?.message||e).slice(0,800)});
     }
   }
+  if (LTX_MCP_TOKEN && req.method === 'GET' && req.url?.startsWith('/ltx-result/'+LTX_MCP_TOKEN+'/')) {
+    const prefix='/ltx-result/'+LTX_MCP_TOKEN+'/';
+    const leaf=decodeURIComponent(req.url.slice(prefix.length).split('?')[0]||'').trim();
+    const isMp4=leaf.endsWith('.mp4');
+    const isJson=leaf.endsWith('.json');
+    if(!isMp4 && !isJson) return json(res,404,{ok:false,error:'ltx_result_format_not_found'});
+    const requestId=leaf.replace(/\.(mp4|json)$/,'');
+    if(!/^[A-Za-z0-9._-]{8,220}$/.test(requestId)) return json(res,400,{ok:false,error:'invalid_ltx_request_id'});
+    try{
+      const bundle=await ltxResultBytes(requestId);
+      if(!bundle.mp4) return json(res,404,{ok:false,error:'ltx_result_not_ready',state:bundle.state});
+      if(isJson) return json(res,200,{ok:true,request_id:requestId,state:bundle.state,receipt:bundle.receipt||null});
+      res.writeHead(200,{
+        'content-type':'video/mp4',
+        'content-length':bundle.mp4.length,
+        'content-disposition':'inline; filename="'+requestId+'.mp4"',
+        'cache-control':'private, no-store',
+        'x-content-type-options':'nosniff'
+      });
+      return res.end(bundle.mp4);
+    }catch(e){
+      return json(res,502,{ok:false,error:String(e?.message||e).slice(0,1000)});
+    }
+  }
   if (req.method === 'POST' && req.url === '/internal/kaggle-ltx/import-output') {
     if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) return json(res,401,{ok:false,error:'unauthorized'});
     const chunks=[]; for await(const ch of req) chunks.push(ch);
@@ -2907,7 +2931,7 @@ const server = http.createServer(async (req,res) => {
   if (req.method === 'GET' && req.url === '/ltx/health') {
     try {
       const h = await ltxHealth();
-      return json(res,200,{...h,mcp_path_configured:!!LTX_MCP_TOKEN,dedicated_mcp:true,media_bridge_auth:'service_account_v1'});
+      return json(res,200,{...h,mcp_path_configured:!!LTX_MCP_TOKEN,dedicated_mcp:true,media_bridge_auth:'service_account_v1',result_proxy:true});
     } catch(e) {
       return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
     }
