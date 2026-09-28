@@ -2819,6 +2819,26 @@ export function createWanMcpHandler(){
   };
 }
 
+
+export async function ltxResultBytes(requestId){
+  const id=String(requestId||'').trim();
+  if(!id) throw new Error('ltx result request_id required');
+  const result=/^k2b-/i.test(id)
+    ? await ltxKaggle2bResult({request_id:id})
+    : await ltxKaggleResult({request_id:id});
+  if(result?.state!=='READY') return {state:result?.state||'UNKNOWN',mp4:null,receipt:result?.receipt||null};
+  const remote=String(result?.provider_video_url||result?.video_ref||'').trim();
+  if(!remote) throw new Error('ltx result provider url missing');
+  const res=await fetch(remote,{headers:{'user-agent':'nd-external-intelligence/1.0'}});
+  if(!res.ok) throw new Error('ltx result provider download HTTP '+res.status);
+  const declared=Number(res.headers.get('content-length')||0);
+  if(declared>150*1024*1024) throw new Error('ltx result exceeds 150 MB');
+  const mp4=Buffer.from(await res.arrayBuffer());
+  if(!mp4.length) throw new Error('ltx result provider returned empty body');
+  if(mp4.length>150*1024*1024) throw new Error('ltx result exceeds 150 MB');
+  return {state:'READY',mp4,receipt:result?.receipt||null};
+}
+
 export async function wanHealth(){
   return {ok:true,mode:'full',default_space:DEFAULT_SPACE,hf_token_configured:!!HF_TOKEN,tools:TOOLS.map(x=>x.name)};
 }
