@@ -282,14 +282,6 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
             1,
         )
 
-    phase_progress_import = "from shared.utils.phase_progress import generation_progress"
-    if phase_progress_import in src:
-        src = src.replace(
-            phase_progress_import,
-            "def generation_progress(method):\n    return method",
-            1,
-        )
-
     heavy_utils_import = "from shared.utils.utils import calculate_new_dimensions"
     if heavy_utils_import in src:
         minimal_dims = """def calculate_new_dimensions(canvas_height, canvas_width, image_height, image_width, fit_into_canvas, block_size=16):
