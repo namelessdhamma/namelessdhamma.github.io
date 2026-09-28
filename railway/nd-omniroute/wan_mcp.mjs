@@ -679,6 +679,7 @@ async function ltxKaggleWan2gpSubmit(args={}){
     prepareLtxKernelInput(args.end_image_url,'end')
   ]);
   const preflight=await kaggleLtxPreflight();
+  const direct=opts.direct===true;
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
   const request={
     start_image_url:startInput.url||undefined,
@@ -860,14 +861,16 @@ async function ltxKaggleSubmit(args={}){
   };
 }
 
-async function ltxKaggle2bSubmit(args={}){
+async function ltxKaggle2bSubmit(args={},opts={}){
   const [startInput,endInput]=await Promise.all([
     prepareLtxKernelInput(args.start_image_url,'start'),
     prepareLtxKernelInput(args.end_image_url,'end')
   ]);
   const preflight=await kaggleLtxPreflight();
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
-  const workerUrl='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py';
+  const workerUrl=direct
+    ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py'
+    : 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py';
   const buildKernelScript=(useInline)=>{
     const request={
       start_image_url:useInline?undefined:(startInput.url||undefined),
@@ -909,7 +912,7 @@ async function ltxKaggle2bSubmit(args={}){
   ];
   const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
     slug:preflight.username+'/'+jobRef.kernel_slug,
-    newTitle:'ND LTX2B '+jobRef.token,
+    newTitle:(direct?'ND LTX2B Direct ':'ND LTX2B ')+jobRef.token,
     text:script,
     language:'python',
     kernelType:'script',
@@ -935,7 +938,8 @@ async function ltxKaggle2bSubmit(args={}){
     state:'SUBMITTED',
     request_id:'k2b-'+jobRef.token+'-v'+version,
     provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
-    route:'kaggle_ltx2b_wan2gp_f2l',
+    route:direct?'kaggle_ltx2b_direct_f2l':'kaggle_ltx2b_wan2gp_f2l',
+    worker_mode:direct?'DIRECT_LTX':'WAN2GP_WRAPPER',
     cache_source:cacheSources[0],
     cache_sources:cacheSources,
     input_transport:inputTransport,
@@ -2353,6 +2357,7 @@ async function ltxGenerateKeyframes(args={}){
   const compat=String(args.space_id||LTX_KEYFRAME_PRIMARY_SPACE||'kaggle-2b').trim();
   if(compat==='quota-readback') return kaggleLtxPreflight();
   if(compat==='kaggle-2b'||compat==='kaggle_ltx2b_wan2gp_f2l') return ltxKaggle2bSubmit(args);
+  if(compat==='kaggle-2b-direct'||compat==='kaggle_ltx2b_direct_f2l') return ltxKaggle2bSubmit(args,{direct:true});
   if(compat==='kaggle-13b'||compat==='kaggle_ltx13b_mounted_cache_f2l') return ltxKaggleSubmit(args);
   const k2bStatus=compat.match(/^kaggle-2b-status:(k2b-[a-z0-9-]+)$/i);
   if(k2bStatus) return ltxKaggle2bStatus({request_id:k2bStatus[1]});
