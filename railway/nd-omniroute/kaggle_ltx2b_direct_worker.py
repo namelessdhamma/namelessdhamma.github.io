@@ -563,6 +563,11 @@ def main() -> None:
         "transformer_block": SkipLayerStrategy.TransformerBlock,
     }[stg_mode]
 
+    class HeadlessLTXState:
+        _interrupt = False
+
+    ltxv_state = HeadlessLTXState()
+
     print("ND_LTX2B_STAGE=generate", flush=True)
     started = time.time()
     with attention_config_shared_state("sdpa"):
@@ -606,6 +611,7 @@ def main() -> None:
                 vae_per_channel_normalize=True,
                 strength=1.0,
                 device="cuda",
+                ltxv_model=ltxv_state,
             )
             samples = images.sub(0.5).mul(2).squeeze(0)
     generation_seconds = time.time() - started
