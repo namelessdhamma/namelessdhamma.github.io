@@ -1,5 +1,5 @@
 {
-  "op": "status",
-  "request_id": "k2b-rmul54z2z-chuk-v1",
-  "nonce": "final-cross-route-status-20260929T0522Z"
+  "op": "health",
+  "nonce": "baseline-after-final-regression-20260929T0525Z",
+  "note": "Neutral baseline. Change only for one bounded health|submit|status|result reserve operation."
 }
