@@ -8,7 +8,7 @@ on:
     paths:
       - '.nd-control/ltx/request.json'
       - '.github/workflows/nd-kaggle-ltx-reserve.yml'
-      - 'vercel/nd-telegram-publisher-reserve/lib/ltx-core.js'
+      - 'vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js'
   workflow_dispatch:
 
 permissions:
@@ -30,11 +30,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node --check vercel/nd-telegram-publisher-reserve/lib/ltx-core.js
-          node --check vercel/nd-telegram-publisher-reserve/api/ltx-mcp.js
-          node --check vercel/nd-telegram-publisher-reserve/api/ltx-health.js
+          node --check vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js
+          node --check vercel/nd-kaggle-ltx-reserve/api/mcp.js
+          node --check vercel/nd-kaggle-ltx-reserve/api/health.js
           node --input-type=module <<'NODE'
-          import {submit} from './vercel/nd-telegram-publisher-reserve/lib/ltx-core.js';
+          import {submit} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
           const ok=o=>new Response(JSON.stringify(o),{status:200,headers:{'content-type':'application/json'}});
           let kernels=[],saveCalls=0,quotaCalls=0;
           globalThis.fetch=async (url,opts={})=>{
@@ -71,7 +71,7 @@ jobs:
           mkdir -p /tmp/nd-ltx-gha
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          import {configFromEnv,health,submit,status,result} from './vercel/nd-telegram-publisher-reserve/lib/ltx-core.js';
+          import {configFromEnv,health,submit,status,result} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
 
           const path='.nd-control/ltx/request.json';
           let request={op:'health',nonce:'implicit'};
