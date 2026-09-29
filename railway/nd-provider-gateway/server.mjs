@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
 const ND_PORFIRCHIK_GATEWAY_V20_6='porfirchik-v20.6-home-aware-r1-20260929';
 const PORFIRCHIK_PORT=Number(process.env.PORFIRCHIK_PORT||3400);
-const PORFIRCHIK_SOURCE_COMMIT='c987d31bbc433d0defd2638a5afc556832e865ed';
+const PORFIRCHIK_SOURCE_COMMIT='fbcace197bbcde3664b1db2abed9dbe0247d1cb3';
 const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_6_gateway_home_loader.py';
 const PORFIRCHIK_SOURCE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+PORFIRCHIK_SOURCE_COMMIT+'/'+PORFIRCHIK_SOURCE_PATH;
 const PORFIRCHIK_VK_TOKEN=String(process.env.VK_GROUP_TOKEN||'').trim();
