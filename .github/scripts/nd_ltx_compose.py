@@ -86,6 +86,30 @@ for i, item in enumerate(timeline):
              "-f", "lavfi", "-i",
              f"color=c=black:s={width}x{height}:r={fps}:d={duration}",
              *common, str(seg)])
+    elif typ == "flash_from_clip":
+        idx = int(item.get("index", -1))
+        duration = float(item.get("duration", 0))
+        at = float(item.get("at", 0.08))
+        brightness = float(item.get("brightness", 0.20))
+        contrast = float(item.get("contrast", 1.45))
+        saturation = float(item.get("saturation", 0.72))
+        if idx < 0 or idx >= len(clip_paths):
+            raise SystemExit(f"flash clip index out of range at {i}")
+        if not (0.05 <= duration <= 1.0):
+            raise SystemExit(f"invalid flash duration at {i}")
+        flash_vf = (
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,"
+            f"eq=brightness={brightness}:contrast={contrast}:saturation={saturation},"
+            f"fps={fps},format=yuv420p"
+        )
+        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+             "-ss", str(max(0.0, at)), "-i", str(clip_paths[idx]),
+             "-frames:v", "1", "-vf", flash_vf, str(WORK / f"flash-{i:02d}.png")])
+        run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+             "-loop", "1", "-framerate", str(fps), "-t", str(duration),
+             "-i", str(WORK / f"flash-{i:02d}.png"), "-vf", vf,
+             *common, str(seg)])
     elif typ == "image_b64":
         duration = float(item.get("duration", 0))
         rel = str(item.get("path", "")).strip()
