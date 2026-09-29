@@ -6,10 +6,10 @@ import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
-const ND_PORFIRCHIK_GATEWAY_V20_5='porfirchik-v20.5-gateway-free-r1-20260929';
+const ND_PORFIRCHIK_GATEWAY_V20_6='porfirchik-v20.6-home-aware-r1-20260929';
 const PORFIRCHIK_PORT=Number(process.env.PORFIRCHIK_PORT||3400);
-const PORFIRCHIK_SOURCE_COMMIT='e1d77608377c621f9509d9f846d4c5fb8ffe6e12';
-const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_5_gateway_free_loader.py';
+const PORFIRCHIK_SOURCE_COMMIT='dfc13fdd1443aabbb7d255f1e49b1c04480bedf9';
+const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_6_gateway_home_loader.py';
 const PORFIRCHIK_SOURCE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+PORFIRCHIK_SOURCE_COMMIT+'/'+PORFIRCHIK_SOURCE_PATH;
 const PORFIRCHIK_VK_TOKEN=String(process.env.VK_GROUP_TOKEN||'').trim();
 const PORFIRCHIK_ADMIN_ROUTE=String(process.env.PORFIRCHIK_MEMOS_ADMIN_ROUTE||'').trim().replace(/^\/+|\/+$/g,'');
@@ -30,7 +30,7 @@ function porfirchikBootstrapCode(){
     "import urllib.request",
     "u="+JSON.stringify(PORFIRCHIK_SOURCE_URL),
     "s=urllib.request.urlopen(u,timeout=30).read()",
-    "exec(compile(s,'nd_vk_v20_5_gateway_free_loader.py','exec'))"
+    "exec(compile(s,'nd_vk_v20_6_gateway_home_loader.py','exec'))"
   ].join(';');
 }
 function startPorfirchik(){
@@ -45,7 +45,7 @@ function startPorfirchik(){
   const child=spawn('python3',['-u','-c',porfirchikBootstrapCode()],{env,stdio:['ignore','inherit','inherit']});
   porfirchikChild=child;
   child.on('spawn',()=>{
-    console.log('ND_PORFIRCHIK_CHILD_SPAWNED',JSON.stringify({port:PORFIRCHIK_PORT,rev:ND_PORFIRCHIK_GATEWAY_V20_5,source_commit:PORFIRCHIK_SOURCE_COMMIT}));
+    console.log('ND_PORFIRCHIK_CHILD_SPAWNED',JSON.stringify({port:PORFIRCHIK_PORT,rev:ND_PORFIRCHIK_GATEWAY_V20_6,source_commit:PORFIRCHIK_SOURCE_COMMIT}));
   });
   child.on('error',err=>{
     porfirchikLastError=String(err?.message||err).slice(0,800);
