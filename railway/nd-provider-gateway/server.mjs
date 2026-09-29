@@ -8,8 +8,8 @@ import { createHash } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
 const ND_PORFIRCHIK_GATEWAY_V20_5='porfirchik-v20.5-gateway-20260929';
 const PORFIRCHIK_PORT=Number(process.env.PORFIRCHIK_PORT||3400);
-const PORFIRCHIK_SOURCE_COMMIT='b15bc6d668be021654be3939ac7f15a8ae7a23fc';
-const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_5_memory_durable_loader.py';
+const PORFIRCHIK_SOURCE_COMMIT='e1d77608377c621f9509d9f846d4c5fb8ffe6e12';
+const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_5_gateway_free_loader.py';
 const PORFIRCHIK_SOURCE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+PORFIRCHIK_SOURCE_COMMIT+'/'+PORFIRCHIK_SOURCE_PATH;
 const PORFIRCHIK_VK_TOKEN=String(process.env.VK_GROUP_TOKEN||'').trim();
 const PORFIRCHIK_ADMIN_ROUTE=String(process.env.PORFIRCHIK_MEMOS_ADMIN_ROUTE||'').trim().replace(/^\/+|\/+$/g,'');
@@ -27,17 +27,10 @@ let porfirchikStartedAt=null;
 
 function porfirchikBootstrapCode(){
   return [
-    "import os, urllib.request",
+    "import urllib.request",
     "u="+JSON.stringify(PORFIRCHIK_SOURCE_URL),
     "s=urllib.request.urlopen(u,timeout=30).read()",
-    "os.environ['ND_VK_ASSEMBLE_ONLY']='1'",
-    "ns={'__name__':'__main__'}",
-    "exec(compile(s,'nd_vk_v20_5_memory_durable_loader.py','exec'),ns)",
-    "src=ns.get('src')",
-    "assert isinstance(src,str) and src.count(\"'title':'ND Free Adaptive Router'\")==1",
-    "src=src.replace(\"'title':'ND Free Adaptive Router'\",\"'title':'Porfirchik'\",1)",
-    "os.environ.pop('ND_VK_ASSEMBLE_ONLY',None)",
-    "exec(compile(src,'nd_vk_gateway_v20_5_memory_durable_runtime.py','exec'),{'__name__':'__main__'})"
+    "exec(compile(s,'nd_vk_v20_5_gateway_free_loader.py','exec'))"
   ].join(';');
 }
 function startPorfirchik(){
