@@ -1,9 +1,9 @@
 {
   "op": "submit",
-  "nonce": "blue-sea-lightning-canary-seg01-20260929T0635Z",
+  "nonce": "blue-sea-lightning-canary-seg01-public-inputs-20260929T0647Z",
   "args": {
-    "start_image_url": "drive:1ljCWsxTAnqaoCDcoaVv4MyYl03a_Pf93",
-    "end_image_url": "drive:1o8OraJV8F2p5PRt8yHSR20C47iGqrbKI",
+    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/841e8661-165f-4b78-adf4-953e1c511a31.jpg",
+    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/343e16f8-f00f-40a3-80d5-7bee42ccc70e.jpg",
     "prompt": "Dark cinematic pirate sea at night in a violent tropical storm. The camera glides low over huge black waves toward a distant three-masted wooden ship. Heavy diagonal rain, wind-driven sea spray, fog and mist move continuously; waves rise and crash with white foam; the ship pitches and rolls naturally. CRITICAL LIGHTNING ACTION: lightning is not a static decoration. A bright branching bolt flashes briefly in the storm clouds, sharply illuminating the clouds, rain, sea foam and wet surfaces for a fraction of a second; the bolt and illumination then disappear back into darkness. Later a second distinct flash occurs in a different nearby part of the sky with another brief exposure spike and reflected white-blue light on the waves. Between flashes the scene returns to deep storm darkness. Preserve the same ship, ocean, weather, realistic scale and photorealistic cinematic look. No cuts, no text, no frozen lightning, no continuous glowing bolt.",
     "negative_prompt": "static image, frozen water, frozen rain, stationary ship, continuous lightning, permanently glowing bolt, lightning that never disappears, smooth calm sea, daylight, cartoon, illustration, text, logo, watermark, duplicated ship, warped masts, broken geometry, sudden cut, camera teleport",
     "duration_seconds": 3,
