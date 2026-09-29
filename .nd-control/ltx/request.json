@@ -1,5 +1,5 @@
 {
   "op": "health",
-  "nonce": "dedicated-vercel-regression-2026-09-29T03:51Z",
-  "note": "Regression after isolating Kaggle LTX into dedicated Vercel package."
+  "nonce": "verify-secrets-2026-09-29T04:49Z",
+  "note": "Verify GitHub Actions Kaggle reserve credential wiring after user provisioning."
 }
