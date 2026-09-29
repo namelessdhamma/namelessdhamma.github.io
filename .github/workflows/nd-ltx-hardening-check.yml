@@ -31,7 +31,7 @@ jobs:
           assert "const LTX_PRODUCTION_TOOLS=[" in s
           assert "SUBMIT_RETURNS_IMMEDIATELY / NO_FOREGROUND_POLLING / CONTINUE_OTHER_USEFUL_WORK" in s
           assert "effect_id:'ltx2b:'" in s
-          assert "persistence_state:'NOT_REQUESTED'" in s
+          assert "persistence_state:args.persist_to_drive===false?'NOT_REQUESTED'" in s
           assert "const ltxMcpHandler = createLtxMcpHandler();" in d
           assert "const handled = await ltxMcpHandler(req,res);" in d
           print("ND_LTX_HARDENING_CONTRACT=PASS")
