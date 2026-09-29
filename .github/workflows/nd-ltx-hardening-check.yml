@@ -21,6 +21,39 @@ jobs:
           node --check railway/nd-omniroute/drive_proxy.mjs
       - name: Worker syntax
         run: python3 -m py_compile railway/nd-omniroute/kaggle_ltx2b_direct_worker.py
+      - name: Dedicated MCP surface smoke
+        working-directory: railway/nd-omniroute
+        run: |
+          npm install --omit=dev --ignore-scripts --no-audit --no-fund
+          node --input-type=module <<'NODE'
+          import { createLtxMcpHandler, ltxHealth } from './wan_mcp.mjs';
+
+          async function mcp(message){
+            const handler=createLtxMcpHandler();
+            const body=Buffer.from(JSON.stringify(message));
+            const req={
+              method:'POST',
+              async *[Symbol.asyncIterator](){ yield body; }
+            };
+            let out=Buffer.alloc(0);
+            const res={
+              writeHead(){},
+              end(data){ if(data) out=Buffer.concat([out,Buffer.isBuffer(data)?data:Buffer.from(data)]); }
+            };
+            await handler(req,res);
+            return JSON.parse(out.toString('utf8'));
+          }
+
+          const init=await mcp({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});
+          if(init.result?.serverInfo?.name!=='ND Kaggle LTX MCP') throw new Error('wrong serverInfo');
+          const listed=await mcp({jsonrpc:'2.0',id:2,method:'tools/list',params:{}});
+          const names=(listed.result?.tools||[]).map(x=>x.name);
+          const expected=['ltx_generate_keyframes','ltx_keyframe_status','ltx_keyframe_result'];
+          if(JSON.stringify(names)!==JSON.stringify(expected)) throw new Error('unexpected tool surface '+JSON.stringify(names));
+          const health=await ltxHealth();
+          if(health.mode!=='production_nonblocking') throw new Error('nonblocking health contract missing');
+          console.log('ND_LTX_MCP_SURFACE=PASS',names.join(','));
+          NODE
       - name: Production MCP contract
         run: |
           python3 - <<'PY'
