@@ -1,1 +1,1 @@
-{"version":2,"rewrites":[{"source":"/mcp/:token","destination":"/api/mcp?token=:token"},{"source":"/healthz","destination":"/api/health"},{"source":"/ltx/:token","destination":"/api/ltx-mcp?token=:token"},{"source":"/ltx-health","destination":"/api/ltx-health"}]}
+{"version":2,"rewrites":[{"source":"/mcp/:token","destination":"/api/mcp?token=:token"},{"source":"/healthz","destination":"/api/health"}]}
