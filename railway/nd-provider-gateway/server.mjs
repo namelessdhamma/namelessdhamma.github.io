@@ -1322,7 +1322,9 @@ const muxServer=http.createServer(async(req,res)=>{
       if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
       return proxyPorfirchik(req,res,'/health');
     }
-    if(PORFIRCHIK_CALLBACK_PATH && path===PORFIRCHIK_CALLBACK_PATH){
+    // Let the authoritative V20.5 child validate the exact callback hash.
+    // The outer mux only dispatches the callback namespace.
+    if(path.startsWith('/vk/callback/')){
       return proxyPorfirchik(req,res,req.url);
     }
     if(PORFIRCHIK_ADMIN_PATH && path===PORFIRCHIK_ADMIN_PATH){
