@@ -118,6 +118,73 @@ jobs:
           if(quotaCalls!==1) throw new Error('quota preflight repeated on reuse: '+quotaCalls);
           console.log('ND_LTX_IDEMPOTENCY=PASS',first.request_id);
           NODE
+      - name: Kaggle failure semantics simulation
+        working-directory: railway/nd-omniroute
+        run: |
+          node --input-type=module <<'NODE'
+          process.env.KAGGLE_API_TOKEN='test-token';
+          process.env.KAGGLE_USERNAME_SLUG='testuser';
+          const { createLtxMcpHandler }=await import('./wan_mcp.mjs?failure-contract');
+
+          const ok=(obj)=>new Response(JSON.stringify(obj),{status:200,headers:{'content-type':'application/json'}});
+          const fail=(status,obj)=>new Response(JSON.stringify(obj),{status,headers:{'content-type':'application/json'}});
+
+          async function call(args){
+            const handler=createLtxMcpHandler();
+            const body=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'ltx_generate_keyframes',arguments:args}}));
+            const req={method:'POST',async *[Symbol.asyncIterator](){yield body;}};
+            let out=Buffer.alloc(0);
+            const res={writeHead(){},end(data){if(data) out=Buffer.concat([out,Buffer.isBuffer(data)?data:Buffer.from(data)]);}};
+            await handler(req,res);
+            const envelope=JSON.parse(out.toString('utf8'));
+            if(envelope.result?.isError) return {tool_error:envelope.result.content?.[0]?.text||'tool error'};
+            return envelope.result.structuredContent;
+          }
+
+          const args={
+            start_image_url:'https://example.org/start.jpg',
+            end_image_url:'https://example.org/end.jpg',
+            prompt:'continuous storm motion',
+            duration_seconds:2,width:512,height:288,seed:42
+          };
+
+          let saveCalls=0;
+          globalThis.fetch=async (url,opts={})=>{
+            const u=String(url);
+            const body=opts.body?JSON.parse(String(opts.body)):{};
+            if(u.includes('/security.OAuthService/IntrospectToken')) return ok({active:true,username:'testuser'});
+            if(u.includes('/kernels.KernelsApiService/ListKernels')){
+              const slug='nd-ltx2b-r'+(await import('node:crypto')).default.createHash('sha256').update('').digest('hex').slice(0,1);
+              return ok({kernels:[]});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetAcceleratorQuotaStatistics')) return ok({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:'108000s'}});
+            if(u.includes('/kernels.KernelsApiService/SaveKernel')){ saveCalls++; return fail(429,{message:'RESOURCE_EXHAUSTED maximum batch GPU session count'}); }
+            throw new Error('unexpected mocked fetch '+u);
+          };
+          const capacity=await call(args);
+          if(capacity.state!=='CAPACITY_BLOCKED'||capacity.retry_after_seconds!==60) throw new Error('capacity contract failed '+JSON.stringify(capacity));
+          if(saveCalls!==1) throw new Error('capacity submit repeated unexpectedly: '+saveCalls);
+
+          let existingSlug=null;
+          globalThis.fetch=async (url,opts={})=>{
+            const u=String(url);
+            const body=opts.body?JSON.parse(String(opts.body)):{};
+            if(u.includes('/security.OAuthService/IntrospectToken')) return ok({active:true,username:'testuser'});
+            if(u.includes('/kernels.KernelsApiService/ListKernels')){
+              const search=String(body.search||'');
+              existingSlug=search;
+              return ok({kernels:[{slug:search,ref:'testuser/'+search,author:'Savva Savchenko',currentVersionNumber:1}]});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetKernelSessionStatus')) return ok({status:3,failureMessage:'provider failed'});
+            if(u.includes('/kernels.KernelsApiService/GetAcceleratorQuotaStatistics')) throw new Error('quota should not be called when exact failed work exists');
+            if(u.includes('/kernels.KernelsApiService/SaveKernel')) throw new Error('failed work must not be silently resubmitted');
+            throw new Error('unexpected mocked fetch '+u);
+          };
+          const failed=await call(args);
+          if(failed.state!=='FAILED'||failed.reused_existing!==true) throw new Error('failed reuse contract failed '+JSON.stringify(failed));
+          if(!existingSlug) throw new Error('existing kernel lookup not exercised');
+          console.log('ND_LTX_FAILURE_SEMANTICS=PASS');
+          NODE
       - name: Production MCP contract
         run: |
           python3 - <<'PY'
