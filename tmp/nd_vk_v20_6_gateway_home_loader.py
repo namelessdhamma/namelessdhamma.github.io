@@ -47,20 +47,18 @@ state['runtime_home_policy']='single-owner'
 state['cohosted_gateway_modules']=['yandex','youtube','telegram','browser']
 state['cohosted_modules_auto_available_to_model']=False
 state['self_knowledge_policy']='runtime-facts-v1'
-# CURRENT Free-runtime provider truth. Cloudflare credentials are absent and are
-# not advertised as active. Groq stays primary; configured Cerebras/OpenRouter
-# routes are bounded reserves.
-MODEL_ROUTE_TABLE={
-    'write':[('groq',STRONG_GROQ_MODEL)],
-    'deep_research':[('groq',STRONG_GROQ_MODEL)],
+# CURRENT Free-runtime provider truth. Keep the inherited routing code intact:
+# it already filters unconfigured providers. Override only diagnostics/currentness.
+state['model_route_table']={
+    'write':['groq:openai/gpt-oss-120b'],
+    'deep_research':['groq:openai/gpt-oss-120b'],
 }
-state['model_route_table']={k:[p+':'+m for p,m in rows] for k,rows in MODEL_ROUTE_TABLE.items()}
-state['russian_primary_models']=['groq:'+STRONG_GROQ_MODEL]
+state['russian_primary_models']=['groq:openai/gpt-oss-120b']
 state['provider_pool']={
-    'groq':bool(GROQ_API_KEY),
-    'openrouter':bool(OPENROUTER_API_KEY),
-    'cerebras':bool(CEREBRAS_API_KEY),
-    'cloudflare':bool(CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN),
+    'groq':bool(os.environ.get('GROQ_API_KEY')),
+    'openrouter':bool(os.environ.get('OPENROUTER_API_KEY')),
+    'cerebras':bool(os.environ.get('CEREBRAS_API_KEY')),
+    'cloudflare':bool(os.environ.get('CLOUDFLARE_ACCOUNT_ID') and os.environ.get('CLOUDFLARE_API_TOKEN')),
 }
 state['provider_policy']='groq-primary; cerebras/openrouter-reserve; dead routes filtered'
 """
