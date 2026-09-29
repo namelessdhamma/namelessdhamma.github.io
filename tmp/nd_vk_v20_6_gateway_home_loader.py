@@ -1,4 +1,4 @@
-import os, urllib.request
+import os, urllib.request, re
 
 # Compatibility markers required by the inherited front/runtime guards.
 # ND_V19_ORIGINAL_LOADER_ACTIVE
@@ -19,8 +19,7 @@ src=G.get('_ND_V20_5_GATEWAY_FINAL_SOURCE','')
 if not src:
     raise RuntimeError('v20_6_base_capture_failed')
 
-old_system="""BASE_SYSTEM='''You are the VK interface of Nameless Dhamma (ND), an independent Buddhist research and creative project. Respond in the user's language; default to Russian. Be concise for simple questions and rigorous for serious work. Do not claim access to the user's ChatGPT account, ChatGPT memory, private chats, files, or current ND project state unless that context is explicitly supplied through this gateway. Full ND connected-state access is a separate layer.'''"""
-new_system="""BASE_SYSTEM='''You are Porfirchik, the VK conversational interface of Nameless Dhamma (ND), an independent Buddhist research and creative project. Respond in the user's language; default to Russian. Be concise for simple questions and rigorous for serious work.
+system_prefix="""You are Porfirchik, the VK conversational interface of Nameless Dhamma (ND), an independent Buddhist research and creative project. Respond in the user's language; default to Russian. Be concise for simple questions and rigorous for serious work.
 
 CURRENT RUNTIME FACTS YOU MAY STATE WHEN RELEVANT:
 - Your production runtime home is the Railway service nd-yandex-n8n-gateway.
@@ -30,11 +29,15 @@ CURRENT RUNTIME FACTS YOU MAY STATE WHEN RELEVANT:
 - The same Railway gateway co-hosts ND connectivity modules for Yandex/YouTube/Telegram/browser work. Their existence does NOT mean their data is automatically available in every answer. Claim you used or read a connected source only when its result was actually supplied in the current request context.
 - Model/provider routing is an internal runtime detail and can change. Do not invent provider availability; answer from supplied runtime facts when asked.
 - Do not claim access to the user's ChatGPT account, ChatGPT memory, private ChatGPT chats, or the full CURRENT ND StateHead unless that context is explicitly supplied through this gateway.
-
-If asked where your memory is, do not say you have only ephemeral OpenAI context. Explain the MemOS Cloud + persistent SQLite architecture above, and distinguish it from the model's own transient context window.'''"""
-if src.count(old_system)!=1:
-    raise RuntimeError('v20_6_system_anchor_mismatch')
-src=src.replace(old_system,new_system,1)
+- If asked where your memory is, do not say you have only ephemeral OpenAI context. Explain the MemOS Cloud + persistent SQLite architecture above, and distinguish it from the model's own transient context window.
+"""
+m=re.search(r"BASE_SYSTEM='''(.*?)'''",src,re.S)
+if not m:
+    raise RuntimeError('v20_6_base_system_not_found')
+legacy=m.group(1)
+# Preserve useful pre-existing persona/profile constraints after authoritative runtime facts.
+new_base="BASE_SYSTEM='''"+system_prefix+"\n\nAdditional inherited behavior:\n"+legacy+"'''"
+src=src[:m.start()]+new_base+src[m.end():]
 
 state_anchor="""state['memos_recall_policy']='user-first-v1'"""
 state_new=state_anchor+"""
@@ -48,16 +51,11 @@ if src.count(state_anchor)!=1:
     raise RuntimeError('v20_6_state_anchor_mismatch')
 src=src.replace(state_anchor,state_new,1)
 
-status_old="""                if text=='/status':
-                    send(peer,'ND Router: VK=OK; Groq=%s; OpenRouter=%s; fast=%s; research=%s; deep/write=%s; mode=%s; last_route=%s; last_provider=%s'%(
-                        'OK' if GROQ_API_KEY else 'OFF','OK' if OPENROUTER_API_KEY else 'OFF',GROQ_MODEL,GROQ_RESEARCH_MODEL,OPENROUTER_MODEL,mode_by_uid.get(uid,'auto'),state.get('last_route'),state.get('last_provider')));return"""
-status_new="""                if text=='/status':
+status_pattern=re.compile(r"""                if text=='/status':\n                    send\(peer,'ND Router: VK=OK; Groq=%s; OpenRouter=%s; fast=%s; research=%s; deep/write=%s; mode=%s; last_route=%s; last_provider=%s'%\(\n                        'OK' if GROQ_API_KEY else 'OFF','OK' if OPENROUTER_API_KEY else 'OFF',GROQ_MODEL,GROQ_RESEARCH_MODEL,OPENROUTER_MODEL,mode_by_uid.get\(uid,'auto'\),state.get\('last_route'\),state.get\('last_provider'\)\)\);return""")
+status_repl="""                if text=='/status':
                     send(peer,'Porfirchik: VK=OK; home=nd-yandex-n8n-gateway; memory=MemOS Cloud + persistent SQLite/outbox; Groq=%s; OpenRouter=%s; mode=%s; last_route=%s; last_provider=%s'%(
                         'OK' if GROQ_API_KEY else 'OFF','OK' if OPENROUTER_API_KEY else 'OFF',mode_by_uid.get(uid,'auto'),state.get('last_route'),state.get('last_provider')));return"""
-if src.count(status_old)!=1:
-    raise RuntimeError('v20_6_status_anchor_mismatch')
-src=src.replace(status_old,status_new,1)
-
+src,_status_count=status_pattern.subn(status_repl,src,count=1)
 src=src.replace("state['adaptive_router']='v20.5-memory-durable'","state['adaptive_router']='v20.6-home-aware'",1)
 src=src.replace("'User-Agent':'porfirchik-v20.5'","'User-Agent':'porfirchik-v20.6'",1)
 src=src.replace('ND_VK_GATEWAY_V20_5_MEMORY_DURABLE_START','ND_VK_GATEWAY_V20_6_HOME_AWARE_START',1)
