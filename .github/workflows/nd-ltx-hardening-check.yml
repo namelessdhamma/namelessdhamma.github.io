@@ -1,0 +1,38 @@
+name: ND LTX Hardening Check
+
+on:
+  push:
+    branches:
+      - kaggle-ltx-hardening-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: JavaScript syntax
+        run: |
+          node --check railway/nd-omniroute/wan_mcp.mjs
+          node --check railway/nd-omniroute/drive_proxy.mjs
+      - name: Worker syntax
+        run: python3 -m py_compile railway/nd-omniroute/kaggle_ltx2b_direct_worker.py
+      - name: Production MCP contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("railway/nd-omniroute/wan_mcp.mjs").read_text()
+          d=Path("railway/nd-omniroute/drive_proxy.mjs").read_text()
+          assert "export function createLtxMcpHandler()" in s
+          assert "const LTX_PRODUCTION_TOOLS=[" in s
+          assert "SUBMIT_RETURNS_IMMEDIATELY / NO_FOREGROUND_POLLING / CONTINUE_OTHER_USEFUL_WORK" in s
+          assert "effect_id:'ltx2b:'" in s
+          assert "persistence_state:'NOT_REQUESTED'" in s
+          assert "const ltxMcpHandler = createLtxMcpHandler();" in d
+          assert "const handled = await ltxMcpHandler(req,res);" in d
+          print("ND_LTX_HARDENING_CONTRACT=PASS")
+          PY
