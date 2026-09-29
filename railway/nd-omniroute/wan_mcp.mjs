@@ -29,6 +29,7 @@ const LTX_HFJOBS_MAX_COST_USD = 0.405;
 
 const STORYBOARD_REPO = 'namelessdhamma/namelessdhamma.github.io';
 const STORYBOARD_EVENT = 'nd_storyboard_render';
+const LTX_COMPOSE_EVENT = 'nd_ltx_compose';
 const STORYBOARD_MCP_TOKEN = String(process.env.ND_STORYBOARD_MCP_PATH_TOKEN || '').trim();
 const STORYBOARD_PUBLIC_BASE = String(process.env.ND_STORYBOARD_PUBLIC_BASE || 'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
 
@@ -266,6 +267,99 @@ export async function storyboardResultBytes(requestId){
   return storyboardArtifactBundle(id);
 }
 
+
+function ltxComposeRequestId(){
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  return 'lc-'+token;
+}
+
+async function ltxComposeKernelOutputUrl(username,requestId){
+  const ref=kaggleLtx2bRequestRef(requestId);
+  let last=null;
+  for(let attempt=0;attempt<5;attempt++){
+    try{
+      return await kaggleKernelOutputUrl(username,ref.kernel_slug,'result.mp4',ref.version);
+    }catch(e){
+      last=e;
+      if(!/Kaggle (?:HTTP|DownloadKernelOutput HTTP) 429/i.test(errorText(e))) throw e;
+      await new Promise(r=>setTimeout(r,3000*(attempt+1)));
+    }
+  }
+  throw last||new Error('Kaggle compose source URL unavailable');
+}
+
+async function ltxComposeSubmit(spec={}){
+  const sourceIds=Array.isArray(spec.source_request_ids)?spec.source_request_ids.map(x=>String(x||'').trim()).filter(Boolean):[];
+  if(sourceIds.length<1||sourceIds.length>12) throw new Error('source_request_ids must contain 1-12 items');
+  for(const id of sourceIds) kaggleLtx2bRequestRef(id);
+  const timeline=Array.isArray(spec.timeline)?spec.timeline:[];
+  if(timeline.length<1||timeline.length>40) throw new Error('timeline must contain 1-40 items');
+  const {username}=await kaggleLtxIdentity();
+  const clips=[];
+  for(const id of sourceIds){
+    const url=await ltxComposeKernelOutputUrl(username,id);
+    clips.push({request_id:id,url});
+    await new Promise(r=>setTimeout(r,900));
+  }
+  const requestId=ltxComposeRequestId();
+  const manifest={
+    preset:String(spec.preset||'ltx_compose_v1'),
+    width:512,height:288,fps:30,
+    clips,timeline
+  };
+  await githubJson('/repos/'+STORYBOARD_REPO+'/dispatches',{
+    method:'POST',
+    body:{event_type:LTX_COMPOSE_EVENT,client_payload:{request_id:requestId,manifest}}
+  });
+  return {
+    ok:true,state:'SUBMITTED',request_id:requestId,
+    route:'github_actions_ffmpeg_ltx_compose_v1',
+    source_request_ids:sourceIds,
+    clip_count:clips.length,timeline_items:timeline.length,
+    cost_policy:'FREE_ONLY'
+  };
+}
+
+async function ltxComposeStatus(spec={}){
+  const requestId=String(spec.request_id||'').trim();
+  if(!/^lc-r[a-z0-9]+-[a-z0-9]+$/i.test(requestId)) throw new Error('valid compose request_id required');
+  const runs=await githubJson('/repos/'+STORYBOARD_REPO+'/actions/runs?event=repository_dispatch&per_page=50');
+  const list=Array.isArray(runs?.workflow_runs)?runs.workflow_runs:[];
+  const title='ND LTX Compose '+requestId;
+  const run=list.find(r=>r?.name==='ND LTX Compose' && r?.display_title===title)
+    || list.find(r=>String(r?.display_title||'').includes(requestId));
+  if(!run) return {ok:true,state:'SUBMITTED_NOT_YET_VISIBLE',request_id:requestId};
+  let artifact=null;
+  if(run.status==='completed'){
+    const arts=await githubJson('/repos/'+STORYBOARD_REPO+'/actions/runs/'+run.id+'/artifacts');
+    const arr=Array.isArray(arts?.artifacts)?arts.artifacts:[];
+    artifact=arr.find(a=>a?.name==='nd-ltx-compose-'+requestId)||arr[0]||null;
+  }
+  return {
+    ok:run.conclusion!=='failure',
+    request_id:requestId,
+    state:run.status==='completed'?(run.conclusion==='success'?'COMPLETED':'FAILED'):String(run.status||'UNKNOWN').toUpperCase(),
+    conclusion:run.conclusion||null,
+    run_id:run.id,
+    run_url:run.html_url,
+    artifact:artifact?{
+      id:artifact.id,name:artifact.name,size_in_bytes:artifact.size_in_bytes,
+      expired:artifact.expired,archive_download_api_url:artifact.archive_download_url
+    }:null
+  };
+}
+
+async function ltxComposeResult(spec={}){
+  const st=await ltxComposeStatus(spec);
+  return {
+    ok:st.state==='COMPLETED'&&!!st.artifact?.id,
+    request_id:st.request_id,
+    state:st.state==='COMPLETED'&&st.artifact?.id?'READY':st.state,
+    status:st,
+    artifact:st.artifact||null
+  };
+}
+
 function connectOptions(){
   return HF_TOKEN ? { hf_token: HF_TOKEN } : {};
 }
@@ -348,7 +442,18 @@ async function ltxCapabilities(args={}){
 }
 
 async function ltxRawCall(args={}){
-  return rawCall({...args,space_id:String(args.space_id||DEFAULT_LTX_SPACE)});
+  const spaceId=String(args.space_id||DEFAULT_LTX_SPACE).trim();
+  if(spaceId==='nd://ltx-compose'){
+    const endpoint=String(args.api_name||'').trim();
+    let payload=args.payload;
+    if(payload===undefined && typeof args.payload_json==='string') payload=JSON.parse(args.payload_json||'{}');
+    if(payload===undefined) payload={};
+    if(endpoint==='/submit') return ltxComposeSubmit(payload);
+    if(endpoint==='/status') return ltxComposeStatus(payload);
+    if(endpoint==='/result') return ltxComposeResult(payload);
+    throw new Error('unknown nd://ltx-compose endpoint');
+  }
+  return rawCall({...args,space_id:spaceId});
 }
 
 async function ltxHfLinoytsFirstLast(args={}){
@@ -2848,7 +2953,7 @@ export async function wanHealth(){
 
 export async function ltxHealth({probe=false,spaceId}={}){
   const selected=String(spaceId||DEFAULT_LTX_SPACE).trim();
-  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:LTX_KEYFRAME_PRIMARY_SPACE||'kaggle-2b',keyframe_primary_route:'kaggle_ltx2b_direct_f2l',keyframe_provider:'Kaggle',keyframe_cache_source:'savvasavchenko/nd-ltx-2b-distilled-cache',keyframe_cache_sources:['savvasavchenko/nd-ltx-2b-distilled-cache','savvasavchenko/nd-ltx2b-load-probe-fixed'],keyframe_model:'multimodalart/ltxv-2b-0.9.6-distilled:transformer/diffusion_pytorch_model.bf16.safetensors',keyframe_model_precision:'bf16',keyframe_state:'QUALIFIED_PRIMARY',keyframe_qualification:'E2E_PRODUCTION_PASS_2026-09-28',keyframe_qualification_request_id:'k2b-rmuklqhtp-44qf-v1',keyframe_production_scale_verified:true,keyframe_drive_folder:KAGGLE_LTX_DRIVE_FOLDER,keyframe_internal_reserves:['kaggle_ltx2b_wan2gp_f2l','kaggle_ltx13b_mounted_cache_f2l'],reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
+  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:LTX_KEYFRAME_PRIMARY_SPACE||'kaggle-2b',keyframe_primary_route:'kaggle_ltx2b_direct_f2l',keyframe_provider:'Kaggle',keyframe_cache_source:'savvasavchenko/nd-ltx-2b-distilled-cache',keyframe_cache_sources:['savvasavchenko/nd-ltx-2b-distilled-cache','savvasavchenko/nd-ltx2b-load-probe-fixed'],keyframe_model:'multimodalart/ltxv-2b-0.9.6-distilled:transformer/diffusion_pytorch_model.bf16.safetensors',keyframe_model_precision:'bf16',keyframe_state:'QUALIFIED_PRIMARY',keyframe_qualification:'E2E_PRODUCTION_PASS_2026-09-28',keyframe_qualification_request_id:'k2b-rmuklqhtp-44qf-v1',keyframe_production_scale_verified:true,compose_route:'github_actions_ffmpeg_ltx_compose_v1',keyframe_drive_folder:KAGGLE_LTX_DRIVE_FOLDER,keyframe_internal_reserves:['kaggle_ltx2b_wan2gp_f2l','kaggle_ltx13b_mounted_cache_f2l'],reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
   if(!probe) return {...base,upstream:'VERIFY_AT_USE'};
   try{
     const cap=await capabilities(selected);
