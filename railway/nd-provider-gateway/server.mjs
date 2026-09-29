@@ -3,7 +3,95 @@ import fs from 'node:fs';
 import { URL } from 'node:url';
 import { inflateRawSync } from 'node:zlib';
 import { chromium } from 'playwright-core';
+import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
+const ND_PORFIRCHIK_GATEWAY_V20_5='porfirchik-v20.5-gateway-20260929';
+const PORFIRCHIK_PORT=Number(process.env.PORFIRCHIK_PORT||3400);
+const PORFIRCHIK_SOURCE_COMMIT='b15bc6d668be021654be3939ac7f15a8ae7a23fc';
+const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_5_memory_durable_loader.py';
+const PORFIRCHIK_SOURCE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+PORFIRCHIK_SOURCE_COMMIT+'/'+PORFIRCHIK_SOURCE_PATH;
+const PORFIRCHIK_VK_TOKEN=String(process.env.VK_GROUP_TOKEN||'').trim();
+const PORFIRCHIK_ADMIN_ROUTE=String(process.env.PORFIRCHIK_MEMOS_ADMIN_ROUTE||'').trim().replace(/^\/+|\/+$/g,'');
+const PORFIRCHIK_ADMIN_PATH=PORFIRCHIK_ADMIN_ROUTE?'/memos/admin/'+PORFIRCHIK_ADMIN_ROUTE:'';
+const PORFIRCHIK_CALLBACK_PATH=PORFIRCHIK_VK_TOKEN?'/vk/callback/'+createHash('sha256').update('nd-vk-path:'+PORFIRCHIK_VK_TOKEN).digest('hex').slice(0,32):'';
+const PORFIRCHIK_PUBLIC_BASE_URL=String(
+  process.env.PORFIRCHIK_PUBLIC_BASE_URL||
+  (process.env.RAILWAY_PUBLIC_DOMAIN?('https://'+process.env.RAILWAY_PUBLIC_DOMAIN):'')
+).replace(/\/+$/,'');
+let porfirchikChild=null;
+let porfirchikRestarts=0;
+let porfirchikLastExit=null;
+let porfirchikLastError='';
+let porfirchikStartedAt=null;
+
+function porfirchikBootstrapCode(){
+  return [
+    "import urllib.request",
+    "u="+JSON.stringify(PORFIRCHIK_SOURCE_URL),
+    "s=urllib.request.urlopen(u,timeout=30).read()",
+    "exec(compile(s,'nd_vk_v20_5_memory_durable_loader.py','exec'))"
+  ].join(';');
+}
+function startPorfirchik(){
+  if(porfirchikChild && porfirchikChild.exitCode===null)return;
+  const env={...process.env};
+  env.PORT=String(PORFIRCHIK_PORT);
+  env.VK_PUBLIC_BASE_URL=PORFIRCHIK_PUBLIC_BASE_URL;
+  env.PORFIRCHIK_MEMOS_LOCAL_DB=String(process.env.PORFIRCHIK_MEMOS_LOCAL_DB||'/memos-data/porfirchik-memos.sqlite3');
+  delete env.ND_VK_ASSEMBLE_ONLY;
+  porfirchikStartedAt=new Date().toISOString();
+  porfirchikLastError='';
+  const child=spawn('python3',['-u','-c',porfirchikBootstrapCode()],{env,stdio:['ignore','inherit','inherit']});
+  porfirchikChild=child;
+  child.on('spawn',()=>{
+    console.log('ND_PORFIRCHIK_CHILD_SPAWNED',JSON.stringify({port:PORFIRCHIK_PORT,rev:ND_PORFIRCHIK_GATEWAY_V20_5,source_commit:PORFIRCHIK_SOURCE_COMMIT}));
+  });
+  child.on('error',err=>{
+    porfirchikLastError=String(err?.message||err).slice(0,800);
+    console.error('ND_PORFIRCHIK_CHILD_ERROR',porfirchikLastError);
+  });
+  child.on('exit',(code,signal)=>{
+    porfirchikLastExit={code,signal,at:new Date().toISOString()};
+    porfirchikChild=null;
+    console.error('ND_PORFIRCHIK_CHILD_EXIT',JSON.stringify(porfirchikLastExit));
+    porfirchikRestarts+=1;
+    const delay=Math.min(30000,2000*Math.max(1,porfirchikRestarts));
+    setTimeout(startPorfirchik,delay).unref();
+  });
+}
+function proxyPorfirchik(req,res,targetPath){
+  const headers={...req.headers,host:'127.0.0.1:'+PORFIRCHIK_PORT};
+  delete headers['content-length'];
+  delete headers['connection'];
+  const upstream=http.request({
+    hostname:'127.0.0.1',
+    port:PORFIRCHIK_PORT,
+    method:req.method,
+    path:targetPath||req.url,
+    headers
+  },upstreamRes=>{
+    const outHeaders={...upstreamRes.headers};
+    delete outHeaders.connection;
+    res.writeHead(upstreamRes.statusCode||502,outHeaders);
+    upstreamRes.pipe(res);
+  });
+  upstream.on('error',err=>{
+    if(!res.headersSent)res.writeHead(503,{'content-type':'application/json; charset=utf-8'});
+    res.end(JSON.stringify({ok:false,error:'porfirchik_unavailable',detail:String(err?.message||err).slice(0,300)}));
+  });
+  req.pipe(upstream);
+}
+async function porfirchikHealth(){
+  try{
+    const r=await fetch('http://127.0.0.1:'+PORFIRCHIK_PORT+'/health',{signal:AbortSignal.timeout(1200)});
+    const text=await r.text();
+    let body=null; try{body=JSON.parse(text);}catch{}
+    return {reachable:r.ok,http_status:r.status,phase:body?.phase||null,adaptive_router:body?.adaptive_router||null,memory_architecture:body?.memory_architecture||null,memos_local_selftest:body?.memos_local_selftest||null,memos_cloud_probe:body?.memos_cloud_probe||null,outbox_pending:body?.memos_outbox_pending??null};
+  }catch(e){
+    return {reachable:false,error:String(e?.message||e).slice(0,300)};
+  }
+}
 const ND_YOUTUBE_MUX_CODE_REV='youtube-mux-rwq-v3-20260916';
 const ND_YANDEX_MUX_CODE_REV='yandex-delete-v3-20260919';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
@@ -1213,7 +1301,9 @@ const muxServer=http.createServer(async(req,res)=>{
     const path=requestUrl.pathname;
 
     if(path==='/healthz'){
+      const porfirchik=await porfirchikHealth();
       const body={
+        porfirchik:{...porfirchik,configured:Boolean(PORFIRCHIK_VK_TOKEN),child_running:Boolean(porfirchikChild&&porfirchikChild.exitCode===null),restarts:porfirchikRestarts,last_exit:porfirchikLastExit,rev:ND_PORFIRCHIK_GATEWAY_V20_5},
         status:'ok',
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
@@ -1227,6 +1317,17 @@ const muxServer=http.createServer(async(req,res)=>{
       res.end(raw);return;
     }
 
+
+    if(path==='/porfirchik/health'){
+      if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
+      return proxyPorfirchik(req,res,'/health');
+    }
+    if(PORFIRCHIK_CALLBACK_PATH && path===PORFIRCHIK_CALLBACK_PATH){
+      return proxyPorfirchik(req,res,req.url);
+    }
+    if(PORFIRCHIK_ADMIN_PATH && path===PORFIRCHIK_ADMIN_PATH){
+      return proxyPorfirchik(req,res,req.url);
+    }
 
     if(LIGHTPANDA_VK_QR_TOKEN && path==='/lightpanda/vk-qr/'+LIGHTPANDA_VK_QR_TOKEN){
       if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
@@ -1388,5 +1489,10 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   code_rev:ND_YOUTUBE_MUX_CODE_REV,
   qualification_rev:YT_QUALIFY_REV||null
 }));
-muxServer.listen(PORT,'0.0.0.0');
+muxServer.listen(PORT,'0.0.0.0',()=>{
+  console.log('ND_PROVIDER_GATEWAY_READY',JSON.stringify({port:PORT,porfirchik_rev:ND_PORFIRCHIK_GATEWAY_V20_5,porfirchik_port:PORFIRCHIK_PORT}));
+  startPorfirchik();
+});
 setTimeout(runYoutubeQualification,2000);
+process.on('SIGTERM',()=>{try{if(porfirchikChild)porfirchikChild.kill('SIGTERM');}catch{}});
+process.on('SIGINT',()=>{try{if(porfirchikChild)porfirchikChild.kill('SIGTERM');}catch{}});
