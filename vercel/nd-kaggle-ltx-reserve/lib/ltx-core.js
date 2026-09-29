@@ -312,11 +312,29 @@ export async function status(args={},cfg=configFromEnv()){
   const username=await identity(cfg);
   const resolved=await resolveKernel(cfg,username,ref);
   const state=stateOf(resolved.st?.status);
+  let terminal_diagnostics=null;
+  if(state==="FAILED"||state==="CANCELLED"){
+    try{
+      const out=await rpc(cfg.token,"kernels.KernelsApiService","ListKernelSessionOutput",{
+        userName:username,kernelSlug:resolved.slug,versionLabel:"v"+ref.version,pageSize:100
+      });
+      terminal_diagnostics={
+        output_files:(Array.isArray(out?.files)?out.files:[]).map(x=>({
+          name:x?.fileName||x?.name||x?.path||null,
+          size:x?.fileSize??x?.size??null
+        })).filter(x=>x.name),
+        log_tail:String(out?.log||"").slice(-12000)
+      };
+    }catch(e){
+      terminal_diagnostics={diagnostic_error:String(e?.message||e).slice(0,1200)};
+    }
+  }
   return {
     ok:true,request_id:ref.request_id,state,
     provider_status:resolved.st?.status??null,
     failure_message:resolved.st?.failureMessage||resolved.st?.failure_message||null,
     provider_ref:username+"/"+resolved.slug+"/"+ref.version,
+    terminal_diagnostics,
     nonblocking:true,
     next_check_after_seconds:state==="QUEUED"?30:(state==="RUNNING"?45:null)
   };
