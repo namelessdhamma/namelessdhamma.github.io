@@ -1,5 +1,5 @@
 {
-  "op": "health",
-  "nonce": "verify-secrets-2026-09-29T04:49Z",
-  "note": "Verify GitHub Actions Kaggle reserve credential wiring after user provisioning."
+  "op": "status",
+  "request_id": "k2b-rmul54z2z-chuk-v1",
+  "nonce": "final-cross-route-status-20260929T0522Z"
 }
