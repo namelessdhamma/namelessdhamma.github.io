@@ -27,10 +27,17 @@ let porfirchikStartedAt=null;
 
 function porfirchikBootstrapCode(){
   return [
-    "import urllib.request",
+    "import os, urllib.request",
     "u="+JSON.stringify(PORFIRCHIK_SOURCE_URL),
     "s=urllib.request.urlopen(u,timeout=30).read()",
-    "exec(compile(s,'nd_vk_v20_5_memory_durable_loader.py','exec'))"
+    "os.environ['ND_VK_ASSEMBLE_ONLY']='1'",
+    "ns={'__name__':'__main__'}",
+    "exec(compile(s,'nd_vk_v20_5_memory_durable_loader.py','exec'),ns)",
+    "src=ns.get('src')",
+    "assert isinstance(src,str) and src.count(\"'title':'ND Free Adaptive Router'\")==1",
+    "src=src.replace(\"'title':'ND Free Adaptive Router'\",\"'title':'Porfirchik'\",1)",
+    "os.environ.pop('ND_VK_ASSEMBLE_ONLY',None)",
+    "exec(compile(src,'nd_vk_gateway_v20_5_memory_durable_runtime.py','exec'),{'__name__':'__main__'})"
   ].join(';');
 }
 function startPorfirchik(){
