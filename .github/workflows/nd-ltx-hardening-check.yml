@@ -81,7 +81,7 @@ jobs:
             if(u.includes('/kernels.KernelsApiService/SaveKernel')){
               saveCalls++;
               const slug=String(body.slug).split('/').pop();
-              kernels=[{slug,ref:'testuser/'+slug,author:'testuser',title:String(body.newTitle||''),currentVersionNumber:1}];
+              kernels=[{slug,ref:'testuser/'+slug,author:'Savva Savchenko',title:String(body.newTitle||''),currentVersionNumber:1}];
               return ok({versionNumber:1});
             }
             if(u.includes('/kernels.KernelsApiService/GetKernelSessionStatus')) return ok({status:1});
