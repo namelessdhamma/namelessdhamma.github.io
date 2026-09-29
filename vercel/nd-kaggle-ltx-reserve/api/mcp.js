@@ -1,6 +1,6 @@
 import {health,submit,status,result} from "../lib/ltx-core.js";
 
-const PATH_TOKEN=String(process.env.ND_LTX_MCP_PATH_TOKEN||process.env.ND_TELEGRAM_MCP_PATH_TOKEN||"").trim();
+const PATH_TOKEN=String(process.env.ND_LTX_MCP_PATH_TOKEN||"").trim();
 const TOOLS=[
   {name:"ltx_generate_keyframes",description:"NONBLOCKING FREE_ONLY Kaggle LTX 2B first/last-frame submit. Successful submit ends the call; never wait or poll in a loop.",inputSchema:{type:"object",properties:{start_image_url:{type:"string"},end_image_url:{type:"string"},prompt:{type:"string"},negative_prompt:{type:"string"},duration_seconds:{type:"number",minimum:1,maximum:6,default:2},width:{type:"integer",default:512},height:{type:"integer",default:288},seed:{type:"integer",default:42},idempotency_key:{type:"string"}},required:["start_image_url","end_image_url"],additionalProperties:false}},
   {name:"ltx_keyframe_status",description:"One bounded Kaggle job state read. Never wait or poll in a loop.",inputSchema:{type:"object",properties:{request_id:{type:"string"}},required:["request_id"],additionalProperties:false}},
