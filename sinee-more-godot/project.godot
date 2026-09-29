@@ -7,6 +7,10 @@ config_version=5
 config/name="Синее море"
 run/main_scene="res://main.tscn"
 
+[autoload]
+
+PirateOpeningCampaign="*res://scripts/pirate_opening_campaign.gd"
+
 [display]
 
 window/size/viewport_width=1280
