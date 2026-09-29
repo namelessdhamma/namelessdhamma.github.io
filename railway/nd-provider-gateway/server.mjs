@@ -1303,7 +1303,7 @@ const muxServer=http.createServer(async(req,res)=>{
     if(path==='/healthz'){
       const porfirchik=await porfirchikHealth();
       const body={
-        porfirchik:{...porfirchik,configured:Boolean(PORFIRCHIK_VK_TOKEN),child_running:Boolean(porfirchikChild&&porfirchikChild.exitCode===null),restarts:porfirchikRestarts,last_exit:porfirchikLastExit,rev:ND_PORFIRCHIK_GATEWAY_V20_5},
+        porfirchik:{...porfirchik,configured:Boolean(PORFIRCHIK_VK_TOKEN),child_running:Boolean(porfirchikChild&&porfirchikChild.exitCode===null),restarts:porfirchikRestarts,last_exit:porfirchikLastExit,rev:ND_PORFIRCHIK_GATEWAY_V20_6},
         status:'ok',
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
@@ -1492,7 +1492,7 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   qualification_rev:YT_QUALIFY_REV||null
 }));
 muxServer.listen(PORT,'0.0.0.0',()=>{
-  console.log('ND_PROVIDER_GATEWAY_READY',JSON.stringify({port:PORT,porfirchik_rev:ND_PORFIRCHIK_GATEWAY_V20_5,porfirchik_port:PORFIRCHIK_PORT}));
+  console.log('ND_PROVIDER_GATEWAY_READY',JSON.stringify({port:PORT,porfirchik_rev:ND_PORFIRCHIK_GATEWAY_V20_6,porfirchik_port:PORFIRCHIK_PORT}));
   startPorfirchik();
 });
 setTimeout(runYoutubeQualification,2000);
