@@ -931,7 +931,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
     prepareLtxKernelInput(args.start_image_url,'start'),
     prepareLtxKernelInput(args.end_image_url,'end')
   ]);
-  const preflight=await kaggleLtxPreflight();
+  const {username}=await kaggleLtxIdentity();
   const direct=opts.direct===true;
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
   const prompt=String(args.prompt||'').trim();
@@ -943,7 +943,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
     startInput,endInput,prompt,negativePrompt,durationSeconds,width,height,seed,direct,
     idempotencyKey:args.idempotency_key
   });
-  const existing=await ltx2bExistingRequest(preflight.username,effect.kernel_slug);
+  const existing=await ltx2bExistingRequest(username,effect.kernel_slug);
   if(existing){
     return {
       ok:true,
@@ -951,17 +951,18 @@ async function ltxKaggle2bSubmit(args={},opts={}){
       reused_existing:true,
       request_id:'k2b-'+effect.token+'-v1',
       effect_id:effect.effect_id,
-      provider_ref:preflight.username+'/'+effect.kernel_slug+'/1',
+      provider_ref:username+'/'+effect.kernel_slug+'/1',
       provider_status:existing.provider_status,
       route:direct?'kaggle_ltx2b_direct_f2l':'kaggle_ltx2b_wan2gp_f2l',
       worker_mode:direct?'DIRECT_LTX':'WAN2GP_WRAPPER',
       cost_policy:'FREE_ONLY',
-      gpu_quota:preflight.gpu,
+      gpu_quota:null,
       seed,
       nonblocking:true,
       caller_action:'CONTINUE_OTHER_USEFUL_WORK'
     };
   }
+  const preflight=await kaggleLtxPreflight();
 
   const workerUrl=direct
     ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py'
@@ -1132,6 +1133,18 @@ async function ltxKaggle2bResult(args={}){
   if(!receiptUrl){
     try{receiptUrl=await kaggleKernelOutputUrl(username,kernelSlug,'result.json',ref.version);}catch{}
   }
+  let driveVideo=null;
+  let driveReceipt=null;
+  let driveImportError=null;
+  if(args.persist_to_drive!==false){
+    try{
+      driveVideo=await driveImportKaggleOutput(mp4Url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
+      if(receiptUrl) driveReceipt=await driveImportKaggleOutput(receiptUrl,'nd-ltx2b-'+ref.request_id+'.json','application/json');
+    }catch(e){
+      driveImportError=errorText(e);
+    }
+  }
+  const file=driveVideo?.file||{};
   return {
     ok:true,request_id:ref.request_id,state:'READY',
     route:receipt?.route||'kaggle_ltx2b_wan2gp_f2l',
@@ -1141,8 +1154,11 @@ async function ltxKaggle2bResult(args={}){
     provider_receipt_url:receiptUrl,
     stable_video_url:LTX_RESULT_TOKEN?LTX_PUBLIC_BASE+'/ltx-result/'+encodeURIComponent(LTX_RESULT_TOKEN)+'/'+encodeURIComponent(ref.request_id)+'.mp4':null,
     stable_receipt_url:LTX_RESULT_TOKEN?LTX_PUBLIC_BASE+'/ltx-result/'+encodeURIComponent(LTX_RESULT_TOKEN)+'/'+encodeURIComponent(ref.request_id)+'.json':null,
-    video_ref:mp4Url,
-    persistence_state:'NOT_REQUESTED',
+    video_ref:file.webViewLink||mp4Url,
+    drive_video:driveVideo?.file?{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:driveVideo?.reused===true}:null,
+    drive_receipt:driveReceipt?.file?{id:driveReceipt.file.id||null,name:driveReceipt.file.name||null,url:driveReceipt.file.webViewLink||null,reused:driveReceipt?.reused===true}:null,
+    drive_import_error:driveImportError,
+    persistence_state:args.persist_to_drive===false?'NOT_REQUESTED':(driveVideo?.file?'PERSISTED':'PERSISTENCE_FAILED_OR_UNAVAILABLE'),
     persistence_note:'Generation success is independent from Google Drive persistence.',
     nonblocking:true
   };
@@ -2796,7 +2812,6 @@ const LTX_PRODUCTION_TOOLS=[
         width:{type:'integer',default:512},
         height:{type:'integer',default:288},
         seed:{type:'integer',default:42},
-        randomize_seed:{type:'boolean',default:false},
         idempotency_key:{type:'string',description:'Optional caller key for intentionally distinct/recoverable submissions. Exact requests are deduplicated automatically even when omitted.'}
       },
       required:['start_image_url','end_image_url'],
@@ -2893,7 +2908,7 @@ export function createLtxMcpHandler(){
         let result;
         if(name==='ltx_generate_keyframes') result=await ltxKaggle2bSubmit(args,{direct:true});
         else if(name==='ltx_keyframe_status') result=await ltxKaggle2bStatus(args);
-        else if(name==='ltx_keyframe_result') result=await ltxKaggle2bResult(args);
+        else if(name==='ltx_keyframe_result') result=await ltxKaggle2bResult({...args,persist_to_drive:false});
         else return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Unknown tool'}});
         return json(res,200,{jsonrpc:'2.0',id,result:toolResult(result)});
       }
@@ -2992,7 +3007,7 @@ export async function ltxResultBytes(requestId){
   const id=String(requestId||'').trim();
   if(!id) throw new Error('ltx result request_id required');
   const result=/^k2b-/i.test(id)
-    ? await ltxKaggle2bResult({request_id:id})
+    ? await ltxKaggle2bResult({request_id:id,persist_to_drive:false})
     : await ltxKaggleResult({request_id:id});
   if(result?.state!=='READY') return {state:result?.state||'UNKNOWN',mp4:null,receipt:result?.receipt||null};
   const remote=String(result?.provider_video_url||result?.video_ref||'').trim();
