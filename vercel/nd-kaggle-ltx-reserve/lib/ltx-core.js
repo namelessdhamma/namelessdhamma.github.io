@@ -146,7 +146,7 @@ function effectRef({startInput,endInput,prompt,negativePrompt,duration,width,hei
   return {effect_id:"ltx2b:"+hash,token,kernel_slug:"nd-ltx2b-"+token};
 }
 
-async function existing(cfg,username,kernelSlug){
+async function existing(cfg,username,kernelSlug,fallbackVersion=0){
   const listed=await rpc(cfg.token,"kernels.KernelsApiService","ListKernels",{user:username,search:kernelSlug,pageSize:50});
   const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
   const owner=username.toLowerCase(), target=kernelSlug.toLowerCase();
@@ -158,7 +158,7 @@ async function existing(cfg,username,kernelSlug){
   });
   if(exact.length===0) return null;
   if(exact.length>1) throw err("Kaggle idempotency conflict: multiple exact kernels");
-  const version=Number(exact[0]?.currentVersionNumber??exact[0]?.current_version_number??0);
+  const version=Number(exact[0]?.currentVersionNumber??exact[0]?.current_version_number??fallbackVersion??0);
   if(!version) throw err("Kaggle idempotency conflict: existing kernel has no version");
   const st=await rpc(cfg.token,"kernels.KernelsApiService","GetKernelSessionStatus",{userName:username,kernelSlug,versionLabel:"v"+version});
   return {version,state:stateOf(st?.status),provider_status:st?.status??null};
@@ -224,7 +224,7 @@ export async function submit(args={},cfg=configFromEnv()){
     startInput,endInput,prompt,negativePrompt,duration,width,height,seed,
     idempotencyKey:args.idempotency_key
   });
-  const found=await existing(cfg,username,effect.kernel_slug);
+  const found=await existing(cfg,username,effect.kernel_slug,args.retry_failed===true?Number(args.retry_version||0):0);
   if(found && !(args.retry_failed === true && found.state === "FAILED")){
     return {
       ok:true,state:found.state,reused_existing:true,
