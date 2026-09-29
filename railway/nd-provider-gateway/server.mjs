@@ -1312,8 +1312,10 @@ const muxServer=http.createServer(async(req,res)=>{
         lightpanda:{configured:Boolean(LIGHTPANDA_TOKEN&&LIGHTPANDA_PATH_TOKEN),tools:LP_TOOLS.length,code_rev:ND_LIGHTPANDA_MUX_CODE_REV,cdp_stage:lpCdp.stage,cdp_active:Boolean(lpCdp.browser&&lpCdp.page),cdp_last_error:String(lpCdp.lastError||"").slice(0,300)},
         cloudflare_browser:{configured:Boolean(CLOUDFLARE_ACCOUNT_ID&&CLOUDFLARE_API_TOKEN&&CLOUDFLARE_PATH_TOKEN),tools:CF_TOOLS.length,code_rev:ND_CLOUDFLARE_MUX_CODE_REV,cdp_stage:cfCdp.stage,cdp_active:Boolean(cfCdp.browser&&cfCdp.page),cdp_last_error:String(cfCdp.lastError||"").slice(0,300)}
       };
+      const porfirchikHealthy=Boolean(!PORFIRCHIK_VK_TOKEN || (porfirchik.reachable && porfirchik.phase==='ready'));
+      body.status=porfirchikHealthy?'ok':'degraded';
       const raw=Buffer.from(JSON.stringify(body));
-      res.writeHead(200,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
+      res.writeHead(porfirchikHealthy?200:503,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});
       res.end(raw);return;
     }
 
@@ -1322,7 +1324,7 @@ const muxServer=http.createServer(async(req,res)=>{
       if(req.method!=='GET'){res.writeHead(405,{Allow:'GET','content-length':'0'});res.end();return;}
       return proxyPorfirchik(req,res,'/health');
     }
-    // Let the authoritative V20.5 child validate the exact callback hash.
+    // Let the authoritative V20.6 child validate the exact callback hash.
     // The outer mux only dispatches the callback namespace.
     if(path.startsWith('/vk/callback/')){
       return proxyPorfirchik(req,res,req.url);
