@@ -174,7 +174,7 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
         if probe.returncode != 0:
             raise RuntimeError("LTX2B import probe failed")
 
-        worker_path = Path(__file__).resolve()
+        worker_path = Path(sys.argv[0]).resolve()
         print("ND_LTX2B_STAGE=clean_child_begin", flush=True)
         child = subprocess.run(
             [sys.executable, str(worker_path), sys.argv[1]],
