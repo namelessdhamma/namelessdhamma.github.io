@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
-const ND_PORFIRCHIK_GATEWAY_V20_5='porfirchik-v20.5-gateway-20260929';
+const ND_PORFIRCHIK_GATEWAY_V20_5='porfirchik-v20.5-gateway-free-r1-20260929';
 const PORFIRCHIK_PORT=Number(process.env.PORFIRCHIK_PORT||3400);
 const PORFIRCHIK_SOURCE_COMMIT='e1d77608377c621f9509d9f846d4c5fb8ffe6e12';
 const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_5_gateway_free_loader.py';
