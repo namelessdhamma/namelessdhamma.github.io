@@ -60,7 +60,7 @@ state['provider_pool']={
     'cerebras':bool(os.environ.get('CEREBRAS_API_KEY')),
     'cloudflare':bool(os.environ.get('CLOUDFLARE_ACCOUNT_ID') and os.environ.get('CLOUDFLARE_API_TOKEN')),
 }
-state['provider_policy']='groq-primary; cerebras-reserve; openrouter-opportunistic; dead routes filtered'
+state['provider_policy']='groq-primary; openrouter-opportunistic; unavailable routes filtered'
 """
 if src.count(state_anchor)!=1:
     raise RuntimeError('v20_6_state_anchor_mismatch')
