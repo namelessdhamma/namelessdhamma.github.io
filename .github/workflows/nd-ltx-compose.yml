@@ -1,9 +1,11 @@
 name: ND LTX Compose
-run-name: ND LTX Compose ${{ github.event.issue.number }}
+run-name: ND LTX Compose ${{ github.event.client_payload.request_id || github.event.issue.number }}
 
 on:
   issues:
     types: [opened]
+  repository_dispatch:
+    types: [nd_ltx_compose]
 
 permissions:
   contents: read
@@ -12,13 +14,13 @@ permissions:
 jobs:
   compose:
     if: >-
-      startsWith(github.event.issue.title, '[ND-LTX-COMPOSE]') &&
-      github.event.issue.user.login == github.repository_owner
+      (github.event_name == 'repository_dispatch' && github.event.action == 'nd_ltx_compose') ||
+      (github.event_name == 'issues' && startsWith(github.event.issue.title, '[ND-LTX-COMPOSE]') && github.event.issue.user.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      ND_REQUEST_ID: ${{ github.event.issue.number }}
-      ND_LTX_COMPOSE_MANIFEST: ${{ github.event.issue.body }}
+      ND_REQUEST_ID: ${{ github.event.client_payload.request_id || github.event.issue.number }}
+      ND_LTX_COMPOSE_MANIFEST: ${{ github.event_name == 'repository_dispatch' && toJSON(github.event.client_payload.manifest) || github.event.issue.body }}
 
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +61,7 @@ jobs:
           retention-days: 7
 
       - name: Comment issue result
-        if: always()
+        if: always() && github.event_name == 'issues'
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE: ${{ github.event.issue.number }}
