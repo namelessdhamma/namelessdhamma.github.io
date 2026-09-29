@@ -1,3 +1,4 @@
-ND Drive secondary route redeploy trigger
-Reason: apply stable Drive wrapper + /drive/health + scoped watchPatterns
-Date: 2026-09-21
+ND Railway redeploy trigger
+Reason: activate LTX compose route for Blue Sea production cut
+Date: 2026-09-29
+Commit dependency: 3279a9ac527a96d60d7adfaa629e7491bbf6e590
