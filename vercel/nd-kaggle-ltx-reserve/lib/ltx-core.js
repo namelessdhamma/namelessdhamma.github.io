@@ -225,7 +225,7 @@ export async function submit(args={},cfg=configFromEnv()){
     idempotencyKey:args.idempotency_key
   });
   const found=await existing(cfg,username,effect.kernel_slug);
-  if(found){
+  if(found && !(args.retry_failed === true && found.state === "FAILED")){
     return {
       ok:true,state:found.state,reused_existing:true,
       request_id:"k2b-"+effect.token+"-v"+found.version,
