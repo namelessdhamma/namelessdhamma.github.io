@@ -1,3 +1,9 @@
+const MAINTENANCE_JOB=String(process.env.ND_MAINTENANCE_JOB||'').trim();
+if(MAINTENANCE_JOB!=='blue-sea-share'){
+  console.log('BLUE_SEA_SHARE_SKIP',JSON.stringify({reason:'explicit_maintenance_job_required'}));
+  process.exit(0);
+}
+
 const API='https://cloud-api.yandex.net/v1/disk';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
 if(!TOKEN) throw new Error('YANDEX_DISK_TOKEN missing');
