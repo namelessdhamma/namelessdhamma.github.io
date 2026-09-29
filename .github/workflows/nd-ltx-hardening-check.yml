@@ -3,7 +3,7 @@ name: ND LTX Hardening Check
 on:
   push:
     branches:
-      - kaggle-ltx-hardening-v1
+      - kaggle-ltx-hardening-v2
   workflow_dispatch:
 
 permissions:
@@ -117,6 +117,68 @@ jobs:
           if(saveCalls!==1) throw new Error('duplicate SaveKernel detected: '+saveCalls);
           if(quotaCalls!==1) throw new Error('quota preflight repeated on reuse: '+quotaCalls);
           console.log('ND_LTX_IDEMPOTENCY=PASS',first.request_id);
+          NODE
+      - name: Kaggle ambiguous submit reconciliation simulation
+        working-directory: railway/nd-omniroute
+        run: |
+          node --input-type=module <<'NODE'
+          process.env.KAGGLE_API_TOKEN='test-token';
+          process.env.KAGGLE_USERNAME_SLUG='testuser';
+          const { createLtxMcpHandler }=await import('./wan_mcp.mjs?ambiguous-contract');
+
+          const ok=(obj)=>new Response(JSON.stringify(obj),{status:200,headers:{'content-type':'application/json'}});
+          const fail=(status,obj)=>new Response(JSON.stringify(obj),{status,headers:{'content-type':'application/json'}});
+          const args={start_image_url:'https://example.org/a.jpg',end_image_url:'https://example.org/b.jpg',prompt:'storm',duration_seconds:2,width:512,height:288,seed:42};
+
+          async function call(){
+            const handler=createLtxMcpHandler();
+            const body=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'ltx_generate_keyframes',arguments:args}}));
+            const req={method:'POST',async *[Symbol.asyncIterator](){yield body;}};
+            let out=Buffer.alloc(0);
+            const res={writeHead(){},end(data){if(data) out=Buffer.concat([out,Buffer.isBuffer(data)?data:Buffer.from(data)]);}};
+            await handler(req,res);
+            const envelope=JSON.parse(out.toString('utf8'));
+            if(envelope.result?.isError) throw new Error(envelope.result.content?.[0]?.text||'tool error');
+            return envelope.result.structuredContent;
+          }
+
+          let kernels=[];
+          let saveCalls=0;
+          globalThis.fetch=async (url,opts={})=>{
+            const u=String(url), body=opts.body?JSON.parse(String(opts.body)):{};
+            if(u.includes('/security.OAuthService/IntrospectToken')) return ok({active:true,username:'testuser'});
+            if(u.includes('/kernels.KernelsApiService/ListKernels')){
+              const search=String(body.search||'').toLowerCase();
+              return ok({kernels:kernels.filter(k=>String(k.slug).toLowerCase().includes(search))});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetAcceleratorQuotaStatistics')) return ok({gpuQuota:{timeUsed:'0s',totalTimeAllowed:'108000s'}});
+            if(u.includes('/kernels.KernelsApiService/SaveKernel')){
+              saveCalls++;
+              const slug=String(body.slug).split('/').pop();
+              kernels=[{slug,ref:'testuser/'+slug,author:'testuser',currentVersionNumber:1}];
+              return fail(503,{message:'upstream transport failed after commit'});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetKernelSessionStatus')) return ok({status:1});
+            throw new Error('unexpected mocked fetch '+u);
+          };
+          const reconciled=await call();
+          if(reconciled.state!=='RUNNING'||reconciled.reused_existing!==true) throw new Error('reconciliation failed '+JSON.stringify(reconciled));
+          if(saveCalls!==1) throw new Error('unexpected resubmit '+saveCalls);
+
+          kernels=[];
+          saveCalls=0;
+          globalThis.fetch=async (url,opts={})=>{
+            const u=String(url);
+            if(u.includes('/security.OAuthService/IntrospectToken')) return ok({active:true,username:'testuser'});
+            if(u.includes('/kernels.KernelsApiService/ListKernels')) return ok({kernels:[]});
+            if(u.includes('/kernels.KernelsApiService/GetAcceleratorQuotaStatistics')) return ok({gpuQuota:{timeUsed:'0s',totalTimeAllowed:'108000s'}});
+            if(u.includes('/kernels.KernelsApiService/SaveKernel')){saveCalls++; return fail(503,{message:'unknown provider outcome'});}
+            throw new Error('unexpected mocked fetch '+u);
+          };
+          const ambiguous=await call();
+          if(ambiguous.state!=='SUBMIT_AMBIGUOUS'||ambiguous.caller_action!=='RECHECK_SAME_EFFECT_LATER_DO_NOT_RESUBMIT') throw new Error('ambiguous contract failed '+JSON.stringify(ambiguous));
+          if(saveCalls!==1) throw new Error('ambiguous path retried SaveKernel');
+          console.log('ND_LTX_AMBIGUOUS_SUBMIT=PASS');
           NODE
       - name: Production MCP contract
         run: |
