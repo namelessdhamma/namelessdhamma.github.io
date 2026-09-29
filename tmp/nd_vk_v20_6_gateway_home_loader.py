@@ -46,7 +46,24 @@ state['runtime_platform']='railway-free'
 state['runtime_home_policy']='single-owner'
 state['cohosted_gateway_modules']=['yandex','youtube','telegram','browser']
 state['cohosted_modules_auto_available_to_model']=False
-state['self_knowledge_policy']='runtime-facts-v1'"""
+state['self_knowledge_policy']='runtime-facts-v1'
+# CURRENT Free-runtime provider truth. Cloudflare credentials are absent and are
+# not advertised as active. Groq stays primary; configured Cerebras/OpenRouter
+# routes are bounded reserves.
+MODEL_ROUTE_TABLE={
+    'write':[('groq',STRONG_GROQ_MODEL)],
+    'deep_research':[('groq',STRONG_GROQ_MODEL)],
+}
+state['model_route_table']={k:[p+':'+m for p,m in rows] for k,rows in MODEL_ROUTE_TABLE.items()}
+state['russian_primary_models']=['groq:'+STRONG_GROQ_MODEL]
+state['provider_pool']={
+    'groq':bool(GROQ_API_KEY),
+    'openrouter':bool(OPENROUTER_API_KEY),
+    'cerebras':bool(CEREBRAS_API_KEY),
+    'cloudflare':bool(CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN),
+}
+state['provider_policy']='groq-primary; cerebras/openrouter-reserve; dead routes filtered'
+"""
 if src.count(state_anchor)!=1:
     raise RuntimeError('v20_6_state_anchor_mismatch')
 src=src.replace(state_anchor,state_new,1)
@@ -56,6 +73,28 @@ status_repl="""                if text=='/status':
                     send(peer,'Porfirchik: VK=OK; home=nd-yandex-n8n-gateway; memory=MemOS Cloud + persistent SQLite/outbox; Groq=%s; OpenRouter=%s; mode=%s; last_route=%s; last_provider=%s'%(
                         'OK' if GROQ_API_KEY else 'OFF','OK' if OPENROUTER_API_KEY else 'OFF',mode_by_uid.get(uid,'auto'),state.get('last_route'),state.get('last_provider')));return"""
 src,_status_count=status_pattern.subn(status_repl,src,count=1)
+
+_thread_anchor="threading.Thread(target=startup,daemon=True).start()\n"
+_probe_code="""def _v20_6_reserve_probe():
+    time.sleep(12)
+    state['reserve_probes']={}
+    if CEREBRAS_API_KEY:
+        try:
+            out=_call_candidate('cerebras','zai-glm-4.7',[{'role':'user','content':'Reply exactly OK.'}],128,0.0)
+            state['reserve_probes']['cerebras:zai-glm-4.7']={'ok':bool(out)}
+            print('V20_6_RESERVE_PROBE',json.dumps({'provider':'cerebras','model':'zai-glm-4.7','ok':bool(out)},ensure_ascii=False),flush=True)
+        except Exception as e:
+            state['reserve_probes']['cerebras:zai-glm-4.7']={'ok':False,'error':cleanerr(e)[:220]}
+            print('V20_6_RESERVE_PROBE',json.dumps({'provider':'cerebras','model':'zai-glm-4.7','ok':False,'error':cleanerr(e)[:220]},ensure_ascii=False),flush=True)
+    if OPENROUTER_API_KEY:
+        state['reserve_probes']['openrouter:'+OPENROUTER_MODEL]={'ok':state.get('openrouter_probe')=='ok'}
+
+threading.Thread(target=_v20_6_reserve_probe,daemon=True).start()
+"""
+if _thread_anchor not in src:
+    raise RuntimeError('v20_6_startup_thread_anchor_missing')
+src=src.replace(_thread_anchor,_probe_code+_thread_anchor,1)
+
 src=src.replace("state['adaptive_router']='v20.5-memory-durable'","state['adaptive_router']='v20.6-home-aware'",1)
 src=src.replace("'User-Agent':'porfirchik-v20.5'","'User-Agent':'porfirchik-v20.6'",1)
 src=src.replace('ND_VK_GATEWAY_V20_5_MEMORY_DURABLE_START','ND_VK_GATEWAY_V20_6_HOME_AWARE_START',1)
