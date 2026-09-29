@@ -3,6 +3,11 @@ if(MAINTENANCE_JOB!=='blue-sea-share'){
   console.log('BLUE_SEA_SHARE_SKIP',JSON.stringify({reason:'explicit_maintenance_job_required'}));
   process.exit(0);
 }
+const ACL_CANARY_VERIFIED=String(process.env.ND_BLUE_SEA_ACL_CANARY_VERIFIED||'').trim();
+if(ACL_CANARY_VERIFIED!=='current-yandex-api'){
+  console.error('BLUE_SEA_SHARE_BLOCKED',JSON.stringify({reason:'current_api_acl_canary_required'}));
+  process.exit(2);
+}
 
 const API='https://cloud-api.yandex.net/v1/disk';
 const TOKEN=String(process.env.YANDEX_DISK_TOKEN||'').trim();
