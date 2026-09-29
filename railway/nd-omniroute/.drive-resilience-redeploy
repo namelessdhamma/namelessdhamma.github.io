@@ -1,4 +1,5 @@
 ND Railway redeploy trigger
-Reason: activate nonblocking Kaggle LTX production MCP
+Reason: retry existing-service fresh source build after Railway watch-pattern state changed; deploy nonblocking Kaggle LTX hardening
 Date: 2026-09-29
-Commit dependency: c5d66f184b88acd81ac8a1687c5d0f895911e410
+Commit dependency: 4c39b99a3f237ab33ae35de47631f7ae040d79b1
+Safety: existing nd-external-intelligence only; no new Railway resources
