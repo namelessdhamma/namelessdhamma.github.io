@@ -1,0 +1,75 @@
+name: ND Kaggle LTX GitHub Reserve
+
+on:
+  push:
+    branches:
+      - main
+      - qualify/ltx-multiroute-free
+    paths:
+      - '.nd-control/ltx/request.json'
+      - '.github/workflows/nd-kaggle-ltx-reserve.yml'
+      - 'vercel/nd-telegram-publisher-reserve/lib/ltx-core.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+      ND_LTX_INPUT_TOKEN: ${{ secrets.ND_LTX_INPUT_TOKEN }}
+      ND_LTX_RAILWAY_BASE: https://nd-external-intelligence-production.up.railway.app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Execute one bounded reserve operation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/nd-ltx-gha
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {configFromEnv,health,submit,status,result} from './vercel/nd-telegram-publisher-reserve/lib/ltx-core.js';
+
+          const path='.nd-control/ltx/request.json';
+          let request={op:'health',nonce:'implicit'};
+          if(fs.existsSync(path)) request=JSON.parse(fs.readFileSync(path,'utf8'));
+          const cfg=configFromEnv();
+          const secretAvailability={
+            KAGGLE_API_TOKEN:Boolean(cfg.token),
+            KAGGLE_USERNAME_SLUG:Boolean(cfg.username),
+            ND_LTX_INPUT_TOKEN:Boolean(cfg.inputToken)
+          };
+          let out;
+          try{
+            const op=String(request.op||'health');
+            if(op==='health'){
+              out={ok:true,state:'HEALTH',route:'github_actions',secret_availability:secretAvailability,provider_health:health(cfg),request};
+            }else if(!cfg.token){
+              out={ok:false,state:'BLOCKED_SECRET_MISSING',route:'github_actions',secret_availability:secretAvailability,request};
+            }else if(op==='submit'){
+              out={route_control:'github_actions',...(await submit(request.args||{},cfg))};
+            }else if(op==='status'){
+              out={route_control:'github_actions',...(await status({request_id:request.request_id},cfg))};
+            }else if(op==='result'){
+              out={route_control:'github_actions',...(await result({request_id:request.request_id},cfg))};
+            }else{
+              out={ok:false,state:'INVALID_OPERATION',route:'github_actions',error:'op must be health|submit|status|result',request};
+            }
+          }catch(e){
+            out={ok:false,state:'ERROR',route:'github_actions',error:String(e?.message||e).slice(0,1600),request};
+          }
+          fs.writeFileSync('/tmp/nd-ltx-gha/result.json',JSON.stringify(out,null,2)+'\n');
+          console.log('ND_LTX_GHA_RESULT='+JSON.stringify(out));
+          NODE
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nd-kaggle-ltx-reserve-result
+          path: /tmp/nd-ltx-gha/result.json
+          retention-days: 7
