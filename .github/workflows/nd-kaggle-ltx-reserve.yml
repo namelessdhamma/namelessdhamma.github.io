@@ -105,9 +105,32 @@ jobs:
           console.log('ND_LTX_GHA_RESULT='+JSON.stringify(out));
           NODE
 
+      - name: Materialize ready provider result
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const p='/tmp/nd-ltx-gha/result.json';
+          if(!fs.existsSync(p)) process.exit(0);
+          const out=JSON.parse(fs.readFileSync(p,'utf8'));
+          if(out?.state!=='READY'||!out?.provider_video_url) process.exit(0);
+          const video=await fetch(out.provider_video_url);
+          if(!video.ok) throw new Error('video fetch failed '+video.status);
+          fs.writeFileSync('/tmp/nd-ltx-gha/result.mp4',Buffer.from(await video.arrayBuffer()));
+          if(out?.provider_receipt_url){
+            try{
+              const receipt=await fetch(out.provider_receipt_url);
+              if(receipt.ok) fs.writeFileSync('/tmp/nd-ltx-gha/provider-receipt.json',Buffer.from(await receipt.arrayBuffer()));
+            }catch{}
+          }
+          console.log('ND_LTX_RESULT_MATERIALIZED=PASS');
+          NODE
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: nd-kaggle-ltx-reserve-result
-          path: /tmp/nd-ltx-gha/result.json
+          path: /tmp/nd-ltx-gha/
           retention-days: 7
