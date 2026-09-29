@@ -1,15 +1,15 @@
 {
   "op": "submit",
-  "nonce": "blue-sea-intro-seg03-submit-20260929T0820Z",
+  "nonce": "blue-sea-intro-seg04-submit-20260929T0821Z",
   "args": {
-    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/cadad619-3a8b-4351-88dd-b34216909922.png",
-    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/fab09e1f-ea75-4997-bc3c-a714d82a8c38.png",
-    "prompt": "Continue the same storm and the same three-masted pirate ship with uninterrupted forward camera motion. The camera is now closer to the vessel, moving through heavy rain, fog and violent sea spray while the ship rolls and climbs over black waves. Rigging, sails, foam, mist and rain all move naturally. Lightning must read as short, violent flashes separated by deep storm darkness, with illumination jumping to another part of the clouds and reflecting briefly across the wet hull and wave crests. Preserve realistic scale, coherent ship geometry, cinematic photorealism and continuous motion; no cut.",
-    "negative_prompt": "static image, frozen sea, frozen rain, stationary ship, permanent lightning, continuous glowing bolt, calm ocean, daylight, cartoon, illustration, text, watermark, duplicate ship, malformed sails, warped hull, camera teleport, sudden cut",
+    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/fab09e1f-ea75-4997-bc3c-a714d82a8c38.png",
+    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/0382a580-3c68-4e33-a1f8-eb6c2214d96f.png",
+    "prompt": "Continue the same single-shot approach toward the same pirate ship in the violent night storm. The camera reaches close along the wet black hull while huge waves strike the vessel, ropes and rigging swing, torn sails strain in the wind, rain streaks diagonally, and dense spray and fog pass in front of the lens. Lightning must occur as brief separate flashes in changing parts of the sky, lighting the hull, lanterns, rigging and foam for only a moment before darkness returns. Preserve the same ship identity and photorealistic cinematic storm, continuous camera motion, no cut.",
+    "negative_prompt": "static image, frozen wave, frozen rain, stationary ship, permanent lightning bolt, continuous glow, calm sea, daylight, cartoon, text, logo, watermark, duplicate ship, warped hull, broken rigging, camera teleport, sudden cut",
     "duration_seconds": 4,
     "width": 512,
     "height": 288,
-    "seed": 271830,
-    "idempotency_key": "blue-sea-lightning-production-seg03-v1"
+    "seed": 271831,
+    "idempotency_key": "blue-sea-lightning-production-seg04-v1"
   }
 }
