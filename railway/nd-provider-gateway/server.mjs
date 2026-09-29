@@ -62,7 +62,7 @@ function startPorfirchik(){
 }
 function proxyPorfirchik(req,res,targetPath){
   const headers={...req.headers,host:'127.0.0.1:'+PORFIRCHIK_PORT};
-  delete headers['content-length'];
+  // Preserve Content-Length: the Python callback runtime reads request bodies by this header.
   delete headers['connection'];
   const upstream=http.request({
     hostname:'127.0.0.1',
