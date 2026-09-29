@@ -1,9 +1,8 @@
 {
-  "request_id": "godot-write-probe-003",
-  "tool": "create_scene",
+  "request_id": "pirate-opening-e2e-20260930-0151",
+  "tool": "run_project",
   "arguments": {
-    "scene": "res://ci_write_probe.tscn",
-    "root_name": "CloudWriteProbe",
-    "root_type": "Node"
+    "project_path": "res://",
+    "scene": "res://main.tscn"
   }
 }
