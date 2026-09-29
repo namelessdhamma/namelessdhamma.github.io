@@ -26,6 +26,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate multiroute reserve core
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check vercel/nd-telegram-publisher-reserve/lib/ltx-core.js
+          node --check vercel/nd-telegram-publisher-reserve/api/ltx-mcp.js
+          node --check vercel/nd-telegram-publisher-reserve/api/ltx-health.js
+          node --input-type=module <<'NODE'
+          import {submit} from './vercel/nd-telegram-publisher-reserve/lib/ltx-core.js';
+          const ok=o=>new Response(JSON.stringify(o),{status:200,headers:{'content-type':'application/json'}});
+          let kernels=[],saveCalls=0,quotaCalls=0;
+          globalThis.fetch=async (url,opts={})=>{
+            const u=String(url), body=opts.body?JSON.parse(String(opts.body)):{};
+            if(u.includes('/security.OAuthService/IntrospectToken')) return ok({active:true,username:'testuser'});
+            if(u.includes('/kernels.KernelsApiService/ListKernels')){
+              const search=String(body.search||'').toLowerCase();
+              return ok({kernels:kernels.filter(k=>String(k.slug).toLowerCase().includes(search))});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetAcceleratorQuotaStatistics')){
+              quotaCalls++; return ok({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:'108000s'}});
+            }
+            if(u.includes('/kernels.KernelsApiService/SaveKernel')){
+              saveCalls++;
+              const slug=String(body.slug).split('/').pop();
+              kernels=[{slug,ref:'testuser/'+slug,author:'testuser',currentVersionNumber:1}];
+              return ok({versionNumber:1});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetKernelSessionStatus')) return ok({status:1});
+            throw new Error('unexpected mocked fetch '+u);
+          };
+          const cfg={token:'test-token',username:'testuser',inputToken:'',railwayBase:'https://example.invalid'};
+          const args={start_image_url:'https://example.org/start.jpg',end_image_url:'https://example.org/end.jpg',prompt:'storm',duration_seconds:2,width:512,height:288,seed:42};
+          const a=await submit(args,cfg), b=await submit(args,cfg);
+          if(a.state!=='SUBMITTED'||b.state!=='RUNNING'||b.reused_existing!==true) throw new Error('idempotency contract failed');
+          if(a.request_id!==b.request_id||a.effect_id!==b.effect_id||saveCalls!==1||quotaCalls!==1) throw new Error('duplicate submit detected');
+          console.log('ND_LTX_MULTIROUTE_CORE=PASS');
+          NODE
+
       - name: Execute one bounded reserve operation
         shell: bash
         run: |
