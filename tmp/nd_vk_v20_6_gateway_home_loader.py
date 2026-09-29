@@ -60,7 +60,7 @@ state['provider_pool']={
     'cerebras':bool(os.environ.get('CEREBRAS_API_KEY')),
     'cloudflare':bool(os.environ.get('CLOUDFLARE_ACCOUNT_ID') and os.environ.get('CLOUDFLARE_API_TOKEN')),
 }
-state['provider_policy']='groq-primary; cerebras/openrouter-reserve; dead routes filtered'
+state['provider_policy']='groq-primary; cerebras-reserve; openrouter-opportunistic; dead routes filtered'
 """
 if src.count(state_anchor)!=1:
     raise RuntimeError('v20_6_state_anchor_mismatch')
@@ -78,11 +78,11 @@ _probe_code="""def _v20_6_reserve_probe():
     state['reserve_probes']={}
     if CEREBRAS_API_KEY:
         try:
-            out=_call_candidate('cerebras','zai-glm-4.7',[{'role':'user','content':'Reply exactly OK.'}],128,0.0)
-            state['reserve_probes']['cerebras:zai-glm-4.7']={'ok':bool(out)}
+            out=_call_candidate('cerebras','gpt-oss-120b',[{'role':'user','content':'Reply exactly OK.'}],128,0.0)
+            state['reserve_probes']['cerebras:gpt-oss-120b']={'ok':bool(out)}
             print('V20_6_RESERVE_PROBE',json.dumps({'provider':'cerebras','model':'zai-glm-4.7','ok':bool(out)},ensure_ascii=False),flush=True)
         except Exception as e:
-            state['reserve_probes']['cerebras:zai-glm-4.7']={'ok':False,'error':cleanerr(e)[:220]}
+            state['reserve_probes']['cerebras:gpt-oss-120b']={'ok':False,'error':cleanerr(e)[:220]}
             print('V20_6_RESERVE_PROBE',json.dumps({'provider':'cerebras','model':'zai-glm-4.7','ok':False,'error':cleanerr(e)[:220]},ensure_ascii=False),flush=True)
     if OPENROUTER_API_KEY:
         state['reserve_probes']['openrouter:'+OPENROUTER_MODEL]={'ok':state.get('openrouter_probe')=='ok'}
@@ -92,6 +92,11 @@ threading.Thread(target=_v20_6_reserve_probe,daemon=True).start()
 if _thread_anchor not in src:
     raise RuntimeError('v20_6_startup_thread_anchor_missing')
 src=src.replace(_thread_anchor,_probe_code+_thread_anchor,1)
+
+
+_archived_cerebras="    ('cerebras','gpt-oss-120b'),\n"
+if _archived_cerebras in src:
+    src=src.replace(_archived_cerebras,'',1)
 
 src=src.replace("state['adaptive_router']='v20.5-memory-durable'","state['adaptive_router']='v20.6-home-aware'",1)
 src=src.replace("'User-Agent':'porfirchik-v20.5'","'User-Agent':'porfirchik-v20.6'",1)
