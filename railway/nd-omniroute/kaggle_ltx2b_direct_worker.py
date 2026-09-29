@@ -174,7 +174,7 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
         if probe.returncode != 0:
             raise RuntimeError("LTX2B import probe failed")
 
-        worker_path = WORK / "kaggle_ltx2b_wan2gp_worker.py"
+        worker_path = Path(__file__).resolve()
         print("ND_LTX2B_STAGE=clean_child_begin", flush=True)
         child = subprocess.run(
             [sys.executable, str(worker_path), sys.argv[1]],
