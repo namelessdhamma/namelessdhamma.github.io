@@ -1048,6 +1048,42 @@ async function ltxKaggle2bSubmit(args={},opts={}){
         error:msg.slice(0,1200)
       };
     }
+    const status=Number(e?.status||0);
+    const ambiguous=!status || status===408 || status===409 || status>=500;
+    if(ambiguous){
+      try{
+        const reconciled=await ltx2bExistingRequest(username,effect.kernel_slug);
+        if(reconciled){
+          return {
+            ok:true,
+            state:reconciled.state,
+            reused_existing:true,
+            request_id:'k2b-'+effect.token+'-v'+reconciled.version,
+            effect_id:effect.effect_id,
+            provider_ref:username+'/'+effect.kernel_slug+'/'+reconciled.version,
+            provider_status:reconciled.provider_status,
+            route:direct?'kaggle_ltx2b_direct_f2l':'kaggle_ltx2b_wan2gp_f2l',
+            worker_mode:direct?'DIRECT_LTX':'WAN2GP_WRAPPER',
+            cost_policy:'FREE_ONLY',
+            gpu_quota:preflight.gpu,
+            seed,
+            nonblocking:true,
+            caller_action:'CONTINUE_OTHER_USEFUL_WORK'
+          };
+        }
+      }catch{}
+      return {
+        ok:false,
+        state:'SUBMIT_AMBIGUOUS',
+        effect_id:effect.effect_id,
+        route:direct?'kaggle_ltx2b_direct_f2l':'kaggle_ltx2b_wan2gp_f2l',
+        cost_policy:'FREE_ONLY',
+        retry_after_seconds:30,
+        nonblocking:true,
+        caller_action:'RECHECK_SAME_EFFECT_LATER_DO_NOT_RESUBMIT',
+        error:msg.slice(0,1200)
+      };
+    }
     throw e;
   }
   const invalid=save?.invalidKernelSources||save?.invalid_kernel_sources||[];
