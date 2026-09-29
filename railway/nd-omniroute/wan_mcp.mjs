@@ -1,5 +1,6 @@
 import { Client, handle_file } from '@gradio/client';
 import AdmZip from 'adm-zip';
+import crypto from 'node:crypto';
 
 const DEFAULT_SPACE = process.env.ND_WAN_DEFAULT_SPACE || 'Saravutw/WAN2.2_I2V_LIGHTNING_4-8step_custom';
 const HF_TOKEN = String(process.env.HF_TOKEN || '').trim();
@@ -610,6 +611,52 @@ function newKaggleLtx2bKernelRef(){
   return {token,kernel_slug:'nd-ltx2b-'+token};
 }
 
+function ltx2bInputFingerprint(input){
+  if(input?.base64){
+    return crypto.createHash('sha256').update(Buffer.from(input.base64,'base64')).digest('hex');
+  }
+  return crypto.createHash('sha256').update(String(input?.url||'')).digest('hex');
+}
+
+function ltx2bEffectRef({startInput,endInput,prompt,negativePrompt,durationSeconds,width,height,seed,direct,idempotencyKey}){
+  const canonical=JSON.stringify({
+    version:1,
+    start_sha256:ltx2bInputFingerprint(startInput),
+    end_sha256:ltx2bInputFingerprint(endInput),
+    prompt:String(prompt||''),
+    negative_prompt:String(negativePrompt||''),
+    duration_seconds:Number(durationSeconds),
+    width:Number(width),
+    height:Number(height),
+    seed:Number(seed),
+    direct:direct===true,
+    idempotency_key:String(idempotencyKey||'')
+  });
+  const hash=crypto.createHash('sha256').update(canonical).digest('hex');
+  const token='r'+hash.slice(0,12)+'-'+hash.slice(12,16);
+  return {
+    effect_id:'ltx2b:'+hash,
+    token,
+    kernel_slug:'nd-ltx2b-'+token
+  };
+}
+
+function isKaggleNotFoundError(e){
+  return /(?:HTTP\s+404|NOT[_ ]FOUND|not found|does not exist|unknown kernel)/i.test(String(e?.message||e));
+}
+
+async function ltx2bExistingRequest(username,kernelSlug){
+  try{
+    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+      userName:username,kernelSlug
+    });
+    return {state:kaggleState(st?.status),provider_status:st?.status??null};
+  }catch(e){
+    if(isKaggleNotFoundError(e)) return null;
+    throw e;
+  }
+}
+
 function newKaggleLtxKernelRef(){
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
   return {token,kernel_slug:'nd-ltx-'+token};
@@ -887,6 +934,35 @@ async function ltxKaggle2bSubmit(args={},opts={}){
   const preflight=await kaggleLtxPreflight();
   const direct=opts.direct===true;
   const seed=args.randomize_seed===true?Math.floor(Math.random()*2147483647):Number(args.seed??42);
+  const prompt=String(args.prompt||'').trim();
+  const negativePrompt=String(args.negative_prompt||'').trim()||undefined;
+  const durationSeconds=Number(args.duration_seconds??2);
+  const width=Number(args.width??512);
+  const height=Number(args.height??288);
+  const effect=ltx2bEffectRef({
+    startInput,endInput,prompt,negativePrompt,durationSeconds,width,height,seed,direct,
+    idempotencyKey:args.idempotency_key
+  });
+  const existing=await ltx2bExistingRequest(preflight.username,effect.kernel_slug);
+  if(existing){
+    return {
+      ok:true,
+      state:existing.state,
+      reused_existing:true,
+      request_id:'k2b-'+effect.token+'-v1',
+      effect_id:effect.effect_id,
+      provider_ref:preflight.username+'/'+effect.kernel_slug+'/1',
+      provider_status:existing.provider_status,
+      route:direct?'kaggle_ltx2b_direct_f2l':'kaggle_ltx2b_wan2gp_f2l',
+      worker_mode:direct?'DIRECT_LTX':'WAN2GP_WRAPPER',
+      cost_policy:'FREE_ONLY',
+      gpu_quota:preflight.gpu,
+      seed,
+      nonblocking:true,
+      caller_action:'CONTINUE_OTHER_USEFUL_WORK'
+    };
+  }
+
   const workerUrl=direct
     ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py'
     : 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py';
@@ -896,11 +972,11 @@ async function ltxKaggle2bSubmit(args={},opts={}){
       end_image_url:useInline?undefined:(endInput.url||undefined),
       start_image_base64:useInline?(startInput.base64||undefined):undefined,
       end_image_base64:useInline?(endInput.base64||undefined):undefined,
-      prompt:String(args.prompt||'').trim(),
-      negative_prompt:String(args.negative_prompt||'').trim()||undefined,
-      duration_seconds:Number(args.duration_seconds??2),
-      width:Number(args.width??512),
-      height:Number(args.height??288),
+      prompt,
+      negative_prompt:negativePrompt,
+      duration_seconds:durationSeconds,
+      width,
+      height,
       seed
     };
     const reqB64=Buffer.from(JSON.stringify(request),'utf8').toString('base64');
@@ -924,30 +1000,48 @@ async function ltxKaggle2bSubmit(args={},opts={}){
     script=buildKernelScript(false);
   }
   if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle LTX2B kernel source preflight exceeds 900 KB');
-  const jobRef=newKaggleLtx2bKernelRef();
   const cacheSources=[
     preflight.username+'/nd-ltx-2b-distilled-cache',
     preflight.username+'/nd-ltx2b-load-probe-fixed'
   ];
-  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
-    slug:preflight.username+'/'+jobRef.kernel_slug,
-    newTitle:'ND LTX2B '+jobRef.token,
-    text:script,
-    language:'python',
-    kernelType:'script',
-    datasetDataSources:[],
-    kernelDataSources:cacheSources,
-    competitionDataSources:[],
-    categoryIds:[],
-    modelDataSources:[],
-    isPrivate:true,
-    enableGpu:true,
-    enableTpu:false,
-    enableInternet:true,
-    kernelExecutionType:'SaveAndRunAll',
-    machineShape:'NvidiaTeslaT4',
-    sessionTimeoutSeconds:3600
-  });
+  let save;
+  try{
+    save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+      slug:preflight.username+'/'+effect.kernel_slug,
+      newTitle:'ND LTX2B '+effect.token,
+      text:script,
+      language:'python',
+      kernelType:'script',
+      datasetDataSources:[],
+      kernelDataSources:cacheSources,
+      competitionDataSources:[],
+      categoryIds:[],
+      modelDataSources:[],
+      isPrivate:true,
+      enableGpu:true,
+      enableTpu:false,
+      enableInternet:true,
+      kernelExecutionType:'SaveAndRunAll',
+      machineShape:'NvidiaTeslaT4',
+      sessionTimeoutSeconds:3600
+    });
+  }catch(e){
+    const msg=String(e?.message||e);
+    if(/429|RESOURCE_EXHAUSTED|maximum.*GPU|batch GPU session|capacity|quota/i.test(msg)){
+      return {
+        ok:false,
+        state:'CAPACITY_BLOCKED',
+        effect_id:effect.effect_id,
+        route:direct?'kaggle_ltx2b_direct_f2l':'kaggle_ltx2b_wan2gp_f2l',
+        cost_policy:'FREE_ONLY',
+        retry_after_seconds:60,
+        nonblocking:true,
+        caller_action:'CONTINUE_OTHER_USEFUL_WORK_AND_RETRY_LATER',
+        error:msg.slice(0,1200)
+      };
+    }
+    throw e;
+  }
   const invalid=save?.invalidKernelSources||save?.invalid_kernel_sources||[];
   if(save?.error||invalid.length) throw new Error('Kaggle LTX2B submit failed '+JSON.stringify({error:save?.error||null,invalid_kernel_sources:invalid}));
   const version=Number(save?.versionNumber||save?.version_number||0);
@@ -955,8 +1049,10 @@ async function ltxKaggle2bSubmit(args={},opts={}){
   return {
     ok:true,
     state:'SUBMITTED',
-    request_id:'k2b-'+jobRef.token+'-v'+version,
-    provider_ref:preflight.username+'/'+jobRef.kernel_slug+'/'+version,
+    reused_existing:false,
+    request_id:'k2b-'+effect.token+'-v'+version,
+    effect_id:effect.effect_id,
+    provider_ref:preflight.username+'/'+effect.kernel_slug+'/'+version,
     route:direct?'kaggle_ltx2b_direct_f2l':'kaggle_ltx2b_wan2gp_f2l',
     worker_mode:direct?'DIRECT_LTX':'WAN2GP_WRAPPER',
     cache_source:cacheSources[0],
@@ -966,7 +1062,9 @@ async function ltxKaggle2bSubmit(args={},opts={}){
     machine_shape_requested:'NvidiaTeslaT4',
     cost_policy:'FREE_ONLY',
     gpu_quota:preflight.gpu,
-    seed
+    seed,
+    nonblocking:true,
+    caller_action:'CONTINUE_OTHER_USEFUL_WORK'
   };
 }
 
@@ -978,14 +1076,14 @@ async function ltxKaggle2bStatus(args={}){
   const st=resolved.st;
   const state=kaggleState(st?.status);
   let diagnostics=null;
-  if(['QUEUED','RUNNING','FAILED','CANCELLED','COMPLETED'].includes(state)){
+  if(['FAILED','CANCELLED'].includes(state)){
     try{
       const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
         userName:username,kernelSlug:kernelSlug,pageSize:100
       });
       diagnostics={
         files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
-        log_tail:String(out?.log||'').slice(-16000)
+        log_tail:String(out?.log||'').slice(-12000)
       };
     }catch(e){diagnostics={error:errorText(e)};}
   }
@@ -994,7 +1092,9 @@ async function ltxKaggle2bStatus(args={}){
     provider_status:st?.status??null,
     failure_message:st?.failureMessage||st?.failure_message||null,
     provider_ref:username+'/'+kernelSlug+'/'+ref.version,
-    diagnostics
+    diagnostics,
+    nonblocking:true,
+    next_check_after_seconds:state==='QUEUED'?30:(state==='RUNNING'?45:null)
   };
 }
 
@@ -1032,16 +1132,6 @@ async function ltxKaggle2bResult(args={}){
   if(!receiptUrl){
     try{receiptUrl=await kaggleKernelOutputUrl(username,kernelSlug,'result.json',ref.version);}catch{}
   }
-  let driveVideo=null;
-  let driveReceipt=null;
-  let driveImportError=null;
-  try{
-    driveVideo=await driveImportKaggleOutput(mp4Url,'nd-ltx2b-'+ref.request_id+'.mp4','video/mp4');
-    if(receiptUrl) driveReceipt=await driveImportKaggleOutput(receiptUrl,'nd-ltx2b-'+ref.request_id+'.json','application/json');
-  }catch(e){
-    driveImportError=errorText(e);
-  }
-  const file=driveVideo?.file||{};
   return {
     ok:true,request_id:ref.request_id,state:'READY',
     route:receipt?.route||'kaggle_ltx2b_wan2gp_f2l',
@@ -1051,10 +1141,10 @@ async function ltxKaggle2bResult(args={}){
     provider_receipt_url:receiptUrl,
     stable_video_url:LTX_RESULT_TOKEN?LTX_PUBLIC_BASE+'/ltx-result/'+encodeURIComponent(LTX_RESULT_TOKEN)+'/'+encodeURIComponent(ref.request_id)+'.mp4':null,
     stable_receipt_url:LTX_RESULT_TOKEN?LTX_PUBLIC_BASE+'/ltx-result/'+encodeURIComponent(LTX_RESULT_TOKEN)+'/'+encodeURIComponent(ref.request_id)+'.json':null,
-    video_ref:file.webViewLink||mp4Url,
-    drive_video:driveVideo?.file?{id:file.id||null,name:file.name||null,size:Number(file.size||0),mime_type:file.mimeType||null,url:file.webViewLink||null,reused:driveVideo?.reused===true}:null,
-    drive_receipt:driveReceipt?.file?{id:driveReceipt.file.id||null,name:driveReceipt.file.name||null,url:driveReceipt.file.webViewLink||null,reused:driveReceipt?.reused===true}:null,
-    drive_import_error:driveImportError
+    video_ref:mp4Url,
+    persistence_state:'NOT_REQUESTED',
+    persistence_note:'Generation success is independent from Google Drive persistence.',
+    nonblocking:true
   };
 }
 
@@ -2691,6 +2781,40 @@ const TOOLS=[
   }
 ];
 
+const LTX_PRODUCTION_TOOLS=[
+  {
+    name:'ltx_generate_keyframes',
+    description:'NONBLOCKING production submit. Submit one FREE_ONLY first-to-last-keyframe LTX 2B generation to Kaggle and return immediately with request_id/effect_id. A successful submit ends this tool call: never wait for inference and never poll in a loop. Continue other useful independent work and check status later.',
+    inputSchema:{
+      type:'object',
+      properties:{
+        start_image_url:{type:'string',description:'http(s) URL or drive:<Google Drive file id>'},
+        end_image_url:{type:'string',description:'http(s) URL or drive:<Google Drive file id>'},
+        prompt:{type:'string'},
+        negative_prompt:{type:'string'},
+        duration_seconds:{type:'number',default:2,minimum:1,maximum:6},
+        width:{type:'integer',default:512},
+        height:{type:'integer',default:288},
+        seed:{type:'integer',default:42},
+        randomize_seed:{type:'boolean',default:false},
+        idempotency_key:{type:'string',description:'Optional caller key for intentionally distinct/recoverable submissions. Exact requests are deduplicated automatically even when omitted.'}
+      },
+      required:['start_image_url','end_image_url'],
+      additionalProperties:false
+    }
+  },
+  {
+    name:'ltx_keyframe_status',
+    description:'One bounded read of Kaggle job state. Never wait or poll in a loop. If QUEUED/RUNNING, return control immediately and continue other useful work until a later status check is useful.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
+    name:'ltx_keyframe_result',
+    description:'One bounded result read. If ready, return the Kaggle MP4/receipt and stable result proxy; otherwise return current state immediately. Google Drive persistence is a separate operation and cannot turn successful generation into failure.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  }
+];
+
 const STORYBOARD_TOOLS=TOOLS.filter(x=>x.name.startsWith('storyboard_'));
 
 function toolResult(value){
@@ -2729,6 +2853,47 @@ export function createStoryboardMcpHandler(){
         if(name==='storyboard_render_submit') result=await storyboardRenderSubmit(args);
         else if(name==='storyboard_render_status') result=await storyboardRenderStatus(args);
         else if(name==='storyboard_render_result') result=await storyboardRenderResult(args);
+        else return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Unknown tool'}});
+        return json(res,200,{jsonrpc:'2.0',id,result:toolResult(result)});
+      }
+      return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Method not found'}});
+    }catch(e){
+      return json(res,200,{jsonrpc:'2.0',id,result:{content:[{type:'text',text:errorText(e)}],isError:true}});
+    }
+  };
+}
+
+export function createLtxMcpHandler(){
+  return async function handleLtxMcp(req,res){
+    if(req.method==='GET'){
+      res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store','connection':'keep-alive'});
+      res.write(': nd-kaggle-ltx-mcp nonblocking-production\n\n');
+      return res.end();
+    }
+    if(req.method!=='POST') return json(res,405,{ok:false,error:'method_not_allowed'});
+    const chunks=[]; for await(const ch of req) chunks.push(ch);
+    let msg={};
+    try{msg=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}
+    catch{return json(res,400,{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}});}
+    const id=msg.id??null, method=String(msg.method||'');
+    try{
+      if(method==='initialize'){
+        return json(res,200,{jsonrpc:'2.0',id,result:{
+          protocolVersion:String(msg?.params?.protocolVersion||'2025-06-18'),
+          capabilities:{tools:{}},
+          serverInfo:{name:'ND Kaggle LTX MCP',version:'1.1.0'}
+        }});
+      }
+      if(method==='ping') return json(res,200,{jsonrpc:'2.0',id,result:{}});
+      if(method.startsWith('notifications/')){res.writeHead(202,{'cache-control':'no-store'});return res.end();}
+      if(method==='tools/list') return json(res,200,{jsonrpc:'2.0',id,result:{tools:LTX_PRODUCTION_TOOLS}});
+      if(method==='tools/call'){
+        const name=String(msg?.params?.name||'');
+        const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
+        let result;
+        if(name==='ltx_generate_keyframes') result=await ltxKaggle2bSubmit(args,{direct:true});
+        else if(name==='ltx_keyframe_status') result=await ltxKaggle2bStatus(args);
+        else if(name==='ltx_keyframe_result') result=await ltxKaggle2bResult(args);
         else return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Unknown tool'}});
         return json(res,200,{jsonrpc:'2.0',id,result:toolResult(result)});
       }
@@ -2848,7 +3013,7 @@ export async function wanHealth(){
 
 export async function ltxHealth({probe=false,spaceId}={}){
   const selected=String(spaceId||DEFAULT_LTX_SPACE).trim();
-  const base={ok:true,mode:'full',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:LTX_KEYFRAME_PRIMARY_SPACE||'kaggle-2b',keyframe_primary_route:'kaggle_ltx2b_direct_f2l',keyframe_provider:'Kaggle',keyframe_cache_source:'savvasavchenko/nd-ltx-2b-distilled-cache',keyframe_cache_sources:['savvasavchenko/nd-ltx-2b-distilled-cache','savvasavchenko/nd-ltx2b-load-probe-fixed'],keyframe_model:'multimodalart/ltxv-2b-0.9.6-distilled:transformer/diffusion_pytorch_model.bf16.safetensors',keyframe_model_precision:'bf16',keyframe_state:'QUALIFIED_PRIMARY',keyframe_qualification:'E2E_PRODUCTION_PASS_2026-09-28',keyframe_qualification_request_id:'k2b-rmuklqhtp-44qf-v1',keyframe_production_scale_verified:true,keyframe_drive_folder:KAGGLE_LTX_DRIVE_FOLDER,keyframe_internal_reserves:['kaggle_ltx2b_wan2gp_f2l','kaggle_ltx13b_mounted_cache_f2l'],reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
+  const base={ok:true,mode:'production_nonblocking',production_tools:LTX_PRODUCTION_TOOLS.map(x=>x.name),nonblocking_contract:'SUBMIT_RETURNS_IMMEDIATELY / NO_FOREGROUND_POLLING / CONTINUE_OTHER_USEFUL_WORK',primary_space:DEFAULT_LTX_SPACE,i2v_primary_space:LTX_I2V_PRIMARY_SPACE,keyframe_primary_space:LTX_KEYFRAME_PRIMARY_SPACE||'kaggle-2b',keyframe_primary_route:'kaggle_ltx2b_direct_f2l',keyframe_provider:'Kaggle',keyframe_cache_source:'savvasavchenko/nd-ltx-2b-distilled-cache',keyframe_cache_sources:['savvasavchenko/nd-ltx-2b-distilled-cache','savvasavchenko/nd-ltx2b-load-probe-fixed'],keyframe_model:'multimodalart/ltxv-2b-0.9.6-distilled:transformer/diffusion_pytorch_model.bf16.safetensors',keyframe_model_precision:'bf16',keyframe_state:'QUALIFIED_PRIMARY',keyframe_qualification:'E2E_PRODUCTION_PASS_2026-09-28',keyframe_qualification_request_id:'k2b-rmuklqhtp-44qf-v1',keyframe_production_scale_verified:true,keyframe_drive_folder:KAGGLE_LTX_DRIVE_FOLDER,keyframe_internal_reserves:['kaggle_ltx2b_wan2gp_f2l','kaggle_ltx13b_mounted_cache_f2l'],reserve_spaces:DEFAULT_LTX_RESERVES,keyframe_reserve_spaces:LTX_KEYFRAME_RESERVES,selected_space:selected,hf_token_configured:!!HF_TOKEN,quota_independent:{enabled:LTX_HFJOBS_ENABLED,route:'HF Jobs / L4 / LTX 2B distilled FP8',daily_generation_quota:'NONE',estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD},tools:TOOLS.filter(x=>x.name.startsWith('ltx_')).map(x=>x.name)};
   if(!probe) return {...base,upstream:'VERIFY_AT_USE'};
   try{
     const cap=await capabilities(selected);
