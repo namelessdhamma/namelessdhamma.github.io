@@ -1,3 +1,4 @@
-ND Drive secondary route redeploy trigger
-Reason: apply stable Drive wrapper + /drive/health + scoped watchPatterns
-Date: 2026-09-21
+ND Railway redeploy trigger
+Reason: activate nonblocking Kaggle LTX production MCP
+Date: 2026-09-29
+Commit dependency: c5d66f184b88acd81ac8a1687c5d0f895911e410
