@@ -1,5 +1,15 @@
 {
-  "op": "result",
-  "nonce": "blue-sea-lightning-canary-seg01-v3-result-20260929T0813Z",
-  "request_id": "k2b-r453aecf53ef2-8fbd-v3"
+  "op": "submit",
+  "nonce": "blue-sea-intro-seg02-submit-20260929T0817Z",
+  "args": {
+    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/343e16f8-f00f-40a3-80d5-7bee42ccc70e.jpg",
+    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/cadad619-3a8b-4351-88dd-b34216909922.png",
+    "prompt": "Continue the same dark cinematic pirate-sea storm from the previous shot. The camera advances low through violent black waves, heavy diagonal rain, wind-driven spray, fog and moving mist toward the same three-masted wooden ship. The ship pitches and rolls naturally; torn sails and rigging react to the wind. Lightning must behave as brief storm flashes rather than a permanent glowing decoration: the scene falls back into deep darkness between flashes, then a later flash illuminates a different part of the sky and briefly reveals more of the ship and white foam. Preserve photorealistic scale, wet surfaces, coherent ship identity, continuous forward camera movement, and no cut.",
+    "negative_prompt": "static image, frozen sea, frozen rain, stationary ship, continuous glowing lightning, permanently visible bolt, daylight, calm water, cartoon, illustration, text, logo, watermark, duplicated ship, warped masts, camera teleport, sudden cut",
+    "duration_seconds": 4,
+    "width": 512,
+    "height": 288,
+    "seed": 271829,
+    "idempotency_key": "blue-sea-lightning-production-seg02-v1"
+  }
 }
