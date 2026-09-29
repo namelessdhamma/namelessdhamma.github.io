@@ -606,11 +606,6 @@ async function resolveKaggleLtx2bKernel(username,ref){
   throw lastError||new Error('Kaggle LTX2B kernel resolution failed');
 }
 
-function newKaggleLtx2bKernelRef(){
-  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
-  return {token,kernel_slug:'nd-ltx2b-'+token};
-}
-
 function ltx2bInputFingerprint(input){
   if(input?.base64){
     return crypto.createHash('sha256').update(Buffer.from(input.base64,'base64')).digest('hex');
@@ -654,7 +649,9 @@ async function ltx2bExistingRequest(username,kernelSlug){
     const slug=String(k?.slug||'').replace(/^.*\//,'').toLowerCase();
     const ref=String(k?.ref||'').toLowerCase();
     const author=String(k?.author||'').toLowerCase();
-    return (slug===target || ref===owner+'/'+target) && (!author || author===owner);
+    const exactRef=ref===owner+'/'+target;
+    const ownedSlug=slug===target && (!author || author===owner || author==='savva savchenko');
+    return exactRef || ownedSlug;
   });
   if(exact.length===0) return null;
   if(exact.length>1) throw new Error('Kaggle idempotency conflict: multiple exact kernels for '+kernelSlug);
@@ -2810,7 +2807,7 @@ const TOOLS=[
 const LTX_PRODUCTION_TOOLS=[
   {
     name:'ltx_generate_keyframes',
-    description:'NONBLOCKING production submit. Submit one FREE_ONLY first-to-last-keyframe LTX 2B generation to Kaggle and return immediately with request_id/effect_id. A successful submit ends this tool call: never wait for inference and never poll in a loop. Continue other useful independent work and check status later.',
+    description:'NONBLOCKING production submit. Submit one FREE_ONLY first-to-last-keyframe LTX 2B generation to Kaggle and return immediately with request_id/effect_id. A successful submit ends this tool call: never wait for inference and never poll in a loop. Continue other useful independent work and check status later. Exact existing work is reused; FAILED/CANCELLED work is not silently resubmitted—use a new idempotency_key only for an intentional new attempt.',
     inputSchema:{
       type:'object',
       properties:{
