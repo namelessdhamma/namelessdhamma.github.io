@@ -1,6 +1,6 @@
 {
   "op": "submit",
-  "nonce": "blue-sea-lightning-canary-seg01-same-effect-recovery-20260929T0732Z",
+  "nonce": "blue-sea-lightning-canary-seg01-same-effect-recovery-v1-20260929T0734Z",
   "args": {
     "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/841e8661-165f-4b78-adf4-953e1c511a31.jpg",
     "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/343e16f8-f00f-40a3-80d5-7bee42ccc70e.jpg",
@@ -11,6 +11,7 @@
     "height": 288,
     "seed": 271828,
     "idempotency_key": "blue-sea-lightning-field-canary-seg01-v1",
-    "retry_failed": true
+    "retry_failed": true,
+    "retry_version": 1
   }
 }
