@@ -1,0 +1,135 @@
+name: ND LTX Hardening Check
+
+on:
+  push:
+    branches:
+      - kaggle-ltx-hardening-v1
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: JavaScript syntax
+        run: |
+          node --check railway/nd-omniroute/wan_mcp.mjs
+          node --check railway/nd-omniroute/drive_proxy.mjs
+      - name: Worker syntax
+        run: python3 -m py_compile railway/nd-omniroute/kaggle_ltx2b_direct_worker.py
+      - name: Dedicated MCP surface smoke
+        working-directory: railway/nd-omniroute
+        run: |
+          npm install --omit=dev --ignore-scripts --no-audit --no-fund
+          node --input-type=module <<'NODE'
+          import { createLtxMcpHandler, ltxHealth } from './wan_mcp.mjs';
+
+          async function mcp(message){
+            const handler=createLtxMcpHandler();
+            const body=Buffer.from(JSON.stringify(message));
+            const req={
+              method:'POST',
+              async *[Symbol.asyncIterator](){ yield body; }
+            };
+            let out=Buffer.alloc(0);
+            const res={
+              writeHead(){},
+              end(data){ if(data) out=Buffer.concat([out,Buffer.isBuffer(data)?data:Buffer.from(data)]); }
+            };
+            await handler(req,res);
+            return JSON.parse(out.toString('utf8'));
+          }
+
+          const init=await mcp({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});
+          if(init.result?.serverInfo?.name!=='ND Kaggle LTX MCP') throw new Error('wrong serverInfo');
+          const listed=await mcp({jsonrpc:'2.0',id:2,method:'tools/list',params:{}});
+          const names=(listed.result?.tools||[]).map(x=>x.name);
+          const expected=['ltx_generate_keyframes','ltx_keyframe_status','ltx_keyframe_result'];
+          if(JSON.stringify(names)!==JSON.stringify(expected)) throw new Error('unexpected tool surface '+JSON.stringify(names));
+          const health=await ltxHealth();
+          if(health.mode!=='production_nonblocking') throw new Error('nonblocking health contract missing');
+          console.log('ND_LTX_MCP_SURFACE=PASS',names.join(','));
+          NODE
+      - name: Kaggle submit idempotency simulation
+        working-directory: railway/nd-omniroute
+        run: |
+          node --input-type=module <<'NODE'
+          process.env.KAGGLE_API_TOKEN='test-token';
+          process.env.KAGGLE_USERNAME_SLUG='testuser';
+          const { createLtxMcpHandler }=await import('./wan_mcp.mjs?provider-contract');
+
+          let kernels=[];
+          let saveCalls=0;
+          let quotaCalls=0;
+          const ok=(obj)=>new Response(JSON.stringify(obj),{status:200,headers:{'content-type':'application/json'}});
+          globalThis.fetch=async (url,opts={})=>{
+            const u=String(url);
+            const body=opts.body?JSON.parse(String(opts.body)):{};
+            if(u.includes('/security.OAuthService/IntrospectToken')) return ok({active:true,username:'testuser'});
+            if(u.includes('/kernels.KernelsApiService/ListKernels')){
+              const search=String(body.search||'').toLowerCase();
+              return ok({kernels:kernels.filter(k=>!search||String(k.slug).toLowerCase().includes(search))});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetAcceleratorQuotaStatistics')){
+              quotaCalls++;
+              return ok({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:'108000s'},quotaRefreshTime:'2099-01-01T00:00:00Z'});
+            }
+            if(u.includes('/kernels.KernelsApiService/SaveKernel')){
+              saveCalls++;
+              const slug=String(body.slug).split('/').pop();
+              kernels=[{slug,ref:'testuser/'+slug,author:'Savva Savchenko',title:String(body.newTitle||''),currentVersionNumber:1}];
+              return ok({versionNumber:1});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetKernelSessionStatus')) return ok({status:1});
+            throw new Error('unexpected mocked fetch '+u);
+          };
+
+          async function call(args){
+            const handler=createLtxMcpHandler();
+            const body=Buffer.from(JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'ltx_generate_keyframes',arguments:args}}));
+            const req={method:'POST',async *[Symbol.asyncIterator](){yield body;}};
+            let out=Buffer.alloc(0);
+            const res={writeHead(){},end(data){if(data) out=Buffer.concat([out,Buffer.isBuffer(data)?data:Buffer.from(data)]);}};
+            await handler(req,res);
+            const envelope=JSON.parse(out.toString('utf8'));
+            if(envelope.result?.isError) throw new Error(envelope.result.content?.[0]?.text||'tool error');
+            return envelope.result.structuredContent;
+          }
+
+          const args={
+            start_image_url:'https://example.org/start.jpg',
+            end_image_url:'https://example.org/end.jpg',
+            prompt:'continuous storm motion',
+            duration_seconds:2,
+            width:512,
+            height:288,
+            seed:42
+          };
+          const first=await call(args);
+          const second=await call(args);
+          if(first.state!=='SUBMITTED'||first.reused_existing!==false) throw new Error('first submit contract failed');
+          if(second.state!=='RUNNING'||second.reused_existing!==true) throw new Error('reuse contract failed '+JSON.stringify(second));
+          if(first.request_id!==second.request_id||first.effect_id!==second.effect_id) throw new Error('effect identity mismatch');
+          if(saveCalls!==1) throw new Error('duplicate SaveKernel detected: '+saveCalls);
+          if(quotaCalls!==1) throw new Error('quota preflight repeated on reuse: '+quotaCalls);
+          console.log('ND_LTX_IDEMPOTENCY=PASS',first.request_id);
+          NODE
+      - name: Production MCP contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("railway/nd-omniroute/wan_mcp.mjs").read_text()
+          d=Path("railway/nd-omniroute/drive_proxy.mjs").read_text()
+          assert "export function createLtxMcpHandler()" in s
+          assert "const LTX_PRODUCTION_TOOLS=[" in s
+          assert "SUBMIT_RETURNS_IMMEDIATELY / NO_FOREGROUND_POLLING / CONTINUE_OTHER_USEFUL_WORK" in s
+          assert "effect_id:'ltx2b:'" in s
+          assert "persistence_state:args.persist_to_drive===false?'NOT_REQUESTED'" in s
+          assert "const ltxMcpHandler = createLtxMcpHandler();" in d
+          assert "const handled = await ltxMcpHandler(req,res);" in d
+          print("ND_LTX_HARDENING_CONTRACT=PASS")
+          PY

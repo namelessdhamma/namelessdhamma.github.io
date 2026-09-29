@@ -2,7 +2,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, ltxResultBytes, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
+import { createWanMcpHandler, createLtxMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, ltxResultBytes, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
@@ -1338,6 +1338,7 @@ async function kaggleLtxCopyQualifiedOutputToDrive(){
 }
 
 const wanMcpHandler = createWanMcpHandler();
+const ltxMcpHandler = createLtxMcpHandler();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
 const BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
@@ -2968,7 +2969,7 @@ const server = http.createServer(async (req,res) => {
     if (handled !== false) return;
   }
   if (LTX_MCP_TOKEN && req.url === LTX_MCP_PATH) {
-    const handled = await wanMcpHandler(req,res);
+    const handled = await ltxMcpHandler(req,res);
     if (handled !== false) return;
   }
   if (WAN_MCP_TOKEN && req.url === WAN_MCP_PATH) {
