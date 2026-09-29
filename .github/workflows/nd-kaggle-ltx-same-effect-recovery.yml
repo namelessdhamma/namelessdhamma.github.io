@@ -1,0 +1,41 @@
+name: ND Kaggle LTX Same Effect Recovery
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/nd-kaggle-ltx-same-effect-recovery.yml
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+      KERNEL_SLUG: nd-ltx2b-r453aecf53ef2-8fbd
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull exact failed kernel version
+        run: |
+          python -m pip install --quiet kaggle
+          mkdir -p /tmp/nd-ltx-recover
+          kaggle kernels pull "$KAGGLE_USERNAME_SLUG/$KERNEL_SLUG/1" -p /tmp/nd-ltx-recover -m
+      - name: Verify same logical kernel
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('/tmp/nd-ltx-recover/kernel-metadata.json')
+          m=json.loads(p.read_text())
+          expected=os.environ['KAGGLE_USERNAME_SLUG']+'/'+os.environ['KERNEL_SLUG']
+          if m.get('id') != expected:
+              raise SystemExit(f"kernel identity mismatch: {m.get('id')} != {expected}")
+          print('ND_LTX_SAME_EFFECT_IDENTITY=PASS')
+          PY
+      - name: Re-run same Kaggle kernel after worker-path repair
+        run: |
+          kaggle kernels push -p /tmp/nd-ltx-recover --accelerator NvidiaTeslaT4 -t 3600
+          echo "ND_LTX_SAME_EFFECT_RECOVERY=SUBMITTED"
