@@ -641,20 +641,30 @@ function ltx2bEffectRef({startInput,endInput,prompt,negativePrompt,durationSecon
   };
 }
 
-function isKaggleNotFoundError(e){
-  return /(?:HTTP\s+404|NOT[_ ]FOUND|not found|does not exist|unknown kernel)/i.test(String(e?.message||e));
-}
-
 async function ltx2bExistingRequest(username,kernelSlug){
-  try{
-    const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
-      userName:username,kernelSlug
-    });
-    return {state:kaggleState(st?.status),provider_status:st?.status??null};
-  }catch(e){
-    if(isKaggleNotFoundError(e)) return null;
-    throw e;
-  }
+  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{
+    user:username,
+    search:kernelSlug,
+    pageSize:50
+  });
+  const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
+  const owner=username.toLowerCase();
+  const target=kernelSlug.toLowerCase();
+  const exact=kernels.filter(k=>{
+    const slug=String(k?.slug||'').replace(/^.*\//,'').toLowerCase();
+    const ref=String(k?.ref||'').toLowerCase();
+    const author=String(k?.author||'').toLowerCase();
+    return (slug===target || ref===owner+'/'+target) && (!author || author===owner);
+  });
+  if(exact.length===0) return null;
+  if(exact.length>1) throw new Error('Kaggle idempotency conflict: multiple exact kernels for '+kernelSlug);
+  const hit=exact[0];
+  const version=Number(hit?.currentVersionNumber??hit?.current_version_number??0);
+  if(!version) throw new Error('Kaggle idempotency conflict: existing kernel has no current version');
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+    userName:username,kernelSlug,versionLabel:'v'+version
+  });
+  return {version,state:kaggleState(st?.status),provider_status:st?.status??null};
 }
 
 function newKaggleLtxKernelRef(){
@@ -949,9 +959,9 @@ async function ltxKaggle2bSubmit(args={},opts={}){
       ok:true,
       state:existing.state,
       reused_existing:true,
-      request_id:'k2b-'+effect.token+'-v1',
+      request_id:'k2b-'+effect.token+'-v'+existing.version,
       effect_id:effect.effect_id,
-      provider_ref:username+'/'+effect.kernel_slug+'/1',
+      provider_ref:username+'/'+effect.kernel_slug+'/'+existing.version,
       provider_status:existing.provider_status,
       route:direct?'kaggle_ltx2b_direct_f2l':'kaggle_ltx2b_wan2gp_f2l',
       worker_mode:direct?'DIRECT_LTX':'WAN2GP_WRAPPER',
