@@ -1,0 +1,112 @@
+name: ND Kaggle LTX Public Reserve Qualification
+
+on:
+  push:
+    branches:
+      - qualify/kaggle-ltx-public-reserve
+    paths:
+      - '.github/workflows/nd-kaggle-ltx-public-reserve-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      RAILWAY_TOKEN: ${{ secrets.ND_RAILWAY_RECOVERY_TOKEN }}
+      RAILWAY_PROJECT_ID: 25709df2-aff3-4365-a8af-bb03dcf84b99
+      RAILWAY_ENVIRONMENT_ID: d599d4d5-3b7d-4e5b-8599-2b7881b7627f
+      RAILWAY_SERVICE_ID: 19787c64-b49a-49ba-9adf-49e50891e907
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qualify Railway-to-Kaggle secret bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$RAILWAY_TOKEN"
+          npx -y @railway/cli@latest variable list \
+            --service "$RAILWAY_SERVICE_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --json > /tmp/railway-vars.json
+
+          python3 - <<'PY'
+          import json, os, urllib.request, datetime
+
+          raw=json.load(open('/tmp/railway-vars.json'))
+          if isinstance(raw,list):
+              vals={}
+              for x in raw:
+                  if isinstance(x,dict):
+                      k=x.get('name') or x.get('key')
+                      if k: vals[str(k)]=x.get('value')
+          elif isinstance(raw,dict):
+              vals=raw.get('variables') if isinstance(raw.get('variables'),dict) else raw
+          else:
+              vals={}
+
+          token=str(vals.get('KAGGLE_API_TOKEN') or '').strip()
+          username_hint=str(vals.get('KAGGLE_USERNAME_SLUG') or '').strip()
+          assert token, 'KAGGLE_API_TOKEN missing from existing Railway service'
+          print('::add-mask::'+token)
+
+          def rpc(service,method,body):
+              req=urllib.request.Request(
+                  'https://api.kaggle.com/v1/'+service+'/'+method,
+                  data=json.dumps(body).encode(),
+                  method='POST',
+                  headers={
+                      'Authorization':'Bearer '+token,
+                      'Accept':'application/json',
+                      'Content-Type':'application/json',
+                      'User-Agent':'nd-kaggle-ltx-public-reserve-qualification/1.0'
+                  })
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  return json.loads(r.read().decode() or '{}')
+
+          intro=rpc('security.OAuthService','IntrospectToken',{'token':token})
+          assert intro.get('active') and intro.get('username'), 'Kaggle auth failed'
+          quota=rpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{})
+          gpu=quota.get('gpuQuota') or quota.get('gpu_quota') or {}
+
+          def seconds(v):
+              if isinstance(v,(int,float)): return float(v)
+              if isinstance(v,str) and v.endswith('s'):
+                  try: return float(v[:-1])
+                  except: return 0.0
+              if isinstance(v,dict):
+                  return float(v.get('seconds') or v.get('Seconds') or 0)+(float(v.get('nanos') or v.get('Nanos') or 0)/1e9)
+              return 0.0
+
+          used=seconds(gpu.get('timeUsed',gpu.get('time_used')))
+          total=seconds(gpu.get('totalTimeAllowed',gpu.get('total_time_allowed')))
+          receipt={
+              'schema':'nd-kaggle-ltx-public-reserve-qualification-v1',
+              'generated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'state':'PASS',
+              'provider':'Kaggle',
+              'credential_source':'existing Railway service read at runtime through repository secret; values not persisted',
+              'username':str(intro.get('username')),
+              'username_hint_match': (not username_hint) or username_hint==str(intro.get('username')),
+              'gpu':{
+                  'used_hours':round(used/3600,3),
+                  'total_hours':round(total/3600,3),
+                  'remaining_hours':round(max(0,total-used)/3600,3),
+                  'refresh_at':quota.get('quotaRefreshTime') or quota.get('quota_refresh_time')
+              },
+              'mutation_performed':False,
+              'secret_values_persisted':False
+          }
+          os.makedirs('/tmp/nd-kaggle-public-reserve',exist_ok=True)
+          open('/tmp/nd-kaggle-public-reserve/qualification.json','w').write(json.dumps(receipt,indent=2)+'\n')
+          print(json.dumps(receipt))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nd-kaggle-ltx-public-reserve-qualification
+          path: /tmp/nd-kaggle-public-reserve/qualification.json
+          retention-days: 7
