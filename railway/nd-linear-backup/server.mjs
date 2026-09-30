@@ -7,6 +7,8 @@ const OAUTH_CLIENT_ID=String(process.env.ND_LINEAR_OAUTH_CLIENT_ID||'').trim();
 const OAUTH_CLIENT_SECRET=String(process.env.ND_LINEAR_OAUTH_CLIENT_SECRET||'').trim();
 const OAUTH_SCOPE=String(process.env.ND_LINEAR_OAUTH_SCOPE||'read,write').trim();
 const BRIDGE_KEY=String(process.env.ND_LINEAR_BRIDGE_TOKEN||'').trim();
+const PLUGIN_TOKEN=String(process.env.ND_LINEAR_PLUGIN_TOKEN||'').trim();
+const PLUGIN_PATH='/linear/mcp';
 const DEVMODE_TOKEN=String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN||'').trim();
 const DEVMODE_PATH='/mcp/'+DEVMODE_TOKEN;
 const MCP_URL='https://mcp.linear.app/mcp';
@@ -30,6 +32,7 @@ function cleanError(e){
   if(OAUTH_CLIENT_SECRET)s=s.replaceAll(OAUTH_CLIENT_SECRET,'[REDACTED]');
   if(oauthTokenCache?.token)s=s.replaceAll(oauthTokenCache.token,'[REDACTED]');
   if(BRIDGE_KEY)s=s.replaceAll(BRIDGE_KEY,'[REDACTED]');
+  if(PLUGIN_TOKEN)s=s.replaceAll(PLUGIN_TOKEN,'[REDACTED]');
   if(DEVMODE_TOKEN)s=s.replaceAll(DEVMODE_TOKEN,'[REDACTED]');
   return s.slice(0,1200);
 }
@@ -263,10 +266,10 @@ async function readJson(req){
 const server=http.createServer(async(req,res)=>{
   try{
     const path=(req.url||'/').split('?',1)[0];
-    if(req.method==='GET'&&path==='/health'){
+    if(req.method==='GET'&&(path==='/health'||path==='/linear/health')){
       try{return send(res,200,await health());}catch(e){return send(res,503,{ok:false,error:cleanError(e)});}
     }
-    if(req.method==='POST'&&path==='/invoke'){
+    if(req.method==='POST'&&(path==='/invoke'||path==='/linear/invoke')){
       const key=req.headers['x-nd-linear-key']||req.headers['x-nd-bridge-key'];
       if(!safeEqual(key,BRIDGE_KEY))return send(res,401,{ok:false,error:'unauthorized'});
       const body=await readJson(req);
@@ -292,7 +295,13 @@ const server=http.createServer(async(req,res)=>{
       }
       return send(res,400,{ok:false,error:'operation_must_be_tools_list_tool_call_or_graphql'});
     }
-    if(DEVMODE_TOKEN&&path===DEVMODE_PATH){
+    const pluginPath=PLUGIN_TOKEN&&path===PLUGIN_PATH;
+    const devmodePath=DEVMODE_TOKEN&&path===DEVMODE_PATH;
+    if(pluginPath||devmodePath){
+      if(pluginPath){
+        const key=req.headers['x-nd-linear-plugin-key']||req.headers['x-nd-bridge-key'];
+        if(!safeEqual(key,PLUGIN_TOKEN))return send(res,401,{ok:false,error:'unauthorized'});
+      }
       if(req.method==='GET'){
         res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store','connection':'keep-alive'});
         res.write(': nd-linear-backup\n\n');return res.end();
@@ -334,6 +343,6 @@ const server=http.createServer(async(req,res)=>{
   }catch(e){return send(res,500,{ok:false,error:cleanError(e)});}
 });
 server.listen(PORT,'0.0.0.0',()=>{
-  console.log(JSON.stringify({event:'ND_LINEAR_BACKUP_READY',port:PORT,configured:!!API_KEY,bridge_configured:!!BRIDGE_KEY,devmode_mcp_configured:!!DEVMODE_TOKEN}));
+  console.log(JSON.stringify({event:'ND_LINEAR_BACKUP_READY',port:PORT,configured:!!API_KEY,bridge_configured:!!BRIDGE_KEY,plugin_mcp_configured:!!PLUGIN_TOKEN,plugin_mcp_path:PLUGIN_PATH,devmode_mcp_configured:!!DEVMODE_TOKEN}));
   setTimeout(()=>selftest().catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_BACKUP_QUALIFICATION_CRASH',error:cleanError(e)}))),5000);
 });
