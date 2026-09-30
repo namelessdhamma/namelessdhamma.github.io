@@ -1,0 +1,45 @@
+name: ND Godot Proxy Bounded IO
+
+on:
+  pull_request:
+    paths:
+      - railway/godot-direct-mcp/proxy.mjs
+      - .github/workflows/nd-godot-proxy-bounded-io.yml
+  push:
+    branches:
+      - main
+    paths:
+      - railway/godot-direct-mcp/proxy.mjs
+      - .github/workflows/nd-godot-proxy-bounded-io.yml
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: node --check railway/godot-direct-mcp/proxy.mjs
+      - name: Silent upstream returns control
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "require('http').createServer((_q,_s)=>{}).listen(18001,'127.0.0.1')" &
+          UP=$!
+          ND_GODOT_MCP_PATH_TOKEN=test \
+          ND_GODOT_INTERNAL_MCP_PORT=18001 \
+          PORT=18080 \
+          ND_GODOT_PROXY_TIMEOUT_MS=5000 \
+          ND_GODOT_HEALTH_TIMEOUT_MS=1000 \
+          node railway/godot-direct-mcp/proxy.mjs >/tmp/proxy.log 2>&1 &
+          PX=$!
+          trap 'kill "$PX" "$UP" 2>/dev/null || true' EXIT
+          sleep 0.5
+          CODE=$(curl -sS --max-time 9 -o /tmp/body -w '%{http_code}' http://127.0.0.1:18080/mcp/test)
+          test "$CODE" = "504"
+          grep -q "upstream timeout" /tmp/body
+          grep -q "ND_GODOT_PROXY_UPSTREAM_TIMEOUT" /tmp/proxy.log
+          echo "ND_GODOT_PROXY_BOUNDED_IO=PASS"
