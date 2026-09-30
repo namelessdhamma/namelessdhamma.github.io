@@ -1369,6 +1369,8 @@ const LINEAR_GITHUB_PAT = String(process.env.ND_GITHUB_PAT || '').trim();
 const LINEAR_SECRET_REPO = 'namelessdhamma/nameless-dhamma-vault';
 const LINEAR_USER_OAUTH_STORE_PATH = '.nd-secrets/linear-user-oauth.enc.json';
 const LINEAR_BRIDGE_KEY = String(process.env.ND_LINEAR_BRIDGE_TOKEN || '').trim();
+const LINEAR_PLUGIN_TOKEN = String(process.env.ND_LINEAR_PLUGIN_TOKEN || '').trim();
+const LINEAR_PLUGIN_MCP_PATH = '/linear-mcp';
 const LINEAR_DEVMODE_TOKEN = String(process.env.ND_LINEAR_DEVMODE_PATH_TOKEN || '').trim();
 const LINEAR_DEVMODE_MCP_PATH = '/linear-mcp/' + LINEAR_DEVMODE_TOKEN;
 const LINEAR_MCP_URL = 'https://mcp.linear.app/mcp';
@@ -2122,7 +2124,7 @@ function linearOauthConfigured(){
 function linearRedact(value){
   let out=String(value??'');
   for(const secret of [
-    LINEAR_API_KEY,LINEAR_OAUTH_CLIENT_ID,LINEAR_OAUTH_CLIENT_SECRET,LINEAR_GITHUB_PAT,
+    LINEAR_API_KEY,LINEAR_OAUTH_CLIENT_ID,LINEAR_OAUTH_CLIENT_SECRET,LINEAR_GITHUB_PAT,LINEAR_PLUGIN_TOKEN,
     linearOauthTokenCache?.token,linearUserOauthTokenCache?.token,linearUserOauthRefreshCache
   ]){
     if(secret) out=out.replaceAll(String(secret),'[REDACTED]');
@@ -2600,7 +2602,13 @@ async function handleLinearInvoke(req,res) {
 }
 
 async function handleLinearMcp(req,res) {
-  if(!LINEAR_DEVMODE_TOKEN || req.url!==LINEAR_DEVMODE_MCP_PATH) return false;
+  const pluginPath=!!LINEAR_PLUGIN_TOKEN && req.url===LINEAR_PLUGIN_MCP_PATH;
+  const devmodePath=!!LINEAR_DEVMODE_TOKEN && req.url===LINEAR_DEVMODE_MCP_PATH;
+  if(!pluginPath && !devmodePath) return false;
+  if(pluginPath){
+    const key=req.headers['x-nd-linear-plugin-key'] || req.headers['x-nd-bridge-key'];
+    if(!safeEqual(key,LINEAR_PLUGIN_TOKEN)) return json(res,401,{ok:false,error:'unauthorized'});
+  }
   const auth=await linearDirectAuth();
   if(req.method==='GET'){
     res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store','connection':'keep-alive'});
@@ -2980,7 +2988,7 @@ const server = http.createServer(async (req,res) => {
     const handled = await wanMcpHandler(req,res);
     if (handled !== false) return;
   }
-  if (LINEAR_DEVMODE_TOKEN && req.url === LINEAR_DEVMODE_MCP_PATH) {
+  if ((LINEAR_PLUGIN_TOKEN && req.url === LINEAR_PLUGIN_MCP_PATH) || (LINEAR_DEVMODE_TOKEN && req.url === LINEAR_DEVMODE_MCP_PATH)) {
     const handled = await handleLinearMcp(req,res);
     if (handled !== false) return;
   }
@@ -3130,6 +3138,8 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
     client_credentials_configured:linearOauthConfigured(),
     user_oauth_configured:linearUserOauthConfigured(),
     bridge_configured:!!LINEAR_BRIDGE_KEY,
+    plugin_mcp_configured:!!LINEAR_PLUGIN_TOKEN,
+    plugin_mcp_path:LINEAR_PLUGIN_MCP_PATH,
     devmode_mcp_configured:!!LINEAR_DEVMODE_TOKEN
   }));
   setTimeout(()=>linearFullSelftest('api_key').catch(e=>console.error(JSON.stringify({event:'ND_LINEAR_FULL_QUALIFICATION_CRASH',auth:'api_key',error:linearRedact(e?.message||e).slice(0,500)}))),5000);
