@@ -197,6 +197,22 @@ export function createVercelControlHandler(){
     if(u.pathname==='/vercel/health'&&req.method==='GET'){try{return send(res,200,{...(await status()),service:'ND Vercel Control',tools:TOOLS.length,transport:'streamable-http'});}catch(e){return send(res,503,{ok:false,service:'ND Vercel Control',tools:TOOLS.length,error:redact(e)});}}
     if(u.pathname==='/vercel/auth/start'&&req.method==='GET'){try{return send(res,200,await vercelDeviceAuthStart());}catch(e){return send(res,503,{ok:false,error:redact(e)});}}
     if(u.pathname==='/vercel/auth/poll'&&req.method==='GET'){try{return send(res,200,await vercelDeviceAuthPoll(u.searchParams.get('device_code')||''));}catch(e){return send(res,502,{ok:false,error:redact(e)});}}
+    if(u.pathname==='/vercel/maintenance/ltx-rebuild-1295bd3'&&req.method==='POST'){
+      try{
+        const sha='1295bd37325fe27a906ae5c632548d90db26083a';
+        const deployed=await vercelRequest('/v13/deployments',{
+          method:'POST',
+          query:{teamId:EXPECTED_TEAM_ID},
+          body:{
+            name:'nd-kaggle-ltx-reserve',
+            project:'prj_feTEx5M6ws9uphCQVmrRPhYmLKFq',
+            target:'production',
+            gitSource:{type:'github',org:'namelessdhamma',repo:'namelessdhamma.github.io',ref:'main',sha}
+          }
+        });
+        return send(res,200,{ok:true,id:deployed?.id||null,url:deployed?.url||null,readyState:deployed?.readyState||deployed?.status||null,sha});
+      }catch(e){return send(res,502,{ok:false,error:redact(e)});}
+    }
     if(u.pathname==='/vercel/maintenance/deploy-ltx'&&req.method==='POST'){
       if(!VERCEL_MAINT_TOKEN||!safeEqual(req.headers['x-nd-maint-key'],VERCEL_MAINT_TOKEN))return send(res,404,{ok:false,error:'not_found'});
       try{
