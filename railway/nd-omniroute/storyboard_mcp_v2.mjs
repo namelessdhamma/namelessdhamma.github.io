@@ -35,7 +35,15 @@ async function withDeadline(label,ms,fn){
   const started=Date.now();
   const ctx={signal:controller.signal,remainingMs:()=>Math.max(0,ms-(Date.now()-started)),isDeadline:()=>fired||controller.signal.aborted};
   try{return await fn(ctx);}
-  catch(e){if(ctx.isDeadline()||e?.name==='AbortError')throw controlError(label,ms,e);throw e;}
+  catch(e){
+    if(ctx.isDeadline()||e?.name==='AbortError'){
+      const de=controlError(label,ms,e);
+      if(!controller.signal.aborted){try{controller.abort(de);}catch{}}
+      throw de;
+    }
+    if(!controller.signal.aborted){try{controller.abort(e);}catch{}}
+    throw e;
+  }
   finally{clearTimeout(timer);}
 }
 async function readBoundedBytes(response,ctx,maxBytes,label){
