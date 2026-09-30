@@ -37,7 +37,8 @@ function hangingJson(signal,onAbort=()=>{}){
   try{await status({request_id:"k2b-r123456789abc-def0-v1"},cfg);}catch(e){caught=e;}
   const elapsed=Date.now()-started;
   if(caught?.code!=="CONTROL_DEADLINE") throw new Error("Q1 expected CONTROL_DEADLINE, got "+String(caught?.code||caught));
-  if(elapsed>500) throw new Error("Q1 exceeded bounded test budget: "+elapsed+"ms");
+  if(!managedSignal) throw new Error("Q1 did not reach managed provider I/O before the production-minimum deadline");
+  if(elapsed>900) throw new Error("Q1 exceeded bounded test budget: "+elapsed+"ms");
   if(!managedSignal?.aborted) throw new Error("Q1 managed I/O AbortSignal was not aborted");
   // Stream cancel delivery may lag the control deadline by a microtask; the signal is the adapter contract.
   if(!cancelled) await new Promise(resolve=>setTimeout(resolve,0));
