@@ -31,6 +31,47 @@ function b64u(v){return Buffer.from(v).toString('base64').replace(/=/g,'').repla
 function escQ(v){return String(v||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
 function redact(v){let s=String(v?.message||v||'');for(const x of [BRIDGE_KEY,vercelCredentialCache?.access_token,vercelCredentialCache?.refresh_token])if(x)s=s.split(x).join('[REDACTED]');return s.slice(0,1600);}
 
+let githubOidcJwksCache=null;
+function b64uDecode(s){
+  const x=String(s||'').replace(/-/g,'+').replace(/_/g,'/');
+  return Buffer.from(x+'='.repeat((4-x.length%4)%4),'base64');
+}
+async function githubOidcJwks(){
+  if(githubOidcJwksCache&&githubOidcJwksCache.exp>Date.now()+300000)return githubOidcJwksCache.keys;
+  const r=await boundedFetch('https://token.actions.githubusercontent.com/.well-known/jwks',{headers:{accept:'application/json'}},10000);
+  const t=await r.text();if(!r.ok)throw new Error('github_oidc_jwks_http_'+r.status);
+  const o=JSON.parse(t||'{}');if(!Array.isArray(o.keys))throw new Error('github_oidc_jwks_invalid');
+  githubOidcJwksCache={keys:o.keys,exp:Date.now()+3600000};return o.keys;
+}
+async function verifyGithubOidcForLtx(token){
+  const parts=String(token||'').split('.');if(parts.length!==3)throw new Error('github_oidc_token_shape_invalid');
+  const [h,p,s]=parts;
+  const header=JSON.parse(b64uDecode(h).toString('utf8'));
+  const payload=JSON.parse(b64uDecode(p).toString('utf8'));
+  if(header.alg!=='RS256'||!header.kid)throw new Error('github_oidc_header_invalid');
+  const jwk=(await githubOidcJwks()).find(x=>x.kid===header.kid);if(!jwk)throw new Error('github_oidc_kid_unknown');
+  const key=crypto.createPublicKey({key:jwk,format:'jwk'});
+  const ok=crypto.verify('RSA-SHA256',Buffer.from(h+'.'+p),key,b64uDecode(s));if(!ok)throw new Error('github_oidc_signature_invalid');
+  const now=Math.floor(Date.now()/1000);
+  if(payload.iss!=='https://token.actions.githubusercontent.com')throw new Error('github_oidc_iss_invalid');
+  const aud=Array.isArray(payload.aud)?payload.aud:[payload.aud];
+  if(!aud.includes('nd-ltx-rebuild'))throw new Error('github_oidc_aud_invalid');
+  if(Number(payload.exp||0)<now-30||Number(payload.iat||0)>now+60)throw new Error('github_oidc_time_invalid');
+  if(payload.repository!=='namelessdhamma/namelessdhamma.github.io')throw new Error('github_oidc_repository_invalid');
+  if(payload.ref!=='refs/heads/main')throw new Error('github_oidc_ref_invalid');
+  const wf=String(payload.workflow_ref||'');
+  if(!wf.includes('/.github/workflows/nd-ltx-rebuild-after-limit.yml@refs/heads/main'))throw new Error('github_oidc_workflow_invalid');
+  if(!['schedule','workflow_dispatch'].includes(String(payload.event_name||'')))throw new Error('github_oidc_event_invalid');
+  return payload;
+}
+async function ltxProductionCurrent(){
+  try{
+    const r=await boundedFetch('https://nd-kaggle-ltx-reserve.vercel.app/api/health?nd_rebuild_check=1',{headers:{accept:'application/json'}},10000);
+    const t=await r.text();if(!r.ok)return false;const o=JSON.parse(t||'{}');
+    return o.anti_hang_release==='NAM-397-v1'&&String(o.control_contract_version)==='1';
+  }catch{return false;}
+}
+
 function googleServiceCredential(){
   let email=GOOGLE_SERVICE_EMAIL,key='';
   if(!email||!GOOGLE_SERVICE_KEY_B64)throw new Error('google_service_account_env_missing');
@@ -196,6 +237,28 @@ export function createVercelControlHandler(){
     if(u.pathname==='/vercel/health'&&req.method==='GET'){try{return send(res,200,{...(await status()),service:'ND Vercel Control',tools:TOOLS.length,transport:'streamable-http'});}catch(e){return send(res,503,{ok:false,service:'ND Vercel Control',tools:TOOLS.length,error:redact(e)});}}
     if(u.pathname==='/vercel/auth/start'&&req.method==='GET'){try{return send(res,200,await vercelDeviceAuthStart());}catch(e){return send(res,503,{ok:false,error:redact(e)});}}
     if(u.pathname==='/vercel/auth/poll'&&req.method==='GET'){try{return send(res,200,await vercelDeviceAuthPoll(u.searchParams.get('device_code')||''));}catch(e){return send(res,502,{ok:false,error:redact(e)});}}
+    // ND_LTX_REBUILD_OIDC_BEGIN
+    if(u.pathname==='/vercel/maintenance/ltx-rebuild-after-reset'&&req.method==='POST'){
+      try{
+        const auth=String(req.headers.authorization||'');
+        if(!auth.startsWith('Bearer '))return send(res,401,{ok:false,error:'github_oidc_required'});
+        await verifyGithubOidcForLtx(auth.slice(7));
+        if(await ltxProductionCurrent())return send(res,200,{ok:true,state:'ALREADY_CURRENT'});
+        const sha='1295bd37325fe27a906ae5c632548d90db26083a';
+        const deployed=await vercelRequest('/v13/deployments',{
+          method:'POST',
+          query:{teamId:EXPECTED_TEAM_ID},
+          body:{
+            name:'nd-kaggle-ltx-reserve',
+            project:'prj_feTEx5M6ws9uphCQVmrRPhYmLKFq',
+            target:'production',
+            gitSource:{type:'github',repoId:1305281748,ref:'main',sha}
+          }
+        });
+        return send(res,200,{ok:true,state:'DEPLOY_REQUESTED',id:deployed?.id||null,url:deployed?.url||null,readyState:deployed?.readyState||deployed?.status||null,sha});
+      }catch(e){return send(res,502,{ok:false,error:redact(e)});}
+    }
+    // ND_LTX_REBUILD_OIDC_END
     if(u.pathname.startsWith('/vercel/'))return send(res,404,{ok:false,error:'not_found'});
     return false;
   };
