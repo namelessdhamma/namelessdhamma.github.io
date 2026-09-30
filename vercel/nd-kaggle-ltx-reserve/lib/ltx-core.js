@@ -27,7 +27,7 @@ function envMs(value,fallback){
 function opTimeout(cfg,kind){
   const key=kind+"TimeoutMs";
   const n=Number(cfg?.[key]);
-  return Number.isFinite(n)&&n>0?n:(DEFAULT_CONTROL_TIMEOUT_MS[kind]||20000);
+  return Number.isFinite(n)&&n>0?Math.max(250,Math.floor(n)):(DEFAULT_CONTROL_TIMEOUT_MS[kind]||20000);
 }
 
 function deadlineError(label,timeoutMs){
