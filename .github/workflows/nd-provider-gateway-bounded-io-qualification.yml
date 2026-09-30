@@ -1,0 +1,55 @@
+name: ND Provider Gateway Bounded IO Qualification
+
+on:
+  pull_request:
+    paths:
+      - railway/nd-provider-gateway/server.mjs
+      - render/nd-telegram-publisher-reserve/server.mjs
+      - vercel/nd-telegram-publisher-reserve/api/mcp.js
+      - .github/workflows/nd-provider-gateway-bounded-io-qualification.yml
+  push:
+    branches:
+      - main
+    paths:
+      - railway/nd-provider-gateway/server.mjs
+      - render/nd-telegram-publisher-reserve/server.mjs
+      - vercel/nd-telegram-publisher-reserve/api/mcp.js
+      - .github/workflows/nd-provider-gateway-bounded-io-qualification.yml
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node syntax
+        run: |
+          node --check railway/nd-provider-gateway/server.mjs
+          node --check render/nd-telegram-publisher-reserve/server.mjs
+          node --check vercel/nd-telegram-publisher-reserve/api/mcp.js
+      - name: Provider gateway anti-hang assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=railway/nd-provider-gateway/server.mjs
+          grep -q "ND_PROVIDER_HTTP_TIMEOUT_MS" "$FILE"
+          grep -q "ND_PROVIDER_TRANSFER_TIMEOUT_MS" "$FILE"
+          grep -q "external_http_timeout" "$FILE"
+          COUNT=$(grep -c "await fetch(" "$FILE")
+          echo "provider-gateway native awaited fetch count=$COUNT"
+          test "$COUNT" -eq 3
+          grep -q "signal:AbortSignal.timeout(30000)" "$FILE"
+      - name: Telegram reserves anti-hang assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for FILE in render/nd-telegram-publisher-reserve/server.mjs vercel/nd-telegram-publisher-reserve/api/mcp.js; do
+            grep -q "ND_TELEGRAM_HTTP_TIMEOUT_MS" "$FILE"
+            grep -q "ND_TELEGRAM_MEDIA_TIMEOUT_MS" "$FILE"
+            grep -q "telegram_http_timeout" "$FILE"
+            grep -q "signal:AbortSignal.timeout(timeoutMs)" "$FILE"
+          done
+          echo "ND_PROVIDER_GATEWAY_BOUNDED_IO=PASS"
