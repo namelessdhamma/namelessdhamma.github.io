@@ -1,11 +1,15 @@
 name: ND Storyboard Renderer
-run-name: ND Storyboard ${{ github.event.client_payload.request_id || github.event.issue.number }}
+run-name: ND Storyboard ${{ github.event.client_payload.request_id || github.event.issue.number || github.event.head_commit.message }}
 
 on:
   issues:
     types: [opened]
   repository_dispatch:
     types: [nd_storyboard_render]
+  push:
+    branches: [main]
+    paths:
+      - '.nd-control/storyboard/requests/**.json'
 
 permissions:
   contents: read
@@ -15,15 +19,88 @@ jobs:
   render:
     if: >-
       (github.event_name == 'repository_dispatch' && github.event.action == 'nd_storyboard_render') ||
+      (github.event_name == 'push') ||
       (github.event_name == 'issues' && startsWith(github.event.issue.title, '[ND-STORYBOARD]') && github.event.issue.user.login == github.repository_owner)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      ND_REQUEST_ID: ${{ github.event.client_payload.request_id || github.event.issue.number }}
+      ND_REQUEST_ID: ${{ github.event.client_payload.request_id || github.event.issue.number || github.event.head_commit.message }}
       ND_STORYBOARD_MANIFEST: ${{ github.event_name == 'repository_dispatch' && toJSON(github.event.client_payload.manifest) || github.event.issue.body }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve durable request
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUEST_PATH="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | grep -E '^\\.nd-control/storyboard/requests/[a-f0-9]{64}\\.json
+      - name: Validate manifest
+        run: |
+          python - <<'PY'
+          import json, os
+          m=json.loads(os.environ.get("ND_STORYBOARD_MANIFEST","{}"))
+          if not isinstance(m,dict): raise SystemExit("manifest must be a JSON object")
+          frames=m.get("frames") or []
+          if len(frames)<2 or len(frames)>40: raise SystemExit("frames must contain 2..40 items")
+          for i,f in enumerate(frames):
+              if not str(f.get("url","")).startswith(("http://","https://")):
+                  raise SystemExit(f"frame {i} missing http(s) url")
+          print("manifest ok:", len(frames), "frames", "request", os.environ.get("ND_REQUEST_ID"))
+          PY
+
+      - name: Install renderer dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Render storyboard
+        run: python .github/scripts/nd_storyboard_renderer.py
+
+      - name: Upload MP4 and receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nd-storyboard-${{ env.ND_REQUEST_ID }}
+          path: |
+            storyboard-output.mp4
+            storyboard-receipt.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Comment issue result
+        if: always() && github.event_name == 'issues'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          if test -s storyboard-output.mp4; then
+            STATE="PASS / MP4"
+          else
+            STATE="FAIL / NO_MP4"
+          fi
+          gh issue comment "$ISSUE" --body "ND Storyboard Renderer: $STATE. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/$RUN_ID. Artifact: nd-storyboard-$ISSUE."
+ | head -n 1)"
+          test -n "$REQUEST_PATH"
+          export REQUEST_PATH
+          python - <<'PY'
+          import json, os
+          p=os.environ['REQUEST_PATH']
+          with open(p,'r',encoding='utf-8') as fh:
+              r=json.load(fh)
+          request_id=str(r.get('request_id') or '').strip()
+          manifest=r.get('manifest')
+          if not request_id.startswith('sb-r') or not isinstance(manifest,dict):
+              raise SystemExit('invalid durable storyboard request')
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as out:
+              out.write('ND_REQUEST_ID='+request_id+'\\n')
+              out.write('ND_STORYBOARD_MANIFEST<<NDJSON\\n')
+              out.write(json.dumps(manifest,separators=(',',':'))+'\\n')
+              out.write('NDJSON\\n')
+          print('durable request:', request_id, p)
+          PY
 
       - name: Validate manifest
         run: |
