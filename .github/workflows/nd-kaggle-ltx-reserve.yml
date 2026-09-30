@@ -5,16 +5,24 @@ on:
     branches:
       - main
       - qualify/ltx-multiroute-free
+      - nam-397-anti-hang-v2-current
     paths:
       - '.nd-control/ltx/request.json'
       - '.github/workflows/nd-kaggle-ltx-reserve.yml'
       - 'vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js'
       - 'vercel/nd-kaggle-ltx-reserve/api/mcp.js'
+      - 'vercel/nd-kaggle-ltx-reserve/test/anti-hang.mjs'
       - 'railway/nd-omniroute/ltx_control.mjs'
       - 'railway/nd-omniroute/ltx_mcp_v2.mjs'
       - 'railway/nd-omniroute/ltx_v2_server.mjs'
       - 'railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs'
       - 'railway/nd-omniroute/test/ltx_cross_route_identity.mjs'
+      - 'tools/anti-hang/continuation_semantics_test.mjs'
+      - '.github/workflows/nd-storyboard-render.yml'
+      - 'railway/nd-omniroute/wan_mcp.mjs'
+      - 'railway/nd-omniroute/test/storyboard_mcp_v2_anti_hang.mjs'
+      - 'railway/nd-omniroute/storyboard_mcp_v2.mjs'
+      - 'railway/nd-omniroute/test/wan_opaque_profile.mjs'
   workflow_dispatch:
 
 permissions:
@@ -39,6 +47,8 @@ jobs:
           node --check vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js
           node --check vercel/nd-kaggle-ltx-reserve/api/mcp.js
           node --check vercel/nd-kaggle-ltx-reserve/api/health.js
+          node vercel/nd-kaggle-ltx-reserve/test/anti-hang.mjs
+          node tools/anti-hang/continuation_semantics_test.mjs
           node --input-type=module <<'NODE'
           import {submit} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
           const ok=o=>new Response(JSON.stringify(o),{status:200,headers:{'content-type':'application/json'}});
@@ -80,10 +90,19 @@ jobs:
           node --check railway/nd-omniroute/drive_proxy.mjs
           node railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs
           node railway/nd-omniroute/test/ltx_cross_route_identity.mjs
+          node railway/nd-omniroute/test/storyboard_mcp_v2_anti_hang.mjs
+          node --check railway/nd-omniroute/wan_mcp.mjs
+          node railway/nd-omniroute/test/wan_opaque_profile.mjs
+          node --check railway/nd-omniroute/storyboard_mcp_v2.mjs
+          ruby -e "require 'yaml'; YAML.load_file('.github/workflows/nd-storyboard-render.yml'); puts 'STORYBOARD_WORKFLOW_YAML=PASS'"
+          grep -q "github.event_name == 'create'" .github/workflows/nd-storyboard-render.yml
+          grep -q "nd-storyboard/" .github/workflows/nd-storyboard-render.yml
+          if grep -q ".nd-control/storyboard/requests" .github/workflows/nd-storyboard-render.yml; then echo "legacy source-commit ledger still present" >&2; exit 1; fi
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const s=fs.readFileSync('railway/nd-omniroute/drive_proxy.mjs','utf8');
           for(const x of ["createLtxMcpHandlerV2","ltxHealthV2()","ltxResultBytesV2(requestId)"]){if(!s.includes(x))throw new Error('missing production LTX v2 wiring '+x);}
+          for(const x of ["./storyboard_mcp_v2.mjs","createStoryboardMcpHandler","storyboardResultBytes(requestId)"]){if(!s.includes(x))throw new Error('missing production Storyboard v2 wiring '+x);}
           console.log('ND_LTX_PRIMARY_V2_ROUTER_WIRING=PASS');
           NODE
 

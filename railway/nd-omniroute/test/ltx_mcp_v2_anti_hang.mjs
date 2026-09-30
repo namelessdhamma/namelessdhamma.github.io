@@ -1,5 +1,6 @@
 process.env.KAGGLE_API_TOKEN='test-token';
 process.env.KAGGLE_USERNAME_SLUG='testuser';
+process.env.ND_LTX_MCP_PATH_TOKEN='stable-result-test-token';
 process.env.ND_LTX_STATUS_CONTROL_TIMEOUT_MS='80';
 process.env.ND_LTX_SUBMIT_CONTROL_TIMEOUT_MS='100';
 process.env.ND_LTX_RECONCILE_CONTROL_TIMEOUT_MS='120';
@@ -94,6 +95,7 @@ async function list(){
   };
   const ready=(await call('ltx_keyframe_result',{request_id:'k2b-r123456789abc-def0-v1'})).structuredContent;
   if(ready?.state!=='READY'||ready?.result_mode!=='PROVIDER_REFERENCE')throw new Error('bounded result failed '+JSON.stringify(ready));
+  if(!String(ready?.stable_video_url||'').includes('/ltx-result/stable-result-test-token/'+ready.request_id+'.mp4'))throw new Error('stable video reference missing '+JSON.stringify(ready));
   if(listOutputCalls!==0||outputCalls<1||outputCalls>2)throw new Error('result pagination/regression');
   console.log('PRIMARY_V2_BOUNDED_RESULT=PASS');
 }

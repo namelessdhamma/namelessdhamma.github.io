@@ -6,6 +6,7 @@ const KAGGLE_USERNAME_SLUG=String(process.env.KAGGLE_USERNAME_SLUG||'').trim();
 const LTX_INPUT_TOKEN=String(process.env.ND_LTX_INPUT_TOKEN||'').trim();
 const LTX_PUBLIC_BASE=String(process.env.ND_LTX_PUBLIC_BASE||'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
 const LTX_INPUT_BASE=String(process.env.ND_LTX_INPUT_BASE||LTX_PUBLIC_BASE).replace(/\/$/,'');
+const LTX_RESULT_TOKEN=String(process.env.ND_LTX_MCP_PATH_TOKEN||'').trim();
 const WORKER_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py';
 
 function errorText(e){return String(e?.message||e||'error').slice(0,1800);}
@@ -179,7 +180,7 @@ async function result(args={}){
     if(state!=='COMPLETED')return {ok:false,request_id:ref.request_id,state,provider_status:resolved.st?.status??null,failure_message:resolved.st?.failureMessage||resolved.st?.failure_message||null,nonblocking:true};
     const video=await outputUrl(username,resolved.slug,'result.mp4',ref.version,ctx);
     let receiptUrl=null,receipt_state='READY';try{if(ctx.remainingMs()>500)receiptUrl=await outputUrl(username,resolved.slug,'result.json',ref.version,ctx);else receipt_state='DEFERRED_CONTROL_BUDGET';}catch(e){receipt_state=e?.code==='CONTROL_DEADLINE'||ctx.isDeadline()?'DEFERRED_CONTROL_BUDGET':'UNAVAILABLE';}
-    return {ok:true,request_id:ref.request_id,state:'READY',route:'kaggle_ltx2b_direct_f2l',provider_ref:username+'/'+resolved.slug+'/'+ref.version,provider_video_url:video,provider_receipt_url:receiptUrl,receipt_state,video_ref:video,persistence_state:'NOT_REQUESTED',result_mode:'PROVIDER_REFERENCE',nonblocking:true};
+    return {ok:true,request_id:ref.request_id,state:'READY',route:'kaggle_ltx2b_direct_f2l',provider_ref:username+'/'+resolved.slug+'/'+ref.version,provider_video_url:video,provider_receipt_url:receiptUrl,receipt_state,stable_video_url:LTX_RESULT_TOKEN?LTX_PUBLIC_BASE+'/ltx-result/'+encodeURIComponent(LTX_RESULT_TOKEN)+'/'+encodeURIComponent(ref.request_id)+'.mp4':null,video_ref:video,persistence_state:'NOT_REQUESTED',result_mode:'PROVIDER_REFERENCE',nonblocking:true};
   });
 }
 

@@ -22,6 +22,15 @@ const LTX_INPUT_TOKEN = String(process.env.ND_LTX_INPUT_TOKEN || '').trim();
 const LTX_RESULT_TOKEN = String(process.env.ND_LTX_MCP_PATH_TOKEN || '').trim();
 const LTX_PUBLIC_BASE = String(process.env.ND_LTX_PUBLIC_BASE || 'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
 const OUTER_PORT = Number(process.env.PORT || 8080);
+const WAN_RUNTIME_PROFILE='OPAQUE_BLOCKING';
+const WAN_OPAQUE_CONTROL=Object.freeze({
+  abort_supported:false,
+  provider_reconcile_supported:false,
+  interruption_outcome:'OUTCOME_UNKNOWN',
+  resubmit_policy:'NO_BLIND_RESUBMIT',
+  boundary_checkpoint:'REQUIRED_BEFORE_CONSEQUENTIAL_OPAQUE_CALL',
+  local_stop_remote_cancel:'NOT_EQUIVALENT'
+});
 
 const GITHUB_PAT = String(process.env.ND_GITHUB_PAT || '').trim();
 const LTX_HFJOBS_ENABLED = /^(1|true|yes)$/i.test(String(process.env.ND_LTX_HFJOBS_PAID_ENABLED || 'false').trim());
@@ -2796,7 +2805,7 @@ const TOOLS=[
   },
   {
     name:'wan_generate_video',
-    description:'Generate a real image-to-video clip with Wan 2.2 I2V using a start frame and optional end frame. Full generation controls are exposed; no trial/read-only mode is used.',
+    description:'OPAQUE_BLOCKING Wan I2V call. Provider execution may continue after local interruption; abort and provider reconciliation are not guaranteed. Boundary-checkpoint before use and never blind-resubmit after an interrupted or lost response.',
     inputSchema:{
       type:'object',
       properties:{
@@ -2825,7 +2834,7 @@ const TOOLS=[
   },
   {
     name:'wan_call_space_raw',
-    description:'Direct full Gradio call to any public Hugging Face Space endpoint. Pass arbitrary payload. Prefix any file URL/path string with @file: to have it uploaded/handled as a Gradio file input.',
+    description:'OPAQUE_BLOCKING raw Gradio call. Consequential provider execution may continue after local interruption; abort and provider reconciliation are not guaranteed. Boundary-checkpoint before consequential use and never blind-resubmit after an interrupted or lost response.',
     inputSchema:{
       type:'object',
       properties:{
@@ -2874,6 +2883,7 @@ const LTX_PRODUCTION_TOOLS=[
 ];
 
 const STORYBOARD_TOOLS=TOOLS.filter(x=>x.name.startsWith('storyboard_'));
+const WAN_TOOLS=TOOLS.filter(x=>x.name.startsWith('wan_'));
 
 function toolResult(value){
   return {content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value,isError:false};
@@ -3003,36 +3013,12 @@ export function createWanMcpHandler(){
       }
       if(method==='ping') return json(res,200,{jsonrpc:'2.0',id,result:{}});
       if(method.startsWith('notifications/')){res.writeHead(202,{'cache-control':'no-store'});return res.end();}
-      if(method==='tools/list') return json(res,200,{jsonrpc:'2.0',id,result:{tools:TOOLS}});
+      if(method==='tools/list') return json(res,200,{jsonrpc:'2.0',id,result:{tools:WAN_TOOLS}});
       if(method==='tools/call'){
         const name=String(msg?.params?.name||'');
         const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
         let result;
-        if(name==='storyboard_render_submit') result=await storyboardRenderSubmit(args);
-        else if(name==='storyboard_render_status') result=await storyboardRenderStatus(args);
-        else if(name==='storyboard_render_result') result=await storyboardRenderResult(args);
-        else if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
-        else if(name==='ltx_quota_independent_status') result=await ltxQuotaIndependentStatus(args);
-        else if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
-        else if(name==='ltx_keyframe_status') result=/^k2b-/i.test(String(args.request_id||''))?await ltxKaggle2bStatus(args):await ltxKaggleStatus(args);
-        else if(name==='ltx_keyframe_result') result=/^k2b-/i.test(String(args.request_id||''))?await ltxKaggle2bResult(args):await ltxKaggleResult(args);
-        else if(name==='ltx_list_routes') result={
-          primary:DEFAULT_LTX_SPACE,
-          i2v:{primary:LTX_I2V_PRIMARY_SPACE,reserves:DEFAULT_LTX_RESERVES},
-          keyframe:{primary:'kaggle_ltx2b_direct_f2l',invocation:'kaggle-2b',provider:'Kaggle',cache_source:'savvasavchenko/nd-ltx-2b-distilled-cache',cache_sources:['savvasavchenko/nd-ltx-2b-distilled-cache','savvasavchenko/nd-ltx2b-load-probe-fixed'],model:'multimodalart/ltxv-2b-0.9.6-distilled:transformer/diffusion_pytorch_model.bf16.safetensors',model_precision:'bf16',state:'QUALIFIED_PRIMARY',qualification:'E2E_PRODUCTION_PASS_2026-09-28',qualification_request_id:'k2b-rmuklqhtp-44qf-v1',synthetic_qualification_request_id:'k2b-rmukldq32-molf-v1',production_scale_verified:true,reserves:['kaggle_ltx2b_wan2gp_f2l','kaggle_ltx13b_mounted_cache_f2l',...LTX_KEYFRAME_RESERVES],wan2gp_wrapper_reserve:'kaggle_ltx2b_wan2gp_f2l',legacy_13b:{route:'kaggle_ltx13b_mounted_cache_f2l',state:'PROVIDER_RUNTIME_BLOCKED_RETAINED_RESERVE',dataset_source:KAGGLE_LTX_DATASET},hf_first_last_reserve:'linoyts/ltx-2-first-last-frame',hf_first_last_fast_reserve:'techfreakworm/LTX2.3-Studio',hf_first_last_fast_adapter:'studio-v3-output-readback',legacy_fixed_candidate:'manual_poll_v1',wan_drive_input:'protected-proxy-v1',wan_public_video_import:'v3-durable-media'},
-          all:configuredLtxSpaces(),
-          state:'CONFIGURED / VERIFY_AT_USE',
-          quota_independent:{
-            route:'HF Jobs / L4 / LTX 2B distilled FP8',
-            state:LTX_HFJOBS_ENABLED?'ENABLED_REQUIRES_PER_CALL_PAID_AUTH':'STAGED_DISABLED_REQUIRES_OWNER_AUTH',
-            daily_generation_quota:'NONE',
-            max_job_timeout_minutes:30,
-            estimated_max_cost_usd:LTX_HFJOBS_MAX_COST_USD
-          }
-        };
-        else if(name==='ltx_get_capabilities') result=await ltxCapabilities(args);
-        else if(name==='ltx_call_space_raw') result=await ltxRawCall(args);
-        else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
+        if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
         else return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Unknown tool'}});
@@ -3066,7 +3052,16 @@ export async function ltxResultBytes(requestId){
 }
 
 export async function wanHealth(){
-  return {ok:true,mode:'full',default_space:DEFAULT_SPACE,hf_token_configured:!!HF_TOKEN,tools:TOOLS.map(x=>x.name)};
+  return {
+    ok:true,
+    mode:'wan_only',
+    default_space:DEFAULT_SPACE,
+    hf_token_configured:!!HF_TOKEN,
+    runtime_profile:WAN_RUNTIME_PROFILE,
+    control_contract:WAN_OPAQUE_CONTROL,
+    tools:WAN_TOOLS.map(x=>x.name),
+    nonselectable_legacy_ltx_surface:true
+  };
 }
 
 export async function ltxHealth({probe=false,spaceId}={}){
