@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - qualify/ltx-multiroute-free
-      - nam-397-anti-hang-v2-current
+      - nam-397-anti-hang-v2-reconciled
     paths:
       - '.nd-control/ltx/request.json'
       - '.github/workflows/nd-kaggle-ltx-reserve.yml'
