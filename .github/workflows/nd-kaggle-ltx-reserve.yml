@@ -18,6 +18,10 @@ on:
       - 'railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs'
       - 'railway/nd-omniroute/test/ltx_cross_route_identity.mjs'
       - 'tools/anti-hang/continuation_semantics_test.mjs'
+      - '.github/workflows/nd-storyboard-render.yml'
+      - 'railway/nd-omniroute/wan_mcp.mjs'
+      - 'railway/nd-omniroute/test/storyboard_mcp_v2_anti_hang.mjs'
+      - 'railway/nd-omniroute/storyboard_mcp_v2.mjs'
   workflow_dispatch:
 
 permissions:
@@ -85,10 +89,14 @@ jobs:
           node --check railway/nd-omniroute/drive_proxy.mjs
           node railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs
           node railway/nd-omniroute/test/ltx_cross_route_identity.mjs
+          node railway/nd-omniroute/test/storyboard_mcp_v2_anti_hang.mjs
+          node --check railway/nd-omniroute/wan_mcp.mjs
+          node --check railway/nd-omniroute/storyboard_mcp_v2.mjs
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const s=fs.readFileSync('railway/nd-omniroute/drive_proxy.mjs','utf8');
           for(const x of ["createLtxMcpHandlerV2","ltxHealthV2()","ltxResultBytesV2(requestId)"]){if(!s.includes(x))throw new Error('missing production LTX v2 wiring '+x);}
+          for(const x of ["./storyboard_mcp_v2.mjs","createStoryboardMcpHandler","storyboardResultBytes(requestId)"]){if(!s.includes(x))throw new Error('missing production Storyboard v2 wiring '+x);}
           console.log('ND_LTX_PRIMARY_V2_ROUTER_WIRING=PASS');
           NODE
 
