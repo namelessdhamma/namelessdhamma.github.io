@@ -26,14 +26,14 @@ jobs:
         id: gate
         shell: bash
         run: |
-          python - <<'PY'
-          from datetime import datetime, timezone
-          now=datetime.now(timezone.utc)
-          gate=datetime(2026,10,1,7,0,tzinfo=timezone.utc)
-          print("ready="+("true" if now>=gate else "false"))
-          with open("$GITHUB_OUTPUT","a") as f:
-              f.write("ready="+("true" if now>=gate else "false")+"\n")
-          PY
+          set -euo pipefail
+          NOW="$(date -u +%s)"
+          GATE="$(date -u -d '2026-10-01 07:00:00 UTC' +%s)"
+          if [ "$NOW" -ge "$GATE" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Request GitHub OIDC token
         if: steps.gate.outputs.ready == 'true'
