@@ -7,14 +7,17 @@ GATEWAY_PORT=int(os.environ.get('ND_DRIVE_MUX_GATEWAY_PORT','3310'))
 GATEWAY_INNER_PORT=int(os.environ.get('ND_DRIVE_MUX_GATEWAY_INNER_PORT','3311'))
 DRIVE_PORT=int(os.environ.get('ND_DRIVE_MUX_DRIVE_PORT','3312'))
 VERCEL_PORT=int(os.environ.get('ND_VERCEL_MUX_PORT','3313'))
+LINEAR_PORT=int(os.environ.get('ND_LINEAR_MUX_PORT','3314'))
 
 CURRENT_FRONT_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/f0240dcb6afd7abbbd73aded1b886862de108851/tmp/nd_github_mcp_front_v6_search_fixed.py'
 DRIVE_SOURCE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/b3ca0b410839c85ecdc07505370e298a97a5bfcf/tmp/nd_drive_full_user_qstash_v2.mjs'
 VERCEL_SOURCE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/0f5b5763f70f2e33cc992df382878c40e2f67d62/railway/nd-omniroute/vercel_control.mjs'
+LINEAR_SOURCE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/dfbf486a8d77a4507d833127e5acfea5d67d9e45/railway/nd-linear-backup/server.mjs'
 
 urllib.request.urlretrieve(CURRENT_FRONT_URL,'/tmp/nd-current-gateway.py')
 urllib.request.urlretrieve(DRIVE_SOURCE_URL,'/tmp/nd-drive-reserve.mjs')
 urllib.request.urlretrieve(VERCEL_SOURCE_URL,'/tmp/nd-vercel-control.mjs')
+urllib.request.urlretrieve(LINEAR_SOURCE_URL,'/tmp/nd-linear-backup.mjs')
 subprocess.run(['apk','add','--no-cache','nodejs'],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
 g_env=dict(os.environ)
@@ -31,14 +34,21 @@ v_env['PORT']=str(VERCEL_PORT)
 v_env['ND_VERCEL_STANDALONE']='true'
 vercel=subprocess.Popen(['node','/tmp/nd-vercel-control.mjs'],env=v_env)
 
+l_env=dict(os.environ)
+l_env['PORT']=str(LINEAR_PORT)
+linear=subprocess.Popen(['node','/tmp/nd-linear-backup.mjs'],env=l_env)
+
 GATEWAY='http://127.0.0.1:%d'%GATEWAY_PORT
 DRIVE='http://127.0.0.1:%d'%DRIVE_PORT
 VERCEL='http://127.0.0.1:%d'%VERCEL_PORT
+LINEAR='http://127.0.0.1:%d'%LINEAR_PORT
 
 def clean(e):
     s=str(e)
     tok=os.environ.get('ND_DRIVE_BRIDGE_TOKEN','')
     if tok: s=s.replace(tok,'[REDACTED]')
+    ltok=os.environ.get('ND_LINEAR_PLUGIN_TOKEN','')
+    if ltok: s=s.replace(ltok,'[REDACTED]')
     return s[:1200]
 
 def proxy(req,target):
@@ -65,7 +75,7 @@ class H(BaseHTTPRequestHandler):
     def log_message(self,*a): pass
     def target(self):
         p=self.path.split('?',1)[0]
-        return VERCEL if p.startswith('/vercel/') else (DRIVE if p.startswith('/drive/') else GATEWAY)
+        return LINEAR if p.startswith('/linear/') else (VERCEL if p.startswith('/vercel/') else (DRIVE if p.startswith('/drive/') else GATEWAY))
     def do_GET(self): proxy(self,self.target())
     def do_POST(self): proxy(self,self.target())
     def do_PUT(self): proxy(self,self.target())
@@ -73,5 +83,5 @@ class H(BaseHTTPRequestHandler):
     def do_DELETE(self): proxy(self,self.target())
     def do_HEAD(self): proxy(self,self.target())
 
-print('ND_QSTASH_CURRENT_DRIVE_MUX_READY '+json.dumps({'port':PORT,'gateway_port':GATEWAY_PORT,'gateway_inner_port':GATEWAY_INNER_PORT,'drive_port':DRIVE_PORT,'drive_mcp':'/drive/mcp','vercel_port':VERCEL_PORT,'vercel_mcp':'/vercel/mcp'}),flush=True)
+print('ND_QSTASH_CURRENT_DRIVE_MUX_READY '+json.dumps({'port':PORT,'gateway_port':GATEWAY_PORT,'gateway_inner_port':GATEWAY_INNER_PORT,'drive_port':DRIVE_PORT,'drive_mcp':'/drive/mcp','vercel_port':VERCEL_PORT,'vercel_mcp':'/vercel/mcp','linear_port':LINEAR_PORT,'linear_mcp':'/linear/mcp'}),flush=True)
 ThreadingHTTPServer(('0.0.0.0',PORT),H).serve_forever()
