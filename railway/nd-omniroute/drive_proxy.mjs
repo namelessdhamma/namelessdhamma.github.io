@@ -19,6 +19,24 @@ const STORYBOARD_MCP_PATH = '/storyboard-mcp/' + STORYBOARD_MCP_TOKEN;
 const KAGGLE_API_TOKEN = String(process.env.KAGGLE_API_TOKEN || '').trim();
 let kaggleSelftestState={state:'NOT_RUN',updated_at:null,username:null,gpu:null,error:null};
 
+function ndBoundedMs(name,fallback,min,max){
+  const n=Number(process.env[name]||fallback);
+  return Math.max(min,Math.min(max,Number.isFinite(n)?n:fallback));
+}
+const ND_EXTERNAL_HTTP_TIMEOUT_MS=ndBoundedMs('ND_EXTERNAL_HTTP_TIMEOUT_MS',60000,1000,180000);
+const ND_EXTERNAL_TRANSFER_TIMEOUT_MS=ndBoundedMs('ND_EXTERNAL_TRANSFER_TIMEOUT_MS',300000,5000,900000);
+const ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS=ndBoundedMs('ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS',180000,5000,900000);
+async function boundedFetch(url,init={},timeoutMs=ND_EXTERNAL_HTTP_TIMEOUT_MS){
+  if(init&&init.signal) return await fetch(url,init);
+  try{
+    return await fetch(url,{...init,signal:AbortSignal.timeout(timeoutMs)});
+  }catch(e){
+    const n=String(e?.name||'');
+    if(n==='TimeoutError'||n==='AbortError') throw new Error('external_http_timeout:'+timeoutMs);
+    throw e;
+  }
+}
+
 function kaggleDurationSeconds(v){
   if(typeof v==='number') return v;
   if(typeof v==='string'){
@@ -2836,11 +2854,22 @@ async function remoteKaggleOutputToDrive(args={}){
 }
 
 function proxy(req,res) {
+  let timedOut=false;
   const pr = http.request({
     hostname:'127.0.0.1', port:INNER_PORT, path:req.url, method:req.method,
     headers:{...req.headers, host:'127.0.0.1:' + INNER_PORT}
   }, rr => { res.writeHead(rr.statusCode || 502, rr.headers); rr.pipe(res); });
-  pr.on('error', e => json(res,503,{ok:false,error:'inner_unavailable',detail:String(e.message || e).slice(0,300)}));
+  pr.setTimeout(ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS,()=>{
+    timedOut=true;
+    if(!res.headersSent) res.writeHead(504,{'content-type':'application/json'});
+    if(!res.writableEnded) res.end(JSON.stringify({ok:false,error:'inner_timeout'}));
+    pr.destroy();
+    console.error(JSON.stringify({event:'ND_OMNIROUTE_PROXY_TIMEOUT',timeout_ms:ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS,path:String(req.url||'').slice(0,240)}));
+  });
+  pr.on('error', e => {
+    if(timedOut) return;
+    if(!res.writableEnded) json(res,503,{ok:false,error:'inner_unavailable',detail:String(e.message || e).slice(0,300)});
+  });
   req.pipe(pr);
 }
 
