@@ -50,7 +50,7 @@ function makeControlContext(label,timeoutMs){
     label,timeoutMs,startedAt,deadlineAt,controller,signal:controller.signal,
     isDeadline(){return deadlineTriggered||Date.now()>=deadlineAt;},
     remainingMs(){return Math.max(0,deadlineAt-Date.now());},
-    throwIfExpired(){if(this.isDeadline()) throw deadlineError(label,timeoutMs);},
+    throwIfExpired(){if(this.isDeadline()){const de=deadlineError(label,timeoutMs);this.abort(de);throw de;}},
     abort(reason){if(!controller.signal.aborted){try{controller.abort(reason);}catch{}}},
     close(){clearTimeout(timer);}
   };
@@ -61,7 +61,7 @@ async function withControlDeadline(label,timeoutMs,fn){
   try{
     return await fn(ctx);
   }catch(e){
-    if(ctx.isDeadline()) throw deadlineError(label,timeoutMs);
+    if(ctx.isDeadline()){const de=deadlineError(label,timeoutMs);ctx.abort(de);throw de;}
     ctx.abort(e);
     throw e;
   }finally{
@@ -74,7 +74,7 @@ async function fetchCtx(url,opts,ctx){
   try{
     return await fetch(url,{...opts,signal:ctx?.signal});
   }catch(e){
-    if(ctx?.isDeadline()) throw deadlineError(ctx.label,ctx.timeoutMs);
+    if(ctx?.isDeadline()){const de=deadlineError(ctx.label,ctx.timeoutMs);ctx.abort(de);throw de;}
     throw e;
   }
 }
@@ -83,7 +83,7 @@ async function readBoundedBytes(res,ctx,maxBytes,label="response"){
   const cap=Math.max(1,Number(maxBytes)||1);
   if(!res.body?.getReader){
     const buf=Buffer.from(await res.arrayBuffer());
-    if(ctx?.isDeadline()) throw deadlineError(ctx.label,ctx.timeoutMs);
+    if(ctx?.isDeadline()){const de=deadlineError(ctx.label,ctx.timeoutMs);ctx.abort(de);throw de;}
     if(buf.length>cap) throw err(label+" exceeds "+cap+" bytes",413,"BODY_TOO_LARGE");
     return buf;
   }
@@ -96,7 +96,7 @@ async function readBoundedBytes(res,ctx,maxBytes,label="response"){
     while(true){
       ctx?.throwIfExpired();
       const part=await reader.read();
-      if(ctx?.isDeadline()) throw deadlineError(ctx.label,ctx.timeoutMs);
+      if(ctx?.isDeadline()){const de=deadlineError(ctx.label,ctx.timeoutMs);ctx.abort(de);throw de;}
       if(part.done) break;
       const b=Buffer.from(part.value);
       total+=b.length;
@@ -108,7 +108,7 @@ async function readBoundedBytes(res,ctx,maxBytes,label="response"){
     }
     return Buffer.concat(chunks,total);
   }catch(e){
-    if(ctx?.isDeadline()) throw deadlineError(ctx.label,ctx.timeoutMs);
+    if(ctx?.isDeadline()){const de=deadlineError(ctx.label,ctx.timeoutMs);ctx.abort(de);throw de;}
     throw e;
   }finally{
     if(ctx?.signal) ctx.signal.removeEventListener("abort",onAbort);
