@@ -95,7 +95,7 @@ async function prepareInput(value,label,ctx){
   return {url:publicUrl,fingerprint:sha256(bytes),size_bytes:bytes.length};
 }
 function effectRef({startInput,endInput,prompt,negativePrompt,duration,width,height,seed,idempotencyKey}){
-  const canonical=JSON.stringify({version:2,start_sha256:startInput.fingerprint,end_sha256:endInput.fingerprint,prompt:String(prompt||''),negative_prompt:String(negativePrompt||''),duration_seconds:Number(duration),width:Number(width),height:Number(height),seed:Number(seed),direct:true,idempotency_key:String(idempotencyKey||'')});
+  const canonical=JSON.stringify({version:1,start_sha256:startInput.fingerprint,end_sha256:endInput.fingerprint,prompt:String(prompt||''),negative_prompt:String(negativePrompt||''),duration_seconds:Number(duration),width:Number(width),height:Number(height),seed:Number(seed),direct:true,idempotency_key:String(idempotencyKey||'')});
   const hash=sha256(canonical),token='r'+hash.slice(0,12)+'-'+hash.slice(12,16);
   return {effect_id:'ltx2b:'+hash,token,kernel_slug:'nd-ltx2b-'+token};
 }
