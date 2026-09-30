@@ -10,6 +10,11 @@ on:
       - '.github/workflows/nd-kaggle-ltx-reserve.yml'
       - 'vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js'
       - 'vercel/nd-kaggle-ltx-reserve/api/mcp.js'
+      - 'railway/nd-omniroute/ltx_control.mjs'
+      - 'railway/nd-omniroute/ltx_mcp_v2.mjs'
+      - 'railway/nd-omniroute/ltx_v2_server.mjs'
+      - 'railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs'
+      - 'railway/nd-omniroute/test/ltx_cross_route_identity.mjs'
   workflow_dispatch:
 
 permissions:
@@ -64,6 +69,16 @@ jobs:
           if(a.request_id!==b.request_id||a.effect_id!==b.effect_id||saveCalls!==1||quotaCalls!==1) throw new Error('duplicate submit detected');
           console.log('ND_LTX_MULTIROUTE_CORE=PASS');
           NODE
+
+      - name: Validate Railway v2 control candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check railway/nd-omniroute/ltx_control.mjs
+          node --check railway/nd-omniroute/ltx_mcp_v2.mjs
+          node --check railway/nd-omniroute/ltx_v2_server.mjs
+          node railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs
+          node railway/nd-omniroute/test/ltx_cross_route_identity.mjs
 
       - name: Execute one bounded reserve operation
         shell: bash
