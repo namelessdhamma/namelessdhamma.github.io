@@ -127,6 +127,24 @@ function cloudflareCdpUrl(){
 
 const API='https://cloud-api.yandex.net/v1/disk';
 
+const ND_PROVIDER_BOUNDARY_CODE_REV='bounded-http-v1-20260930';
+function boundedMs(name,fallback,min,max){
+  const n=Number(process.env[name]||fallback);
+  return Math.max(min,Math.min(max,Number.isFinite(n)?n:fallback));
+}
+const ND_PROVIDER_HTTP_TIMEOUT_MS=boundedMs('ND_PROVIDER_HTTP_TIMEOUT_MS',30000,1000,120000);
+const ND_PROVIDER_TRANSFER_TIMEOUT_MS=boundedMs('ND_PROVIDER_TRANSFER_TIMEOUT_MS',300000,5000,900000);
+async function boundedFetch(url,init={},timeoutMs=ND_PROVIDER_HTTP_TIMEOUT_MS){
+  if(init&&init.signal)return await fetch(url,init);
+  try{
+    return await fetch(url,{...init,signal:AbortSignal.timeout(timeoutMs)});
+  }catch(e){
+    const name=String(e?.name||'');
+    if(name==='TimeoutError'||name==='AbortError')throw new Error('external_http_timeout:'+timeoutMs);
+    throw e;
+  }
+}
+
 
 function clean(e){let s=String((e&&e.message)||e||'');for(const x of [TOKEN,ROUTE])if(x)s=s.split(x).join('[REDACTED]');return s.slice(0,1200);}
 function result(id,r){return {jsonrpc:'2.0',id,result:r};}
@@ -134,7 +152,7 @@ function error(id,c,m){return {jsonrpc:'2.0',id,error:{code:c,message:m}};}
 const RO={readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true};
 const WR={readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true};
 const DEL={readOnlyHint:false,destructiveHint:true,idempotentHint:true,openWorldHint:true};
-async function api(endpoint,q={},method='GET'){if(!TOKEN)throw new Error('YANDEX_DISK_TOKEN missing');const u=new URL(API+endpoint);for(const[k,v]of Object.entries(q))if(v!==undefined&&v!==null)u.searchParams.set(k,String(v));const r=await fetch(u,{method,headers:{Authorization:'OAuth '+TOKEN,Accept:'application/json','User-Agent':'nd-yandex-mcp/1.0'}});const t=await r.text();let d={};if(t){try{d=JSON.parse(t);}catch{d={text:t.slice(0,5000)};}}if(!r.ok)throw new Error('Yandex Disk HTTP '+r.status+': '+(d.message||d.description||'request_failed'));return d;}
+async function api(endpoint,q={},method='GET'){if(!TOKEN)throw new Error('YANDEX_DISK_TOKEN missing');const u=new URL(API+endpoint);for(const[k,v]of Object.entries(q))if(v!==undefined&&v!==null)u.searchParams.set(k,String(v));const r=await boundedFetch(u,{method,headers:{Authorization:'OAuth '+TOKEN,Accept:'application/json','User-Agent':'nd-yandex-mcp/1.0'}});const t=await r.text();let d={};if(t){try{d=JSON.parse(t);}catch{d={text:t.slice(0,5000)};}}if(!r.ok)throw new Error('Yandex Disk HTTP '+r.status+': '+(d.message||d.description||'request_failed'));return d;}
 function yandexTools(){return [
 {name:'yandex_status',description:'Verify direct Yandex Disk API access.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:RO},
 {name:'yandex_list',description:'List files and folders in a Yandex Disk directory.',inputSchema:{type:'object',properties:{path:{type:'string',default:'disk:/'},limit:{type:'integer',minimum:1,maximum:100,default:50},offset:{type:'integer',minimum:0,default:0}},additionalProperties:false},annotations:RO},
@@ -162,7 +180,7 @@ async function uploadBuffer(path,body,overwrite=true,contentType='application/oc
   const p=String(path||''); if(!p)throw new Error('path required');
   const d=await api('/resources/upload',{path:p,overwrite:overwrite?'true':'false'});
   if(!d.href)throw new Error('upload href missing');
-  const r=await fetch(d.href,{method:'PUT',headers:{'Content-Type':String(contentType||'application/octet-stream')},body});
+  const r=await boundedFetch(d.href,{method:'PUT',headers:{'Content-Type':String(contentType||'application/octet-stream')},body},ND_PROVIDER_TRANSFER_TIMEOUT_MS);
   if(!r.ok)throw new Error('upload HTTP '+r.status);
   return {ok:true,path:p,bytes:body.length};
 }
@@ -252,8 +270,8 @@ if(name==='yandex_status'){const d=await api('/');return {ok:true,transport:'DIR
 if(name==='yandex_list'){const path=String(a.path||'disk:/');const d=await api('/resources',{path,limit:Math.max(1,Math.min(Number(a.limit||50),100)),offset:Math.max(0,Number(a.offset||0))});const e=d._embedded||{};return {ok:true,path,total:e.total,items:(e.items||[]).map(x=>({name:x.name,path:x.path,type:x.type,size:x.size,modified:x.modified,mime_type:x.mime_type}))};}
 if(name==='yandex_stat'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources',{path,limit:1});return {ok:true,resource:{name:d.name,path:d.path,type:d.type,size:d.size,created:d.created,modified:d.modified,mime_type:d.mime_type,md5:d.md5,sha256:d.sha256,public_url:d.public_url}};}
 if(name==='yandex_get_download_url'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/download',{path});if(!d.href)throw new Error('download href missing');return {ok:true,path,href:d.href,temporary:true};}
-if(name==='yandex_read_text'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/download',{path});if(!d.href)throw new Error('download href missing');const r=await fetch(d.href);if(!r.ok)throw new Error('download HTTP '+r.status);const body=Buffer.from(await r.arrayBuffer());let text,format='utf8';if(/\.docx$/i.test(path)){text=docxTextFromBuffer(body);format='docx-ooxml';}else{text=body.toString('utf8');}const max=Math.max(1,Math.min(Number(a.max_chars||30000),100000));let truncated=false;if(text.length>max){text=text.slice(0,max);truncated=true;}return {ok:true,path,text,truncated,format,bytes:body.length};}
-if(name==='yandex_write_text'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/upload',{path,overwrite:a.overwrite===false?'false':'true'});if(!d.href)throw new Error('upload href missing');const body=Buffer.from(String(a.text??''),'utf8');const r=await fetch(d.href,{method:'PUT',headers:{'Content-Type':'text/plain; charset=utf-8'},body});if(!r.ok)throw new Error('upload HTTP '+r.status);return {ok:true,path,bytes:body.length};}
+if(name==='yandex_read_text'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/download',{path});if(!d.href)throw new Error('download href missing');const r=await boundedFetch(d.href,{},ND_PROVIDER_TRANSFER_TIMEOUT_MS);if(!r.ok)throw new Error('download HTTP '+r.status);const body=Buffer.from(await r.arrayBuffer());let text,format='utf8';if(/\.docx$/i.test(path)){text=docxTextFromBuffer(body);format='docx-ooxml';}else{text=body.toString('utf8');}const max=Math.max(1,Math.min(Number(a.max_chars||30000),100000));let truncated=false;if(text.length>max){text=text.slice(0,max);truncated=true;}return {ok:true,path,text,truncated,format,bytes:body.length};}
+if(name==='yandex_write_text'){const path=String(a.path||'');if(!path)throw new Error('path required');const d=await api('/resources/upload',{path,overwrite:a.overwrite===false?'false':'true'});if(!d.href)throw new Error('upload href missing');const body=Buffer.from(String(a.text??''),'utf8');const r=await boundedFetch(d.href,{method:'PUT',headers:{'Content-Type':'text/plain; charset=utf-8'},body},ND_PROVIDER_TRANSFER_TIMEOUT_MS);if(!r.ok)throw new Error('upload HTTP '+r.status);return {ok:true,path,bytes:body.length};}
 if(name==='yandex_write_base64'){const path=String(a.path||'');if(!path)throw new Error('path required');const body=Buffer.from(String(a.base64||''),'base64');if(body.length>22500000)throw new Error('binary payload too large');await ensureParentDirs(path);return await uploadBuffer(path,body,a.overwrite!==false,String(a.content_type||'application/octet-stream'));}
 if(name==='yandex_import_zip_base64'){const root=String(a.root_path||'disk:/').replace(/\/+$/,'');const zip=Buffer.from(String(a.zip_base64||''),'base64');if(zip.length>22500000)throw new Error('zip payload too large');const entries=unpackZip(zip,Math.max(1,Math.min(Number(a.max_entries||200),500)),Math.max(1,Math.min(Number(a.max_uncompressed_bytes||100000000),200000000)));await ensureDir(root);const uploaded=[];for(const e of entries){const dest=root+'/'+e.name;if(e.isDir){await ensureDir(dest);continue;}await ensureParentDirs(dest);await uploadBuffer(dest,e.data,a.overwrite!==false,'application/octet-stream');uploaded.push({path:dest,bytes:e.size});}return {ok:true,root_path:root,zip_bytes:zip.length,entries:entries.length,files_uploaded:uploaded.length,uploaded};}
 if(name==='yandex_mkdir'){const path=String(a.path||'');if(!path)throw new Error('path required');return {ok:true,response:await api('/resources',{path},'PUT')};}
@@ -294,7 +312,7 @@ function cleanErr(e){
 async function accessToken(){
   if(!YT_CLIENT_ID||!YT_CLIENT_SECRET||!YT_REFRESH_TOKEN)throw new Error("youtube_credentials_missing");
   const body=new URLSearchParams({client_id:YT_CLIENT_ID,client_secret:YT_CLIENT_SECRET,refresh_token:YT_REFRESH_TOKEN,grant_type:"refresh_token"});
-  const r=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body});
+  const r=await boundedFetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"content-type":"application/x-www-form-urlencoded"},body});
   const t=await r.text(); if(!r.ok)throw new Error("youtube_token_http_"+r.status+":"+t.slice(0,700));
   const o=JSON.parse(t); if(!o.access_token)throw new Error("youtube_access_token_missing"); return o.access_token;
 }
@@ -302,7 +320,7 @@ async function yfetch(method,url,body){
   const token=await accessToken();
   const init={method,headers:{authorization:"Bearer "+token,accept:"application/json"}};
   if(body!==undefined){init.headers["content-type"]="application/json; charset=utf-8";init.body=JSON.stringify(body);}
-  const r=await fetch(url,init); const t=await r.text();
+  const r=await boundedFetch(url,init); const t=await r.text();
   if(!r.ok)throw new Error("youtube_http_"+r.status+":"+t.slice(0,1400));
   return t?JSON.parse(t):{ok:true};
 }
@@ -323,7 +341,7 @@ async function video(id){
 }
 async function uploadFromUrl(a){
   if(!YT_WRITES)throw new Error("youtube_writes_disabled");
-  const src=await fetch(String(a.media_url||"")); if(!src.ok)throw new Error("media_fetch_http_"+src.status);
+  const src=await boundedFetch(String(a.media_url||""),{},ND_PROVIDER_TRANSFER_TIMEOUT_MS); if(!src.ok)throw new Error("media_fetch_http_"+src.status);
   const len=src.headers.get("content-length"); if(!len)throw new Error("media_content_length_required");
   const ctype=(src.headers.get("content-type")||"application/octet-stream").split(";")[0];
   const token=await accessToken();
@@ -331,23 +349,23 @@ async function uploadFromUrl(a){
   if(Array.isArray(a.tags)&&a.tags.length)snippet.tags=a.tags.map(String);
   const status={privacyStatus:String(a.privacy_status||"private"),selfDeclaredMadeForKids:Boolean(a.made_for_kids)};
   if(a.publish_at){status.privacyStatus="private";status.publishAt=String(a.publish_at);}
-  const init=await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",{
+  const init=await boundedFetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",{
     method:"POST",
     headers:{authorization:"Bearer "+token,"content-type":"application/json; charset=UTF-8","x-upload-content-type":ctype,"x-upload-content-length":len},
     body:JSON.stringify({snippet,status})
-  });
+  },ND_PROVIDER_HTTP_TIMEOUT_MS);
   const initText=await init.text(); if(!init.ok)throw new Error("youtube_upload_init_"+init.status+":"+initText.slice(0,900));
   const loc=init.headers.get("location"); if(!loc)throw new Error("youtube_upload_session_missing");
-  const put=await fetch(loc,{method:"PUT",headers:{authorization:"Bearer "+token,"content-type":ctype,"content-length":len},body:src.body,duplex:"half"});
+  const put=await boundedFetch(loc,{method:"PUT",headers:{authorization:"Bearer "+token,"content-type":ctype,"content-length":len},body:src.body,duplex:"half"},ND_PROVIDER_TRANSFER_TIMEOUT_MS);
   const out=await put.text(); if(!put.ok)throw new Error("youtube_upload_"+put.status+":"+out.slice(0,1200));
   return JSON.parse(out||"{}");
 }
 async function thumbnail(a){
   if(!YT_WRITES)throw new Error("youtube_writes_disabled");
-  const src=await fetch(String(a.image_url||"")); if(!src.ok)throw new Error("image_fetch_http_"+src.status);
+  const src=await boundedFetch(String(a.image_url||""),{},ND_PROVIDER_TRANSFER_TIMEOUT_MS); if(!src.ok)throw new Error("image_fetch_http_"+src.status);
   const buf=Buffer.from(await src.arrayBuffer()); if(buf.length>20*1024*1024)throw new Error("thumbnail_too_large");
   const token=await accessToken(); const u=new URL("https://www.googleapis.com/upload/youtube/v3/thumbnails/set");u.searchParams.set("videoId",String(a.video_id||""));
-  const r=await fetch(u,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":src.headers.get("content-type")||"application/octet-stream"},body:buf});
+  const r=await boundedFetch(u,{method:"POST",headers:{authorization:"Bearer "+token,"content-type":src.headers.get("content-type")||"application/octet-stream"},body:buf},ND_PROVIDER_TRANSFER_TIMEOUT_MS);
   const t=await r.text();if(!r.ok)throw new Error("youtube_thumbnail_"+r.status+":"+t.slice(0,1000));return JSON.parse(t||"{}");
 }
 const YT_TOOLS=[
@@ -405,7 +423,8 @@ async function tgApi(method,body){
   const init=body===undefined?{method:"GET",headers:{accept:"application/json"}}:{
     method:"POST",headers:{accept:"application/json","content-type":"application/json; charset=utf-8"},body:JSON.stringify(body)
   };
-  const r=await fetch(u,init); const t=await r.text();
+  const timeoutMs=/^send(?:Video|Photo|Document|Audio|Animation)$/i.test(String(method||''))?ND_PROVIDER_TRANSFER_TIMEOUT_MS:ND_PROVIDER_HTTP_TIMEOUT_MS;
+  const r=await boundedFetch(u,init,timeoutMs); const t=await r.text();
   let o={}; try{o=t?JSON.parse(t):{};}catch{o={ok:false,description:t.slice(0,900)};}
   if(!r.ok||o.ok===false)throw new Error("telegram_http_"+r.status+":"+(o.description||"request_failed"));
   return o.result;
@@ -594,11 +613,11 @@ async function lightpandaFetch(a={}){
   const proxy_name=["fast_dc","datacenter"].includes(String(a.proxy_name||"fast_dc"))?String(a.proxy_name||"fast_dc"):"fast_dc";
   const body={url:u.toString(),output_format,wait_ms,wait_event,raw:false,proxy_name};
   if(proxy_name==="datacenter"&&a.country)body.country=String(a.country).toLowerCase();
-  const r=await fetch(LIGHTPANDA_API,{
+  const r=await boundedFetch(LIGHTPANDA_API,{
     method:"POST",
     headers:{authorization:"Bearer "+LIGHTPANDA_TOKEN,"content-type":"application/json",accept:"application/json"},
     body:JSON.stringify(body)
-  });
+  },Math.min(ND_PROVIDER_TRANSFER_TIMEOUT_MS,Math.max(ND_PROVIDER_HTTP_TIMEOUT_MS,wait_ms+30000)));
   const t=await r.text();
   let d={};try{d=t?JSON.parse(t):{};}catch{d={data:t};}
   if(!r.ok)throw new Error("lightpanda_http_"+r.status+":"+String(d?.error||d?.message||t).slice(0,800));
@@ -1019,7 +1038,7 @@ async function lpProcessSse(reader){
 
 async function lpPost(msg){
   if(!lpUpstream.postUrl)throw new Error("lightpanda_upstream_endpoint_missing");
-  const r=await fetch(lpUpstream.postUrl,{
+  const r=await boundedFetch(lpUpstream.postUrl,{
     method:"POST",
     headers:{authorization:"Bearer "+LIGHTPANDA_TOKEN,"content-type":"application/json",accept:"application/json,text/event-stream"},
     body:JSON.stringify(msg)
