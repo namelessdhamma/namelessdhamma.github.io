@@ -1308,7 +1308,7 @@ async function kaggleLtxCopyQualifiedOutputToDrive(){
   const mp4=findFile('result.mp4');
   const receipt=findFile('result.json');
   if(!mp4?.url) throw new Error('kaggle_ltx_drive_copy_result_mp4_missing');
-  const videoRes=await fetch(mp4.url);
+  const videoRes=await boundedFetch(mp4.url,{},ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
   if(!videoRes.ok) throw new Error('kaggle_ltx_drive_copy_download_http_'+videoRes.status);
   const video=Buffer.from(await videoRes.arrayBuffer());
   const sha=crypto.createHash('sha256').update(video).digest('hex');
@@ -1584,9 +1584,9 @@ async function persistEncryptedRefreshToken(refreshToken,userToken) {
   const existing=await directFetchJsonWithToken(userToken,'https://www.googleapis.com/drive/v3/files?'+q.toString());
   let fileId=(existing.files||[])[0]?.id||null;
   if(fileId){
-    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(fileId)+'?uploadType=media&supportsAllDrives=true',{
+    const res=await boundedFetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(fileId)+'?uploadType=media&supportsAllDrives=true',{
       method:'PATCH',headers:{authorization:'Bearer '+userToken,'content-type':'application/json'},body:blob
-    });
+    },ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
     if(!res.ok) throw new Error('drive oauth secret update HTTP '+res.status);
   }else{
     const boundary='ndoauth-'+crypto.randomBytes(12).toString('hex');
@@ -1596,9 +1596,9 @@ async function persistEncryptedRefreshToken(refreshToken,userToken) {
       blob,
       Buffer.from('\r\n--'+boundary+'--\r\n')
     ]);
-    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id',{
+    const res=await boundedFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id',{
       method:'POST',headers:{authorization:'Bearer '+userToken,'content-type':'multipart/related; boundary='+boundary},body
-    });
+    },ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
     const text=await res.text();
     if(!res.ok) throw new Error('drive oauth secret create HTTP '+res.status+': '+text.slice(0,500));
     fileId=JSON.parse(text||'{}').id;
@@ -1711,7 +1711,7 @@ async function requireMcpParent(parentId) {
 async function gbytes(url,{method='GET',body,headers={}}={}) {
   const token=await accessToken();
   const h={authorization:'Bearer '+token,...headers};
-  const res=await fetch(url,{method,headers:h,body});
+  const res=await boundedFetch(url,{method,headers:h,body},ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
   const buf=Buffer.from(await res.arrayBuffer());
   if(!res.ok){
     const e=new Error('google HTTP '+res.status+': '+buf.toString('utf8',0,Math.min(buf.length,800)));
@@ -1738,9 +1738,9 @@ async function multipartCreate(name,mimeType,parentId,content) {
   const head=Buffer.from('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: '+mimeType+'\r\n\r\n');
   const tail=Buffer.from('\r\n--'+boundary+'--\r\n');
   const body=Buffer.concat([head,content,tail]);
-  const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,size,createdTime,modifiedTime,version,parents,driveId,webViewLink,capabilities(canEdit,canDelete,canTrash,canMoveItemWithinDrive)',{
+  const res=await boundedFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,size,createdTime,modifiedTime,version,parents,driveId,webViewLink,capabilities(canEdit,canDelete,canTrash,canMoveItemWithinDrive)',{
     method:'POST',headers:{authorization:'Bearer '+token,'content-type':'multipart/related; boundary='+boundary},body
-  });
+  },ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
   const txt=await res.text();
   if(!res.ok){const e=new Error('google HTTP '+res.status+': '+txt.slice(0,800));e.status=res.status;throw e;}
   return JSON.parse(txt||'{}');
@@ -1776,9 +1776,9 @@ async function driveReplaceContent(args={}) {
   if(args.content_base64!=null) content=Buffer.from(String(args.content_base64),'base64');
   else content=Buffer.from(String(args.content_text||''),'utf8');
   const token=await accessToken();
-  const res=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(id)+'?uploadType=media&supportsAllDrives=true&fields=id,name,mimeType,size,modifiedTime,version,md5Checksum,sha256Checksum,capabilities(canEdit)',{
+  const res=await boundedFetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(id)+'?uploadType=media&supportsAllDrives=true&fields=id,name,mimeType,size,modifiedTime,version,md5Checksum,sha256Checksum,capabilities(canEdit)',{
     method:'PATCH',headers:{authorization:'Bearer '+token,'content-type':mime},body:content
-  });
+  },ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
   const txt=await res.text();
   if(!res.ok){const e=new Error('google HTTP '+res.status+': '+txt.slice(0,800));e.status=res.status;throw e;}
   const after=JSON.parse(txt||'{}');
@@ -2841,7 +2841,7 @@ async function remoteKaggleOutputToDrive(args={}){
       const rb=await metadata(found.id);
       return {reused:true,created:false,file:rb};
     }
-    const res=await fetch(remote);
+    const res=await boundedFetch(remote,{},ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
     if(!res.ok) throw new Error('remote download HTTP '+res.status);
     const declared=Number(res.headers.get('content-length')||0);
     if(declared>150*1024*1024) throw new Error('remote file exceeds 150 MB');
