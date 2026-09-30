@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
 import { createLtxMcpHandler as createLtxMcpHandlerV2, ltxHealth as ltxHealthV2, ltxResultBytes as ltxResultBytesV2 } from './ltx_mcp_v2.mjs';
+import { createVercelControlHandler } from './vercel_control.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
@@ -1341,6 +1342,7 @@ async function kaggleLtxCopyQualifiedOutputToDrive(){
 const wanMcpHandler = createWanMcpHandler();
 const ltxMcpHandler = createLtxMcpHandlerV2();
 const storyboardMcpHandler = createStoryboardMcpHandler();
+const vercelControlHandler = createVercelControlHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
 const BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
 const STATEHEAD = String(process.env.ND_GOOGLE_STATEHEAD_ID || '1gB6zqJPsQQmv7cT3nxFOtM_EcrUqC3v_MN9ChymclOQ').trim();
@@ -3069,6 +3071,10 @@ const server = http.createServer(async (req,res) => {
     }
   }
   if (req.method === 'POST' && req.url === '/linear/invoke') return handleLinearInvoke(req,res);
+  if (req.url?.startsWith('/vercel/')) {
+    const handled = await vercelControlHandler(req,res);
+    if (handled !== false) return;
+  }
   if (req.url === '/drive-mcp') {
     const handled = await handleMcp(req,res);
     if (handled !== false) return;
@@ -3082,6 +3088,7 @@ const server = http.createServer(async (req,res) => {
 
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,plugin_mcp_configured:true,legacy_developer_mode_drive_mcp:false}));
+  console.log(JSON.stringify({event:'ND_VERCEL_CONTROL_ROUTE_READY',mcp:'/vercel/mcp',health:'/vercel/health',browser_runtime:false,direct_rest:true}));
   console.log(JSON.stringify({event:'ND_WAN_VIDEO_MCP_READY',mcp_path_configured:!!WAN_MCP_TOKEN,mode:'full'}));
   console.log(JSON.stringify({event:'ND_STORYBOARD_MCP_READY',mcp_path_configured:!!STORYBOARD_MCP_TOKEN,mode:'free_public_actions'}));
   console.log(JSON.stringify({event:'ND_KAGGLE_CONFIG',configured:!!KAGGLE_API_TOKEN}));
