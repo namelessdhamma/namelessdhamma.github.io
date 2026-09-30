@@ -1526,6 +1526,23 @@ async function loadEncryptedRefreshToken() {
   return userRefreshCache;
 }
 
+async function driveGithubSecretsProbe(){
+  const pat=String(process.env.ND_GITHUB_PAT||'').trim();
+  if(!pat) return {ok:false,error:'github_pat_missing'};
+  const r=await boundedFetch('https://api.github.com/repos/namelessdhamma/namelessdhamma.github.io/actions/secrets/public-key',{
+    headers:{
+      authorization:'Bearer '+pat,
+      accept:'application/vnd.github+json',
+      'x-github-api-version':'2022-11-28',
+      'user-agent':'ND-Drive-GitHub-Secret-Probe/1.0'
+    }
+  },15000);
+  const raw=await r.text();
+  if(!r.ok) return {ok:false,status:r.status,error:'github_actions_secret_public_key_http_'+r.status};
+  let o={};try{o=JSON.parse(raw||'{}')}catch{}
+  return {ok:!!o.key_id&&!!o.key,status:r.status,key_id_present:!!o.key_id,key_present:!!o.key};
+}
+
 async function userAccessToken() {
   if(!USER_OAUTH_CLIENT_ID || !USER_OAUTH_CLIENT_SECRET) throw new Error('drive user oauth client missing');
   const now=Math.floor(Date.now()/1000);
@@ -3124,6 +3141,11 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   console.log(JSON.stringify({event:'ND_WAN_VIDEO_MCP_READY',mcp_path_configured:!!WAN_MCP_TOKEN,mode:'full'}));
   console.log(JSON.stringify({event:'ND_STORYBOARD_MCP_READY',mcp_path_configured:!!STORYBOARD_MCP_TOKEN,mode:'free_public_actions'}));
   console.log(JSON.stringify({event:'ND_KAGGLE_CONFIG',configured:!!KAGGLE_API_TOKEN}));
+  if(String(process.env.ND_DRIVE_GITHUB_SECRET_PROBE_ON_START||'false').trim().toLowerCase()==='true'){
+    setTimeout(()=>driveGithubSecretsProbe()
+      .then(r=>console.log(JSON.stringify({event:'ND_DRIVE_GITHUB_SECRET_PROBE',...r})))
+      .catch(e=>console.error(JSON.stringify({event:'ND_DRIVE_GITHUB_SECRET_PROBE',ok:false,error:String(e?.message||e).slice(0,500)}))),5000);
+  }
   if(KAGGLE_API_TOKEN) setTimeout(()=>kaggleSelftest().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SELFTEST_CRASH',error:String(e?.message||e).slice(0,500)}))),4000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_GPU_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleGpuProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,900)}))),9000);
   {
