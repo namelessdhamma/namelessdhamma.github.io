@@ -216,3 +216,5 @@ jobs:
           name: nd-kaggle-ltx-reserve-result
           path: /tmp/nd-ltx-gha/
           retention-days: 7
+
+# NAM-397 reconciled qualification trigger
