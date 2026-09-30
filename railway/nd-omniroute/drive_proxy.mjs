@@ -19,6 +19,24 @@ const STORYBOARD_MCP_PATH = '/storyboard-mcp/' + STORYBOARD_MCP_TOKEN;
 const KAGGLE_API_TOKEN = String(process.env.KAGGLE_API_TOKEN || '').trim();
 let kaggleSelftestState={state:'NOT_RUN',updated_at:null,username:null,gpu:null,error:null};
 
+function ndBoundedMs(name,fallback,min,max){
+  const n=Number(process.env[name]||fallback);
+  return Math.max(min,Math.min(max,Number.isFinite(n)?n:fallback));
+}
+const ND_EXTERNAL_HTTP_TIMEOUT_MS=ndBoundedMs('ND_EXTERNAL_HTTP_TIMEOUT_MS',60000,1000,180000);
+const ND_EXTERNAL_TRANSFER_TIMEOUT_MS=ndBoundedMs('ND_EXTERNAL_TRANSFER_TIMEOUT_MS',300000,5000,900000);
+const ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS=ndBoundedMs('ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS',180000,5000,900000);
+async function boundedFetch(url,init={},timeoutMs=ND_EXTERNAL_HTTP_TIMEOUT_MS){
+  if(init&&init.signal) return await fetch(url,init);
+  try{
+    return await fetch(url,{...init,signal:AbortSignal.timeout(timeoutMs)});
+  }catch(e){
+    const n=String(e?.name||'');
+    if(n==='TimeoutError'||n==='AbortError') throw new Error('external_http_timeout:'+timeoutMs);
+    throw e;
+  }
+}
+
 function kaggleDurationSeconds(v){
   if(typeof v==='number') return v;
   if(typeof v==='string'){
@@ -35,7 +53,7 @@ function kaggleDurationSeconds(v){
 
 async function kaggleRpc(service,method,body={}){
   if(!KAGGLE_API_TOKEN) throw new Error('kaggle_api_token_missing');
-  const res=await fetch('https://api.kaggle.com/v1/'+service+'/'+method,{
+  const res=await boundedFetch('https://api.kaggle.com/v1/'+service+'/'+method,{
     method:'POST',
     headers:{
       authorization:'Bearer '+KAGGLE_API_TOKEN,
@@ -1290,7 +1308,7 @@ async function kaggleLtxCopyQualifiedOutputToDrive(){
   const mp4=findFile('result.mp4');
   const receipt=findFile('result.json');
   if(!mp4?.url) throw new Error('kaggle_ltx_drive_copy_result_mp4_missing');
-  const videoRes=await fetch(mp4.url);
+  const videoRes=await boundedFetch(mp4.url,{},ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
   if(!videoRes.ok) throw new Error('kaggle_ltx_drive_copy_download_http_'+videoRes.status);
   const video=Buffer.from(await videoRes.arrayBuffer());
   const sha=crypto.createHash('sha256').update(video).digest('hex');
@@ -1306,7 +1324,7 @@ async function kaggleLtxCopyQualifiedOutputToDrive(){
     const readback=await metadata(created.id);
     let receiptCreated=null;
     if(receipt?.url){
-      const rr=await fetch(receipt.url);
+      const rr=await boundedFetch(receipt.url);
       if(rr.ok){
         const rb=Buffer.from(await rr.arrayBuffer());
         receiptCreated=await multipartCreate(
@@ -1428,7 +1446,7 @@ async function serviceAccessToken() {
     grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
     assertion
   });
-  const res = await fetch('https://oauth2.googleapis.com/token', {
+  const res = await boundedFetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body
@@ -1475,7 +1493,7 @@ async function directFetchJsonWithToken(token,url,{method='GET',body,headers={}}
   if (body!==undefined && !Buffer.isBuffer(body) && typeof body!=='string') {
     payload=JSON.stringify(body); h['content-type']='application/json';
   }
-  const res=await fetch(url,{method,headers:h,body:payload});
+  const res=await boundedFetch(url,{method,headers:h,body:payload});
   const text=await res.text();
   let obj={};
   try{obj=text?JSON.parse(text):{};}catch{obj={raw:text.slice(0,800)};}
@@ -1499,7 +1517,7 @@ async function loadEncryptedRefreshToken() {
   const serviceToken=await serviceAccessToken();
   const file=await findOAuthStoreFile(serviceToken);
   if(!file) throw new Error('drive user oauth not authorized');
-  const res=await fetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media&supportsAllDrives=true',{
+  const res=await boundedFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media&supportsAllDrives=true',{
     headers:{authorization:'Bearer '+serviceToken,accept:'application/json'}
   });
   const text=await res.text();
@@ -1519,7 +1537,7 @@ async function userAccessToken() {
     refresh_token:refresh,
     grant_type:'refresh_token'
   });
-  const res=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
+  const res=await boundedFetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
   const text=await res.text();
   if(!res.ok) throw new Error('drive user oauth refresh HTTP '+res.status+': '+text.slice(0,500));
   const obj=JSON.parse(text||'{}');
@@ -1566,9 +1584,9 @@ async function persistEncryptedRefreshToken(refreshToken,userToken) {
   const existing=await directFetchJsonWithToken(userToken,'https://www.googleapis.com/drive/v3/files?'+q.toString());
   let fileId=(existing.files||[])[0]?.id||null;
   if(fileId){
-    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(fileId)+'?uploadType=media&supportsAllDrives=true',{
+    const res=await boundedFetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(fileId)+'?uploadType=media&supportsAllDrives=true',{
       method:'PATCH',headers:{authorization:'Bearer '+userToken,'content-type':'application/json'},body:blob
-    });
+    },ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
     if(!res.ok) throw new Error('drive oauth secret update HTTP '+res.status);
   }else{
     const boundary='ndoauth-'+crypto.randomBytes(12).toString('hex');
@@ -1578,9 +1596,9 @@ async function persistEncryptedRefreshToken(refreshToken,userToken) {
       blob,
       Buffer.from('\r\n--'+boundary+'--\r\n')
     ]);
-    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id',{
+    const res=await boundedFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id',{
       method:'POST',headers:{authorization:'Bearer '+userToken,'content-type':'multipart/related; boundary='+boundary},body
-    });
+    },ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
     const text=await res.text();
     if(!res.ok) throw new Error('drive oauth secret create HTTP '+res.status+': '+text.slice(0,500));
     fileId=JSON.parse(text||'{}').id;
@@ -1612,7 +1630,7 @@ async function gjson(url, { method='GET', body }={}) {
     payload = JSON.stringify(body);
     headers['content-type'] = 'application/json';
   }
-  const res = await fetch(url, { method, headers, body: payload });
+  const res = await boundedFetch(url, { method, headers, body: payload });
   const text = await res.text();
   let obj = {};
   try { obj = text ? JSON.parse(text) : {}; } catch { obj = { raw: text.slice(0, 800) }; }
@@ -1693,7 +1711,7 @@ async function requireMcpParent(parentId) {
 async function gbytes(url,{method='GET',body,headers={}}={}) {
   const token=await accessToken();
   const h={authorization:'Bearer '+token,...headers};
-  const res=await fetch(url,{method,headers:h,body});
+  const res=await boundedFetch(url,{method,headers:h,body},ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
   const buf=Buffer.from(await res.arrayBuffer());
   if(!res.ok){
     const e=new Error('google HTTP '+res.status+': '+buf.toString('utf8',0,Math.min(buf.length,800)));
@@ -1720,9 +1738,9 @@ async function multipartCreate(name,mimeType,parentId,content) {
   const head=Buffer.from('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: '+mimeType+'\r\n\r\n');
   const tail=Buffer.from('\r\n--'+boundary+'--\r\n');
   const body=Buffer.concat([head,content,tail]);
-  const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,size,createdTime,modifiedTime,version,parents,driveId,webViewLink,capabilities(canEdit,canDelete,canTrash,canMoveItemWithinDrive)',{
+  const res=await boundedFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,size,createdTime,modifiedTime,version,parents,driveId,webViewLink,capabilities(canEdit,canDelete,canTrash,canMoveItemWithinDrive)',{
     method:'POST',headers:{authorization:'Bearer '+token,'content-type':'multipart/related; boundary='+boundary},body
-  });
+  },ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
   const txt=await res.text();
   if(!res.ok){const e=new Error('google HTTP '+res.status+': '+txt.slice(0,800));e.status=res.status;throw e;}
   return JSON.parse(txt||'{}');
@@ -1758,9 +1776,9 @@ async function driveReplaceContent(args={}) {
   if(args.content_base64!=null) content=Buffer.from(String(args.content_base64),'base64');
   else content=Buffer.from(String(args.content_text||''),'utf8');
   const token=await accessToken();
-  const res=await fetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(id)+'?uploadType=media&supportsAllDrives=true&fields=id,name,mimeType,size,modifiedTime,version,md5Checksum,sha256Checksum,capabilities(canEdit)',{
+  const res=await boundedFetch('https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(id)+'?uploadType=media&supportsAllDrives=true&fields=id,name,mimeType,size,modifiedTime,version,md5Checksum,sha256Checksum,capabilities(canEdit)',{
     method:'PATCH',headers:{authorization:'Bearer '+token,'content-type':mime},body:content
-  });
+  },ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
   const txt=await res.text();
   if(!res.ok){const e=new Error('google HTTP '+res.status+': '+txt.slice(0,800));e.status=res.status;throw e;}
   const after=JSON.parse(txt||'{}');
@@ -2201,7 +2219,7 @@ function linearPkceStateRead(state){
 async function linearGithubStoreRead(){
   if(!LINEAR_GITHUB_PAT) throw new Error('linear_github_store_not_configured');
   const url='https://api.github.com/repos/'+LINEAR_SECRET_REPO+'/contents/'+LINEAR_USER_OAUTH_STORE_PATH.split('/').map(encodeURIComponent).join('/')+'?ref=main';
-  const r=await fetch(url,{headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'}});
+  const r=await boundedFetch(url,{headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'}});
   if(r.status===404) return null;
   const raw=await r.text();
   if(!r.ok) throw new Error('linear oauth GitHub store read HTTP '+r.status+': '+linearRedact(raw).slice(0,500));
@@ -2225,7 +2243,7 @@ async function linearGithubStoreWrite(refreshToken){
   };
   if(existing?.sha) body.sha=existing.sha;
   const url='https://api.github.com/repos/'+LINEAR_SECRET_REPO+'/contents/'+LINEAR_USER_OAUTH_STORE_PATH.split('/').map(encodeURIComponent).join('/');
-  const r=await fetch(url,{method:'PUT',headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','content-type':'application/json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'},body:JSON.stringify(body)});
+  const r=await boundedFetch(url,{method:'PUT',headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','content-type':'application/json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'},body:JSON.stringify(body)});
   const raw=await r.text();
   if(!r.ok) throw new Error('linear oauth GitHub store write HTTP '+r.status+': '+linearRedact(raw).slice(0,500));
   linearUserOauthRefreshCache=String(refreshToken);
@@ -2250,7 +2268,7 @@ async function linearUserOauthAccessToken(force=false){
   if(!force && linearUserOauthTokenCache?.token && linearUserOauthTokenCache.exp>now+120) return linearUserOauthTokenCache.token;
   const refresh=await linearUserOauthRefreshToken();
   const body=new URLSearchParams({grant_type:'refresh_token',refresh_token:refresh,client_id:LINEAR_USER_OAUTH_CLIENT_ID});
-  const r=await fetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
+  const r=await boundedFetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
   const raw=await r.text();
   if(!r.ok) throw new Error('Linear user OAuth refresh HTTP '+r.status+': '+linearRedact(raw).slice(0,700));
   const obj=JSON.parse(raw||'{}');
@@ -2273,7 +2291,7 @@ async function linearUserOauthExchange(code,state){
     code_verifier:String(st.verifier),
     grant_type:'authorization_code'
   });
-  const r=await fetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
+  const r=await boundedFetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
   const raw=await r.text();
   if(!r.ok) throw new Error('Linear user OAuth exchange HTTP '+r.status+': '+linearRedact(raw).slice(0,700));
   const obj=JSON.parse(raw||'{}');
@@ -2703,7 +2721,7 @@ async function handleDrive(req,res) {
         redirect_uri:USER_OAUTH_REDIRECT_URI,
         grant_type:'authorization_code'
       });
-      const tr=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
+      const tr=await boundedFetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
       const tt=await tr.text();
       if(!tr.ok) return json(res,502,{ok:false,error:'google_token_exchange_'+tr.status,detail:tt.slice(0,500)});
       const tok=JSON.parse(tt||'{}');
@@ -2823,7 +2841,7 @@ async function remoteKaggleOutputToDrive(args={}){
       const rb=await metadata(found.id);
       return {reused:true,created:false,file:rb};
     }
-    const res=await fetch(remote);
+    const res=await boundedFetch(remote,{},ND_EXTERNAL_TRANSFER_TIMEOUT_MS);
     if(!res.ok) throw new Error('remote download HTTP '+res.status);
     const declared=Number(res.headers.get('content-length')||0);
     if(declared>150*1024*1024) throw new Error('remote file exceeds 150 MB');
@@ -2836,11 +2854,22 @@ async function remoteKaggleOutputToDrive(args={}){
 }
 
 function proxy(req,res) {
+  let timedOut=false;
   const pr = http.request({
     hostname:'127.0.0.1', port:INNER_PORT, path:req.url, method:req.method,
     headers:{...req.headers, host:'127.0.0.1:' + INNER_PORT}
   }, rr => { res.writeHead(rr.statusCode || 502, rr.headers); rr.pipe(res); });
-  pr.on('error', e => json(res,503,{ok:false,error:'inner_unavailable',detail:String(e.message || e).slice(0,300)}));
+  pr.setTimeout(ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS,()=>{
+    timedOut=true;
+    if(!res.headersSent) res.writeHead(504,{'content-type':'application/json'});
+    if(!res.writableEnded) res.end(JSON.stringify({ok:false,error:'inner_timeout'}));
+    pr.destroy();
+    console.error(JSON.stringify({event:'ND_OMNIROUTE_PROXY_TIMEOUT',timeout_ms:ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS,path:String(req.url||'').slice(0,240)}));
+  });
+  pr.on('error', e => {
+    if(timedOut) return;
+    if(!res.writableEnded) json(res,503,{ok:false,error:'inner_unavailable',detail:String(e.message || e).slice(0,300)});
+  });
   req.pipe(pr);
 }
 
