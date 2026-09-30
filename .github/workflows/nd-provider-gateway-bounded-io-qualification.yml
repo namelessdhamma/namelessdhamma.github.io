@@ -1,0 +1,31 @@
+name: ND Provider Gateway Bounded IO Qualification
+
+on:
+  push:
+    branches:
+      - nd-provider-gateway-bounded-io-v1
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node syntax
+        run: node --check railway/nd-provider-gateway/server.mjs
+      - name: Anti-hang transport assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=railway/nd-provider-gateway/server.mjs
+          grep -q "ND_PROVIDER_HTTP_TIMEOUT_MS" "$FILE"
+          grep -q "ND_PROVIDER_TRANSFER_TIMEOUT_MS" "$FILE"
+          grep -q "external_http_timeout" "$FILE"
+          COUNT=$(grep -c "await fetch(" "$FILE")
+          echo "native awaited fetch count=$COUNT"
+          test "$COUNT" -eq 3
+          grep -q "signal:AbortSignal.timeout(30000)" "$FILE"
+          echo "ND_PROVIDER_GATEWAY_BOUNDED_IO=PASS"
