@@ -75,7 +75,7 @@ jobs:
           mkdir -p /tmp/nd-ltx-gha
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          import {configFromEnv,health,submit,status,result} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
+          import {configFromEnv,health,submit,reconcile,status,result} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
 
           const path='.nd-control/ltx/request.json';
           let request={op:'health',nonce:'implicit'};
@@ -86,6 +86,12 @@ jobs:
             KAGGLE_USERNAME_SLUG:Boolean(cfg.username),
             ND_LTX_INPUT_TOKEN:Boolean(cfg.inputToken)
           };
+          const controlIdentity={
+            head_sha:String(process.env.GITHUB_SHA||'')||null,
+            run_id:String(process.env.GITHUB_RUN_ID||'')||null,
+            run_attempt:Number(process.env.GITHUB_RUN_ATTEMPT||0)||null,
+            workflow:String(process.env.GITHUB_WORKFLOW||'')||null
+          };
           let out;
           try{
             const op=String(request.op||'health');
@@ -95,16 +101,19 @@ jobs:
               out={ok:false,state:'BLOCKED_SECRET_MISSING',route:'github_actions',secret_availability:secretAvailability,request};
             }else if(op==='submit'){
               out={route_control:'github_actions',...(await submit(request.args||{},cfg))};
+            }else if(op==='reconcile'){
+              out={route_control:'github_actions',...(await reconcile({effect_id:request.effect_id,effect_token:request.effect_token},cfg))};
             }else if(op==='status'){
               out={route_control:'github_actions',...(await status({request_id:request.request_id},cfg))};
             }else if(op==='result'){
               out={route_control:'github_actions',...(await result({request_id:request.request_id},cfg))};
             }else{
-              out={ok:false,state:'INVALID_OPERATION',route:'github_actions',error:'op must be health|submit|status|result',request};
+              out={ok:false,state:'INVALID_OPERATION',route:'github_actions',error:'op must be health|submit|reconcile|status|result',request};
             }
           }catch(e){
-            out={ok:false,state:'ERROR',route:'github_actions',error:String(e?.message||e).slice(0,1600),request};
+            out={ok:false,state:e?.code==='CONTROL_DEADLINE'?'CONTROL_DEADLINE':'ERROR',outcome_state:e?.outcome_state||null,error_code:e?.code||null,timeout_ms:e?.timeout_ms||null,route:'github_actions',error:String(e?.message||e).slice(0,1600),request};
           }
+          out={...out,control_identity:controlIdentity};
           fs.writeFileSync('/tmp/nd-ltx-gha/result.json',JSON.stringify(out,null,2)+'\n');
           console.log('ND_LTX_GHA_RESULT='+JSON.stringify(out));
           NODE
