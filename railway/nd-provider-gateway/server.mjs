@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
-const ND_PORFIRCHIK_GATEWAY_V20_7_1_1='porfirchik-v20.7.1-free-music-20260930';
+const ND_PORFIRCHIK_GATEWAY_V20_7_1='porfirchik-v20.7.1-free-music-20260930';
 const PORFIRCHIK_PORT=Number(process.env.PORFIRCHIK_PORT||3400);
 const PORFIRCHIK_SOURCE_COMMIT='da17075df3c6673e5e1dfaf1ef1da88bee04b3b2';
 const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_1_music_fix_loader.py';
@@ -51,7 +51,7 @@ function startPorfirchik(){
   const child=spawn('python3',['-u','-c',porfirchikBootstrapCode()],{env,stdio:['ignore','inherit','inherit']});
   porfirchikChild=child;
   child.on('spawn',()=>{
-    console.log('ND_PORFIRCHIK_CHILD_SPAWNED',JSON.stringify({port:PORFIRCHIK_PORT,rev:ND_PORFIRCHIK_GATEWAY_V20_7,source_commit:PORFIRCHIK_SOURCE_COMMIT}));
+    console.log('ND_PORFIRCHIK_CHILD_SPAWNED',JSON.stringify({port:PORFIRCHIK_PORT,rev:ND_PORFIRCHIK_GATEWAY_V20_7_1,source_commit:PORFIRCHIK_SOURCE_COMMIT}));
   });
   child.on('error',err=>{
     porfirchikLastError=String(err?.message||err).slice(0,800);
@@ -1309,7 +1309,7 @@ const muxServer=http.createServer(async(req,res)=>{
     if(path==='/healthz'){
       const porfirchik=await porfirchikHealth();
       const body={
-        porfirchik:{...porfirchik,configured:Boolean(PORFIRCHIK_VK_TOKEN),child_running:Boolean(porfirchikChild&&porfirchikChild.exitCode===null),restarts:porfirchikRestarts,last_exit:porfirchikLastExit,rev:ND_PORFIRCHIK_GATEWAY_V20_7},
+        porfirchik:{...porfirchik,configured:Boolean(PORFIRCHIK_VK_TOKEN),child_running:Boolean(porfirchikChild&&porfirchikChild.exitCode===null),restarts:porfirchikRestarts,last_exit:porfirchikLastExit,rev:ND_PORFIRCHIK_GATEWAY_V20_7_1},
         status:'ok',
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
@@ -1500,7 +1500,7 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   qualification_rev:YT_QUALIFY_REV||null
 }));
 muxServer.listen(PORT,'0.0.0.0',()=>{
-  console.log('ND_PROVIDER_GATEWAY_READY',JSON.stringify({port:PORT,porfirchik_rev:ND_PORFIRCHIK_GATEWAY_V20_7,porfirchik_port:PORFIRCHIK_PORT}));
+  console.log('ND_PROVIDER_GATEWAY_READY',JSON.stringify({port:PORT,porfirchik_rev:ND_PORFIRCHIK_GATEWAY_V20_7_1,porfirchik_port:PORFIRCHIK_PORT}));
   startPorfirchik();
 });
 setTimeout(runYoutubeQualification,2000);
