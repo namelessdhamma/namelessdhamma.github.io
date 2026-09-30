@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 const GITHUB_PAT=String(process.env.ND_GITHUB_PAT||'').trim();
 const STORYBOARD_REPO=String(process.env.ND_STORYBOARD_REPO||'namelessdhamma/namelessdhamma.github.io').trim();
 const STORYBOARD_WORKFLOW=String(process.env.ND_STORYBOARD_WORKFLOW||'nd-storyboard-render.yml').trim();
-const STORYBOARD_BRANCH=String(process.env.ND_STORYBOARD_CONTROL_BRANCH||'main').trim();
+const STORYBOARD_SOURCE_BRANCH=String(process.env.ND_STORYBOARD_SOURCE_BRANCH||'main').trim();
 const STORYBOARD_MCP_TOKEN=String(process.env.ND_STORYBOARD_MCP_PATH_TOKEN||'').trim();
 const STORYBOARD_PUBLIC_BASE=String(process.env.ND_STORYBOARD_PUBLIC_BASE||'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
 const CONTROL_MAX_BYTES=Number(process.env.ND_STORYBOARD_CONTROL_MAX_BYTES||4*1024*1024);
@@ -110,12 +110,13 @@ export function storyboardEffect(args={}){
   const idem=String(args.idempotency_key||'').trim();
   const material=JSON.stringify({version:1,manifest,idempotency_key:idem||null});
   const digest=sha256(material);
+  const request_id='sb-r'+digest.slice(0,20);
   return {
     manifest,
     effect_id:'storyboard:'+digest,
     effect_token:digest,
-    request_id:'sb-r'+digest.slice(0,20),
-    request_path:'.nd-control/storyboard/requests/'+digest+'.json',
+    request_id,
+    request_tag:'nd-storyboard/'+request_id+'-'+digest.slice(20),
     idempotency_key:idem||null
   };
 }
@@ -123,15 +124,21 @@ function parseEffectId(effectId){
   const m=String(effectId||'').trim().match(/^storyboard:([a-f0-9]{64})$/i);
   if(!m)throw new Error('valid storyboard effect_id required');
   const digest=m[1].toLowerCase();
-  return {effect_id:'storyboard:'+digest,effect_token:digest,request_id:'sb-r'+digest.slice(0,20),request_path:'.nd-control/storyboard/requests/'+digest+'.json'};
+  const request_id='sb-r'+digest.slice(0,20);
+  return {effect_id:'storyboard:'+digest,effect_token:digest,request_id,request_tag:'nd-storyboard/'+request_id+'-'+digest.slice(20)};
 }
-async function readRequest(effect,ctx){
-  const encoded=effect.request_path.split('/').map(encodeURIComponent).join('/');
-  const x=await githubJson('/repos/'+STORYBOARD_REPO+'/contents/'+encoded+'?ref='+encodeURIComponent(STORYBOARD_BRANCH),{ctx,allow404:true});
+async function readRequestRef(effect,ctx){
+  const tagPath=effect.request_tag.split('/').map(encodeURIComponent).join('/');
+  const x=await githubJson('/repos/'+STORYBOARD_REPO+'/git/ref/tags/'+tagPath,{ctx,allow404:true});
   if(!x)return null;
-  let record=null;
-  try{record=JSON.parse(Buffer.from(String(x.content||'').replace(/\s+/g,''),'base64').toString('utf8'));}catch{}
-  return {blob_sha:x.sha||null,html_url:x.html_url||null,record};
+  return {ref:x.ref||('refs/tags/'+effect.request_tag),tag_object_sha:x.object?.sha||null,tag_object_type:x.object?.type||null};
+}
+async function sourceHead(ctx){
+  const branchPath=STORYBOARD_SOURCE_BRANCH.split('/').map(encodeURIComponent).join('/');
+  const x=await githubJson('/repos/'+STORYBOARD_REPO+'/git/ref/heads/'+branchPath,{ctx});
+  const sha=String(x?.object?.sha||'').trim();
+  if(!/^[a-f0-9]{40}$/i.test(sha))throw new Error('Storyboard source head SHA missing');
+  return sha;
 }
 async function statusWithContext(requestId,ctx){
   const id=String(requestId||'').trim();
@@ -161,37 +168,51 @@ export async function storyboardRenderStatus(args={}){
 export async function storyboardRenderReconcile(args={}){
   const effect=args.effect_id?parseEffectId(args.effect_id):parseEffectId('storyboard:'+String(args.effect_token||''));
   return withDeadline('storyboard.reconcile',RECONCILE_TIMEOUT,async ctx=>{
-    const req=await readRequest(effect,ctx);
+    const req=await readRequestRef(effect,ctx);
     if(!req)return {ok:false,state:'OUTCOME_UNKNOWN',outcome_state:'OUTCOME_UNKNOWN',...effect,safe_to_resubmit:false,nonblocking:true};
     const st=await statusWithContext(effect.request_id,ctx);
-    return {ok:true,...effect,reconciled:true,request_record_ref:req.html_url||effect.request_path,...st,safe_to_resubmit:false,nonblocking:true};
+    return {ok:true,...effect,reconciled:true,request_record_ref:req.ref,tag_object_sha:req.tag_object_sha,...st,safe_to_resubmit:false,nonblocking:true};
   });
 }
 export async function storyboardRenderSubmit(args={}){
   const effect=storyboardEffect(args);
-  let mutationStarted=false;
+  let triggerStarted=false;
   try{
     return await withDeadline('storyboard.submit',SUBMIT_TIMEOUT,async ctx=>{
-      const existing=await readRequest(effect,ctx);
+      const existing=await readRequestRef(effect,ctx);
       if(existing){
         const st=await statusWithContext(effect.request_id,ctx);
-        return {ok:true,...effect,reused_existing:true,request_record_ref:existing.html_url||effect.request_path,...st,safe_to_resubmit:false,nonblocking:true};
+        return {ok:true,...effect,reused_existing:true,request_record_ref:existing.ref,tag_object_sha:existing.tag_object_sha,...st,safe_to_resubmit:false,nonblocking:true};
       }
-      const record={schema:'nd-storyboard-request-v2',version:1,request_id:effect.request_id,effect_id:effect.effect_id,effect_token:effect.effect_token,idempotency_key:effect.idempotency_key,manifest:effect.manifest};
-      const encoded=effect.request_path.split('/').map(encodeURIComponent).join('/');
+      const source_sha=await sourceHead(ctx);
+      const record={schema:'nd-storyboard-request-v2',version:2,request_id:effect.request_id,effect_id:effect.effect_id,effect_token:effect.effect_token,idempotency_key:effect.idempotency_key,manifest:effect.manifest,source_sha};
+      let tagObject;
+      try{
+        tagObject=await githubJson('/repos/'+STORYBOARD_REPO+'/git/tags',{
+          method:'POST',ctx,
+          body:{tag:effect.request_tag,message:JSON.stringify(record),object:source_sha,type:'commit'}
+        });
+      }catch(e){
+        if(e?.code==='CONTROL_DEADLINE'||e?.name==='AbortError'||e instanceof TypeError){
+          return {ok:false,state:'CONTROL_DEADLINE',outcome_state:'NO_RENDER_TRIGGER_CONFIRMED',...effect,safe_to_resubmit:true,preparation_may_exist:true,runtime_profile:'DURABLE_ASYNC',nonblocking:true,error:errText(e)};
+        }
+        throw e;
+      }
+      const tagSha=String(tagObject?.sha||'').trim();
+      if(!/^[a-f0-9]{40}$/i.test(tagSha))throw new Error('Storyboard tag object SHA missing');
       let created;
       try{
-        mutationStarted=true;
-        created=await githubJson('/repos/'+STORYBOARD_REPO+'/contents/'+encoded,{
-          method:'PUT',ctx,
-          body:{message:effect.request_id,content:Buffer.from(JSON.stringify(record,null,2)+'\n').toString('base64'),branch:STORYBOARD_BRANCH}
+        triggerStarted=true;
+        created=await githubJson('/repos/'+STORYBOARD_REPO+'/git/refs',{
+          method:'POST',ctx,
+          body:{ref:'refs/tags/'+effect.request_tag,sha:tagSha}
         });
       }catch(e){
         if(e?.status===422){
-          const now=await readRequest(effect,ctx);
+          const now=await readRequestRef(effect,ctx);
           if(now){
             const st=await statusWithContext(effect.request_id,ctx);
-            return {ok:true,...effect,reused_existing:true,request_record_ref:now.html_url||effect.request_path,...st,safe_to_resubmit:false,nonblocking:true};
+            return {ok:true,...effect,reused_existing:true,request_record_ref:now.ref,tag_object_sha:now.tag_object_sha,...st,safe_to_resubmit:false,nonblocking:true};
           }
         }
         if(e?.name==='AbortError'||e instanceof TypeError){
@@ -201,17 +222,17 @@ export async function storyboardRenderSubmit(args={}){
       }
       return {
         ok:true,state:'SUBMITTED',...effect,
-        request_record_ref:created?.content?.html_url||effect.request_path,
-        control_commit_sha:created?.commit?.sha||null,
+        request_record_ref:created?.ref||('refs/tags/'+effect.request_tag),
+        tag_object_sha:tagSha,source_sha,
         route:'public_github_actions_ffmpeg_storyboard_v2',cost_policy:'FREE_ONLY',
         runtime_profile:'DURABLE_ASYNC',safe_to_resubmit:false,nonblocking:true
       };
     });
   }catch(e){
     if(e?.code==='CONTROL_DEADLINE'){
-      return mutationStarted
+      return triggerStarted
         ? {ok:false,state:'SUBMIT_AMBIGUOUS',outcome_state:'OUTCOME_UNKNOWN',...effect,safe_to_resubmit:false,reconcile_required:true,runtime_profile:'DURABLE_ASYNC',nonblocking:true,error:errText(e)}
-        : {ok:false,state:'CONTROL_DEADLINE',outcome_state:'NO_MUTATION_CONFIRMED',...effect,safe_to_resubmit:false,runtime_profile:'DURABLE_ASYNC',nonblocking:true,error:errText(e)};
+        : {ok:false,state:'CONTROL_DEADLINE',outcome_state:'NO_RENDER_TRIGGER_CONFIRMED',...effect,safe_to_resubmit:true,runtime_profile:'DURABLE_ASYNC',nonblocking:true,error:errText(e)};
     }
     throw e;
   }
@@ -260,7 +281,7 @@ export async function storyboardResultBytes(requestId){
 }
 
 const TOOLS=[
-  {name:'storyboard_render_submit',description:'DURABLE_ASYNC storyboard submit. Creates one deterministic provider-side request record per logical effect and returns control immediately.',inputSchema:{type:'object',properties:{frames:{type:'array',minItems:2,maxItems:40,items:{type:'object',properties:{url:{type:'string'},duration:{type:'number',minimum:0.2,maximum:20},motion:{type:'string'},transition:{type:'string'}},required:['url'],additionalProperties:false}},width:{type:'integer',default:640},height:{type:'integer',default:360},fps:{type:'integer',default:24},default_duration:{type:'number',default:1.4},transition_duration:{type:'number',default:0.3},idempotency_key:{type:'string',description:'Optional explicit logical-effect key. Omit to deduplicate exact normalized requests.'}},required:['frames'],additionalProperties:false}},
+  {name:'storyboard_render_submit',description:'DURABLE_ASYNC storyboard submit. Creates one deterministic provider-side annotated tag ref per logical effect and returns control immediately.',inputSchema:{type:'object',properties:{frames:{type:'array',minItems:2,maxItems:40,items:{type:'object',properties:{url:{type:'string'},duration:{type:'number',minimum:0.2,maximum:20},motion:{type:'string'},transition:{type:'string'}},required:['url'],additionalProperties:false}},width:{type:'integer',default:640},height:{type:'integer',default:360},fps:{type:'integer',default:24},default_duration:{type:'number',default:1.4},transition_duration:{type:'number',default:0.3},idempotency_key:{type:'string',description:'Optional explicit logical-effect key. Omit to deduplicate exact normalized requests.'}},required:['frames'],additionalProperties:false}},
   {name:'storyboard_render_reconcile',description:'Reconcile an ambiguous storyboard submit by stable effect identity. Never creates a new render.',inputSchema:{type:'object',properties:{effect_id:{type:'string'},effect_token:{type:'string'}},anyOf:[{required:['effect_id']},{required:['effect_token']}],additionalProperties:false}},
   {name:'storyboard_render_status',description:'One bounded status read. Never polls in a loop.',inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}},
   {name:'storyboard_render_result',description:'One bounded provider-reference result read. Does not download the artifact in the foreground.',inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}}
