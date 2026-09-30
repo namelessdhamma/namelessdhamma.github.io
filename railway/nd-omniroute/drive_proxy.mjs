@@ -1343,9 +1343,6 @@ const ltxMcpHandler = createLtxMcpHandlerV2();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
 const BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
-const DEVMODE_TOKEN = String(process.env.ND_DRIVE_DEVMODE_PATH_TOKEN || '').trim();
-const DEVMODE_MCP_PATH = '/mcp/' + DEVMODE_TOKEN;
-const DEVMODE_FULL_WRITE = String(process.env.ND_DRIVE_DEVMODE_FULL_WRITE || 'false').trim().toLowerCase() === 'true';
 const STATEHEAD = String(process.env.ND_GOOGLE_STATEHEAD_ID || '1gB6zqJPsQQmv7cT3nxFOtM_EcrUqC3v_MN9ChymclOQ').trim();
 const WRITE_IDS = new Set(
   [process.env.ND_DRIVE_MCP_WRITABLE_FILE_IDS || '', process.env.ND_DRIVE_WRITABLE_FILE_IDS || '']
@@ -1671,7 +1668,7 @@ function requireWritable(id) {
 
 async function requireMcpWritable(id,{allowTrashed=false}={}) {
   const m = await metadata(id);
-  if (DEVMODE_FULL_WRITE) {
+  if (authContext.getStore()?.user === true) {
     if (!m?.capabilities?.canEdit || (!allowTrashed && m.trashed)) throw new Error('drive write denied: active user cannot edit target');
     return m;
   }
@@ -1682,8 +1679,8 @@ async function requireMcpWritable(id,{allowTrashed=false}={}) {
 async function requireMcpParent(parentId) {
   const m = await metadata(parentId);
   if (m.mimeType !== 'application/vnd.google-apps.folder') throw new Error('parent_id is not a folder');
-  if (DEVMODE_FULL_WRITE) {
-    if (!m?.capabilities?.canAddChildren && !m?.capabilities?.canEdit) throw new Error('drive create denied: service account cannot add children');
+  if (authContext.getStore()?.user === true) {
+    if (!m?.capabilities?.canAddChildren && !m?.capabilities?.canEdit) throw new Error('drive create denied: active user cannot add children');
     return m;
   }
   if (!WRITE_IDS.has(parentId)) throw new Error('drive create denied: parent not allowlisted');
@@ -2084,10 +2081,8 @@ async function handleMcpMessage(msg) {
 }
 
 async function handleMcp(req,res) {
-  const pluginPath = req.url === '/drive-mcp';
-  const devmodePath = !!DEVMODE_TOKEN && req.url === DEVMODE_MCP_PATH;
-  if (!pluginPath && !devmodePath) return false;
-  if (pluginPath && !safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) {
+  if (req.url !== '/drive-mcp') return false;
+  if (!safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) {
     return json(res,401,{ok:false,error:'unauthorized'});
   }
   if (req.method === 'GET') {
@@ -3074,7 +3069,7 @@ const server = http.createServer(async (req,res) => {
     }
   }
   if (req.method === 'POST' && req.url === '/linear/invoke') return handleLinearInvoke(req,res);
-  if ((DEVMODE_TOKEN && req.url === DEVMODE_MCP_PATH) || req.url === '/drive-mcp') {
+  if (req.url === '/drive-mcp') {
     const handled = await handleMcp(req,res);
     if (handled !== false) return;
   }
@@ -3086,7 +3081,7 @@ const server = http.createServer(async (req,res) => {
 });
 
 server.listen(OUTER_PORT,'0.0.0.0',()=>{
-  console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,devmode_mcp_configured:!!DEVMODE_TOKEN,devmode_full_write:DEVMODE_FULL_WRITE}));
+  console.log(JSON.stringify({event:'ND_DRIVE_PROXY_READY',outer_port:OUTER_PORT,inner_port:INNER_PORT,writable_file_count:WRITE_IDS.size,plugin_mcp_configured:true,legacy_developer_mode_drive_mcp:false}));
   console.log(JSON.stringify({event:'ND_WAN_VIDEO_MCP_READY',mcp_path_configured:!!WAN_MCP_TOKEN,mode:'full'}));
   console.log(JSON.stringify({event:'ND_STORYBOARD_MCP_READY',mcp_path_configured:!!STORYBOARD_MCP_TOKEN,mode:'free_public_actions'}));
   console.log(JSON.stringify({event:'ND_KAGGLE_CONFIG',configured:!!KAGGLE_API_TOKEN}));
