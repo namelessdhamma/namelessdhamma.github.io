@@ -2874,6 +2874,7 @@ const LTX_PRODUCTION_TOOLS=[
 ];
 
 const STORYBOARD_TOOLS=TOOLS.filter(x=>x.name.startsWith('storyboard_'));
+const WAN_TOOLS=TOOLS.filter(x=>!x.name.startsWith('storyboard_'));
 
 function toolResult(value){
   return {content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value,isError:false};
@@ -3003,15 +3004,12 @@ export function createWanMcpHandler(){
       }
       if(method==='ping') return json(res,200,{jsonrpc:'2.0',id,result:{}});
       if(method.startsWith('notifications/')){res.writeHead(202,{'cache-control':'no-store'});return res.end();}
-      if(method==='tools/list') return json(res,200,{jsonrpc:'2.0',id,result:{tools:TOOLS}});
+      if(method==='tools/list') return json(res,200,{jsonrpc:'2.0',id,result:{tools:WAN_TOOLS}});
       if(method==='tools/call'){
         const name=String(msg?.params?.name||'');
         const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
         let result;
-        if(name==='storyboard_render_submit') result=await storyboardRenderSubmit(args);
-        else if(name==='storyboard_render_status') result=await storyboardRenderStatus(args);
-        else if(name==='storyboard_render_result') result=await storyboardRenderResult(args);
-        else if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
+        if(name==='ltx_generate_quota_independent') result=await ltxQuotaIndependentSubmit(args);
         else if(name==='ltx_quota_independent_status') result=await ltxQuotaIndependentStatus(args);
         else if(name==='ltx_generate_keyframes') result=await ltxGenerateKeyframes(args);
         else if(name==='ltx_keyframe_status') result=/^k2b-/i.test(String(args.request_id||''))?await ltxKaggle2bStatus(args):await ltxKaggleStatus(args);
