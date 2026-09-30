@@ -121,7 +121,6 @@ if outer.count(delivery_anchor)!=1:
     raise RuntimeError('v20_7_7_delivery_anchor_mismatch')
 outer=outer.replace(delivery_anchor,delivery_repl,1)
 
-outer=outer.replace('ND_VK_GATEWAY_V20_7_MUSIC_FREE_START','ND_VK_GATEWAY_V20_7_7_MUSIC_YANDEX_SIGNED_LINK_START',1)
 
 required=(
     "state['music_delivery']='private-yandex-signed-gateway-link'",
@@ -129,7 +128,6 @@ required=(
     'def _music_yandex_store(audio):',
     'def _music_signed_link(path):',
     "delivered='yandex-signed-link-primary'",
-    'ND_VK_GATEWAY_V20_7_7_MUSIC_YANDEX_SIGNED_LINK_START',
 )
 for marker in required:
     if marker not in outer:
