@@ -2,7 +2,6 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import sodium from 'libsodium-wrappers';
 import { createWanMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest } from './wan_mcp.mjs';
 import { createLtxMcpHandler as createLtxMcpHandlerV2, ltxHealth as ltxHealthV2, ltxResultBytes as ltxResultBytesV2 } from './ltx_mcp_v2.mjs';
 import { createStoryboardMcpHandler, storyboardHealth, storyboardResultBytes } from './storyboard_mcp_v2.mjs';
@@ -1542,73 +1541,6 @@ async function driveGithubSecretsProbe(){
   if(!r.ok) return {ok:false,status:r.status,error:'github_actions_secret_public_key_http_'+r.status};
   let o={};try{o=JSON.parse(raw||'{}')}catch{}
   return {ok:!!o.key_id&&!!o.key,status:r.status,key_id_present:!!o.key_id,key_present:!!o.key};
-}
-
-async function githubActionsSecretContext(){
-  const pat=String(process.env.ND_GITHUB_PAT||'').trim();
-  if(!pat) throw new Error('github_pat_missing');
-  const base='https://api.github.com/repos/namelessdhamma/namelessdhamma.github.io/actions/secrets';
-  const headers={
-    authorization:'Bearer '+pat,
-    accept:'application/vnd.github+json',
-    'x-github-api-version':'2022-11-28',
-    'user-agent':'ND-Drive-GitHub-Secret-Bootstrap/1.0'
-  };
-  const r=await boundedFetch(base+'/public-key',{headers},15000);
-  const raw=await r.text();
-  if(!r.ok) throw new Error('github_secret_public_key_http_'+r.status);
-  const o=JSON.parse(raw||'{}');
-  if(!o.key_id||!o.key) throw new Error('github_secret_public_key_invalid');
-  await sodium.ready;
-  return {pat,base,headers,key_id:o.key_id,key:sodium.from_base64(o.key,sodium.base64_variants.ORIGINAL)};
-}
-
-async function githubActionsPutSecret(ctx,name,value){
-  const cipher=sodium.crypto_box_seal(sodium.from_string(String(value)),ctx.key);
-  const encrypted_value=sodium.to_base64(cipher,sodium.base64_variants.ORIGINAL);
-  const r=await boundedFetch(ctx.base+'/'+encodeURIComponent(name),{
-    method:'PUT',
-    headers:{...ctx.headers,'content-type':'application/json'},
-    body:JSON.stringify({encrypted_value,key_id:ctx.key_id})
-  },15000);
-  if(![201,204].includes(r.status)) throw new Error('github_secret_put_http_'+r.status);
-  return r.status;
-}
-
-async function githubActionsDeleteSecret(ctx,name){
-  const r=await boundedFetch(ctx.base+'/'+encodeURIComponent(name),{
-    method:'DELETE',headers:ctx.headers
-  },15000);
-  if(![204,404].includes(r.status)) throw new Error('github_secret_delete_http_'+r.status);
-  return r.status;
-}
-
-async function githubActionsListSecretNames(ctx){
-  const r=await boundedFetch(ctx.base+'?per_page=100',{headers:ctx.headers},15000);
-  const raw=await r.text();
-  if(!r.ok) throw new Error('github_secret_list_http_'+r.status);
-  const o=JSON.parse(raw||'{}');
-  return (o.secrets||[]).map(x=>String(x.name||'')).filter(Boolean);
-}
-
-async function driveGithubSecretWriteCanary(){
-  const ctx=await githubActionsSecretContext();
-  const name='ND_DRIVE_GH_BOOTSTRAP_CANARY';
-  const value=crypto.randomBytes(24).toString('base64url');
-  let created=false;
-  try{
-    const putStatus=await githubActionsPutSecret(ctx,name,value);
-    created=true;
-    const names=await githubActionsListSecretNames(ctx);
-    if(!names.includes(name)) throw new Error('github_secret_canary_readback_missing');
-    const delStatus=await githubActionsDeleteSecret(ctx,name);
-    created=false;
-    const after=await githubActionsListSecretNames(ctx);
-    if(after.includes(name)) throw new Error('github_secret_canary_cleanup_failed');
-    return {ok:true,put_status:putStatus,delete_status:delStatus,readback:true,cleanup:true};
-  }finally{
-    if(created){try{await githubActionsDeleteSecret(ctx,name)}catch{}}
-  }
 }
 
 async function userAccessToken() {
@@ -3213,11 +3145,6 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
     setTimeout(()=>driveGithubSecretsProbe()
       .then(r=>console.log(JSON.stringify({event:'ND_DRIVE_GITHUB_SECRET_PROBE',...r})))
       .catch(e=>console.error(JSON.stringify({event:'ND_DRIVE_GITHUB_SECRET_PROBE',ok:false,error:String(e?.message||e).slice(0,500)}))),5000);
-  }
-  if(String(process.env.ND_DRIVE_GITHUB_SECRET_CANARY_ON_START||'false').trim().toLowerCase()==='true'){
-    setTimeout(()=>driveGithubSecretWriteCanary()
-      .then(r=>console.log(JSON.stringify({event:'ND_DRIVE_GITHUB_SECRET_CANARY',...r})))
-      .catch(e=>console.error(JSON.stringify({event:'ND_DRIVE_GITHUB_SECRET_CANARY',ok:false,error:String(e?.message||e).slice(0,500)}))),7000);
   }
   if(KAGGLE_API_TOKEN) setTimeout(()=>kaggleSelftest().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_SELFTEST_CRASH',error:String(e?.message||e).slice(0,500)}))),4000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_GPU_PROBE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleGpuProbe().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_GPU_PROBE',state:'FAIL',error:String(e?.message||e).slice(0,900)}))),9000);
