@@ -29,7 +29,7 @@ export function makeLtxControlContext(label,timeoutMs){
     label,timeoutMs,deadlineAt,signal:controller.signal,
     isDeadline(){return deadlineTriggered||Date.now()>=deadlineAt;},
     remainingMs(){return Math.max(0,deadlineAt-Date.now());},
-    throwIfExpired(){if(this.isDeadline()) throw ltxControlDeadlineError(label,timeoutMs);},
+    throwIfExpired(){if(this.isDeadline()){const de=ltxControlDeadlineError(label,timeoutMs);this.abort(de);throw de;}},
     abort(reason){if(!controller.signal.aborted){try{controller.abort(reason);}catch{}}},
     close(){clearTimeout(timer);}
   };
@@ -39,7 +39,7 @@ export async function withLtxControlDeadline(label,timeoutMs,fn){
   const ctx=makeLtxControlContext(label,timeoutMs);
   try{return await fn(ctx);}
   catch(e){
-    if(ctx.isDeadline()) throw ltxControlDeadlineError(label,timeoutMs);
+    if(ctx.isDeadline()){const de=ltxControlDeadlineError(label,timeoutMs);ctx.abort(de);throw de;}
     ctx.abort(e);
     throw e;
   }finally{ctx.close();}
@@ -49,7 +49,7 @@ export async function ltxFetch(url,opts={},ctx){
   ctx?.throwIfExpired();
   try{return await fetch(url,{...opts,signal:ctx?.signal});}
   catch(e){
-    if(ctx?.isDeadline()) throw ltxControlDeadlineError(ctx.label,ctx.timeoutMs);
+    if(ctx?.isDeadline()){const de=ltxControlDeadlineError(ctx.label,ctx.timeoutMs);ctx.abort(de);throw de;}
     throw e;
   }
 }
@@ -60,7 +60,7 @@ export async function ltxReadBoundedBytes(res,ctx,maxBytes,label='response'){
   if(declared>cap) throw Object.assign(new Error(label+' exceeds '+cap+' bytes'),{code:'BODY_TOO_LARGE',status:413});
   if(!res.body?.getReader){
     const buf=Buffer.from(await res.arrayBuffer());
-    if(ctx?.isDeadline()) throw ltxControlDeadlineError(ctx.label,ctx.timeoutMs);
+    if(ctx?.isDeadline()){const de=ltxControlDeadlineError(ctx.label,ctx.timeoutMs);ctx.abort(de);throw de;}
     if(buf.length>cap) throw Object.assign(new Error(label+' exceeds '+cap+' bytes'),{code:'BODY_TOO_LARGE',status:413});
     return buf;
   }
@@ -72,7 +72,7 @@ export async function ltxReadBoundedBytes(res,ctx,maxBytes,label='response'){
     while(true){
       ctx?.throwIfExpired();
       const part=await reader.read();
-      if(ctx?.isDeadline()) throw ltxControlDeadlineError(ctx.label,ctx.timeoutMs);
+      if(ctx?.isDeadline()){const de=ltxControlDeadlineError(ctx.label,ctx.timeoutMs);ctx.abort(de);throw de;}
       if(part.done) break;
       const b=Buffer.from(part.value); total+=b.length;
       if(total>cap){
