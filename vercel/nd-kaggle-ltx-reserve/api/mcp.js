@@ -1,10 +1,11 @@
-import {health,submit,status,result} from "../lib/ltx-core.js";
+import {health,submit,reconcile,status,result} from "../lib/ltx-core.js";
 
 const PATH_TOKEN=String(process.env.ND_LTX_MCP_PATH_TOKEN||"").trim();
 const TOOLS=[
   {name:"ltx_generate_keyframes",description:"NONBLOCKING FREE_ONLY Kaggle LTX 2B first/last-frame submit. Successful submit ends the call; never wait or poll in a loop.",inputSchema:{type:"object",properties:{start_image_url:{type:"string"},end_image_url:{type:"string"},prompt:{type:"string"},negative_prompt:{type:"string"},duration_seconds:{type:"number",minimum:1,maximum:6,default:2},width:{type:"integer",default:512},height:{type:"integer",default:288},seed:{type:"integer",default:42},idempotency_key:{type:"string"}},required:["start_image_url","end_image_url"],additionalProperties:false}},
-  {name:"ltx_keyframe_status",description:"One bounded Kaggle job state read. Never wait or poll in a loop.",inputSchema:{type:"object",properties:{request_id:{type:"string"}},required:["request_id"],additionalProperties:false}},
-  {name:"ltx_keyframe_result",description:"One bounded Kaggle result read. Returns fresh provider URLs when READY.",inputSchema:{type:"object",properties:{request_id:{type:"string"}},required:["request_id"],additionalProperties:false}}
+  {name:"ltx_keyframe_reconcile",description:"Reconcile an ambiguous submit by stable effect identity. Never resubmits the effect.",inputSchema:{type:"object",properties:{effect_id:{type:"string"},effect_token:{type:"string"}},anyOf:[{required:["effect_id"]},{required:["effect_token"]}],additionalProperties:false}},
+  {name:"ltx_keyframe_status",description:"One bounded Kaggle job state read under an end-to-end control deadline. Never wait or poll in a loop.",inputSchema:{type:"object",properties:{request_id:{type:"string"}},required:["request_id"],additionalProperties:false}},
+  {name:"ltx_keyframe_result",description:"One bounded Kaggle result-reference read under an end-to-end control deadline. Returns fresh provider URLs when READY.",inputSchema:{type:"object",properties:{request_id:{type:"string"}},required:["request_id"],additionalProperties:false}}
 ];
 
 function clean(e){
@@ -22,7 +23,7 @@ export default async function handler(req,res){
   if(typeof msg==="string"){try{msg=JSON.parse(msg||"{}")}catch{return res.status(400).json({jsonrpc:"2.0",id:null,error:{code:-32700,message:"Parse error"}})}}
   const id=msg.id??null, method=String(msg.method||"");
   if(method==="notifications/initialized") return res.status(204).end();
-  if(method==="initialize") return res.status(200).json({jsonrpc:"2.0",id,result:{protocolVersion:String(msg.params?.protocolVersion||"2025-06-18"),capabilities:{tools:{}},serverInfo:{name:"ND Kaggle LTX Vercel Reserve",version:"1.0.0"},instructions:"FREE_ONLY nonblocking Kaggle LTX reserve. Submit returns immediately; continue other useful work."}});
+  if(method==="initialize") return res.status(200).json({jsonrpc:"2.0",id,result:{protocolVersion:String(msg.params?.protocolVersion||"2025-06-18"),capabilities:{tools:{}},serverInfo:{name:"ND Kaggle LTX Vercel Reserve",version:"1.1.0"},instructions:"FREE_ONLY DURABLE_ASYNC Kaggle LTX reserve. Submit returns control; STATUS/RESULT are bounded; ambiguous submit must reconcile the same effect before any resubmit."}});
   if(method==="ping") return res.status(200).json({jsonrpc:"2.0",id,result:{}});
   if(method==="tools/list") return res.status(200).json({jsonrpc:"2.0",id,result:{tools:TOOLS}});
   if(method==="tools/call"){
@@ -30,12 +31,13 @@ export default async function handler(req,res){
       const name=String(msg.params?.name||""), a=msg.params?.arguments||{};
       let out;
       if(name==="ltx_generate_keyframes") out=await submit(a);
+      else if(name==="ltx_keyframe_reconcile") out=await reconcile(a);
       else if(name==="ltx_keyframe_status") out=await status(a);
       else if(name==="ltx_keyframe_result") out=await result(a);
       else return res.status(200).json({jsonrpc:"2.0",id,error:{code:-32601,message:"Unknown tool"}});
       return res.status(200).json({jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:false}});
     }catch(e){
-      const out={ok:false,error:clean(e),nonblocking:true};
+      const out={ok:false,state:e?.code==="CONTROL_DEADLINE"?"CONTROL_DEADLINE":"ERROR",outcome_state:e?.outcome_state||null,error_code:e?.code||null,timeout_ms:e?.timeout_ms||null,error:clean(e),nonblocking:true};
       return res.status(200).json({jsonrpc:"2.0",id,result:{content:[{type:"text",text:JSON.stringify(out)}],structuredContent:out,isError:true}});
     }
   }
