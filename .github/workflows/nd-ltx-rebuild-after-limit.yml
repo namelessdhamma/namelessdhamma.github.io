@@ -1,0 +1,121 @@
+name: ND LTX Rebuild After Vercel Reset
+
+on:
+  schedule:
+    - cron: '10 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: nd-ltx-rebuild-after-vercel-reset
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip before first intended window
+        id: gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          now=datetime.now(timezone.utc)
+          gate=datetime(2026,10,1,7,0,tzinfo=timezone.utc)
+          print("ready="+("true" if now>=gate else "false"))
+          with open("$GITHUB_OUTPUT","a") as f:
+              f.write("ready="+("true" if now>=gate else "false")+"\n")
+          PY
+
+      - name: Request GitHub OIDC token
+        if: steps.gate.outputs.ready == 'true'
+        id: oidc
+        shell: bash
+        run: |
+          set -euo pipefail
+          JSON="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=nd-ltx-rebuild")"
+          TOKEN="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<<"$JSON")"
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Ask ND Vercel Reserve for fixed LTX production deploy
+        if: steps.gate.outputs.ready == 'true'
+        shell: bash
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -H "Content-Type: application/json" \
+            https://nd-external-intelligence-production.up.railway.app/vercel/maintenance/ltx-rebuild-after-reset \
+            -d '{}' | tee /tmp/ltx-deploy-response.json
+
+      - name: Wait for hardened production health
+        if: steps.gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 40); do
+            BODY="$(curl -fsS "https://nd-kaggle-ltx-reserve.vercel.app/api/health?qualification=$GITHUB_RUN_ID" || true)"
+            if python -c 'import json,sys; o=json.loads(sys.stdin.read()); raise SystemExit(0 if o.get("anti_hang_release")=="NAM-397-v1" and str(o.get("control_contract_version"))=="1" else 1)' <<<"$BODY"; then
+              echo "$BODY" > /tmp/ltx-health.json
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Hardened production markers did not appear within 10 minutes" >&2
+          exit 1
+
+      - name: Persist receipt and remove one-shot machinery
+        if: steps.gate.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .nd-control/ltx-reserve
+          python - <<'PY'
+          import json, os, pathlib, datetime
+          health=json.load(open('/tmp/ltx-health.json'))
+          resp=json.load(open('/tmp/ltx-deploy-response.json'))
+          receipt={
+            "schema":"nd-ltx-vercel-rebuild-receipt-v1",
+            "qualified_at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "github_run_id":os.environ.get("GITHUB_RUN_ID"),
+            "source_commit":"1295bd37325fe27a906ae5c632548d90db26083a",
+            "deployment_response":resp,
+            "production_health":{
+              "service":health.get("service"),
+              "provider":health.get("provider"),
+              "configured":health.get("configured"),
+              "anti_hang_release":health.get("anti_hang_release"),
+              "control_contract_version":health.get("control_contract_version"),
+              "auth_configured":health.get("auth_configured")
+            },
+            "state":"PASS"
+          }
+          pathlib.Path('.nd-control/ltx-reserve/rebuild-after-limit.json').write_text(json.dumps(receipt,indent=2)+"\n")
+          p=pathlib.Path('railway/nd-omniroute/vercel_control.mjs')
+          s=p.read_text()
+          a=s.find('    // ND_LTX_REBUILD_OIDC_BEGIN')
+          b=s.find('    // ND_LTX_REBUILD_OIDC_END')
+          if a<0 or b<0 or b<a:
+              raise SystemExit('OIDC maintenance markers not found')
+          b += len('    // ND_LTX_REBUILD_OIDC_END')
+          if b < len(s) and s[b:b+1]=='\n':
+              b += 1
+          p.write_text(s[:a]+s[b:])
+          PY
+          git rm .github/workflows/nd-ltx-rebuild-after-limit.yml
+          git config user.name "ND Automation"
+          git config user.email "namelessdhamma@users.noreply.github.com"
+          git add railway/nd-omniroute/vercel_control.mjs .nd-control/ltx-reserve/rebuild-after-limit.json
+          git commit -m "LTX: close Vercel rebuild tail after hardened production qualification"
+          git push origin HEAD:main
