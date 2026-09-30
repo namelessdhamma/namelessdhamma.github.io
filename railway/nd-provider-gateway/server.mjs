@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
-const ND_PORFIRCHIK_GATEWAY_V20_6='porfirchik-v20.6-free-qualified-r2-20260930';
+const ND_PORFIRCHIK_GATEWAY_V20_6='porfirchik-v20.6-free-qualified-r3-20260930';
 const PORFIRCHIK_PORT=Number(process.env.PORFIRCHIK_PORT||3400);
 const PORFIRCHIK_SOURCE_COMMIT='c84fabca9ffcf06f10b4335097e7ba4f6dddf235';
 const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_6_gateway_home_loader.py';
@@ -40,6 +40,12 @@ function startPorfirchik(){
   env.VK_PUBLIC_BASE_URL=PORFIRCHIK_PUBLIC_BASE_URL;
   env.PORFIRCHIK_MEMOS_LOCAL_DB=String(process.env.PORFIRCHIK_MEMOS_LOCAL_DB||'/memos-data/porfirchik-memos.sqlite3');
   delete env.ND_VK_ASSEMBLE_ONLY;
+  // Porfirchik Free policy is narrower than the parent gateway's credential set.
+  // Keep parent credentials untouched; hide unavailable/non-candidate providers only from this child.
+  for(const key of ['CEREBRAS_API_KEY','MISTRAL_API_KEY','OPENAI_API_KEY','ZAI_API_KEY','OMNIROUTE_BASE_URL']){
+    env[key]='';
+  }
+  env.ND_PORFIRCHIK_FREE_PROVIDER_POLICY='groq-primary-openrouter-reserve';
   porfirchikStartedAt=new Date().toISOString();
   porfirchikLastError='';
   const child=spawn('python3',['-u','-c',porfirchikBootstrapCode()],{env,stdio:['ignore','inherit','inherit']});
