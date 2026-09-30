@@ -13,7 +13,6 @@ const VERCEL_OAUTH_STORE='.nd-vercel-oauth.enc.json';
 const VERCEL_ISSUER='https://vercel.com';
 const VERCEL_CLI_CLIENT_ID='cl_HYyOPBNtFMfHhaUn9L4QPfTZz6TP47bp';
 const USER_AGENT='nd-vercel-control/1.0';
-const VERCEL_MAINT_TOKEN=String(process.env.ND_VERCEL_MAINT_TOKEN||'').trim();
 const HTTP_TIMEOUT_MS=Math.min(120000,Math.max(1000,Number(process.env.ND_VERCEL_CONTROL_HTTP_TIMEOUT_MS||30000)));
 async function boundedFetch(url,options={},timeoutMs=HTTP_TIMEOUT_MS){
   const controller=new AbortController();
@@ -197,42 +196,6 @@ export function createVercelControlHandler(){
     if(u.pathname==='/vercel/health'&&req.method==='GET'){try{return send(res,200,{...(await status()),service:'ND Vercel Control',tools:TOOLS.length,transport:'streamable-http'});}catch(e){return send(res,503,{ok:false,service:'ND Vercel Control',tools:TOOLS.length,error:redact(e)});}}
     if(u.pathname==='/vercel/auth/start'&&req.method==='GET'){try{return send(res,200,await vercelDeviceAuthStart());}catch(e){return send(res,503,{ok:false,error:redact(e)});}}
     if(u.pathname==='/vercel/auth/poll'&&req.method==='GET'){try{return send(res,200,await vercelDeviceAuthPoll(u.searchParams.get('device_code')||''));}catch(e){return send(res,502,{ok:false,error:redact(e)});}}
-    if(u.pathname==='/vercel/maintenance/ltx-rebuild-1295bd3'&&req.method==='POST'){
-      try{
-        const sha='1295bd37325fe27a906ae5c632548d90db26083a';
-        const deployed=await vercelRequest('/v13/deployments',{
-          method:'POST',
-          query:{teamId:EXPECTED_TEAM_ID},
-          body:{
-            name:'nd-kaggle-ltx-reserve',
-            project:'prj_feTEx5M6ws9uphCQVmrRPhYmLKFq',
-            target:'production',
-            gitSource:{type:'github',org:'namelessdhamma',repo:'namelessdhamma.github.io',ref:'main',sha}
-          }
-        });
-        return send(res,200,{ok:true,id:deployed?.id||null,url:deployed?.url||null,readyState:deployed?.readyState||deployed?.status||null,sha});
-      }catch(e){return send(res,502,{ok:false,error:redact(e)});}
-    }
-    if(u.pathname==='/vercel/maintenance/deploy-ltx'&&req.method==='POST'){
-      if(!VERCEL_MAINT_TOKEN||!safeEqual(req.headers['x-nd-maint-key'],VERCEL_MAINT_TOKEN))return send(res,404,{ok:false,error:'not_found'});
-      try{
-        const body=JSON.parse(await readBody(req)||'{}');
-        const sha=String(body.sha||'').trim();
-        const expected='1295bd37325fe27a906ae5c632548d90db26083a';
-        if(sha!==expected)return send(res,409,{ok:false,error:'unexpected_sha'});
-        const deployed=await vercelRequest('/v13/deployments',{
-          method:'POST',
-          query:{teamId:EXPECTED_TEAM_ID},
-          body:{
-            name:'nd-kaggle-ltx-reserve',
-            project:'prj_feTEx5M6ws9uphCQVmrRPhYmLKFq',
-            target:'production',
-            gitSource:{type:'github',org:'namelessdhamma',repo:'namelessdhamma.github.io',ref:'main',sha}
-          }
-        });
-        return send(res,200,{ok:true,id:deployed?.id||null,url:deployed?.url||null,readyState:deployed?.readyState||deployed?.status||null,sha});
-      }catch(e){return send(res,502,{ok:false,error:redact(e)});}
-    }
     if(u.pathname.startsWith('/vercel/'))return send(res,404,{ok:false,error:'not_found'});
     return false;
   };
