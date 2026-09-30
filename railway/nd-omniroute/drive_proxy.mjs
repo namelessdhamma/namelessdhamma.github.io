@@ -53,7 +53,7 @@ function kaggleDurationSeconds(v){
 
 async function kaggleRpc(service,method,body={}){
   if(!KAGGLE_API_TOKEN) throw new Error('kaggle_api_token_missing');
-  const res=await fetch('https://api.kaggle.com/v1/'+service+'/'+method,{
+  const res=await boundedFetch('https://api.kaggle.com/v1/'+service+'/'+method,{
     method:'POST',
     headers:{
       authorization:'Bearer '+KAGGLE_API_TOKEN,
@@ -1324,7 +1324,7 @@ async function kaggleLtxCopyQualifiedOutputToDrive(){
     const readback=await metadata(created.id);
     let receiptCreated=null;
     if(receipt?.url){
-      const rr=await fetch(receipt.url);
+      const rr=await boundedFetch(receipt.url);
       if(rr.ok){
         const rb=Buffer.from(await rr.arrayBuffer());
         receiptCreated=await multipartCreate(
@@ -1446,7 +1446,7 @@ async function serviceAccessToken() {
     grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
     assertion
   });
-  const res = await fetch('https://oauth2.googleapis.com/token', {
+  const res = await boundedFetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body
@@ -1493,7 +1493,7 @@ async function directFetchJsonWithToken(token,url,{method='GET',body,headers={}}
   if (body!==undefined && !Buffer.isBuffer(body) && typeof body!=='string') {
     payload=JSON.stringify(body); h['content-type']='application/json';
   }
-  const res=await fetch(url,{method,headers:h,body:payload});
+  const res=await boundedFetch(url,{method,headers:h,body:payload});
   const text=await res.text();
   let obj={};
   try{obj=text?JSON.parse(text):{};}catch{obj={raw:text.slice(0,800)};}
@@ -1517,7 +1517,7 @@ async function loadEncryptedRefreshToken() {
   const serviceToken=await serviceAccessToken();
   const file=await findOAuthStoreFile(serviceToken);
   if(!file) throw new Error('drive user oauth not authorized');
-  const res=await fetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media&supportsAllDrives=true',{
+  const res=await boundedFetch('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(file.id)+'?alt=media&supportsAllDrives=true',{
     headers:{authorization:'Bearer '+serviceToken,accept:'application/json'}
   });
   const text=await res.text();
@@ -1537,7 +1537,7 @@ async function userAccessToken() {
     refresh_token:refresh,
     grant_type:'refresh_token'
   });
-  const res=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
+  const res=await boundedFetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body});
   const text=await res.text();
   if(!res.ok) throw new Error('drive user oauth refresh HTTP '+res.status+': '+text.slice(0,500));
   const obj=JSON.parse(text||'{}');
@@ -1630,7 +1630,7 @@ async function gjson(url, { method='GET', body }={}) {
     payload = JSON.stringify(body);
     headers['content-type'] = 'application/json';
   }
-  const res = await fetch(url, { method, headers, body: payload });
+  const res = await boundedFetch(url, { method, headers, body: payload });
   const text = await res.text();
   let obj = {};
   try { obj = text ? JSON.parse(text) : {}; } catch { obj = { raw: text.slice(0, 800) }; }
@@ -2219,7 +2219,7 @@ function linearPkceStateRead(state){
 async function linearGithubStoreRead(){
   if(!LINEAR_GITHUB_PAT) throw new Error('linear_github_store_not_configured');
   const url='https://api.github.com/repos/'+LINEAR_SECRET_REPO+'/contents/'+LINEAR_USER_OAUTH_STORE_PATH.split('/').map(encodeURIComponent).join('/')+'?ref=main';
-  const r=await fetch(url,{headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'}});
+  const r=await boundedFetch(url,{headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'}});
   if(r.status===404) return null;
   const raw=await r.text();
   if(!r.ok) throw new Error('linear oauth GitHub store read HTTP '+r.status+': '+linearRedact(raw).slice(0,500));
@@ -2243,7 +2243,7 @@ async function linearGithubStoreWrite(refreshToken){
   };
   if(existing?.sha) body.sha=existing.sha;
   const url='https://api.github.com/repos/'+LINEAR_SECRET_REPO+'/contents/'+LINEAR_USER_OAUTH_STORE_PATH.split('/').map(encodeURIComponent).join('/');
-  const r=await fetch(url,{method:'PUT',headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','content-type':'application/json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'},body:JSON.stringify(body)});
+  const r=await boundedFetch(url,{method:'PUT',headers:{authorization:'Bearer '+LINEAR_GITHUB_PAT,accept:'application/vnd.github+json','content-type':'application/json','x-github-api-version':'2022-11-28','user-agent':'ND-Linear-OAuth-Store/1.0'},body:JSON.stringify(body)});
   const raw=await r.text();
   if(!r.ok) throw new Error('linear oauth GitHub store write HTTP '+r.status+': '+linearRedact(raw).slice(0,500));
   linearUserOauthRefreshCache=String(refreshToken);
@@ -2268,7 +2268,7 @@ async function linearUserOauthAccessToken(force=false){
   if(!force && linearUserOauthTokenCache?.token && linearUserOauthTokenCache.exp>now+120) return linearUserOauthTokenCache.token;
   const refresh=await linearUserOauthRefreshToken();
   const body=new URLSearchParams({grant_type:'refresh_token',refresh_token:refresh,client_id:LINEAR_USER_OAUTH_CLIENT_ID});
-  const r=await fetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
+  const r=await boundedFetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
   const raw=await r.text();
   if(!r.ok) throw new Error('Linear user OAuth refresh HTTP '+r.status+': '+linearRedact(raw).slice(0,700));
   const obj=JSON.parse(raw||'{}');
@@ -2291,7 +2291,7 @@ async function linearUserOauthExchange(code,state){
     code_verifier:String(st.verifier),
     grant_type:'authorization_code'
   });
-  const r=await fetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
+  const r=await boundedFetch(LINEAR_OAUTH_TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded',accept:'application/json','user-agent':'ND-Linear-User-OAuth/1.0'},body});
   const raw=await r.text();
   if(!r.ok) throw new Error('Linear user OAuth exchange HTTP '+r.status+': '+linearRedact(raw).slice(0,700));
   const obj=JSON.parse(raw||'{}');
@@ -2721,7 +2721,7 @@ async function handleDrive(req,res) {
         redirect_uri:USER_OAUTH_REDIRECT_URI,
         grant_type:'authorization_code'
       });
-      const tr=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
+      const tr=await boundedFetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
       const tt=await tr.text();
       if(!tr.ok) return json(res,502,{ok:false,error:'google_token_exchange_'+tr.status,detail:tt.slice(0,500)});
       const tok=JSON.parse(tt||'{}');
