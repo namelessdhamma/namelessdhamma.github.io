@@ -21,7 +21,7 @@ const DEFAULT_INPUT_LIMIT_BYTES=20*1024*1024;
 function envMs(value,fallback){
   const n=Number(value);
   if(!Number.isFinite(n)||n<=0) return fallback;
-  return Math.max(1000,Math.min(60000,Math.floor(n)));
+  return Math.max(250,Math.floor(n));
 }
 
 function opTimeout(cfg,kind){
