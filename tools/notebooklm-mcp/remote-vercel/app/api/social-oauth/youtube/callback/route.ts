@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const RAILWAY_CALLBACK =
   "https://nd-external-intelligence-production.up.railway.app/drive/oauth/callback";
 
