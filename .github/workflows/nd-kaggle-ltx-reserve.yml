@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - qualify/ltx-multiroute-free
+      - qualify/ltx-multiroute-free\n      - nam-397-vercel-control-bounded
     paths:
       - '.nd-control/ltx/request.json'
       - '.github/workflows/nd-kaggle-ltx-reserve.yml'
@@ -21,7 +21,7 @@ on:
       - 'railway/nd-omniroute/wan_mcp.mjs'
       - 'railway/nd-omniroute/test/storyboard_mcp_v2_anti_hang.mjs'
       - 'railway/nd-omniroute/storyboard_mcp_v2.mjs'
-      - 'railway/nd-omniroute/test/wan_opaque_profile.mjs'
+      - 'railway/nd-omniroute/test/wan_opaque_profile.mjs'\n      - 'railway/nd-omniroute/vercel_control.mjs'\n      - 'railway/nd-omniroute/test/vercel_control_bounded.mjs'
   workflow_dispatch:
 
 permissions:
@@ -91,7 +91,7 @@ jobs:
           node railway/nd-omniroute/test/ltx_cross_route_identity.mjs
           node railway/nd-omniroute/test/storyboard_mcp_v2_anti_hang.mjs
           node --check railway/nd-omniroute/wan_mcp.mjs
-          node railway/nd-omniroute/test/wan_opaque_profile.mjs
+          node railway/nd-omniroute/test/wan_opaque_profile.mjs\n          node railway/nd-omniroute/test/vercel_control_bounded.mjs\n          node --check railway/nd-omniroute/vercel_control.mjs
           node --check railway/nd-omniroute/storyboard_mcp_v2.mjs
           ruby -e "require 'yaml'; YAML.load_file('.github/workflows/nd-storyboard-render.yml'); puts 'STORYBOARD_WORKFLOW_YAML=PASS'"
           grep -q "github.event_name == 'create'" .github/workflows/nd-storyboard-render.yml
