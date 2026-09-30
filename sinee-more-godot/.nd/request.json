@@ -1,8 +1,9 @@
 {
-  "request_id": "pirate-opening-e2e-20260930-0151",
-  "tool": "run_project",
+  "requested_at": "2026-09-30T06:37:00Z",
+  "request_id": "godot-tier-c-fallback-20260930",
+  "tool": "editor_state",
   "arguments": {
-    "project_path": "res://",
-    "scene": "res://main.tscn"
-  }
+    "timeout_ms": 5000
+  },
+  "purpose": "Fresh qualification of GitHub Actions Tier-C editor fallback after Railway Free-mode repair"
 }
