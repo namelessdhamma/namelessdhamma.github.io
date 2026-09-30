@@ -5,7 +5,8 @@ const KAGGLE_API_TOKEN=String(process.env.KAGGLE_API_TOKEN||'').trim();
 const KAGGLE_USERNAME_SLUG=String(process.env.KAGGLE_USERNAME_SLUG||'').trim();
 const LTX_INPUT_TOKEN=String(process.env.ND_LTX_INPUT_TOKEN||'').trim();
 const LTX_PUBLIC_BASE=String(process.env.ND_LTX_PUBLIC_BASE||'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
-const LTX_INPUT_BASE=String(process.env.ND_LTX_INPUT_BASE||LTX_PUBLIC_BASE).replace(/\/$/,'');\nconst LTX_RESULT_TOKEN=String(process.env.ND_LTX_MCP_PATH_TOKEN||'').trim();
+const LTX_INPUT_BASE=String(process.env.ND_LTX_INPUT_BASE||LTX_PUBLIC_BASE).replace(/\/$/,'');
+const LTX_RESULT_TOKEN=String(process.env.ND_LTX_MCP_PATH_TOKEN||'').trim();
 const WORKER_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py';
 
 function errorText(e){return String(e?.message||e||'error').slice(0,1800);}
