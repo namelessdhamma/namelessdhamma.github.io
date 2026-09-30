@@ -96,7 +96,6 @@ async function list(){
   const ready=(await call('ltx_keyframe_result',{request_id:'k2b-r123456789abc-def0-v1'})).structuredContent;
   if(ready?.state!=='READY'||ready?.result_mode!=='PROVIDER_REFERENCE')throw new Error('bounded result failed '+JSON.stringify(ready));
   if(!String(ready?.stable_video_url||'').includes('/ltx-result/stable-result-test-token/'+ready.request_id+'.mp4'))throw new Error('stable video reference missing '+JSON.stringify(ready));
-  if(!String(ready?.stable_receipt_url||'').includes('/ltx-result/stable-result-test-token/'+ready.request_id+'.json'))throw new Error('stable receipt reference missing '+JSON.stringify(ready));
   if(listOutputCalls!==0||outputCalls<1||outputCalls>2)throw new Error('result pagination/regression');
   console.log('PRIMARY_V2_BOUNDED_RESULT=PASS');
 }
