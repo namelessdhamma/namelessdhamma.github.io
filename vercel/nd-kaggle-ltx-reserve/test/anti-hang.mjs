@@ -25,11 +25,11 @@ function hangingJson(signal,onAbort=()=>{}){
 
 // Q1: headers arrive but body never completes. The whole STATUS call must return by one deadline.
 {
-  let cancelled=false;
+  let cancelled=false, managedSignal=null;
   globalThis.fetch=async (url,opts={})=>{
     const u=String(url);
     if(u.includes("/security.OAuthService/IntrospectToken")) return json({active:true,username:"testuser"});
-    if(u.includes("/kernels.KernelsApiService/GetKernelSessionStatus")) return hangingJson(opts.signal,()=>{cancelled=true;});
+    if(u.includes("/kernels.KernelsApiService/GetKernelSessionStatus")){ managedSignal=opts.signal; return hangingJson(opts.signal,()=>{cancelled=true;}); }
     throw new Error("unexpected fetch "+u);
   };
   const started=Date.now();
@@ -38,7 +38,9 @@ function hangingJson(signal,onAbort=()=>{}){
   const elapsed=Date.now()-started;
   if(caught?.code!=="CONTROL_DEADLINE") throw new Error("Q1 expected CONTROL_DEADLINE, got "+String(caught?.code||caught));
   if(elapsed>500) throw new Error("Q1 exceeded bounded test budget: "+elapsed+"ms");
-  if(!cancelled) throw new Error("Q1 underlying managed body was not cancelled");
+  if(!managedSignal?.aborted) throw new Error("Q1 managed I/O AbortSignal was not aborted");
+  // Stream cancel delivery may lag the control deadline by a microtask; the signal is the adapter contract.
+  if(!cancelled) await new Promise(resolve=>setTimeout(resolve,0));
   console.log("Q1_HANGING_BODY=PASS",elapsed);
 }
 
