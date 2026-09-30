@@ -2083,7 +2083,12 @@ async function handleMcpMessage(msg) {
 }
 
 async function handleMcp(req,res) {
-  if (!DEVMODE_TOKEN || req.url !== DEVMODE_MCP_PATH) return false;
+  const pluginPath = req.url === '/drive-mcp';
+  const devmodePath = !!DEVMODE_TOKEN && req.url === DEVMODE_MCP_PATH;
+  if (!pluginPath && !devmodePath) return false;
+  if (pluginPath && !safeEqual(req.headers['x-nd-bridge-key'], BRIDGE_KEY)) {
+    return json(res,401,{ok:false,error:'unauthorized'});
+  }
   if (req.method === 'GET') {
     res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store','connection':'keep-alive'});
     res.write(': nd-drive-backup\n\n');
@@ -3068,7 +3073,7 @@ const server = http.createServer(async (req,res) => {
     }
   }
   if (req.method === 'POST' && req.url === '/linear/invoke') return handleLinearInvoke(req,res);
-  if (DEVMODE_TOKEN && req.url === DEVMODE_MCP_PATH) {
+  if ((DEVMODE_TOKEN && req.url === DEVMODE_MCP_PATH) || req.url === '/drive-mcp') {
     const handled = await handleMcp(req,res);
     if (handled !== false) return;
   }
