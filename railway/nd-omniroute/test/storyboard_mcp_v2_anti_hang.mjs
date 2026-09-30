@@ -1,3 +1,4 @@
+// Candidate qualification trigger: Storyboard v2 integrated gate.
 import assert from 'node:assert/strict';
 
 process.env.ND_GITHUB_PAT='test-token';
