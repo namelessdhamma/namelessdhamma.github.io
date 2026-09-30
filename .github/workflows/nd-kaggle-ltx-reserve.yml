@@ -77,8 +77,15 @@ jobs:
           node --check railway/nd-omniroute/ltx_control.mjs
           node --check railway/nd-omniroute/ltx_mcp_v2.mjs
           node --check railway/nd-omniroute/ltx_v2_server.mjs
+          node --check railway/nd-omniroute/drive_proxy.mjs
           node railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs
           node railway/nd-omniroute/test/ltx_cross_route_identity.mjs
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const s=fs.readFileSync('railway/nd-omniroute/drive_proxy.mjs','utf8');
+          for(const x of ["createLtxMcpHandlerV2","ltxHealthV2()","ltxResultBytesV2(requestId)"]){if(!s.includes(x))throw new Error('missing production LTX v2 wiring '+x);}
+          console.log('ND_LTX_PRIMARY_V2_ROUTER_WIRING=PASS');
+          NODE
 
       - name: Execute one bounded reserve operation
         shell: bash

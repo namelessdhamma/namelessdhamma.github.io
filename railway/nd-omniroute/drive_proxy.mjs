@@ -2,7 +2,8 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createWanMcpHandler, createLtxMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, ltxResultBytes, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
+import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
+import { createLtxMcpHandler as createLtxMcpHandlerV2, ltxHealth as ltxHealthV2, ltxResultBytes as ltxResultBytesV2 } from './ltx_mcp_v2.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
@@ -1338,7 +1339,7 @@ async function kaggleLtxCopyQualifiedOutputToDrive(){
 }
 
 const wanMcpHandler = createWanMcpHandler();
-const ltxMcpHandler = createLtxMcpHandler();
+const ltxMcpHandler = createLtxMcpHandlerV2();
 const storyboardMcpHandler = createStoryboardMcpHandler();
 let ltxSelftestState={state:'NOT_RUN',updated_at:null};
 const BRIDGE_KEY = String(process.env.ND_DRIVE_BRIDGE_TOKEN || '').trim();
@@ -2881,7 +2882,7 @@ const server = http.createServer(async (req,res) => {
     const requestId=leaf.replace(/\.(mp4|json)$/,'');
     if(!/^[A-Za-z0-9._-]{8,220}$/.test(requestId)) return json(res,400,{ok:false,error:'invalid_ltx_request_id'});
     try{
-      const bundle=await ltxResultBytes(requestId);
+      const bundle=await ltxResultBytesV2(requestId);
       if(!bundle.mp4) return json(res,404,{ok:false,error:'ltx_result_not_ready',state:bundle.state});
       if(isJson) return json(res,200,{ok:true,request_id:requestId,state:bundle.state,receipt:bundle.receipt||null});
       res.writeHead(200,{
@@ -2938,7 +2939,7 @@ const server = http.createServer(async (req,res) => {
   }
   if (req.method === 'GET' && req.url === '/ltx/health') {
     try {
-      const h = await ltxHealth();
+      const h = await ltxHealthV2();
       return json(res,200,{...h,mcp_path_configured:!!LTX_MCP_TOKEN,dedicated_mcp:true,media_bridge_auth:'service_account_v1',result_proxy:true});
     } catch(e) {
       return json(res,503,{ok:false,error:String(e?.message||e).slice(0,800)});
