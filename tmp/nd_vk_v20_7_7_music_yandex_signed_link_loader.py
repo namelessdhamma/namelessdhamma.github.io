@@ -14,7 +14,7 @@ if outer.count(music_anchor)!=1:
 outer=outer.replace(music_anchor,music_repl,1)
 
 redact_anchor="    for secret in (MUSIC_HF_TOKEN,os.environ.get('VK_GROUP_TOKEN','')):"
-redact_repl="    for secret in (MUSIC_HF_TOKEN,os.environ.get('VK_GROUP_TOKEN',''),os.environ.get('YANDEX_DISK_TOKEN','')):"
+redact_repl="    for secret in (MUSIC_HF_TOKEN,os.environ.get('VK_GROUP_TOKEN',''),os.environ.get('YANDEX_DISK_TOKEN',''),os.environ.get('PORFIRCHIK_MUSIC_LINK_SECRET','')):"
 if outer.count(redact_anchor)!=1:
     raise RuntimeError('v20_7_7_redact_anchor_mismatch')
 outer=outer.replace(redact_anchor,redact_repl,1)
@@ -54,13 +54,13 @@ def _music_yandex_api(endpoint,params=None,method='GET'):
 
 def _music_signed_link(path):
     base=os.environ.get('VK_PUBLIC_BASE_URL','').strip().rstrip('/')
-    vk_token=os.environ.get('VK_GROUP_TOKEN','').strip()
+    link_secret=os.environ.get('PORFIRCHIK_MUSIC_LINK_SECRET','').strip()
     if not base.startswith('https://'):
         raise RuntimeError('music_public_base_missing')
-    if not vk_token:
+    if not link_secret:
         raise RuntimeError('music_link_signer_missing')
     encoded=base64.urlsafe_b64encode(str(path).encode('utf-8')).decode('ascii').rstrip('=')
-    sig=hashlib.sha256(('music-link:'+vk_token+':'+encoded).encode('utf-8')).hexdigest()[:32]
+    sig=hashlib.sha256(('music-link:'+link_secret+':'+encoded).encode('utf-8')).hexdigest()[:32]
     return base+'/porfirchik/music/'+sig+'/'+encoded
 
 def _music_yandex_store(audio):
