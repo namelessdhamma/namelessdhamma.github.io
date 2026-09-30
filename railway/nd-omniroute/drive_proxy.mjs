@@ -2,8 +2,9 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createWanMcpHandler, createStoryboardMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest, storyboardHealth, storyboardResultBytes } from './wan_mcp.mjs';
+import { createWanMcpHandler, wanHealth, ltxHealth, ltxKeyframeSelftest } from './wan_mcp.mjs';
 import { createLtxMcpHandler as createLtxMcpHandlerV2, ltxHealth as ltxHealthV2, ltxResultBytes as ltxResultBytesV2 } from './ltx_mcp_v2.mjs';
+import { createStoryboardMcpHandler, storyboardHealth, storyboardResultBytes } from './storyboard_mcp_v2.mjs';
 
 const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
