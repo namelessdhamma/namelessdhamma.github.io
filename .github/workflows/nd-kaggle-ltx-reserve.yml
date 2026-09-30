@@ -5,10 +5,13 @@ on:
     branches:
       - main
       - qualify/ltx-multiroute-free
+      - nam-397-anti-hang-pilot
     paths:
       - '.nd-control/ltx/request.json'
       - '.github/workflows/nd-kaggle-ltx-reserve.yml'
       - 'vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js'
+      - 'vercel/nd-kaggle-ltx-reserve/api/mcp.js'
+      - 'vercel/nd-kaggle-ltx-reserve/test/anti-hang.mjs'
   workflow_dispatch:
 
 permissions:
@@ -33,6 +36,7 @@ jobs:
           node --check vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js
           node --check vercel/nd-kaggle-ltx-reserve/api/mcp.js
           node --check vercel/nd-kaggle-ltx-reserve/api/health.js
+          node vercel/nd-kaggle-ltx-reserve/test/anti-hang.mjs
           node --input-type=module <<'NODE'
           import {submit} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
           const ok=o=>new Response(JSON.stringify(o),{status:200,headers:{'content-type':'application/json'}});
@@ -116,13 +120,39 @@ jobs:
           if(!fs.existsSync(p)) process.exit(0);
           const out=JSON.parse(fs.readFileSync(p,'utf8'));
           if(out?.state!=='READY'||!out?.provider_video_url) process.exit(0);
-          const video=await fetch(out.provider_video_url);
-          if(!video.ok) throw new Error('video fetch failed '+video.status);
-          fs.writeFileSync('/tmp/nd-ltx-gha/result.mp4',Buffer.from(await video.arrayBuffer()));
+          async function downloadBounded(url,maxBytes,label){
+            const controller=new AbortController();
+            const timer=setTimeout(()=>controller.abort(new Error(label+' deadline')),60000);
+            try{
+              const response=await fetch(url,{signal:controller.signal});
+              if(!response.ok) throw new Error(label+' fetch failed '+response.status);
+              const declared=Number(response.headers.get('content-length')||0);
+              if(declared>maxBytes) throw new Error(label+' exceeds byte limit');
+              if(!response.body?.getReader){
+                const b=Buffer.from(await response.arrayBuffer());
+                if(b.length>maxBytes) throw new Error(label+' exceeds byte limit');
+                return b;
+              }
+              const reader=response.body.getReader();
+              const chunks=[]; let total=0;
+              while(true){
+                const part=await reader.read();
+                if(part.done) break;
+                const b=Buffer.from(part.value); total+=b.length;
+                if(total>maxBytes){try{await reader.cancel('byte_limit')}catch{};throw new Error(label+' exceeds byte limit');}
+                chunks.push(b);
+              }
+              return Buffer.concat(chunks,total);
+            }finally{
+              clearTimeout(timer);
+            }
+          }
+          const video=await downloadBounded(out.provider_video_url,150*1024*1024,'video');
+          fs.writeFileSync('/tmp/nd-ltx-gha/result.mp4',video);
           if(out?.provider_receipt_url){
             try{
-              const receipt=await fetch(out.provider_receipt_url);
-              if(receipt.ok) fs.writeFileSync('/tmp/nd-ltx-gha/provider-receipt.json',Buffer.from(await receipt.arrayBuffer()));
+              const receipt=await downloadBounded(out.provider_receipt_url,2*1024*1024,'receipt');
+              fs.writeFileSync('/tmp/nd-ltx-gha/provider-receipt.json',receipt);
             }catch{}
           }
           console.log('ND_LTX_RESULT_MATERIALIZED=PASS');
