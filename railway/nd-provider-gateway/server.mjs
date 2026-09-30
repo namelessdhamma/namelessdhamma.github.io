@@ -6,10 +6,10 @@ import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 const PORT=Number(process.env.PORT||5678);
-const ND_PORFIRCHIK_GATEWAY_V20_7_1='porfirchik-v20.7.1-free-music-20260930';
+const ND_PORFIRCHIK_GATEWAY_V20_7_2='porfirchik-v20.7.2-free-music-20260930';
 const PORFIRCHIK_PORT=Number(process.env.PORFIRCHIK_PORT||3400);
-const PORFIRCHIK_SOURCE_COMMIT='f89310fc97aed71759f93bf99d040bf0adf148e4';
-const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_1b_music_fix_loader.py';
+const PORFIRCHIK_SOURCE_COMMIT='b926baf6265bc73b231caaaab68f94d4edefa762';
+const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_2_music_delivery_fix_loader.py';
 const PORFIRCHIK_SOURCE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+PORFIRCHIK_SOURCE_COMMIT+'/'+PORFIRCHIK_SOURCE_PATH;
 const PORFIRCHIK_VK_TOKEN=String(process.env.VK_GROUP_TOKEN||'').trim();
 const PORFIRCHIK_ADMIN_ROUTE=String(process.env.PORFIRCHIK_MEMOS_ADMIN_ROUTE||'').trim().replace(/^\/+|\/+$/g,'');
@@ -51,7 +51,7 @@ function startPorfirchik(){
   const child=spawn('python3',['-u','-c',porfirchikBootstrapCode()],{env,stdio:['ignore','inherit','inherit']});
   porfirchikChild=child;
   child.on('spawn',()=>{
-    console.log('ND_PORFIRCHIK_CHILD_SPAWNED',JSON.stringify({port:PORFIRCHIK_PORT,rev:ND_PORFIRCHIK_GATEWAY_V20_7_1,source_commit:PORFIRCHIK_SOURCE_COMMIT}));
+    console.log('ND_PORFIRCHIK_CHILD_SPAWNED',JSON.stringify({port:PORFIRCHIK_PORT,rev:ND_PORFIRCHIK_GATEWAY_V20_7_2,source_commit:PORFIRCHIK_SOURCE_COMMIT}));
   });
   child.on('error',err=>{
     porfirchikLastError=String(err?.message||err).slice(0,800);
@@ -1309,7 +1309,7 @@ const muxServer=http.createServer(async(req,res)=>{
     if(path==='/healthz'){
       const porfirchik=await porfirchikHealth();
       const body={
-        porfirchik:{...porfirchik,configured:Boolean(PORFIRCHIK_VK_TOKEN),child_running:Boolean(porfirchikChild&&porfirchikChild.exitCode===null),restarts:porfirchikRestarts,last_exit:porfirchikLastExit,rev:ND_PORFIRCHIK_GATEWAY_V20_7_1},
+        porfirchik:{...porfirchik,configured:Boolean(PORFIRCHIK_VK_TOKEN),child_running:Boolean(porfirchikChild&&porfirchikChild.exitCode===null),restarts:porfirchikRestarts,last_exit:porfirchikLastExit,rev:ND_PORFIRCHIK_GATEWAY_V20_7_2},
         status:'ok',
         service:'ND Yandex + YouTube MCP',
         yandex:{configured:Boolean(TOKEN&&ROUTE),tools:yandexTools().length,code_rev:ND_YANDEX_MUX_CODE_REV},
@@ -1500,7 +1500,7 @@ console.log('ND_YANDEX_YOUTUBE_MUX_START',JSON.stringify({
   qualification_rev:YT_QUALIFY_REV||null
 }));
 muxServer.listen(PORT,'0.0.0.0',()=>{
-  console.log('ND_PROVIDER_GATEWAY_READY',JSON.stringify({port:PORT,porfirchik_rev:ND_PORFIRCHIK_GATEWAY_V20_7_1,porfirchik_port:PORFIRCHIK_PORT}));
+  console.log('ND_PROVIDER_GATEWAY_READY',JSON.stringify({port:PORT,porfirchik_rev:ND_PORFIRCHIK_GATEWAY_V20_7_2,porfirchik_port:PORFIRCHIK_PORT}));
   startPorfirchik();
 });
 setTimeout(runYoutubeQualification,2000);
