@@ -1,0 +1,52 @@
+name: ND Omniroute Bounded IO
+
+on:
+  pull_request:
+    paths:
+      - railway/nd-omniroute/drive_proxy.mjs
+      - .github/workflows/nd-omniroute-bounded-io.yml
+  push:
+    branches:
+      - main
+    paths:
+      - railway/nd-omniroute/drive_proxy.mjs
+      - .github/workflows/nd-omniroute-bounded-io.yml
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: node --check railway/nd-omniroute/drive_proxy.mjs
+      - name: Anti-hang transport assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=railway/nd-omniroute/drive_proxy.mjs
+          grep -q "ND_EXTERNAL_HTTP_TIMEOUT_MS" "$FILE"
+          grep -q "ND_EXTERNAL_TRANSFER_TIMEOUT_MS" "$FILE"
+          grep -q "ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS" "$FILE"
+          grep -q "pr.setTimeout(ND_OMNIROUTE_PROXY_INACTIVITY_TIMEOUT_MS" "$FILE"
+          grep -q "external_http_timeout" "$FILE"
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('railway/nd-omniroute/drive_proxy.mjs','utf8').split('\n');
+          const bad=[];
+          for(let i=0;i<s.length;i++){
+            const line=s[i];
+            if(!/(^|[^A-Za-z0-9_$])fetch\(/.test(line)) continue;
+            if(line.includes('boundedFetch(')) continue;
+            const around=s.slice(Math.max(0,i-10),Math.min(s.length,i+18)).join('\n');
+            const helper=line.includes('return await fetch') && around.includes('async function boundedFetch');
+            const explicit=/signal:controller\.signal/.test(around);
+            if(!helper&&!explicit) bad.push([i+1,line.trim()]);
+          }
+          if(bad.length){console.error(JSON.stringify(bad,null,2));process.exit(1);}
+          console.log('ND_OMNIROUTE_UNBOUNDED_FETCHES=0');
+          NODE
+          echo "ND_OMNIROUTE_BOUNDED_IO=PASS"
