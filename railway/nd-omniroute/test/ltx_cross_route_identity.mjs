@@ -2,7 +2,7 @@ process.env.KAGGLE_API_TOKEN='test-token';
 process.env.KAGGLE_USERNAME_SLUG='testuser';
 
 const [{submit:reserveSubmit},{createLtxMcpHandler}]=await Promise.all([
-  import('../../vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js?cross-route'),
+  import('../../../vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js?cross-route'),
   import('../ltx_mcp_v2.mjs?cross-route')
 ]);
 
