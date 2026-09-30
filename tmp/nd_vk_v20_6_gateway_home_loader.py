@@ -73,17 +73,27 @@ status_repl="""                if text=='/status':
 src,_status_count=status_pattern.subn(status_repl,src,count=1)
 
 _thread_anchor="threading.Thread(target=startup,daemon=True).start()\n"
+_final_policy_code="""# V20.6 final Free provider policy. This executes after inherited router state
+# initialization, so diagnostics reflect the effective assembled runtime.
+EMERGENCY_RESERVE_TABLE=[]
+state['model_route_table']={
+    k:[p+':'+m for p,m in _adaptive_candidates(k)]
+    for k in ('write','deep_research')
+}
+state['russian_primary_models']=list(state['model_route_table'].get('write') or [])
+state['provider_pool']={
+    'groq':bool(GROQ_API_KEY),
+    'openrouter':bool(OPENROUTER_API_KEY),
+    'cloudflare':bool(CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN),
+}
+state['emergency_reserve_table']=[p+':'+m for p,m in _emergency_candidates()]
+state['provider_policy']='groq-primary; openrouter-opportunistic; unavailable routes filtered'
+state['free_provider_policy_finalized']=True
+"""
+
 _probe_code="""def _v20_6_reserve_probe():
     time.sleep(12)
     state['reserve_probes']={}
-    if CEREBRAS_API_KEY:
-        try:
-            out=_call_candidate('cerebras','gpt-oss-120b',[{'role':'user','content':'Reply exactly OK.'}],128,0.0)
-            state['reserve_probes']['cerebras:gpt-oss-120b']={'ok':bool(out)}
-            print('V20_6_RESERVE_PROBE',json.dumps({'provider':'cerebras','model':'zai-glm-4.7','ok':bool(out)},ensure_ascii=False),flush=True)
-        except Exception as e:
-            state['reserve_probes']['cerebras:gpt-oss-120b']={'ok':False,'error':cleanerr(e)[:220]}
-            print('V20_6_RESERVE_PROBE',json.dumps({'provider':'cerebras','model':'zai-glm-4.7','ok':False,'error':cleanerr(e)[:220]},ensure_ascii=False),flush=True)
     if OPENROUTER_API_KEY:
         state['reserve_probes']['openrouter:'+OPENROUTER_MODEL]={'ok':state.get('openrouter_probe')=='ok'}
 
@@ -91,7 +101,7 @@ threading.Thread(target=_v20_6_reserve_probe,daemon=True).start()
 """
 if _thread_anchor not in src:
     raise RuntimeError('v20_6_startup_thread_anchor_missing')
-src=src.replace(_thread_anchor,_probe_code+_thread_anchor,1)
+src=src.replace(_thread_anchor,_final_policy_code+_probe_code+_thread_anchor,1)
 
 
 _archived_cerebras="    ('cerebras','gpt-oss-120b'),\n"
@@ -105,6 +115,7 @@ src=src.replace('ND_VK_GATEWAY_V20_5_MEMORY_DURABLE_START','ND_VK_GATEWAY_V20_6_
 required=(
     "state['runtime_home']='nd-yandex-n8n-gateway'",
     "state['self_knowledge_policy']='runtime-facts-v1'",
+    "state['free_provider_policy_finalized']=True",
     "state['adaptive_router']='v20.6-home-aware'",
     'MemOS Cloud + persistent SQLite/outbox',
     'ND_VK_GATEWAY_V20_6_HOME_AWARE_START',
