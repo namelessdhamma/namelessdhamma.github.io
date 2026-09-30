@@ -12,6 +12,9 @@ on:
       - 'vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js'
       - 'vercel/nd-kaggle-ltx-reserve/api/mcp.js'
       - 'vercel/nd-kaggle-ltx-reserve/test/anti-hang.mjs'
+      - 'railway/nd-omniroute/ltx_control.mjs'
+      - 'railway/nd-omniroute/ltx_mcp_v2.mjs'
+      - 'railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs'
   workflow_dispatch:
 
 permissions:
@@ -36,7 +39,10 @@ jobs:
           node --check vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js
           node --check vercel/nd-kaggle-ltx-reserve/api/mcp.js
           node --check vercel/nd-kaggle-ltx-reserve/api/health.js
+          node --check railway/nd-omniroute/ltx_control.mjs
+          node --check railway/nd-omniroute/ltx_mcp_v2.mjs
           node vercel/nd-kaggle-ltx-reserve/test/anti-hang.mjs
+          node railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs
           node --input-type=module <<'NODE'
           import {submit} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
           const ok=o=>new Response(JSON.stringify(o),{status:200,headers:{'content-type':'application/json'}});
