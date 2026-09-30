@@ -1,0 +1,41 @@
+name: NAM-397 Apply Railway Anti-Hang Patch
+
+on:
+  push:
+    branches: [nam-397-anti-hang-pilot]
+    paths:
+      - 'tools/nam397_patch_railway.mjs'
+      - 'railway/nd-omniroute/ltx_control.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nam-397-anti-hang-pilot
+          fetch-depth: 0
+      - name: Apply guarded source patch
+        run: |
+          set -euo pipefail
+          node tools/nam397_patch_railway.mjs
+          node --check railway/nd-omniroute/ltx_control.mjs
+          node --check railway/nd-omniroute/wan_mcp.mjs
+          git diff --check
+      - name: Commit patched Railway source
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- railway/nd-omniroute/wan_mcp.mjs; then
+            echo "No patch delta; already applied."
+            exit 0
+          fi
+          git config user.name "namelessdhamma"
+          git config user.email "namelessdhamma@gmail.com"
+          git add railway/nd-omniroute/wan_mcp.mjs
+          git commit -m "NAM-397 harden primary Railway LTX control path"
+          git push origin HEAD:nam-397-anti-hang-pilot
