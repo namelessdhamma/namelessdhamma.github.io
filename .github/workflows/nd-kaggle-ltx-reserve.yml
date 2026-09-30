@@ -5,16 +5,19 @@ on:
     branches:
       - main
       - qualify/ltx-multiroute-free
+      - nam-397-anti-hang-v2-current
     paths:
       - '.nd-control/ltx/request.json'
       - '.github/workflows/nd-kaggle-ltx-reserve.yml'
       - 'vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js'
       - 'vercel/nd-kaggle-ltx-reserve/api/mcp.js'
+      - 'vercel/nd-kaggle-ltx-reserve/test/anti-hang.mjs'
       - 'railway/nd-omniroute/ltx_control.mjs'
       - 'railway/nd-omniroute/ltx_mcp_v2.mjs'
       - 'railway/nd-omniroute/ltx_v2_server.mjs'
       - 'railway/nd-omniroute/test/ltx_mcp_v2_anti_hang.mjs'
       - 'railway/nd-omniroute/test/ltx_cross_route_identity.mjs'
+      - 'tools/anti-hang/continuation_semantics_test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -39,6 +42,8 @@ jobs:
           node --check vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js
           node --check vercel/nd-kaggle-ltx-reserve/api/mcp.js
           node --check vercel/nd-kaggle-ltx-reserve/api/health.js
+          node vercel/nd-kaggle-ltx-reserve/test/anti-hang.mjs
+          node tools/anti-hang/continuation_semantics_test.mjs
           node --input-type=module <<'NODE'
           import {submit} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
           const ok=o=>new Response(JSON.stringify(o),{status:200,headers:{'content-type':'application/json'}});
