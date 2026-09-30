@@ -20,23 +20,14 @@ enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
 EOF
 fi
 
-# Bound the optional warm import. It improves first-call latency but must never
-# prevent the MCP gateway from becoming available.
-echo "ND_GODOT_IMPORT_START"
-set +e
-timeout 60s godot --headless --path "$GODOT_PROJECT" --editor --quit \
-  2>&1 | tee "$GODOT_PROJECT/ci-out/boot-import.log"
-IMPORT_RC=${PIPESTATUS[0]}
-set -e
-echo "ND_GODOT_IMPORT_DONE rc=$IMPORT_RC"
-
-# Warm import may leave a dead bridge descriptor. Require the long-lived
-# editor to create a fresh descriptor so readiness cannot be satisfied by stale state.
+# Railway Free cannot keep a full Godot editor resident without OOM-kill.
+# Keep the lightweight X display available for Tier D on-demand processes,
+# but make Tier C editor bridge explicitly optional instead of gating health.
 rm -f "$GODOT_PROJECT/.godot/mcp_bridge.json"
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 
 echo "ND_GODOT_XVFB_START"
-Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp \
-  >"$GODOT_PROJECT/ci-out/xvfb.log" 2>&1 &
+Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp   >"$GODOT_PROJECT/ci-out/xvfb.log" 2>&1 &
 XVFB_PID=$!
 sleep 0.5
 if ! kill -0 "$XVFB_PID" >/dev/null 2>&1; then
@@ -46,46 +37,35 @@ if ! kill -0 "$XVFB_PID" >/dev/null 2>&1; then
 fi
 echo "ND_GODOT_XVFB_READY"
 
-echo "ND_GODOT_EDITOR_START"
-godot --headless --editor --path "$GODOT_PROJECT" \
-  >"$GODOT_PROJECT/ci-out/editor.log" 2>&1 &
-EDITOR_PID=$!
-
-BRIDGE_READY=0
-for _ in $(seq 1 80); do
-  if ! kill -0 "$EDITOR_PID" >/dev/null 2>&1; then
-    echo "ND_GODOT_EDITOR_FAILED"
-    cat "$GODOT_PROJECT/ci-out/editor.log" >&2 || true
-    exit 1
-  fi
-  if test -s "$GODOT_PROJECT/.godot/mcp_bridge.json"; then
-    BRIDGE_READY=1
-    break
-  fi
-  sleep 0.5
-done
-
-if test "$BRIDGE_READY" != "1"; then
-  echo "ND_GODOT_BRIDGE_TIMEOUT"
-  cat "$GODOT_PROJECT/ci-out/editor.log" >&2 || true
-  exit 1
+EDITOR_PID=""
+if [[ "${ND_GODOT_PERSISTENT_EDITOR:-false}" == "true" ]]; then
+  echo "ND_GODOT_EDITOR_OPTIONAL_START"
+  godot --headless --editor --path "$GODOT_PROJECT"     >"$GODOT_PROJECT/ci-out/editor.log" 2>&1 &
+  EDITOR_PID=$!
+  for _ in $(seq 1 40); do
+    if ! kill -0 "$EDITOR_PID" >/dev/null 2>&1; then
+      echo "ND_GODOT_EDITOR_OPTIONAL_UNAVAILABLE"
+      EDITOR_PID=""
+      break
+    fi
+    if test -s "$GODOT_PROJECT/.godot/mcp_bridge.json"; then
+      echo "ND_GODOT_EDITOR_BRIDGE_READY"
+      break
+    fi
+    sleep 0.5
+  done
+else
+  echo "ND_GODOT_EDITOR_BRIDGE_DISABLED_FREE_MODE"
 fi
 
-echo "ND_GODOT_BRIDGE_READY"
 cd "$GODOT_PROJECT"
-
 INTERNAL_MCP_PORT="${ND_GODOT_INTERNAL_MCP_PORT:-8001}"
+
 echo "ND_GODOT_GATEWAY_START internal_port=$INTERNAL_MCP_PORT"
-supergateway \
-  --stdio "node /opt/godot-mcp/dist/server.js" \
-  --outputTransport streamableHttp \
-  --port "$INTERNAL_MCP_PORT" \
-  --streamableHttpPath /mcp \
-  --healthEndpoint /healthz \
-  --logLevel none &
+supergateway   --stdio "node /opt/godot-mcp/dist/server.js"   --outputTransport streamableHttp   --port "$INTERNAL_MCP_PORT"   --streamableHttpPath /mcp   --healthEndpoint /healthz   --logLevel none &
 GATEWAY_PID=$!
 
-for _ in $(seq 1 40); do
+for _ in $(seq 1 60); do
   if ! kill -0 "$GATEWAY_PID" >/dev/null 2>&1; then
     echo "ND_GODOT_GATEWAY_FAILED"
     exit 1
@@ -105,12 +85,14 @@ PROXY_PID=$!
 cleanup() {
   kill "$PROXY_PID" >/dev/null 2>&1 || true
   kill "$GATEWAY_PID" >/dev/null 2>&1 || true
-  kill "$EDITOR_PID" >/dev/null 2>&1 || true
+  if [[ -n "$EDITOR_PID" ]]; then
+    kill "$EDITOR_PID" >/dev/null 2>&1 || true
+  fi
   kill "$XVFB_PID" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
-# The container is healthy only while both the public proxy and MCP gateway live.
+echo "ND_GODOT_FREE_MODE_READY tiers=A,B,D tier_C=optional"
 set +e
 wait -n "$GATEWAY_PID" "$PROXY_PID"
 RC=$?
