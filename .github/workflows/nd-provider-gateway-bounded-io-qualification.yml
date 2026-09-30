@@ -1,9 +1,20 @@
 name: ND Provider Gateway Bounded IO Qualification
 
 on:
+  pull_request:
+    paths:
+      - railway/nd-provider-gateway/server.mjs
+      - render/nd-telegram-publisher-reserve/server.mjs
+      - vercel/nd-telegram-publisher-reserve/api/mcp.js
+      - .github/workflows/nd-provider-gateway-bounded-io-qualification.yml
   push:
     branches:
-      - nd-provider-gateway-bounded-io-v1
+      - main
+    paths:
+      - railway/nd-provider-gateway/server.mjs
+      - render/nd-telegram-publisher-reserve/server.mjs
+      - vercel/nd-telegram-publisher-reserve/api/mcp.js
+      - .github/workflows/nd-provider-gateway-bounded-io-qualification.yml
 
 permissions:
   contents: read
