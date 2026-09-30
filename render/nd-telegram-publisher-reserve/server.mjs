@@ -6,6 +6,8 @@ const TG_CHANNEL=String(process.env.ND_TELEGRAM_CHANNEL_ID||"@NamelessDhamma").t
 const PATH_TOKEN=String(process.env.ND_TELEGRAM_MCP_PATH_TOKEN||"").trim();
 const WRITES=/^(1|true|yes|on)$/i.test(String(process.env.ND_TELEGRAM_WRITES_ENABLED||"false"));
 const MCP_PATH=PATH_TOKEN?"/mcp/"+PATH_TOKEN:"";
+const ND_TELEGRAM_HTTP_TIMEOUT_MS=Math.max(1000,Math.min(120000,Number(process.env.ND_TELEGRAM_HTTP_TIMEOUT_MS||30000)||30000));
+const ND_TELEGRAM_MEDIA_TIMEOUT_MS=Math.max(5000,Math.min(300000,Number(process.env.ND_TELEGRAM_MEDIA_TIMEOUT_MS||120000)||120000));
 
 const RO={readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true};
 const WR={readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:true};
@@ -16,11 +18,20 @@ async function body(req){const chunks=[];for await(const c of req)chunks.push(c)
 function clean(e){let x=String(e?.message||e||"error");if(TG_TOKEN)x=x.split(TG_TOKEN).join("[REDACTED]");if(PATH_TOKEN)x=x.split(PATH_TOKEN).join("[REDACTED]");return x.slice(0,1800);}
 async function tg(method,payload){
   if(!TG_TOKEN)throw new Error("telegram_token_missing");
-  const r=await fetch("https://api.telegram.org/bot"+TG_TOKEN+"/"+method,{
-    method:payload===undefined?"GET":"POST",
-    headers:payload===undefined?{accept:"application/json"}:{"content-type":"application/json","accept":"application/json"},
-    body:payload===undefined?undefined:JSON.stringify(payload)
-  });
+  const timeoutMs=/^send(?:Video|Photo|Document|Audio|Animation)$/i.test(String(method||""))?ND_TELEGRAM_MEDIA_TIMEOUT_MS:ND_TELEGRAM_HTTP_TIMEOUT_MS;
+  let r;
+  try{
+    r=await fetch("https://api.telegram.org/bot"+TG_TOKEN+"/"+method,{
+      method:payload===undefined?"GET":"POST",
+      headers:payload===undefined?{accept:"application/json"}:{"content-type":"application/json","accept":"application/json"},
+      body:payload===undefined?undefined:JSON.stringify(payload),
+      signal:AbortSignal.timeout(timeoutMs)
+    });
+  }catch(e){
+    const n=String(e?.name||"");
+    if(n==="TimeoutError"||n==="AbortError")throw new Error("telegram_http_timeout:"+timeoutMs);
+    throw e;
+  }
   const t=await r.text(); let o={}; try{o=t?JSON.parse(t):{};}catch{o={ok:false,description:t.slice(0,700)};}
   if(!r.ok||o.ok===false)throw new Error("telegram_http_"+r.status+":"+(o.description||"request_failed"));
   return o.result;
