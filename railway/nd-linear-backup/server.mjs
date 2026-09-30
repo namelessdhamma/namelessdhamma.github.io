@@ -202,7 +202,8 @@ async function health(auth='api_key'){
   return {
     ok:tools.length>0 && !!workspace && caps.full_destructive_surface===true,
     service:'ND Linear Backup',
-    auth,\n    route:auth==='oauth'?'dedicated_railway_oauth_full_linear_api':'dedicated_railway_api_key_full_linear_api',
+    auth,
+    route:auth==='oauth'?'dedicated_railway_oauth_full_linear_api':'dedicated_railway_api_key_full_linear_api',
     official_mcp:true,
     graphql_full_api:true,
     destructive_capabilities:caps,
