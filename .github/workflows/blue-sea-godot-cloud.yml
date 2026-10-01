@@ -43,7 +43,7 @@ jobs:
           godot --headless --path "$GODOT_PROJECT" --editor --quit             2>&1 | tee "$GODOT_PROJECT/ci-out/import.log"
 
           godot --headless --path "$GODOT_PROJECT" --quit-after 2             2>&1 | tee "$GODOT_PROJECT/ci-out/smoke.log"
-          grep -Fq "BLUE_SEA_GODOT_READY" "$GODOT_PROJECT/ci-out/smoke.log"
+          grep -Fq "BLUE_SEA_GODOT_GAME_SURFACE_READY" "$GODOT_PROJECT/ci-out/smoke.log"
 
           python3 sinee-more-godot/ci/mcp_stdio_call.py             --server /tmp/godot-mcp/dist/server.js             --tool godot_status             --args '{}'             --out "$GODOT_PROJECT/ci-out/godot_status.json"
 
