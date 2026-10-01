@@ -20,6 +20,7 @@ src=src.replace(router_patch_marker,router_patch_code+'\\n'+router_patch_marker,
 if 'ND_V20_7_8_PROVIDER_ROUTER_READY' not in src:
     raise RuntimeError('v20_7_8_patch_missing')
 """
+hook='router_patch_code='+repr(router_patch_code)+'\n'+hook
 compile_anchor="\ncompile(src,'nd_vk_gateway_v20_7_music_free_runtime.py','exec')\n"
 if outer.count(compile_anchor)!=1:
     raise RuntimeError('v20_7_8_compile_anchor_mismatch')
