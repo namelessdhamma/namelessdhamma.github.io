@@ -1,15 +1,5 @@
 {
-  "op": "submit",
-  "nonce": "silas-crew-storm-sh03-20261001T0702Z",
-  "args": {
-    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e98d7e42-b242-4c1f-9457-c1cfcbc2741b.png",
-    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e51c1930-380d-4f23-8ac0-5ac0a8eed7fe.png",
-    "prompt": "Seamless continuous photorealistic horizontal 16:9 action shot of the same pirate duel on ONE ship in a dark night storm. Begin with Silas Vane, lean dark wet-haired scarred man in battered black officer coat and red sash, locked blade-to-blade against the same stocky red-haired and red-bearded pirate in tricorn hat. Silas deliberately breaks blade contact, shifts his weight back on a wet boot, then raises and drives his other boot forward in a clearly visible powerful kick into the rival's chest. Show leg bending, body rotation, impact recoil and the rival losing balance. END FRAME is kick in contact, rival still airborne/upright and not yet lying down. Other sailors continue exchanging blows in several separate background fights on the SAME deck and sway with the ship's roll. Fierce waves crash over the rail, cold diagonal rain, torn sails flap, rigging oscillates, swinging warm lanterns cast changing broken reflections over puddled dark deck, lightning flashes briefly and disappears. Strong genuine character animation and wind/water dynamics rather than camera-only slide motion. Maintain faces, limbs, swords and costume exactly; no cut and no other ships.",
-    "negative_prompt": "still image, slideshow, animated zoom, frozen background sailors, inert ship, permanent lightning, other ships or boats, character clone, changing costume or faces, extra fingers, extra swords, distorted knee, floating boot, kick without real impact, enemy already down before kick, daylight, calm water, text, watermark, gore",
-    "duration_seconds": 2,
-    "width": 512,
-    "height": 288,
-    "seed": 810263,
-    "idempotency_key": "blue-sea-silas-crew-battle-20261001-shot03-v1"
-  }
+  "op": "status",
+  "nonce": "silas-storm-sh01-status2-20261001T0705Z",
+  "request_id": "k2b-r0d5139ce62ef-11cb-v1"
 }
