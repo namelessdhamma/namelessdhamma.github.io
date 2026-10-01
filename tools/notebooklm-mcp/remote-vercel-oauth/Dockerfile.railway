@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app
+
+WORKDIR /app
+COPY requirements.txt requirements-railway.txt ./
+RUN python -m pip install --disable-pip-version-check --no-cache-dir -r requirements-railway.txt \
+    && python -m pip check
+COPY . ./
+
+CMD ["sh", "-c", "exec uvicorn railway_resilience_app:app --host 0.0.0.0 --port ${PORT:-8080}"]
