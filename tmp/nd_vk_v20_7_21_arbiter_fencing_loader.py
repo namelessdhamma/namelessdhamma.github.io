@@ -1,4 +1,4 @@
-import urllib.request
+import os,urllib.request
 BASE_COMMIT='a0cc8129643ea35ca0e2ba5c938785ba09e5eb6b'
 BASE_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+BASE_COMMIT+'/tmp/nd_vk_v20_7_20_strongest_russian_all_paths_loader.py'
 base=urllib.request.urlopen(BASE_URL,timeout=30).read().decode('utf-8')
@@ -264,4 +264,4 @@ print('ND_V20_7_21_WRAPPER_READY',flush=True)
 if os.environ.get('ND_VK_ASSEMBLE_ONLY','').strip()=='1':
     print('ND_V20_7_21_ASSEMBLE_ONLY_PASS',flush=True)
 else:
-    exec(compile(s,'v20721_wrapper.py','exec'),{'__name__':'__main__'})
+    exec(compile(s,'v20721_wrapper.py','exec'),{'__name__':'__main__','os':os})
