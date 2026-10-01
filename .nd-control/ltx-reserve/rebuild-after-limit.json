@@ -1,0 +1,19 @@
+{
+  "schema": "nd-ltx-vercel-rebuild-receipt-v1",
+  "qualified_at": "2026-10-01T14:26:10.417336+00:00",
+  "github_run_id": "36876282604",
+  "source_commit": "1295bd37325fe27a906ae5c632548d90db26083a",
+  "deployment_response": {
+    "ok": true,
+    "state": "ALREADY_CURRENT"
+  },
+  "production_health": {
+    "service": "nd-kaggle-ltx-reserve",
+    "provider": "vercel",
+    "configured": true,
+    "anti_hang_release": "NAM-397-v1",
+    "control_contract_version": "1",
+    "auth_configured": true
+  },
+  "state": "PASS"
+}

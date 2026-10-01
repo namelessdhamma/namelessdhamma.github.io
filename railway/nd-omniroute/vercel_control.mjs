@@ -237,28 +237,6 @@ export function createVercelControlHandler(){
     if(u.pathname==='/vercel/health'&&req.method==='GET'){try{return send(res,200,{...(await status()),service:'ND Vercel Control',tools:TOOLS.length,transport:'streamable-http'});}catch(e){return send(res,503,{ok:false,service:'ND Vercel Control',tools:TOOLS.length,error:redact(e)});}}
     if(u.pathname==='/vercel/auth/start'&&req.method==='GET'){try{return send(res,200,await vercelDeviceAuthStart());}catch(e){return send(res,503,{ok:false,error:redact(e)});}}
     if(u.pathname==='/vercel/auth/poll'&&req.method==='GET'){try{return send(res,200,await vercelDeviceAuthPoll(u.searchParams.get('device_code')||''));}catch(e){return send(res,502,{ok:false,error:redact(e)});}}
-    // ND_LTX_REBUILD_OIDC_BEGIN
-    if(u.pathname==='/vercel/maintenance/ltx-rebuild-after-reset'&&req.method==='POST'){
-      try{
-        const auth=String(req.headers.authorization||'');
-        if(!auth.startsWith('Bearer '))return send(res,401,{ok:false,error:'github_oidc_required'});
-        await verifyGithubOidcForLtx(auth.slice(7));
-        if(await ltxProductionCurrent())return send(res,200,{ok:true,state:'ALREADY_CURRENT'});
-        const sha='1295bd37325fe27a906ae5c632548d90db26083a';
-        const deployed=await vercelRequest('/v13/deployments',{
-          method:'POST',
-          query:{teamId:EXPECTED_TEAM_ID},
-          body:{
-            name:'nd-kaggle-ltx-reserve',
-            project:'prj_feTEx5M6ws9uphCQVmrRPhYmLKFq',
-            target:'production',
-            gitSource:{type:'github',repoId:1305281748,ref:'main',sha}
-          }
-        });
-        return send(res,200,{ok:true,state:'DEPLOY_REQUESTED',id:deployed?.id||null,url:deployed?.url||null,readyState:deployed?.readyState||deployed?.status||null,sha});
-      }catch(e){return send(res,502,{ok:false,error:redact(e)});}
-    }
-    // ND_LTX_REBUILD_OIDC_END
     if(u.pathname.startsWith('/vercel/'))return send(res,404,{ok:false,error:'not_found'});
     return false;
   };
