@@ -80,7 +80,7 @@ class McpStdioCallTests(unittest.TestCase):
               if (msg.id === 2) {
                 const init = JSON.stringify({jsonrpc: "2.0", id: 1, result: {protocolVersion: "2024-11-05", capabilities: {}}});
                 const err = JSON.stringify({jsonrpc: "2.0", id: 2, error: {code: -32000, message: "boom"}});
-                process.stdout.write(init + "\\n" + err + "\\n");
+                process.stdout.write(init + "\n" + err + "\n");
                 setInterval(() => {}, 1000);
               }
             });
