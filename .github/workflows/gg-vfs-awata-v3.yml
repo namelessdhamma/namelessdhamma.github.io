@@ -1,0 +1,47 @@
+name: GG VFS Awata v3 free-bank inspection
+on:
+  push:
+    branches: [experiment/gg-vfs-awata-v3]
+    paths: [.github/workflows/gg-vfs-awata-v3.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  bank-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Download creator's original Awata Weak v3 archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --show-error --silent --retry 2 --connect-timeout 20 --max-time 400 -o awata-v3.zip https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          echo "Downloaded archive bytes: $(stat -c%s awata-v3.zip)"
+          unzip -tqq awata-v3.zip
+          mkdir awata
+          unzip -q awata-v3.zip -d awata
+      - name: Audit real bank files and Russian phonemes
+        shell: bash
+        run: |
+          mkdir -p gg-vocal-audition
+          python - <<'PY' | tee gg-vocal-audition/bank-audit.txt
+          from pathlib import Path
+          root=Path('awata'); fs=list(root.rglob('*'))
+          print('FILE_COUNT',len(fs))
+          for f in fs:
+              if f.is_file() and (f.name in ('character.txt','character.yaml','dsconfig.yaml','phonemes.txt') or 'dsdict-ru' in f.name.lower() or 'speaker' in f.name.lower()):
+                  print('\nFILE',f,'bytes',f.stat().st_size)
+                  if f.stat().st_size<200000:
+                      try:
+                          s=f.read_text(encoding='utf-8',errors='replace')
+                          print(s[:3000] if f.name != 'phonemes.txt' else s[:5500])
+                      except Exception as e:print('READ_FAILED',repr(e))
+          PY
+      - name: Preserve only bounded diagnostics, not the voicebank
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gg-awata-bank-audit
+          path: gg-vocal-audition/
+          retention-days: 1
+          if-no-files-found: ignore
