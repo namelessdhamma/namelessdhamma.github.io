@@ -1,15 +1,5 @@
 {
-  "op": "submit",
-  "nonce": "silas-crew-storm-sh01-20261001T0658Z",
-  "args": {
-    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/7f763452-9f16-4159-97db-e9e82316c024.png",
-    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/475876c6-0902-49c5-9005-fff7737927c2.png",
-    "prompt": "One continuous photorealistic cinematic 16:9 action take on ONE storm-tossed early-modern wooden pirate ship at night. Silas Vane, lean battle-worn dark-haired man in soaked worn black officer coat with red sash, fights the same stocky red-haired bearded pirate in a dark tricorn. Starting in a low side-view two-shot with both fighters actively parrying, both blades move in distinct physically coherent arcs and meet with a sharp metallic impact, followed by rapid follow-through into the second reference pose. Silas steps forward, rival braces and counters, their bodies and hands move anatomically. All around them other members of the SAME ship's crew fight simultaneously in multiple background sword duels, change positions and struggle to keep footing as the ship rocks. Heavy diagonal rain falls, torn canvas sails billow then snap, wet hemp rigging whips, lanterns sway with warm changing reflections, huge black ocean waves crash and spray bursts over the ship's rail, brief blue lightning flashes and vanishes in the sky to the right, storm darkness returns. Water carrying faint blood streaks splashes across aged plank deck. Camera makes a restrained low handheld side dolly; genuine full-frame physical action and atmospheric motion in every layer. Preserve identities, costume, ship, spatial continuity. No scene cuts, no extra ship, no music or text.",
-    "negative_prompt": "static picture, pan and zoom over still image, slideshow, frozen swords, frozen background crowd, still waves, permanently glowing lightning, second ship, ship visible on horizon, duplicated heroes, anatomy errors, extra arms, extra blades, warped hands, face morphing, broken weapons, daylight, calm sea, fantasy armor, glowing swords, sudden camera jump, watermark, subtitles, explicit wounds or gore",
-    "duration_seconds": 2,
-    "width": 512,
-    "height": 288,
-    "seed": 810261,
-    "idempotency_key": "blue-sea-silas-crew-battle-20261001-shot01-v1"
-  }
+  "op": "status",
+  "nonce": "silas-storm-battle-sh01-bounded-status-20261001T0700Z",
+  "request_id": "k2b-r0d5139ce62ef-11cb-v1"
 }
