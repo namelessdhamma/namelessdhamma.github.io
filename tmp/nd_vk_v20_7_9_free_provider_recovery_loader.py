@@ -63,7 +63,7 @@ print('ND_V20_7_9_FREE_POOL_INITIALIZED',flush=True)
 """
 anchor="hook='router_patch_code='+repr(router_patch_code)"
 if s.count(anchor)!=1: raise RuntimeError('v2079_patch_anchor_missing')
-s=s.replace(anchor,"\nrouter_patch_code += "+repr(patch)+anchor,1)
+s=s.replace(anchor,"router_patch_code += "+repr(patch)+"\n"+anchor,1)
 end="exec(compile(outer,'v20_7_8_outer_loader.py','exec'),{'__name__':'__main__'})"
 if s.count(end)!=1: raise RuntimeError('v2079_outer_exec_anchor_missing')
 s=s.replace(end,"print('ND_V20_7_9_PROVIDER_WRAPPER_READY',flush=True)\n"+end,1)
