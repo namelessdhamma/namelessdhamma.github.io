@@ -1,0 +1,1 @@
+Activate syntax-tested provider pool with single gateway and existing persistent volume.
