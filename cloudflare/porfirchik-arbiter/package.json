@@ -1,0 +1,7 @@
+{
+  "name": "nd-porfirchik-arbiter-bootstrap",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node bootstrap.mjs" },
+  "dependencies": { "wrangler": "4.42.0" }
+}
