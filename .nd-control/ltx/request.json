@@ -1,15 +1,15 @@
 {
   "op": "submit",
-  "nonce": "silas-battle-sh03-accepted-resubmit-20261001T0736Z",
+  "nonce": "silas-battle-shot04-submit-20261001T0737Z",
   "args": {
-    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e98d7e42-b242-4c1f-9457-c1cfcbc2741b.png",
-    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e51c1930-380d-4f23-8ac0-5ac0a8eed7fe.png",
-    "prompt": "Seamless continuous photorealistic horizontal 16:9 action shot of the same pirate duel on ONE ship in a dark night storm. Begin with Silas Vane, lean dark wet-haired scarred man in battered black officer coat and red sash, locked blade-to-blade against the same stocky red-haired and red-bearded pirate in tricorn hat. Silas deliberately breaks blade contact, shifts his weight back on a wet boot, then raises and drives his other boot forward in a clearly visible powerful kick into the rival's chest. Show leg bending, body rotation, impact recoil and the rival losing balance. END FRAME is kick in contact, rival still airborne/upright and not yet lying down. Other sailors continue exchanging blows in several separate background fights on the SAME deck and sway with the ship's roll. Fierce waves crash over the rail, cold diagonal rain, torn sails flap, rigging oscillates, swinging warm lanterns cast changing broken reflections over puddled dark deck, lightning flashes briefly and disappears. Strong genuine character animation and wind/water dynamics rather than camera-only slide motion. Maintain faces, limbs, swords and costume exactly; no cut and no other ships.",
-    "negative_prompt": "still image, slideshow, animated zoom, frozen background sailors, inert ship, permanent lightning, other ships or boats, character clone, changing costume or faces, extra fingers, extra swords, distorted knee, floating boot, kick without real impact, enemy already down before kick, daylight, calm water, text, watermark, gore",
+    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e51c1930-380d-4f23-8ac0-5ac0a8eed7fe.png",
+    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/79893991-2eee-47ac-8139-0758cec1aea9.png",
+    "prompt": "Seamless 16:9 realistic continuous cinematic physical-action shot on the SAME single pirate ship during a violent night storm. Silas, lean wet dark-haired pirate officer in a worn black coat and red waist sash, has just landed a solid chest kick against the same stout red-haired and red-bearded tricorn pirate. Follow through physically from the exact starting foot-to-chest contact: Silas draws his boot back while red-bearded opponent stumbles and reels backward, arms spread and balance failing on the sharply rolling flooded deck; do not show him already lying down. Camera smoothly shifts to a wider low angle following his recoil. The different battles between other members of this SAME crew continue actively behind both men with realistic sword blows and dodges, and sailors shift balance with ship motion. Grey sea swells slam over ship rail and splash, driving rain falls diagonally, shredded canvas sails billow and snap, rigging moves, lanterns swing and scatter warm moving light across puddles mixed with faint blood traces. Brief blue lightning appears and vanishes in changing clouds, deep darkness between flashes. True animation of everyone and everything, coherent anatomy and identity, no other vessel anywhere.",
+    "negative_prompt": "static photo, slideshow, still figures, frozen background sailors, just camera zoom, second ship, distant ships, duplicated Silas or red pirate, simultaneous two boots kicking, disjointed legs, extra swords or arms, distorted anatomy, character face morph, permanent glowing lightning, calm ocean, daylight, watermarks, explicit gore, beheading",
     "duration_seconds": 2,
     "width": 512,
     "height": 288,
-    "seed": 810263,
-    "idempotency_key": "blue-sea-silas-crew-battle-20261001-shot03-v1"
+    "seed": 810264,
+    "idempotency_key": "blue-sea-silas-crew-battle-20261001-shot04-v1"
   }
 }
