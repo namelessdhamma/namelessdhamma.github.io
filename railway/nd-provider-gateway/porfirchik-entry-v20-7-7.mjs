@@ -12,17 +12,17 @@ const replaceOne=(from,to,label)=>{
 
 replaceOne(
   "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.4-free-music-yandex-fallback-20260930';",
-  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.13-free-flash-recovery-20261001';",
+  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.14-free-reserve-quarantine-20261001';",
   'revision'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='1958bc08c14ac326e601a2f8b701c2a4bca37faa';",
+  "const PORFIRCHIK_SOURCE_COMMIT='26c49263363414c4b1e26b21eadbd105bb9b4859';",
   'source_commit'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_4_music_yandex_fallback_loader.py';",
-  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_13_zai_free_flash_recovery_loader.py';",
+  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_14_quarantine_legacy_probes_loader.py';",
   'source_path'
 );
 
