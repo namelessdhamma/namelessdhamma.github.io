@@ -1,0 +1,47 @@
+name: GG VFS Awata v3 three-color vocal render
+on:
+  push:
+    branches: [experiment/gg-vfs-awata-v3]
+    paths: [.github/workflows/gg-vfs-awata-render.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install no-charge CPU inference engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet 'torch==2.8.0' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check --quiet 'numpy==1.26.4' 'scipy==1.13.1' 'librosa==0.9.2' 'onnxruntime==1.16.3' 'pyyaml>=6' 'pypinyin>=0.50' soundfile tqdm
+          python -m pip install --disable-pip-version-check --quiet --no-deps diffsinger-utau==0.3.8
+          dsutau --help | head -50
+      - name: Download public creator-authored Awata Weak v3 bank
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --show-error --silent --retry 2 --connect-timeout 20 --max-time 400 -o awata-v3.zip https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          unzip -tqq awata-v3.zip
+          mkdir awata
+          unzip -q awata-v3.zip -d awata
+      - name: Synthesize a real score-based Russian excerpt
+        shell: bash
+        run: |
+          python .nd-labs/gg-vfs/gg_vfs_render_trial.py
+          find gg-vocal-audition -name '*.wav' -type f -print
+          test "$(find gg-vocal-audition -name '*.wav' -type f | wc -l)" -ge 1
+      - name: Export generated WAVs and compact diagnostics only
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-awata-v3-three-color-audition
+          path: gg-vocal-audition/
+          retention-days: 2
+          if-no-files-found: ignore
