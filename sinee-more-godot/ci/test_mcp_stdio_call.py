@@ -78,7 +78,9 @@ class McpStdioCallTests(unittest.TestCase):
               let msg;
               try { msg = JSON.parse(line); } catch (_) { return; }
               if (msg.id === 2) {
-                console.log(JSON.stringify({jsonrpc: "2.0", id: 2, error: {code: -32000, message: "boom"}}));
+                const init = JSON.stringify({jsonrpc: "2.0", id: 1, result: {protocolVersion: "2024-11-05", capabilities: {}}});
+                const err = JSON.stringify({jsonrpc: "2.0", id: 2, error: {code: -32000, message: "boom"}});
+                process.stdout.write(init + "\\n" + err + "\\n");
                 setInterval(() => {}, 1000);
               }
             });

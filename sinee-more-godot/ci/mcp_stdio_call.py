@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-import argparse, json, selectors, subprocess, sys, time
+import argparse
+import json
+import os
+import selectors
+import subprocess
+import sys
+import time
 
 
 def _terminate(proc, timeout):
@@ -16,6 +22,36 @@ def _terminate(proc, timeout):
         except subprocess.TimeoutExpired:
             return "kill_timeout"
         return "killed"
+
+
+def _consume_json_lines(buffer, responses):
+    target = None
+    while b"\n" in buffer:
+        raw, rest = buffer.split(b"\n", 1)
+        buffer[:] = rest
+        if not raw.strip():
+            continue
+        try:
+            response = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        responses.append(response)
+        if response.get("id") == 2:
+            target = response
+    return target
+
+
+def _consume_final_json(buffer, responses):
+    if not buffer.strip():
+        return None
+    raw = bytes(buffer)
+    buffer.clear()
+    try:
+        response = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    responses.append(response)
+    return response if response.get("id") == 2 else None
 
 
 def main():
@@ -39,94 +75,101 @@ def main():
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
+        bufsize=0,
     )
     assert proc.stdin is not None and proc.stdout is not None and proc.stderr is not None
 
-    for message in messages:
-        proc.stdin.write(json.dumps(message, separators=(",", ":")) + "\n")
+    payload = b"".join(
+        json.dumps(message, separators=(",", ":")).encode("utf-8") + b"\n"
+        for message in messages
+    )
+    proc.stdin.write(payload)
     proc.stdin.flush()
     proc.stdin.close()
 
     selector = selectors.DefaultSelector()
     selector.register(proc.stdout, selectors.EVENT_READ, "stdout")
     selector.register(proc.stderr, selectors.EVENT_READ, "stderr")
+
+    stdout_buffer = bytearray()
+    stderr_buffer = bytearray()
     responses = []
-    stderr_parts = []
     target = None
-    timed_out = False
     deadline = time.monotonic() + ns.timeout
 
     while target is None:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            timed_out = True
             break
 
         events = selector.select(timeout=min(remaining, 0.25))
         if not events:
-            if proc.poll() is not None:
+            if proc.poll() is not None and not selector.get_map():
                 break
             continue
 
         for key, _ in events:
-            line = key.fileobj.readline()
-            if line == "":
+            chunk = os.read(key.fileobj.fileno(), 65536)
+            if not chunk:
                 try:
                     selector.unregister(key.fileobj)
                 except Exception:
                     pass
+                if key.data == "stdout":
+                    maybe = _consume_final_json(stdout_buffer, responses)
+                    if target is None and maybe is not None:
+                        target = maybe
                 continue
 
             if key.data == "stderr":
-                stderr_parts.append(line)
+                stderr_buffer.extend(chunk)
                 continue
 
-            try:
-                response = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            responses.append(response)
-            if response.get("id") == 2:
-                target = response
+            stdout_buffer.extend(chunk)
+            maybe = _consume_json_lines(stdout_buffer, responses)
+            if target is None and maybe is not None:
+                target = maybe
                 break
 
         if proc.poll() is not None and not selector.get_map():
             break
 
+    timed_out = target is None and time.monotonic() >= deadline
     shutdown = _terminate(proc, max(0.05, ns.shutdown_timeout))
 
-    for stream, bucket, parse_json in (
-        (proc.stdout, None, True),
-        (proc.stderr, stderr_parts, False),
-    ):
-        try:
-            rest = stream.read()
-        except Exception:
-            rest = ""
-        if not rest:
-            continue
+    # Once the child is stopped, draining the remaining raw pipes cannot wait on
+    # a long-lived server and cannot hide bytes in TextIO buffering.
+    try:
+        rest = proc.stdout.read() or b""
+    except Exception:
+        rest = b""
+    if rest:
+        stdout_buffer.extend(rest)
+    maybe = _consume_json_lines(stdout_buffer, responses)
+    if target is None and maybe is not None:
+        target = maybe
+    maybe = _consume_final_json(stdout_buffer, responses)
+    if target is None and maybe is not None:
+        target = maybe
 
-        if parse_json:
-            for line in rest.splitlines():
-                try:
-                    response = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                responses.append(response)
-                if target is None and response.get("id") == 2:
-                    target = response
-        else:
-            bucket.append(rest)
+    try:
+        rest_err = proc.stderr.read() or b""
+    except Exception:
+        rest_err = b""
+    if rest_err:
+        stderr_buffer.extend(rest_err)
+
+    # A matching response discovered during final drain wins over the deadline:
+    # the provider effect/result was observable before cleanup completed.
+    if target is not None:
+        timed_out = False
 
     result = {
         "tool": ns.tool,
         "arguments": args,
         "server_exit_code": proc.returncode,
         "response": target,
-        "stderr": "".join(stderr_parts)[-20000:],
+        "stderr": stderr_buffer.decode("utf-8", errors="replace")[-20000:],
         "timed_out": timed_out,
         "shutdown": shutdown,
     }
