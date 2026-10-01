@@ -53,6 +53,11 @@ try:
   'f0_timestep':str(hop)}
  assert len(phonemes)==sum(map(int,ds['ph_num'].split()))==len(phdur)
  assert abs(sum(phdur)-sum(d for _,d in notes))<1e-5
+ import os
+ if os.getenv('GG_CHORUS24')=='1':
+  from chorus24_score import make as full_chorus_score
+  ds,f0=full_chorus_score()
+  log('FULL_CHORUS_SCORE',len(ds['note_seq'].split()),'notes',len(ds['ph_seq'].split()),'phonemes')
  (out/'source.ds').write_text(json.dumps([ds],ensure_ascii=False,indent=2))
  acoustic_cfg=root/'dsconfig.yaml';vocoder_cfg=root/'dsvocoder/vocoder.yaml'
  log('ACOUSTIC_CONFIG',acoustic_cfg.exists(),'VOCODER_CONFIG',vocoder_cfg.exists())
