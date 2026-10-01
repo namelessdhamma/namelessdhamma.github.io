@@ -14,7 +14,7 @@ replaceOne(
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='0560a942894121fc6ae735641cc5d28caceb3744';",
+  "const PORFIRCHIK_SOURCE_COMMIT='4c1453183601fc3fabc6bbb807a6ef66153078b2';",
   'source_commit'
 );
 replaceOne(
