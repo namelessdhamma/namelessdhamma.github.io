@@ -28,6 +28,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: MCP stdio response-completion regression
+        run: python3 sinee-more-godot/ci/test_mcp_stdio_call.py
+
       - name: Install pinned Godot developer stack
         run: bash sinee-more-godot/ci/setup_godot_cloud.sh
 
