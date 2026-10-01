@@ -232,19 +232,24 @@ if not getattr(threading.Thread,'_nd_arbiter_context_patch',False):
         else:lane='child:'+name[:48]
         targs=getattr(self,'_args',())
         tkwargs=getattr(self,'_kwargs',{})
+        music_reserved=True
+        if lane.startswith('music'):
+            # Reserve synchronously before the OS thread exists. This closes the failback
+            # gap where event completion could otherwise be observed before its music job.
+            music_reserved=_arb_job_start(ctxmeta,lane)
+            if not music_reserved:
+                print('ARB_STALE_JOB_SKIPPED',json.dumps({'event':ctxmeta['event_key'],'lane':lane},ensure_ascii=False),flush=True)
+                return None
         def invoke():
             ltok=_ARB_LANE.set(lane);stok=_ARB_SEND_SEQ.set(0);err=None
             try:
-                if lane.startswith('music') and not _arb_job_start(ctxmeta,lane):
-                    print('ARB_STALE_JOB_SKIPPED',json.dumps({'event':ctxmeta['event_key'],'lane':lane},ensure_ascii=False),flush=True)
-                    return None
                 return target(*targs,**tkwargs)
             except Exception as e:
                 err=e;raise
             finally:
                 try:
                     if lane=='event':_arb_complete(ctxmeta,err)
-                    elif lane.startswith('music'):_arb_job_complete(ctxmeta,lane,err)
+                    elif lane.startswith('music') and music_reserved:_arb_job_complete(ctxmeta,lane,err)
                 finally:
                     _ARB_SEND_SEQ.reset(stok);_ARB_LANE.reset(ltok)
         self._target=lambda:parent_ctx.run(invoke)
