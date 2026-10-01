@@ -1,7 +1,10 @@
 import fs from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import path from 'node:path';
 
-const sourcePath='/app/server.mjs';
-const runtimePath='/app/server.porfirchik-v20-7-21-arbiter.mjs';
+const here=path.dirname(fileURLToPath(import.meta.url));
+const sourcePath=path.join(here,'server.mjs');
+const runtimePath=path.join(here,'server.porfirchik-v20-7-21-arbiter.mjs');
 let s=fs.readFileSync(sourcePath,'utf8');
 const replaceOne=(from,to,label)=>{const n=s.split(from).length-1;if(n!==1)throw new Error('Porfirchik V20.7.21 activation anchor mismatch: '+label+' count='+n);s=s.replace(from,to);};
 replaceOne(
@@ -26,4 +29,4 @@ replaceOne(
 );
 fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
-await import('file://'+runtimePath);
+await import(pathToFileURL(runtimePath).href);
