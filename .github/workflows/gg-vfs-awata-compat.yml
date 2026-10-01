@@ -31,24 +31,28 @@ jobs:
           mkdir awata
           unzip -q awata-v3.zip -d awata
           curl -fsSL --retry 2 --connect-timeout 20 --max-time 200 -o ezv.oudep https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep
-          unzip -tqq ezv.oudep
-          mkdir ezv_extract
-          unzip -q ezv.oudep -d ezv_extract
           python - <<'PY'
           from pathlib import Path
-          import yaml,shutil
-          src=Path('ezv_extract')
-          cfgs=list(src.rglob('vocoder.yaml'))
-          if not cfgs:raise RuntimeError('Official ezv package contains no vocoder.yaml')
-          cfg=cfgs[0];data=yaml.safe_load(cfg.read_text())
-          model=cfg.parent/data['model']
-          if not model.is_file():raise RuntimeError('Official ezv ONNX model missing: '+str(model))
+          from zipfile import ZipFile
+          import yaml
           dst=Path('awata/Awata_Weak_DS_v3/dsvocoder')
           dst.mkdir(parents=True,exist_ok=True)
-          shutil.copyfile(cfg,dst/'vocoder.yaml')
-          shutil.copyfile(model,dst/model.name)
-          print('Commercial-output-allowed ezv installed locally, bytes:',model.stat().st_size)
-          print('Vocoder config:',cfg.read_text()[:1600])
+          with ZipFile('ezv.oudep') as z:
+              names={n.replace('\\','/'):n for n in z.namelist()}
+              cfgs=[n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml']
+              if not cfgs:raise RuntimeError('No vocoder config in official ezv package')
+              cfg_name=cfgs[0]
+              cfg_bytes=z.read(names[cfg_name]);config=yaml.safe_load(cfg_bytes)
+              ref=config['model']
+              model_matches=[n for n in names if n.split('/')[-1]==ref]
+              if not model_matches:raise RuntimeError('No original model '+ref+' in package')
+              model_name=model_matches[0]
+              # Copy only the original unmodified config and ONNX model into
+              # the ephemeral runner; never repackage or publish these weights.
+              (dst/'vocoder.yaml').write_bytes(cfg_bytes)
+              with z.open(names[model_name]) as inf,(dst/ref).open('wb') as outf:
+                  while chunk:=inf.read(1024*1024):outf.write(chunk)
+          print('Commercial-output-allowed ezv installed intact:',ref,(dst/ref).stat().st_size)
           PY
       - name: Actual three-voice acoustic model and vocoder inference
         shell: bash
