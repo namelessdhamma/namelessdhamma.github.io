@@ -1,15 +1,5 @@
 {
-  "op": "submit",
-  "nonce": "silas-battle-shot04-submit-20261001T0737Z",
-  "args": {
-    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e51c1930-380d-4f23-8ac0-5ac0a8eed7fe.png",
-    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/79893991-2eee-47ac-8139-0758cec1aea9.png",
-    "prompt": "Seamless 16:9 realistic continuous cinematic physical-action shot on the SAME single pirate ship during a violent night storm. Silas, lean wet dark-haired pirate officer in a worn black coat and red waist sash, has just landed a solid chest kick against the same stout red-haired and red-bearded tricorn pirate. Follow through physically from the exact starting foot-to-chest contact: Silas draws his boot back while red-bearded opponent stumbles and reels backward, arms spread and balance failing on the sharply rolling flooded deck; do not show him already lying down. Camera smoothly shifts to a wider low angle following his recoil. The different battles between other members of this SAME crew continue actively behind both men with realistic sword blows and dodges, and sailors shift balance with ship motion. Grey sea swells slam over ship rail and splash, driving rain falls diagonally, shredded canvas sails billow and snap, rigging moves, lanterns swing and scatter warm moving light across puddles mixed with faint blood traces. Brief blue lightning appears and vanishes in changing clouds, deep darkness between flashes. True animation of everyone and everything, coherent anatomy and identity, no other vessel anywhere.",
-    "negative_prompt": "static photo, slideshow, still figures, frozen background sailors, just camera zoom, second ship, distant ships, duplicated Silas or red pirate, simultaneous two boots kicking, disjointed legs, extra swords or arms, distorted anatomy, character face morph, permanent glowing lightning, calm ocean, daylight, watermarks, explicit gore, beheading",
-    "duration_seconds": 2,
-    "width": 512,
-    "height": 288,
-    "seed": 810264,
-    "idempotency_key": "blue-sea-silas-crew-battle-20261001-shot04-v1"
-  }
+  "op": "result",
+  "nonce": "silas-battle-sh02-result-20261001T0738Z",
+  "request_id": "k2b-rd4497e20fff9-f20f-v1"
 }
