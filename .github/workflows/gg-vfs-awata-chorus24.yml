@@ -1,0 +1,70 @@
+name: GG VFS Awata v3 full 24-note chorus three colors
+on:
+  push:
+    branches: [experiment/gg-vfs-awata-v3]
+    paths: [.github/workflows/gg-vfs-awata-chorus24.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-vocal-audition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free CPU-only inference packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --quiet 'torch==2.8.0' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check --quiet 'numpy==1.26.4' 'scipy==1.13.1' 'librosa==0.9.2' 'onnxruntime==1.16.3' 'pyyaml>=6' 'pypinyin>=0.50' soundfile tqdm
+          python -m pip install --disable-pip-version-check --quiet --no-deps diffsinger-utau==0.3.8
+      - name: Retrieve original female bank and freeware commercial-output-allowed ezv vocoder
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 --connect-timeout 20 --max-time 400 -o awata-v3.zip https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          unzip -tqq awata-v3.zip
+          mkdir awata
+          unzip -q awata-v3.zip -d awata
+          curl -fsSL --retry 2 --connect-timeout 20 --max-time 200 -o ezv.oudep https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import yaml
+          dst=Path('awata/Awata_Weak_DS_v3/dsvocoder')
+          dst.mkdir(parents=True,exist_ok=True)
+          with ZipFile('ezv.oudep') as z:
+              names={n.replace('\\','/'):n for n in z.namelist()}
+              cfgs=[n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml']
+              if not cfgs:raise RuntimeError('No vocoder config in official ezv package')
+              cfg_name=cfgs[0]
+              cfg_bytes=z.read(names[cfg_name]);config=yaml.safe_load(cfg_bytes)
+              ref=config['model']
+              model_matches=[n for n in names if n.split('/')[-1]==ref]
+              if not model_matches:raise RuntimeError('No original model '+ref+' in package')
+              model_name=model_matches[0]
+              # Copy only the original unmodified config and ONNX model into
+              # the ephemeral runner; never repackage or publish these weights.
+              (dst/'vocoder.yaml').write_bytes(cfg_bytes)
+              with z.open(names[model_name]) as inf,(dst/ref).open('wb') as outf:
+                  while chunk:=inf.read(1024*1024):outf.write(chunk)
+          print('Commercial-output-allowed ezv installed intact:',ref,(dst/ref).stat().st_size)
+          PY
+      - name: Actual three-voice acoustic model and vocoder inference
+        shell: bash
+        run: |
+          GG_CHORUS24=1 python .nd-labs/gg-vfs/gg_vfs_render_direct.py
+          find gg-vocal-audition -maxdepth 1 -name '*REAL_SINGING.wav' -type f -print
+          test "$(find gg-vocal-audition -maxdepth 1 -name '*REAL_SINGING.wav' -type f | wc -l)" -ge 3
+      - name: Export rendered WAV and audit, never redistribute proprietary vocoder weights
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-awata-full-chorus-24-notes-three-voices
+          path: gg-vocal-audition/
+          retention-days: 2
+          if-no-files-found: ignore
