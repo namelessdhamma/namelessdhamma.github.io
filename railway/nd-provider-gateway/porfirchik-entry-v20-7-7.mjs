@@ -12,18 +12,24 @@ const replaceOne=(from,to,label)=>{
 
 replaceOne(
   "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.4-free-music-yandex-fallback-20260930';",
-  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.8-free-router-repair-20261001';",
+  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.9-free-provider-recovery-20261001';",
   'revision'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='2d27b8f0221b1693ef038be2414f0143d69dde18';",
+  "const PORFIRCHIK_SOURCE_COMMIT='060bf328dc4e2486320f22fa31e3c859dbb6cf7f';",
   'source_commit'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_4_music_yandex_fallback_loader.py';",
-  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_8_provider_router_loader.py';",
+  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_9_free_provider_recovery_loader.py';",
   'source_path'
+);
+
+replaceOne(
+  "for(const key of ['CEREBRAS_API_KEY','MISTRAL_API_KEY','OPENAI_API_KEY','ZAI_API_KEY','OMNIROUTE_BASE_URL']){",
+  "for(const key of ['OPENAI_API_KEY','ZAI_API_KEY','OMNIROUTE_BASE_URL']){",
+  'restore_historical_free_provider_env'
 );
 
 const routeAnchor="    if(path==='/porfirchik/health'){";
