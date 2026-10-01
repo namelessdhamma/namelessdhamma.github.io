@@ -12,17 +12,17 @@ const replaceOne=(from,to,label)=>{
 
 replaceOne(
   "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.4-free-music-yandex-fallback-20260930';",
-  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.17-yandex-public-links-20261002';",
+  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.18-strongest-russian-models-20261002';",
   'revision'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='d81e940cff8e9a06554ed2978b82d5115ee9f06d';",
+  "const PORFIRCHIK_SOURCE_COMMIT='edb2cacd6fa522bf3cf38c5c8c9333b5f57a7ef4';",
   'source_commit'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_4_music_yandex_fallback_loader.py';",
-  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_17_yandex_public_links_loader.py';",
+  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_18_strongest_russian_models_loader.py';",
   'source_path'
 );
 
