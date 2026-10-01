@@ -17,12 +17,12 @@ replaceOne(
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='060bf328dc4e2486320f22fa31e3c859dbb6cf7f';",
+  "const PORFIRCHIK_SOURCE_COMMIT='d9becbb424bd3bd381e4b437a81a5dc9ad0b8c57';",
   'source_commit'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_4_music_yandex_fallback_loader.py';",
-  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_9_free_provider_recovery_loader.py';",
+  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_9_offline_validated_loader.py';",
   'source_path'
 );
 
