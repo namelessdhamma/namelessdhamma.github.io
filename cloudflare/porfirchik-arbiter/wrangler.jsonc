@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "nd-porfirchik-arbiter",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-02",
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [
+      { "name": "ARBITER", "class_name": "PorfirchikArbiter" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["PorfirchikArbiter"] }
+  ],
+  "vars": {
+    "RAILWAY_BASE_URL": "https://nd-yandex-n8n-gateway-production.up.railway.app",
+    "RENDER_BASE_URL": "https://nd-porfirchik-cold.onrender.com",
+    "VK_API_VERSION": "5.199",
+    "QUALIFICATION_MODE": "1"
+  }
+}
