@@ -8,6 +8,7 @@ import urllib.request
 
 PREFIX = "/notebooklm "
 VERCEL_URL = "https://nd-notebooklm-oauth-mcp.vercel.app/doctor/github"
+VERCEL_EXPORT_URL = "https://nd-notebooklm-oauth-mcp.vercel.app/doctor/bootstrap/export-sealed"
 
 def _decode_command(command: str) -> dict:
     if not command.startswith(PREFIX):
@@ -23,9 +24,21 @@ def _decode_command(command: str) -> dict:
     return payload
 
 def _call_vercel(payload: dict, oidc_token: str) -> tuple[int, dict]:
-    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    operation = str(payload.get("operation") or "").strip()
+    if operation == "bootstrap_export_sealed":
+        args = payload.get("args") or {}
+        if not isinstance(args, dict):
+            raise ValueError("invalid_args")
+        outbound = {"recipient_public_key_b64": str(args.get("recipient_public_key_b64") or "").strip()}
+        if not outbound["recipient_public_key_b64"]:
+            raise ValueError("missing_recipient_public_key_b64")
+        target_url = VERCEL_EXPORT_URL
+    else:
+        outbound = payload
+        target_url = VERCEL_URL
+    body = json.dumps(outbound, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     req = urllib.request.Request(
-        VERCEL_URL,
+        target_url,
         data=body,
         method="POST",
         headers={
