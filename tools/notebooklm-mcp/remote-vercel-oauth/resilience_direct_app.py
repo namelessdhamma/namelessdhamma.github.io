@@ -58,6 +58,7 @@ def _load_master_token_b64() -> str:
     token_file = HOME / 'profiles' / 'default' / 'master_token.json'
     if token_file.exists():
         return base64.b64encode(token_file.read_bytes()).decode('ascii')
+    recovery_errors = []
     if X25519_SEALED_ENVELOPE_B64:
         try:
             raw = base64.b64decode(X25519_SEALED_ENVELOPE_B64.encode('ascii'), validate=True)
@@ -66,7 +67,7 @@ def _load_master_token_b64() -> str:
                 raise RuntimeError('sealed_envelope_not_object')
             return _open_sealed(envelope)
         except Exception as exc:
-            raise RuntimeError('invalid_x25519_sealed_envelope:' + str(exc)[:300]) from exc
+            recovery_errors.append('env_x25519:' + type(exc).__name__)
     if BUNDLED_X25519_ENVELOPE.exists():
         try:
             wrapped = json.loads(BUNDLED_X25519_ENVELOPE.read_text(encoding='utf-8'))
@@ -75,7 +76,7 @@ def _load_master_token_b64() -> str:
                 raise RuntimeError('bundled_sealed_envelope_missing')
             return _open_sealed(envelope)
         except Exception as exc:
-            raise RuntimeError('invalid_bundled_x25519_sealed_envelope:' + str(exc)[:300]) from exc
+            recovery_errors.append('bundled_x25519:' + type(exc).__name__)
     if SEALED_MASTER_TOKEN_B64 and RENDER_PRIVATE_KEY_B64:
         private_key = serialization.load_pem_private_key(
             base64.b64decode(RENDER_PRIVATE_KEY_B64.encode('ascii')), password=None
@@ -85,6 +86,8 @@ def _load_master_token_b64() -> str:
             padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None),
         )
         return base64.b64encode(plain).decode('ascii')
+    if recovery_errors:
+        raise RuntimeError('all_render_credential_recovery_paths_failed:' + ','.join(recovery_errors))
     return ''
 
 
