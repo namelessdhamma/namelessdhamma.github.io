@@ -1,12 +1,11 @@
 {
   "format": "nd-notebooklm-x25519-sealed-v1",
   "target": "render-direct",
-  "source": "vercel-primary",
-  "captured_at": "2026-09-21T00:48:14.523830+00:00",
-  "sha256": "316ad8c5d8c9cbf05f4e7a4f7b0f47e5daef588b992a0314eaa8c38289828059",
+  "source": "vercel-primary-github-oidc",
+  "captured_at": "2026-10-02T04:08:00Z",
   "envelope": {
-    "ephemeral_public_key_b64": "ss2FM/1SO4Yafo130kEm3nus9jpUc+ReuFbogZQDzTw=",
-    "nonce_b64": "DCwk+YU58RTB1VUi",
-    "ciphertext_b64": "4qbhKah2UziRnO+515ebENHb0UFW5d2SiwwvCEuzr3jmL9vdl44Xgk0Kr2tkiB2OGd2nZuUWWuG3qNaGsL4JDM1cYhBwm7QMBG5RrlVigkP8CnAhTGbslSJ1893ZDJFL4CK1/FgMUyP5BLvWyNRG/AMds3YjbJwzXUJquA1PTxsuYRLLz88QOTktPWPHQbMYsxoYU/8pGjJpJOF1GEWKFh2QhKhH8QMcz14yByjWxcN4zrb2/fxG7EA4hNWTZTguUjFh0NF7zgp0yp8po6Ocniktu7TRnYxC6qLSBQN8DBmc/Wd4AMX6soBgLf+O0uC2AqQ7b01/VUu34gj00bpXPEB6RxaVmLSzQAYDuc3HT2mYZyvdqT/9DdmFdVy1hAs+BofkQ1z/eOCb3pmrcE1MzItPzrDeknJfKuOTdzAK3ftJM0cTR3VoRTEL9qzWg3piCuz/NJJncmw4xixYqUtgPQd2kxOJbN2ScFOmVFSR/9qIov/A5wFRG4SjlMBJvv9ZbkL1xtw3If/sjP/tdhPJ2PaPcvFaf9Q9rhWYCGIRAtmw34GXobV9F4pwAR33+AvNstsjrD0O7/tpq5E/ZaW0u4TNZbUxNLy1UDOHLmoTnbR9WuS/"
+    "ephemeral_public_key_b64": "z4ded5YLjBVqDopBGRecpgfm/IE/5zoBLYOrdLHkjFc=",
+    "nonce_b64": "Mt3yA2yBx/kjw+8J",
+    "ciphertext_b64": "BSlhu2Rn6tybCps/ZwRFsgbW5ZFc3+oPa0N8hJj9fTedIRxS42FJq2rUUtizsviA7FU8jRod4xNJy6pBtivlfWLJwMy9B2m3cKUhbmKVB0pxoPeX2cIJEZ8XW6lI9jYhsiqS+f4prBMIyBdSOP4F7Whw/ji3kC+y24Kn615CIV3e8RnhGCIG4UqnOH/MQimYsrjWyPQ5gX88qkY2FdAS/+iuM4l6biSy7jIHxsQgI56o+GUmR11Oq2x5vh4cEWG5eG3Z8oXR4FAXxWQm3WXXerHLi+ansnwCfGY4Pgsy/K1BauXmMkjI966qMhtDMKPRHSX3nxJckz6M7olbdMgTAmKet27cbatsDuINbDSZvkUhkLFaNu5N8NzmB7UllPS/jO1u9IMczojpR/HzCPTD+GycdIR3mfQ83G4jvpZ4Tz+h5sos1Aio39LcaNtbqlSnN9etjfsY/CxASQNhpydGIradf9Wirlx2XvjO2SijmzrOnfkalOPUl01mcmbo/uNNVKP3qoFS+Sc4FBmkCg4WP0edEgWqfv9Lf5uSKZxBL/QLTSaWXQLvuQ49ens4p0ZrHs7BbuU11AS+FOMJs5GHGuw1NBlAsSTN3XkbBOu0s2LzkWhr"
   }
 }
