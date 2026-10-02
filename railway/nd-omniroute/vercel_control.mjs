@@ -23,6 +23,7 @@ async function boundedFetch(url,options={},timeoutMs=HTTP_TIMEOUT_MS){
 }
 let googleServiceCache=null,googleUserCache=null,googleRefreshCache=null;
 let vercelCredentialCache=null,vercelRefreshPromise=null,vercelDiscoveryCache=null;
+let notebooklmPasswordSyncState={state:'NOT_RUN',updated_at:null,project:null,deployment_id:null,error:null};
 
 function safeEqual(a,b){const x=Buffer.from(String(a||'')),y=Buffer.from(String(b||''));return x.length===y.length&&x.length>0&&crypto.timingSafeEqual(x,y);}
 function send(res,status,obj){const raw=Buffer.from(JSON.stringify(obj));res.writeHead(status,{'content-type':'application/json','content-length':String(raw.length),'cache-control':'no-store'});res.end(raw);}
@@ -177,7 +178,46 @@ async function vercelRequest(path,{method='GET',query={},body,accessToken}={}){
   const p=validateApiPath(path),token=accessToken||await vercelAccessToken(),u=new URL('https://api.vercel.com'+p),q=normalizeQuery(query);for(const [k,v] of q.entries())u.searchParams.append(k,v);const h={authorization:'Bearer '+token,accept:'application/json','user-agent':USER_AGENT};let payload=body;if(body!==undefined&&!Buffer.isBuffer(body)&&typeof body!=='string'){payload=JSON.stringify(body);h['content-type']='application/json';}
   const r=await boundedFetch(u,{method,headers:h,body:payload});const t=await r.text();let o={};try{o=t?JSON.parse(t):{};}catch{o={raw:t.slice(0,12000)}}if(!r.ok){const e=new Error('vercel_api_http_'+r.status+':'+t.slice(0,1400));e.status=r.status;throw e;}return o;
 }
-async function status(){try{const projects=await vercelRequest('/v9/projects',{query:{teamId:EXPECTED_TEAM_ID,limit:1}});return {ok:true,authorized:true,team_id:EXPECTED_TEAM_ID,projects_visible:Array.isArray(projects?.projects)?projects.projects.length:null,credential_store:'encrypted_google_drive',runtime_route:'direct_vercel_rest',runtime_profile:'BOUNDED_SYNC',request_timeout_ms:HTTP_TIMEOUT_MS,ambiguous_write:'READBACK_BEFORE_RETRY'};}catch(e){if(String(e.message||e).includes('vercel_oauth_not_authorized'))return {ok:true,authorized:false,team_id:EXPECTED_TEAM_ID,credential_store:'encrypted_google_drive',next:'vercel_auth_start'};throw e;}}
+async function status(){try{const projects=await vercelRequest('/v9/projects',{query:{teamId:EXPECTED_TEAM_ID,limit:1}});return {ok:true,authorized:true,team_id:EXPECTED_TEAM_ID,projects_visible:Array.isArray(projects?.projects)?projects.projects.length:null,credential_store:'encrypted_google_drive',runtime_route:'direct_vercel_rest',runtime_profile:'BOUNDED_SYNC',request_timeout_ms:HTTP_TIMEOUT_MS,ambiguous_write:'READBACK_BEFORE_RETRY',notebooklm_password_sync:notebooklmPasswordSyncState};}catch(e){if(String(e.message||e).includes('vercel_oauth_not_authorized'))return {ok:true,authorized:false,team_id:EXPECTED_TEAM_ID,credential_store:'encrypted_google_drive',next:'vercel_auth_start',notebooklm_password_sync:notebooklmPasswordSyncState};throw e;}}
+
+
+async function maybeSyncNotebooklmVercelPassword(){
+  const password=String(process.env.ND_NOTEBOOKLM_VERCEL_LOGIN_PASSWORD_SYNC||'').trim();
+  if(!password){notebooklmPasswordSyncState={state:'DISABLED',updated_at:new Date().toISOString(),project:null,deployment_id:null,error:null};return notebooklmPasswordSyncState;}
+  const project=String(process.env.ND_NOTEBOOKLM_VERCEL_PROJECT||'nd-notebooklm-oauth-mcp').trim();
+  if(password.length<24) throw new Error('notebooklm_vercel_sync_password_too_short');
+  notebooklmPasswordSyncState={state:'RUNNING',updated_at:new Date().toISOString(),project,deployment_id:null,error:null};
+  try{
+    const envResult=await vercelRequest('/v10/projects/'+encodeURIComponent(project)+'/env',{
+      method:'POST',
+      query:{teamId:EXPECTED_TEAM_ID,upsert:'true'},
+      body:{key:'NOTEBOOKLM_MCP_OAUTH_PASSWORD',value:password,type:'encrypted',target:['production']}
+    });
+    const deployments=await vercelRequest('/v6/deployments',{query:{teamId:EXPECTED_TEAM_ID,projectId:project,limit:20,target:'production'}});
+    const items=Array.isArray(deployments?.deployments)?deployments.deployments:[];
+    const current=items.find(x=>String(x?.state||'').toUpperCase()==='READY')||items[0];
+    if(!current?.uid&&!current?.id) throw new Error('notebooklm_vercel_production_deployment_not_found');
+    const deploymentId=String(current.uid||current.id);
+    const redeploy=await vercelRequest('/v13/deployments',{
+      method:'POST',
+      query:{teamId:EXPECTED_TEAM_ID},
+      body:{name:project,project,deploymentId,target:'production'}
+    });
+    const nextId=String(redeploy?.id||redeploy?.uid||'');
+    notebooklmPasswordSyncState={
+      state:'REDEPLOY_REQUESTED',
+      updated_at:new Date().toISOString(),
+      project,
+      deployment_id:nextId||deploymentId,
+      env_upserted:!!envResult,
+      error:null
+    };
+    return notebooklmPasswordSyncState;
+  }catch(e){
+    notebooklmPasswordSyncState={state:'FAIL',updated_at:new Date().toISOString(),project,deployment_id:null,error:redact(e)};
+    throw e;
+  }
+}
 
 async function invoke(name,a={}){
   if(name==='vercel_auth_start')return vercelDeviceAuthStart();
@@ -242,4 +282,5 @@ export function createVercelControlHandler(){
   };
 }
 export function startVercelControlServer(){const port=Number(process.env.PORT||3313),handler=createVercelControlHandler();const server=http.createServer(async(req,res)=>{try{const handled=await handler(req,res);if(handled===false)send(res,404,{ok:false,error:'not_found'});}catch(e){send(res,503,{ok:false,error:redact(e)});}});server.listen(port,'0.0.0.0',()=>console.log('ND_VERCEL_CONTROL_READY '+JSON.stringify({port,team_id:EXPECTED_TEAM_ID,tools:TOOLS.length,credential_store:'encrypted_google_drive'})));return server;}
+if(String(process.env.ND_NOTEBOOKLM_VERCEL_LOGIN_PASSWORD_SYNC||'').trim()) setTimeout(()=>maybeSyncNotebooklmVercelPassword().then(x=>console.log('ND_NOTEBOOKLM_VERCEL_PASSWORD_SYNC '+JSON.stringify(x))).catch(e=>console.error('ND_NOTEBOOKLM_VERCEL_PASSWORD_SYNC '+JSON.stringify({state:'FAIL',error:redact(e)}))),12000);
 if(String(process.env.ND_VERCEL_STANDALONE||'').toLowerCase()==='true')startVercelControlServer();
