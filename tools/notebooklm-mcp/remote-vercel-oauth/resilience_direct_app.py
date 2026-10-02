@@ -25,9 +25,11 @@ from notebooklm.mcp._resolve import resolve_notebook
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
-from starlette.routing import Route
+from starlette.routing import Mount, Route
 
 from nd_oauth.runtime import materialize_master_token, refresh_storage
+from nd_oauth.file_state import FileOAuthStateStore
+from nd_oauth.full_server import create_full_mcp
 
 MASTER_TOKEN_B64 = os.environ.get('NOTEBOOKLM_MASTER_TOKEN_B64', '').strip()
 BACKEND = os.environ.get('NOTEBOOKLM_BACKEND', 'android').strip().lower() or 'android'
@@ -770,4 +772,52 @@ async def plugin_mcp(request: Request):
 
 
 
-app = Starlette(routes=[Route('/health', health, methods=['GET']), Route('/chatgpt/mcp/health', plugin_mcp_health, methods=['GET']), Route('/chatgpt/mcp', plugin_mcp, methods=['GET', 'POST']), Route('/github', github, methods=['POST']), Route('/bootstrap/exchange', bootstrap_exchange, methods=['POST']), Route('/bootstrap/public-key', bootstrap_public_key, methods=['GET']), Route('/bootstrap/import-sealed', bootstrap_import_sealed, methods=['POST']), Route('/bootstrap/export-sealed', bootstrap_export_sealed, methods=['POST'])])
+def build_render_oauth_app():
+    base_url = os.environ.get(
+        'ND_NOTEBOOKLM_OAUTH_BASE_URL',
+        'https://nd-notebooklm-direct.onrender.com',
+    ).strip().rstrip('/')
+    password = os.environ.get('NOTEBOOKLM_MCP_OAUTH_PASSWORD', '').strip()
+    login_password = os.environ.get('ND_NOTEBOOKLM_OAUTH_LOGIN_PASSWORD', '').strip() or password
+    if len(password) < 24:
+        raise RuntimeError('NOTEBOOKLM_MCP_OAUTH_PASSWORD must be at least 24 characters')
+    if len(login_password) < 24:
+        raise RuntimeError('ND_NOTEBOOKLM_OAUTH_LOGIN_PASSWORD must be at least 24 characters')
+
+    state_root = Path(
+        os.environ.get(
+            'ND_NOTEBOOKLM_RENDER_OAUTH_STATE_DIR',
+            '/tmp/nd-notebooklm-render-oauth-state',
+        )
+    )
+    state_path = Path(
+        os.environ.get(
+            'ND_NOTEBOOKLM_OAUTH_STATE_PATH',
+            '/tmp/nd-notebooklm-render-oauth.json',
+        )
+    )
+    registry_store = FileOAuthStateStore(state_root / 'oauth-registry.json')
+    transient_store = FileOAuthStateStore(state_root / 'oauth-transient.json')
+
+    mcp = create_full_mcp(
+        password=password,
+        login_password=login_password,
+        base_url=base_url,
+        state_path=state_path,
+        registry_store=registry_store,
+        transient_store=transient_store,
+        client_factory=client_factory,
+        trust_proxy=True,
+    )
+    return mcp.http_app(
+        path='/mcp',
+        stateless_http=True,
+        json_response=True,
+        transport='http',
+    )
+
+
+oauth_app = build_render_oauth_app()
+
+
+app = Starlette(routes=[Route('/health', health, methods=['GET']), Route('/chatgpt/mcp/health', plugin_mcp_health, methods=['GET']), Route('/chatgpt/mcp', plugin_mcp, methods=['GET', 'POST']), Route('/github', github, methods=['POST']), Route('/bootstrap/exchange', bootstrap_exchange, methods=['POST']), Route('/bootstrap/public-key', bootstrap_public_key, methods=['GET']), Route('/bootstrap/import-sealed', bootstrap_import_sealed, methods=['POST']), Route('/bootstrap/export-sealed', bootstrap_export_sealed, methods=['POST']), Mount('/', app=oauth_app)], lifespan=oauth_app.lifespan)
