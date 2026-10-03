@@ -26,7 +26,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ardour curl ca-certificates grep coreutils findutils xvfb dbus-x11 \
-            jackd2 python3 procps xauth
+            jackd2 python3 procps xauth xdotool x11-utils
 
       - name: Verify Ardour version and native MCP HTTP surface
         shell: bash
@@ -62,14 +62,30 @@ jobs:
           jackd -d dummy -r 48000 -p 1024 >/tmp/gg-jack.log 2>&1 &
           JACK_PID=$!
           sleep 2
+          echo '--- JACK startup ---'
+          cat /tmp/gg-jack.log || true
+          if ! jack_lsp >/tmp/gg-jack-ports.txt 2>/tmp/gg-jack-lsp.err; then
+            echo 'GG_JACK_DUMMY=FAIL'
+            cat /tmp/gg-jack-lsp.err || true
+            exit 29
+          fi
+          echo 'GG_JACK_DUMMY=PASS'
 
-          set +e
-          dbus-run-session -- xvfb-run -a "$ARDOUR_BIN" -a -n -P -N /tmp/gg-cloud/GGCloud \
+          Xvfb :99 -screen 0 1280x800x24 >/tmp/gg-xvfb.log 2>&1 &
+          XVFB_PID=$!
+          export DISPLAY=:99
+          sleep 1
+          dbus-run-session -- "$ARDOUR_BIN" -a -n -P -N /tmp/gg-cloud/GGCloud \
             >/tmp/gg-ardour-first.log 2>&1 &
           ARDOUR_WRAPPER_PID=$!
-          set -e
 
-          for i in $(seq 1 30); do
+          sleep 8
+          echo '--- visible X windows ---'
+          xdotool search --onlyvisible --name '.*' getwindowname 2>/dev/null | tee /tmp/gg-window-names.txt || true
+          echo '--- all X tree ---'
+          xwininfo -root -tree 2>/dev/null | head -200 || true
+
+          for i in $(seq 1 22); do
             SESSION_FILE="$(find /tmp/gg-cloud -maxdepth 3 -type f -name '*.ardour' -print -quit 2>/dev/null || true)"
             [ -n "$SESSION_FILE" ] && break
             sleep 1
@@ -117,6 +133,7 @@ jobs:
           PY
 
           echo "$SESSION_FILE" >/tmp/gg-session-file.txt
+          kill "$XVFB_PID" 2>/dev/null || true
           kill "$JACK_PID" 2>/dev/null || true
 
       - name: Restart session and qualify native MCP JSON-RPC
