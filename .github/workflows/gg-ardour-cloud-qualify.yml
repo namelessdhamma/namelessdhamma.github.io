@@ -97,7 +97,18 @@ jobs:
           echo "$CLIENT_ID" >/tmp/gg-client-id.txt
           echo "GG_RAYSESSION_CLIENT_ID=$CLIENT_ID"
 
-          ray_control client "$CLIENT_ID" open || true
+          echo '--- Ray client before open ---'
+          ray_control client "$CLIENT_ID" get_properties || true
+          ray_control list_clients || true
+          set +e
+          ray_control client "$CLIENT_ID" open
+          OPEN_RC=$?
+          set -e
+          echo "GG_RAYSESSION_OPEN_RC=$OPEN_RC"
+          echo '--- Ray client after open ---'
+          ray_control client "$CLIENT_ID" get_properties || true
+          ray_control client "$CLIENT_ID" get_pid || true
+          ray_control list_clients || true
 
           SESSION_ROOT="$(ray_control get_session_path)"
           echo "GG_RAYSESSION_PATH=$SESSION_ROOT"
@@ -110,6 +121,8 @@ jobs:
           if [ -z "$SESSION_FILE" ]; then
             echo '--- Ray clients ---'
             ray_control list_clients || true
+            echo '--- Ray client properties ---'
+            ray_control client "$CLIENT_ID" get_properties || true
             echo '--- Ardour processes ---'
             ps aux | grep -E '[a]rdour|[r]ay' || true
             echo 'GG_ARDOUR_HEADLESS_SESSION=FAIL_NOT_CREATED'
