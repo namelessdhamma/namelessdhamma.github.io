@@ -1,0 +1,60 @@
+name: GG Ardour Cloud Runtime Qualification
+
+on:
+  push:
+    branches:
+      - qualify/gg-ardour-cloud-v1
+    paths:
+      - '.github/workflows/gg-ardour-cloud-qualify.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    container:
+      image: debian:sid
+    steps:
+      - name: Install current Debian sid Ardour runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends             ardour curl ca-certificates grep coreutils findutils xvfb dbus-x11 jackd2
+
+      - name: Verify Ardour version and native MCP HTTP surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARDOUR_BIN="$(command -v ardour9 || command -v ardour || true)"
+          test -n "$ARDOUR_BIN"
+          echo "ARDOUR_BIN=$ARDOUR_BIN"
+          "$ARDOUR_BIN" --version | tee /tmp/ardour-version.txt
+          dpkg-query -W -f='ARDOUR_DEBIAN_VERSION=${Version}\n' ardour
+
+          find /usr/lib /usr/share -type f \
+            \( -iname '*mcp_http*' -o -iname '*mcp*http*' \) \
+            -print 2>/dev/null | tee /tmp/mcp-files.txt || true
+
+          grep -R -a -l -m1 'MCP HTTP Server (Experimental)' \
+            /usr/lib /usr/share 2>/dev/null | tee /tmp/mcp-signature.txt || true
+
+          if [ ! -s /tmp/mcp-files.txt ] && [ ! -s /tmp/mcp-signature.txt ]; then
+            echo 'GG_ARDOUR_NATIVE_MCP=FAIL_NOT_PACKAGED'
+            exit 21
+          fi
+
+          echo 'GG_ARDOUR_NATIVE_MCP=PASS_PACKAGED'
+
+      - name: Verify headless prerequisites and free runner shape
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v Xvfb
+          command -v jackd
+          echo "GG_ARDOUR_HEADLESS_PREREQS=PASS"
+          echo "GG_ARDOUR_CLOUD_RUNTIME_STAGE=PACKAGE_AND_HEADLESS_PREREQS_QUALIFIED"
