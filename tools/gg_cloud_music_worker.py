@@ -278,6 +278,20 @@ def install_vocal_stack():
         logs.append(cp.stdout[-5000:])
         if cp.returncode:
             raise RuntimeError("vocal dependency install failed:\n"+cp.stdout[-12000:])
+    ort_root=pathlib.Path(sys.executable).resolve().parent.parent/"lib"/f"python{sys.version_info.major}.{sys.version_info.minor}"/"site-packages"/"onnxruntime"/"capi"
+    ort_sos=list(ort_root.glob("onnxruntime_pybind11_state*.so"))
+    if not ort_sos:
+        import site
+        ort_sos=[]
+        for sp in site.getsitepackages():
+            ort_sos.extend(pathlib.Path(sp).glob("onnxruntime/capi/onnxruntime_pybind11_state*.so"))
+    if not ort_sos:
+        raise RuntimeError("onnxruntime shared object not found for execstack repair")
+    for so in ort_sos:
+        cp=subprocess.run(["patchelf","--clear-execstack",str(so)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        if cp.returncode:
+            raise RuntimeError("patchelf --clear-execstack failed for %s:\n%s"%(so,cp.stdout[-5000:]))
+        logs.append("cleared-execstack:"+str(so))
     return "\n".join(logs)
 
 def install_awata_ezv(vb, work):
