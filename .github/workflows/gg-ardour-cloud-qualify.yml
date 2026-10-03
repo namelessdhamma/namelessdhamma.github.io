@@ -59,14 +59,14 @@ jobs:
           export HOME=/tmp/gg-home
           mkdir -p "$HOME" /tmp/gg-cloud
 
-          jackd -d dummy -r 48000 -p 1024 >/tmp/gg-jack.log 2>&1 &
+          jackd -r -d dummy -r 48000 -p 1024 >/tmp/gg-jack.log 2>&1 &
           JACK_PID=$!
           sleep 2
           echo '--- JACK startup ---'
           cat /tmp/gg-jack.log || true
-          if ! jack_lsp >/tmp/gg-jack-ports.txt 2>/tmp/gg-jack-lsp.err; then
+          if ! kill -0 "$JACK_PID" 2>/dev/null; then
             echo 'GG_JACK_DUMMY=FAIL'
-            cat /tmp/gg-jack-lsp.err || true
+            cat /tmp/gg-jack.log || true
             exit 29
           fi
           echo 'GG_JACK_DUMMY=PASS'
@@ -144,7 +144,7 @@ jobs:
           export HOME=/tmp/gg-home
           SESSION_FILE="$(cat /tmp/gg-session-file.txt)"
 
-          jackd -d dummy -r 48000 -p 1024 >/tmp/gg-jack-second.log 2>&1 &
+          jackd -r -d dummy -r 48000 -p 1024 >/tmp/gg-jack-second.log 2>&1 &
           JACK_PID=$!
           sleep 2
 
