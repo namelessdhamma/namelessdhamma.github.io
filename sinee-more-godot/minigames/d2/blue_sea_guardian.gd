@@ -17,6 +17,30 @@ static func _visible_top_count(position: Dictionary, player: int) -> int:
 		if top != null and int(top.player) == player: count += 1
 	return count
 
+static func _legal_moves_on_cells(position: Dictionary, player: int, rule: String, cells) -> Array:
+	var probe := _probe_for(position, player)
+	var out: Array = []
+	for rank in probe.remaining[player]:
+		for cell in cells:
+			var move := {"player": player, "rank": int(rank), "cell": int(cell)}
+			if BlueSeaRules.is_legal_move(probe, move, rule): out.append(move)
+	return out
+
+static func _simulate_non_winning_move(position: Dictionary, move: Dictionary, rule: String) -> Dictionary:
+	var next := BlueSeaRules.clone_position(position)
+	next.remaining[move.player].erase(move.rank)
+	next.board[move.cell].append({"player": move.player, "rank": move.rank})
+	next.moves += 1
+	next.status = "playing"; next.winner = null; next.win_line = null
+	next.turn = BlueSeaRules.other_player(int(move.player))
+	if not BlueSeaRules.get_legal_moves(next, int(next.turn), rule).is_empty(): return next
+	next.turn = int(move.player)
+	if not BlueSeaRules.get_legal_moves(next, int(next.turn), rule).is_empty():
+		next.passes = int(position.get("passes", 0)) + 1
+		return next
+	next.status = "draw"; next.winner = null; next.win_line = null
+	return next
+
 static func _immediate_threat_lines(position: Dictionary, player: int) -> Array:
 	if position.is_empty() or position.status != "playing": return []
 	var out: Array = []
@@ -95,15 +119,52 @@ static func get_safe_moves(position: Dictionary, player: int, rule: String, lega
 			safe.append(move)
 	return safe
 
-static func get_tactical_candidates(position: Dictionary, player: int = -1, rule: String = BlueSeaRules.RULE_C) -> Dictionary:
+static func _forcing_moves(position: Dictionary, player: int, rule: String, candidates: Array, deadline_msec: int) -> Array:
+	if int(position.moves) < 2: return []
+	var probe := _probe_for(position, player)
+	var out: Array = []
+	for move in candidates:
+		if Time.get_ticks_msec() >= deadline_msec: break
+		var next := _simulate_non_winning_move(probe, move, rule)
+		var threats := get_immediate_wins(next, player, rule)
+		if threats.size() < 2: continue
+		if int(next.turn) == player:
+			out.append(move)
+			continue
+		if not get_immediate_wins(next, int(next.turn), rule).is_empty(): continue
+		var relevant := {}
+		for item in _immediate_threat_lines(next, player):
+			for cell in item.line: relevant[int(cell)] = true
+		var forced := true
+		var replies := _legal_moves_on_cells(next, int(next.turn), rule, relevant.keys())
+		for reply in replies:
+			if Time.get_ticks_msec() >= deadline_msec:
+				forced = false
+				break
+			var after_reply := _simulate_non_winning_move(next, reply, rule)
+			if after_reply.status != "playing" or int(after_reply.turn) != player or get_immediate_wins(after_reply, player, rule).is_empty():
+				forced = false
+				break
+		if forced: out.append(move)
+	return out
+
+static func get_tactical_candidates(position: Dictionary, player: int = -1, rule: String = BlueSeaRules.RULE_C, forcing_budget_msec: int = 8) -> Dictionary:
 	if player == -1: player = int(position.turn)
 	var probe := _probe_for(position, player)
 	var legal := BlueSeaRules.get_legal_moves(probe, player, rule)
-	if legal.is_empty(): return {"tier": "ALL_LEGAL", "moves": [], "forcing_skipped": true}
+	if legal.is_empty(): return {"tier": "ALL_LEGAL", "moves": [], "forcing_skipped": false}
 	var wins := get_immediate_wins(probe, player, rule)
-	if not wins.is_empty(): return {"tier": "WIN_NOW", "moves": wins, "forcing_skipped": true}
+	if not wins.is_empty(): return {"tier": "WIN_NOW", "moves": wins, "forcing_skipped": false}
 	var safe := get_safe_moves(probe, player, rule, legal, wins)
 	if not safe.is_empty() and safe.size() < legal.size():
-		return {"tier": "MUST_DEFEND", "moves": safe, "forcing_skipped": true}
-	if not safe.is_empty(): return {"tier": "SAFE", "moves": safe, "forcing_skipped": true}
-	return {"tier": "ALL_LEGAL", "moves": legal, "forcing_skipped": true}
+		return {"tier": "MUST_DEFEND", "moves": safe, "forcing_skipped": false}
+	var base: Array = safe if not safe.is_empty() else legal
+	var deadline := Time.get_ticks_msec() + max(0, forcing_budget_msec)
+	var forcing_skipped := Time.get_ticks_msec() >= deadline
+	if not forcing_skipped:
+		var forcing := _forcing_moves(probe, player, rule, base, deadline)
+		if not forcing.is_empty():
+			return {"tier": "FORCING", "moves": forcing, "forcing_skipped": false}
+		forcing_skipped = Time.get_ticks_msec() >= deadline
+	if not safe.is_empty(): return {"tier": "SAFE", "moves": safe, "forcing_skipped": forcing_skipped}
+	return {"tier": "ALL_LEGAL", "moves": legal, "forcing_skipped": forcing_skipped}
