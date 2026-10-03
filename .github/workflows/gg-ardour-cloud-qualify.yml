@@ -26,7 +26,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ardour raysession curl ca-certificates grep coreutils findutils \
-            xvfb dbus-x11 jackd2 python3 procps xauth
+            xvfb dbus-x11 jackd2 jack-tools python3 procps xauth
 
       - name: Verify Ardour version and native MCP HTTP surface
         shell: bash
@@ -87,17 +87,19 @@ jobs:
           export USER=root
           export LOGNAME=root
 
-          cat >/tmp/gg-ardour-nsm <<'SH'
+          install -d /tmp/gg-bin
+          cat >/tmp/gg-bin/gg-ardour-nsm <<'SH'
           #!/bin/sh
           export ARDOUR_SELF=/usr/bin/ardour
           exec /usr/bin/ardour >>/tmp/gg-ardour-nsm.log 2>&1
           SH
-          chmod +x /tmp/gg-ardour-nsm
+          chmod +x /tmp/gg-bin/gg-ardour-nsm
+          export PATH="/tmp/gg-bin:$PATH"
           : >/tmp/gg-ardour-nsm.log
 
           ray_control start
           ray_control open_session_off GGCloud
-          CLIENT_ID="$(ray_control add_executable /tmp/gg-ardour-nsm not_start | tail -n1 | tr -d '\r')"
+          CLIENT_ID="$(ray_control add_executable gg-ardour-nsm not_start | tail -n1 | tr -d '\r')"
           if [ -z "$CLIENT_ID" ]; then
             echo 'GG_RAYSESSION_ADD_ARDOUR=FAIL'
             exit 31
@@ -187,6 +189,7 @@ jobs:
           export DISPLAY=:99
           export USER=root
           export LOGNAME=root
+          export PATH="/tmp/gg-bin:$PATH"
           CLIENT_ID="$(cat /tmp/gg-client-id.txt)"
 
           ray_control client "$CLIENT_ID" open || true
@@ -211,6 +214,8 @@ jobs:
             ray_control list_clients || true
             echo '--- Ardour processes ---'
             ps aux | grep -E '[a]rdour|[r]ay' || true
+            echo '--- Ardour NSM stdout/stderr ---'
+            tail -240 /tmp/gg-ardour-nsm.log || true
             echo 'GG_ARDOUR_NATIVE_MCP_RUNTIME=FAIL_NO_ENDPOINT'
             exit 41
           fi
