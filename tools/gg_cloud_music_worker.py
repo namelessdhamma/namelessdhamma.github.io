@@ -143,6 +143,43 @@ def stop_proc(p):
         try:p.wait(10)
         except subprocess.TimeoutExpired:p.kill()
 
+def run_ardour_lua(sf, home, work, script_body):
+    if not isinstance(script_body,str) or not script_body.strip():
+        raise RuntimeError("non-empty Ardour Lua script required")
+    if len(script_body.encode()) > 256*1024:
+        raise RuntimeError("Ardour Lua script too large")
+    lua_bin=shutil.which("ardour9-lua")
+    if not lua_bin:
+        raise RuntimeError("ardour9-lua not installed")
+    wrapper=work/"gg_job.lua"
+    wrapper.write_text("""local s = load_session(arg[1], arg[2])
+assert(s, "GG: failed to load Ardour session")
+local ok, err = pcall(function()
+%s
+end)
+if not ok then error(err) end
+Session:save_state("")
+print("GG_ARDOUR_LUA=PASS")
+""" % script_body)
+    env=os.environ.copy()
+    env.update({"HOME":str(home),"LANG":"C.UTF-8","USER":"root","LOGNAME":"root"})
+    for k in ("ACTIONS_ID_TOKEN_REQUEST_TOKEN","ACTIONS_ID_TOKEN_REQUEST_URL","GITHUB_TOKEN"):
+        env.pop(k,None)
+    cp=subprocess.run([lua_bin,str(wrapper),str(sf.parent),sf.stem],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=300)
+    if cp.returncode != 0 or "GG_ARDOUR_LUA=PASS" not in cp.stdout:
+        raise RuntimeError("ardour9-lua failed (rc=%s):\n%s"%(cp.returncode,cp.stdout[-16000:]))
+    return {"engine":"ardour9-lua","returncode":cp.returncode,"stdout_tail":cp.stdout[-12000:]}
+
+def ardour_lua(payload, job, job_id, token, work):
+    home=work/"home"; home.mkdir(); seed_config(home)
+    project=work/"project"; project.mkdir()
+    sf=restore_session(project,job,job_id,token,home)
+    result=run_ardour_lua(sf,home,work,payload.get("script",""))
+    archive=work/"session.tar.gz"; archive_project(project,archive)
+    upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
+    result.update({"session_file":str(sf.relative_to(project)),"artifact":"session.tar.gz"})
+    return result
+
 def apply_ardour_calls(sf, home, work, calls):
     proc=xv=log=xvlog=None
     try:
@@ -183,7 +220,9 @@ def project_render(payload, job, job_id, token, work):
     project=work/"project"; project.mkdir()
     sf=restore_session(project,job,job_id,token,home)
     edit_result=None
-    if payload.get("calls"):
+    if payload.get("lua_script"):
+        edit_result=run_ardour_lua(sf,home,work,payload.get("lua_script"))
+    elif payload.get("calls"):
         enable_mcp(sf)
         edit_result=apply_ardour_calls(sf,home,work,payload.get("calls",[]))
     export_bin=shutil.which("ardour9-export") or shutil.which("ardour8-export") or shutil.which("ardour7-export")
@@ -222,6 +261,7 @@ def probe():
       "mcp_library":out(["bash","-lc","find /usr/lib -name libardour_mcp_http.so -print -quit"]),
       "dummy_backend":out(["bash","-lc","find /usr/lib -name libdummy_audiobackend.so -print -quit"]),
       "new_session":out(["bash","-lc","command -v ardour9-new_session || true"]),
+      "lua":out(["bash","-lc","command -v ardour9-lua || true"]),
       "export":out(["bash","-lc","command -v ardour9-export || true"]),
       "megadl":out(["bash","-lc","command -v megadl || command -v megatools || true"])
     }
@@ -294,6 +334,7 @@ def main():
         job=claim(a.job_id,a.oidc_token); payload=json.loads(job.get("payload_json") or "{}"); op=job.get("operation")
         if op=="probe": result=probe()
         elif op=="ardour_batch": result=ardour_batch(payload,job,a.job_id,a.oidc_token,work)
+        elif op=="ardour_lua": result=ardour_lua(payload,job,a.job_id,a.oidc_token,work)
         elif op=="project_render": result=project_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="vocal_render": result=vocal_render(payload,job,a.job_id,a.oidc_token,work)
         else: raise RuntimeError(f"unsupported operation: {op}")
