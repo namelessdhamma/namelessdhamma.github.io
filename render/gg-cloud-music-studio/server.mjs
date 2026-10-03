@@ -146,17 +146,20 @@ async function runnerRoute(req,res,url) {
     const data=Buffer.concat([...a.parts.entries()].sort((x,y)=>x[0]-y[0]).map(x=>x[1]));
     res.writeHead(200,{'content-type':a.mimeType,'content-length':String(data.length),'cache-control':'no-store'}); return res.end(data);
   }
+  if (kind === 'artifact' && req.method === 'POST') {
+    const name=safeName(decodeURIComponent(parts.slice(3).join('/')));
+    const data=await readBody(req,MAX_BODY);
+    j.artifacts.set(name,{mimeType:String(req.headers['content-type']||'application/octet-stream'),data});
+    j.updatedAt=new Date().toISOString();
+    return json(res,200,{ok:true,name,size:data.length});
+  }
   if (kind === 'result' && req.method === 'POST') {
-    const body=await readJson(req,MAX_BODY);
+    const body=await readJson(req,8*1024*1024);
     j.status=body.ok ? 'completed' : 'failed';
     j.resultJson=typeof body.result_json==='string'?body.result_json:JSON.stringify(body.result_json??null);
     j.error=body.error?String(body.error):null;
-    for(const x of (body.artifacts||[])){
-      const n=safeName(x.name); const data=Buffer.from(String(x.data_base64||''),'base64');
-      j.artifacts.set(n,{mimeType:String(x.mime_type||'application/octet-stream'),data});
-    }
     j.completedAt=new Date().toISOString(); j.updatedAt=j.completedAt;
-    return json(res,200,{ok:true,status:j.status});
+    return json(res,200,{ok:true,status:j.status,artifacts:jobView(j).artifacts});
   }
   return text(res,404,'not found');
 }
