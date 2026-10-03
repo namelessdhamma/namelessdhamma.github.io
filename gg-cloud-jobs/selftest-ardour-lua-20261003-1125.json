@@ -1,0 +1,8 @@
+{
+  "bootstrap": {
+    "operation": "ardour_lua",
+    "payload": {
+      "script": "print(\"GG_ROUTES_BEFORE=\" .. tostring(Session:get_routes():size()))\nlocal tl = Session:new_audio_track(1, 2, ARDOUR.RouteGroup(), 1, \"GG_TEST_AUDIO\", -1, ARDOUR.TrackMode.Normal, true)\nassert(not tl:empty(), \"failed to create audio track\")\nlocal r = tl:front()\nassert(not r:isnil(), \"created route is nil\")\nlocal p = ARDOUR.LuaAPI.new_plugin(Session, \"urn:ardour:a-comp\", ARDOUR.PluginType.LV2, \"\")\nassert(not p:isnil(), \"ACE Compressor unavailable\")\nr:add_processor_by_index(p, 0, nil, true)\nprint(\"GG_TRACK=\" .. r:name())\nprint(\"GG_ROUTES_AFTER=\" .. tostring(Session:get_routes():size()))\nprint(\"GG_PLUGIN_INSERT=PASS\")"
+    }
+  }
+}
