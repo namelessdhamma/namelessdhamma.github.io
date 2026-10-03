@@ -18,15 +18,15 @@ jobs:
     container:
       image: debian:sid
     steps:
-      - name: Install current Debian sid Ardour runtime
+      - name: Install current Debian sid studio runtime
         shell: bash
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y --no-install-recommends \
-            ardour curl ca-certificates grep coreutils findutils xvfb dbus-x11 \
-            jackd2 python3 procps xauth xdotool x11-utils
+            ardour raysession curl ca-certificates grep coreutils findutils \
+            xvfb dbus-x11 jackd2 python3 procps xauth
 
       - name: Verify Ardour version and native MCP HTTP surface
         shell: bash
@@ -37,76 +37,88 @@ jobs:
           echo "ARDOUR_BIN=$ARDOUR_BIN"
           "$ARDOUR_BIN" --version | tee /tmp/ardour-version.txt
           dpkg-query -W -f='ARDOUR_DEBIAN_VERSION=${Version}\n' ardour
+          command -v ray_control
+          command -v ray-daemon
 
           find /usr/lib /usr/share -type f \
             \( -iname '*mcp_http*' -o -iname '*mcp*http*' \) \
             -print 2>/dev/null | tee /tmp/mcp-files.txt || true
 
-          grep -R -a -l -m1 'MCP HTTP Server (Experimental)' \
-            /usr/lib /usr/share 2>/dev/null | tee /tmp/mcp-signature.txt || true
-
-          if [ ! -s /tmp/mcp-files.txt ] && [ ! -s /tmp/mcp-signature.txt ]; then
+          if ! grep -q 'libardour_mcp_http' /tmp/mcp-files.txt; then
             echo 'GG_ARDOUR_NATIVE_MCP=FAIL_NOT_PACKAGED'
             exit 21
           fi
           echo 'GG_ARDOUR_NATIVE_MCP=PASS_PACKAGED'
 
-      - name: Start Ardour headlessly and materialize a session
+      - name: Start non-realtime JACK and headless X display
         shell: bash
         run: |
           set -euo pipefail
-          ARDOUR_BIN="$(command -v ardour9 || command -v ardour)"
           export HOME=/tmp/gg-home
-          mkdir -p "$HOME" /tmp/gg-cloud
-
+          mkdir -p "$HOME"
           jackd -r -d dummy -r 48000 -p 1024 >/tmp/gg-jack.log 2>&1 &
-          JACK_PID=$!
+          echo $! >/tmp/gg-jack.pid
           sleep 2
-          echo '--- JACK startup ---'
-          cat /tmp/gg-jack.log || true
-          if ! kill -0 "$JACK_PID" 2>/dev/null; then
-            echo 'GG_JACK_DUMMY=FAIL'
+          if ! kill -0 "$(cat /tmp/gg-jack.pid)" 2>/dev/null; then
+            echo '--- JACK startup ---'
             cat /tmp/gg-jack.log || true
+            echo 'GG_JACK_DUMMY=FAIL'
             exit 29
           fi
           echo 'GG_JACK_DUMMY=PASS'
 
           Xvfb :99 -screen 0 1280x800x24 >/tmp/gg-xvfb.log 2>&1 &
-          XVFB_PID=$!
+          echo $! >/tmp/gg-xvfb.pid
           export DISPLAY=:99
+          echo 'DISPLAY=:99' >/tmp/gg-display.env
           sleep 1
-          dbus-run-session -- "$ARDOUR_BIN" -a -n -P -N /tmp/gg-cloud/GGCloud \
-            >/tmp/gg-ardour-first.log 2>&1 &
-          ARDOUR_WRAPPER_PID=$!
+          kill -0 "$(cat /tmp/gg-xvfb.pid)"
+          echo 'GG_XVFB=PASS'
 
-          sleep 8
-          echo '--- visible X windows ---'
-          xdotool search --onlyvisible --name '.*' getwindowname 2>/dev/null | tee /tmp/gg-window-names.txt || true
-          echo '--- all X tree ---'
-          xwininfo -root -tree 2>/dev/null | head -200 || true
+      - name: Create Ardour session through NSM without desktop wizard
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME=/tmp/gg-home
+          export DISPLAY=:99
+          export LANG=C.UTF-8
 
-          for i in $(seq 1 22); do
-            SESSION_FILE="$(find /tmp/gg-cloud -maxdepth 3 -type f -name '*.ardour' -print -quit 2>/dev/null || true)"
-            [ -n "$SESSION_FILE" ] && break
-            sleep 1
-          done
-
-          SESSION_FILE="$(find /tmp/gg-cloud -maxdepth 3 -type f -name '*.ardour' -print -quit 2>/dev/null || true)"
-          if [ -z "$SESSION_FILE" ]; then
-            echo '--- Ardour first-start log ---'
-            tail -200 /tmp/gg-ardour-first.log || true
-            echo '--- generated config files ---'
-            find "$HOME" -maxdepth 5 -type f -print 2>/dev/null || true
-            echo 'GG_ARDOUR_HEADLESS_SESSION=FAIL_NOT_CREATED'
+          ray_control start
+          ray_control open_session_off GGCloud
+          CLIENT_ID="$(ray_control add_executable ardour not_start | tail -n1 | tr -d '\r')"
+          if [ -z "$CLIENT_ID" ]; then
+            echo 'GG_RAYSESSION_ADD_ARDOUR=FAIL'
             exit 31
           fi
+          echo "$CLIENT_ID" >/tmp/gg-client-id.txt
+          echo "GG_RAYSESSION_CLIENT_ID=$CLIENT_ID"
 
+          ray_control client "$CLIENT_ID" open
+
+          SESSION_ROOT="$(ray_control get_session_path)"
+          echo "GG_RAYSESSION_PATH=$SESSION_ROOT"
+          SESSION_FILE="$(find "$SESSION_ROOT" -type f -name '*.ardour' -print -quit 2>/dev/null || true)"
+          if [ -z "$SESSION_FILE" ]; then
+            echo '--- Ray clients ---'
+            ray_control list_clients || true
+            echo '--- Ardour processes ---'
+            ps aux | grep -E '[a]rdour|[r]ay' || true
+            echo 'GG_ARDOUR_HEADLESS_SESSION=FAIL_NOT_CREATED'
+            exit 32
+          fi
+          echo "$SESSION_FILE" >/tmp/gg-session-file.txt
           echo "GG_SESSION_FILE=$SESSION_FILE"
-          pkill -TERM -f '/usr/lib/ardour9/ardour-9' 2>/dev/null || true
-          pkill -TERM -x ardour 2>/dev/null || true
-          kill "$ARDOUR_WRAPPER_PID" 2>/dev/null || true
-          sleep 3
+          echo 'GG_ARDOUR_HEADLESS_SESSION=PASS_NSM_CREATED'
 
+          ray_control client "$CLIENT_ID" save || true
+          ray_control client "$CLIENT_ID" stop
+          sleep 2
+
+      - name: Enable native MCP in saved session state
+        shell: bash
+        run: |
+          set -euo pipefail
+          SESSION_FILE="$(cat /tmp/gg-session-file.txt)"
           python3 - "$SESSION_FILE" <<'PY'
           import sys
           import xml.etree.ElementTree as ET
@@ -131,29 +143,20 @@ jobs:
           tree.write(p, encoding="UTF-8", xml_declaration=True)
           print("GG_MCP_SESSION_STATE_PATCH=PASS")
           PY
+          grep -n -A3 -B1 'MCP HTTP Server' "$SESSION_FILE"
 
-          echo "$SESSION_FILE" >/tmp/gg-session-file.txt
-          kill "$XVFB_PID" 2>/dev/null || true
-          kill "$JACK_PID" 2>/dev/null || true
-
-      - name: Restart session and qualify native MCP JSON-RPC
+      - name: Restart Ardour through NSM and qualify native MCP JSON-RPC
         shell: bash
         run: |
           set -euo pipefail
-          ARDOUR_BIN="$(command -v ardour9 || command -v ardour)"
           export HOME=/tmp/gg-home
-          SESSION_FILE="$(cat /tmp/gg-session-file.txt)"
+          export DISPLAY=:99
+          CLIENT_ID="$(cat /tmp/gg-client-id.txt)"
 
-          jackd -r -d dummy -r 48000 -p 1024 >/tmp/gg-jack-second.log 2>&1 &
-          JACK_PID=$!
-          sleep 2
-
-          dbus-run-session -- xvfb-run -a "$ARDOUR_BIN" -a -n -P "$SESSION_FILE" \
-            >/tmp/gg-ardour-second.log 2>&1 &
-          ARDOUR_WRAPPER_PID=$!
+          ray_control client "$CLIENT_ID" open
 
           READY=0
-          for i in $(seq 1 40); do
+          for i in $(seq 1 30); do
             if curl -fsS --max-time 2 \
               -H 'Content-Type: application/json' \
               -H 'Accept: application/json, text/event-stream' \
@@ -166,12 +169,12 @@ jobs:
           done
 
           if [ "$READY" -ne 1 ]; then
-            echo '--- Ardour second-start log ---'
-            tail -250 /tmp/gg-ardour-second.log || true
             echo '--- curl error ---'
             cat /tmp/gg-curl.err || true
-            echo '--- patched ControlProtocols ---'
-            grep -n -A8 -B2 'MCP HTTP Server' "$SESSION_FILE" || true
+            echo '--- Ray clients ---'
+            ray_control list_clients || true
+            echo '--- Ardour processes ---'
+            ps aux | grep -E '[a]rdour|[r]ay' || true
             echo 'GG_ARDOUR_NATIVE_MCP_RUNTIME=FAIL_NO_ENDPOINT'
             exit 41
           fi
@@ -185,6 +188,7 @@ jobs:
             -H 'Accept: application/json, text/event-stream' \
             --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
             http://127.0.0.1:4820/mcp >/tmp/gg-mcp-tools.json
+
           test -s /tmp/gg-mcp-tools.json
           echo "GG_MCP_TOOL_BYTES=$(wc -c </tmp/gg-mcp-tools.json)"
           grep -q 'midi_note' /tmp/gg-mcp-tools.json
@@ -192,14 +196,13 @@ jobs:
           grep -q 'track' /tmp/gg-mcp-tools.json
           echo 'GG_ARDOUR_NATIVE_MCP_RUNTIME=PASS_TOOL_SURFACE'
 
-          pkill -TERM -f '/usr/lib/ardour9/ardour-9' 2>/dev/null || true
-          pkill -TERM -x ardour 2>/dev/null || true
-          kill "$ARDOUR_WRAPPER_PID" 2>/dev/null || true
-          kill "$JACK_PID" 2>/dev/null || true
+          ray_control client "$CLIENT_ID" stop || true
+          ray_control quit || true
+          kill "$(cat /tmp/gg-xvfb.pid)" 2>/dev/null || true
+          kill "$(cat /tmp/gg-jack.pid)" 2>/dev/null || true
 
       - name: Mark cloud DAW runtime qualification
         shell: bash
         run: |
           set -euo pipefail
-          echo 'GG_ARDOUR_HEADLESS_PREREQS=PASS'
-          echo 'GG_ARDOUR_CLOUD_RUNTIME_STAGE=NATIVE_MCP_HEADLESS_QUALIFIED'
+          echo 'GG_ARDOUR_CLOUD_RUNTIME_STAGE=NATIVE_MCP_HEADLESS_NSM_QUALIFIED'
