@@ -102,19 +102,33 @@ static func get_safe_moves(position: Dictionary, player: int, rule: String, lega
 	if _visible_top_count(probe, opponent) < 2: return legal
 	var opponent_wins := get_immediate_wins(probe, opponent, rule)
 	if opponent_wins.is_empty(): return legal
+	var winning_targets := {}
+	for move in opponent_wins: winning_targets[int(move.cell)] = true
+	var relevant := {}
+	for item in _immediate_threat_lines(probe, opponent):
+		if winning_targets.has(int(item.target)):
+			for cell in item.line: relevant[int(cell)] = true
 	var own_wins: Array = get_immediate_wins(probe, player, rule) if known_own_wins == null else known_own_wins
+	var candidates := {}
+	var own_winning := {}
+	for move in own_wins:
+		var key := str(int(move.cell)) + ":" + str(int(move.rank))
+		candidates[key] = move
+		own_winning[key] = true
+	for move in _legal_moves_on_cells(probe, player, rule, relevant.keys()):
+		candidates[str(int(move.cell)) + ":" + str(int(move.rank))] = move
+	var ordered: Array = candidates.values()
+	ordered.sort_custom(func(a, b):
+		if int(a.rank) != int(b.rank): return int(a.rank) < int(b.rank)
+		return int(a.cell) < int(b.cell)
+	)
 	var safe: Array = []
-	for move in legal:
-		var is_own_win := false
-		for win in own_wins:
-			if same_move(move, win):
-				is_own_win = true
-				break
-		if is_own_win:
+	for move in ordered:
+		var key := str(int(move.cell)) + ":" + str(int(move.rank))
+		if own_winning.has(key):
 			safe.append(move)
 			continue
-		var next = BlueSeaRules.apply_move(probe, move, rule)
-		if next == null: continue
+		var next := _simulate_non_winning_move(probe, move, rule)
 		if next.status != "playing" or int(next.turn) != opponent or get_immediate_wins(next, opponent, rule).is_empty():
 			safe.append(move)
 	return safe
