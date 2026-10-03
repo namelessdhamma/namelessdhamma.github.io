@@ -55,7 +55,9 @@ jobs:
         run: |
           set -euo pipefail
           export HOME=/tmp/gg-home
-          mkdir -p "$HOME"
+          mkdir -p "$HOME/.config/ardour9"
+          touch "$HOME/.config/ardour9/.a9"
+          echo 'GG_ARDOUR_FIRST_RUN_SENTINEL=PASS'
           jackd -r -d dummy -r 48000 -p 1024 >/tmp/gg-jack.log 2>&1 &
           echo $! >/tmp/gg-jack.pid
           sleep 2
