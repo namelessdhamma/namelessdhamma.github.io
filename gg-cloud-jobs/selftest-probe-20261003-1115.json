@@ -1,0 +1,8 @@
+{
+  "bootstrap": {
+    "operation": "probe",
+    "payload": {
+      "purpose": "qualify-current-full-studio-runtime"
+    }
+  }
+}
