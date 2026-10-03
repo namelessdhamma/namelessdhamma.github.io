@@ -37,9 +37,22 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
-          MARKER="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- 'gg-cloud-jobs/*.json' | tail -n1)"
-          if [ -z "$MARKER" ]; then MARKER="$(find gg-cloud-jobs -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\\n' | sort -nr | head -n1 | cut -d' ' -f2-)"; fi
+          MARKER="$(python3 - "$GITHUB_EVENT_PATH" <<'PY'
+import json,sys
+p=json.load(open(sys.argv[1]))
+hc=p.get("head_commit") or {}
+paths=[]
+for k in ("added","modified"):
+    paths.extend(hc.get(k) or [])
+paths=[x for x in paths if x.startswith("gg-cloud-jobs/") and x.endswith(".json")]
+print(paths[-1] if paths else "")
+PY
+)"
+          if [ -z "$MARKER" ]; then
+            MARKER="$(find "$GITHUB_WORKSPACE/gg-cloud-jobs" -maxdepth 1 -type f -name '*.json' -printf '%p\n' | sort | tail -n1)"
+          fi
           test -n "$MARKER"
+          case "$MARKER" in "$GITHUB_WORKSPACE"/*) MARKER="${MARKER#"$GITHUB_WORKSPACE"/}" ;; esac
           echo "marker=$MARKER" >> "$GITHUB_OUTPUT"
       - name: Mint GitHub OIDC identity and execute job
         shell: bash
