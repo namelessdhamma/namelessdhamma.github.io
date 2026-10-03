@@ -26,7 +26,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ardour curl ca-certificates grep coreutils findutils \
-            xvfb dbus-x11 python3 procps xauth
+            xvfb dbus-x11 python3 procps xauth xdotool x11-utils
           ARDOUR_BIN="$(command -v ardour9 || command -v ardour)"
           "$ARDOUR_BIN" --version
           find /usr/lib -type f -name 'libardour_mcp_http.so' -print | tee /tmp/mcp-files.txt
@@ -143,6 +143,20 @@ jobs:
           dbus-run-session -- "$ARDOUR_BIN" -a -n -P "$SESSION_FILE" >/tmp/gg-ardour-mcp.log 2>&1 &
           echo $! >/tmp/gg-ardour.pid
 
+          SETUP_ACCEPTED=0
+          for i in $(seq 1 30); do
+            WID="$(xdotool search --onlyvisible --name 'Audio/MIDI Setup' 2>/dev/null | head -n1 || true)"
+            if [ -n "$WID" ]; then
+              xdotool key --window "$WID" Return || true
+              SETUP_ACCEPTED=1
+              echo "GG_ARDOUR_AUDIO_MIDI_SETUP=ACCEPTED window=$WID"
+              break
+            fi
+            if ! kill -0 "$(cat /tmp/gg-ardour.pid)" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          echo "GG_ARDOUR_AUDIO_MIDI_SETUP_ACCEPTED=$SETUP_ACCEPTED"
+
           READY=0
           for i in $(seq 1 60); do
             if curl -fsS --max-time 2 \
@@ -162,6 +176,8 @@ jobs:
             cat /tmp/gg-ardour-mcp.log || true
             echo '--- curl error ---'
             cat /tmp/gg-curl.err || true
+            echo '--- X windows ---'
+            xwininfo -root -tree 2>/dev/null || true
             echo 'GG_ARDOUR_NATIVE_MCP_RUNTIME=FAIL_NO_ENDPOINT'
             exit 41
           fi
