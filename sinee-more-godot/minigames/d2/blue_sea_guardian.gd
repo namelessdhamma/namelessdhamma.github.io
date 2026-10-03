@@ -179,6 +179,5 @@ static func get_tactical_candidates(position: Dictionary, player: int = -1, rule
 		var forcing := _forcing_moves(probe, player, rule, base, deadline)
 		if not forcing.is_empty():
 			return {"tier": "FORCING", "moves": forcing, "forcing_skipped": false}
-		forcing_skipped = Time.get_ticks_msec() >= deadline
 	if not safe.is_empty(): return {"tier": "SAFE", "moves": safe, "forcing_skipped": forcing_skipped}
 	return {"tier": "ALL_LEGAL", "moves": legal, "forcing_skipped": forcing_skipped}
