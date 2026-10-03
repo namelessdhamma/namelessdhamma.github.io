@@ -1,0 +1,10 @@
+{
+  "name": "gg-cloud-music-studio-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "dependencies": {
+    "jose": "^6.1.0"
+  }
+}
