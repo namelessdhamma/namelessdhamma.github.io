@@ -54,12 +54,20 @@ def seed_config(home):
 </EngineStates></AudioMIDISetup></Extra></Ardour>""")
     return cfg
 
-def make_seed(root):
-    sd=root/"GGCloud"; sd.mkdir(parents=True,exist_ok=True)
-    raw=urllib.request.urlopen(SEED_URL,timeout=60).read().decode().replace('name="3-0tracks"','name="GGCloud"',1)
-    sf=sd/"GGCloud.ardour"; sf.write_text(raw); return sf
+def make_seed(root, home):
+    sd=root/"GGCloud"
+    if sd.exists(): shutil.rmtree(sd)
+    env=os.environ.copy(); env.update({"HOME":str(home),"LANG":"C.UTF-8"})
+    cp=subprocess.run(["/usr/bin/ardour9-new_session","-s","48000","-m","2",str(sd),"GGCloud"],
+                      env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    sf=sd/"GGCloud.ardour"
+    if not sf.exists() or sf.stat().st_size == 0:
+        raise RuntimeError("ardour9-new_session did not materialize session:\n"+cp.stdout[-12000:])
+    try: ET.parse(sf)
+    except Exception as e: raise RuntimeError(f"invalid generated Ardour session: {e}") from e
+    return sf
 
-def restore_session(root, job, job_id, token):
+def restore_session(root, job, job_id, token, home):
     names={a["name"] for a in job.get("assets",[])}
     for cand in ("session.tar.gz","session.tgz"):
         if cand in names:
@@ -68,7 +76,7 @@ def restore_session(root, job, job_id, token):
             fs=list(root.rglob("*.ardour"))
             if not fs: raise RuntimeError("session archive contains no .ardour")
             return fs[0]
-    return make_seed(root)
+    return make_seed(root,home)
 
 def enable_mcp(sf):
     tree=ET.parse(sf); root=tree.getroot(); cps=root.find("ControlProtocols")
@@ -89,17 +97,30 @@ def start_ardour(sf, home, work):
     env=os.environ.copy(); env.update({"HOME":str(home),"DISPLAY":":99","LANG":"C.UTF-8","USER":"root","LOGNAME":"root","ARDOUR_TRY_AUTOSTART_ENGINE":"1"})
     xvlog=open(work/"xvfb.log","wb"); xv=subprocess.Popen(["Xvfb",":99","-screen","0","1280x800x24"],stdout=xvlog,stderr=subprocess.STDOUT,env=env); time.sleep(1)
     log=open(work/"ardour.log","wb"); proc=subprocess.Popen(["dbus-run-session","--","/usr/bin/ardour","-a","-n","-P",str(sf)],stdout=log,stderr=subprocess.STDOUT,env=env)
+    setup_accepted=False
     for _ in range(90):
         if proc.poll() is not None: break
+        if not setup_accepted:
+            try:
+                wins=subprocess.check_output(["xdotool","search","--onlyvisible","--name","Audio/MIDI Setup"],env=env,text=True,stderr=subprocess.DEVNULL).splitlines()
+                if wins:
+                    subprocess.run(["xdotool","key","--window",wins[0],"Return"],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
+                    setup_accepted=True
+            except Exception:
+                pass
         try:
             init=mcp_post({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"gg-cloud-worker","version":"1"}}},2)
             if init.get("result",{}).get("serverInfo",{}).get("name")=="ardour-mcp-http": return proc,xv,log,xvlog,init
         except Exception: pass
         time.sleep(1)
     log.flush(); detail=(work/"ardour.log").read_text(errors="replace")[-12000:]
+    try:
+        wins=subprocess.check_output(["xwininfo","-root","-tree"],env=env,text=True,stderr=subprocess.STDOUT)[-12000:]
+    except Exception as e:
+        wins=str(e)
     for p in (proc,xv):
         if p.poll() is None: p.terminate()
-    raise RuntimeError("Ardour native MCP did not become ready. Tail:\n"+detail)
+    raise RuntimeError("Ardour native MCP did not become ready. setup_accepted=%s\nTail:\n%s\nWindows:\n%s"%(setup_accepted,detail,wins))
 
 def stop_proc(p):
     if p and p.poll() is None:
@@ -109,7 +130,7 @@ def stop_proc(p):
 
 def ardour_batch(payload, job, job_id, token, work):
     home=work/"home"; home.mkdir(); seed_config(home)
-    project=work/"project"; project.mkdir(); sf=restore_session(project,job,job_id,token); enable_mcp(sf)
+    project=work/"project"; project.mkdir(); sf=restore_session(project,job,job_id,token,home); enable_mcp(sf)
     proc=xv=log=xvlog=None
     try:
         proc,xv,log,xvlog,init=start_ardour(sf,home,work)
