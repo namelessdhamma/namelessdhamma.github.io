@@ -80,13 +80,22 @@ jobs:
           command -v ardour9-new_session
           ardour9-new_session --version
           rm -rf /tmp/gg-cloud/GGCloud
+          set +e
           ardour9-new_session -s 48000 -m 2 /tmp/gg-cloud/GGCloud GGCloud | tee /tmp/gg-new-session.log
+          NEW_SESSION_RC=${PIPESTATUS[0]}
+          set -e
           SESSION_FILE=/tmp/gg-cloud/GGCloud/GGCloud.ardour
           test -s "$SESSION_FILE"
           grep -q '<Session' "$SESSION_FILE"
           grep -q 'sample-rate="48000"' "$SESSION_FILE"
+          python3 - "$SESSION_FILE" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          ET.parse(sys.argv[1])
+          print("GG_ARDOUR_SESSION_XML=PASS")
+          PY
           echo "$SESSION_FILE" >/tmp/gg-session-file.txt
-          echo 'GG_ARDOUR_HEADLESS_SESSION_UTILITY=PASS_CREATED_CURRENT_SESSION'
+          echo "GG_ARDOUR_NEW_SESSION_RC=$NEW_SESSION_RC"
+          echo 'GG_ARDOUR_HEADLESS_SESSION_UTILITY=PASS_VALID_SESSION_MATERIALIZED'
 
       - name: Enable native MCP in session
         shell: bash
