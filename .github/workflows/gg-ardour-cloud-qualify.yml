@@ -26,7 +26,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ardour curl ca-certificates grep coreutils findutils xvfb dbus-x11 \
-            jackd2 python3 procps
+            jackd2 python3 procps xauth
 
       - name: Verify Ardour version and native MCP HTTP surface
         shell: bash
