@@ -14,7 +14,7 @@ permissions:
 jobs:
   qualify:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     container:
       image: debian:sid
     steps:
@@ -24,7 +24,9 @@ jobs:
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y --no-install-recommends             ardour curl ca-certificates grep coreutils findutils xvfb dbus-x11 jackd2
+          apt-get install -y --no-install-recommends \
+            ardour curl ca-certificates grep coreutils findutils xvfb dbus-x11 \
+            jackd2 python3 procps
 
       - name: Verify Ardour version and native MCP HTTP surface
         shell: bash
@@ -47,14 +49,140 @@ jobs:
             echo 'GG_ARDOUR_NATIVE_MCP=FAIL_NOT_PACKAGED'
             exit 21
           fi
-
           echo 'GG_ARDOUR_NATIVE_MCP=PASS_PACKAGED'
 
-      - name: Verify headless prerequisites and free runner shape
+      - name: Start Ardour headlessly and materialize a session
         shell: bash
         run: |
           set -euo pipefail
-          command -v Xvfb
-          command -v jackd
-          echo "GG_ARDOUR_HEADLESS_PREREQS=PASS"
-          echo "GG_ARDOUR_CLOUD_RUNTIME_STAGE=PACKAGE_AND_HEADLESS_PREREQS_QUALIFIED"
+          ARDOUR_BIN="$(command -v ardour9 || command -v ardour)"
+          export HOME=/tmp/gg-home
+          mkdir -p "$HOME" /tmp/gg-cloud
+
+          jackd -d dummy -r 48000 -p 1024 >/tmp/gg-jack.log 2>&1 &
+          JACK_PID=$!
+          sleep 2
+
+          set +e
+          dbus-run-session -- xvfb-run -a "$ARDOUR_BIN" -a -n -P -N /tmp/gg-cloud/GGCloud \
+            >/tmp/gg-ardour-first.log 2>&1 &
+          ARDOUR_WRAPPER_PID=$!
+          set -e
+
+          for i in $(seq 1 30); do
+            SESSION_FILE="$(find /tmp/gg-cloud -maxdepth 3 -type f -name '*.ardour' -print -quit 2>/dev/null || true)"
+            [ -n "$SESSION_FILE" ] && break
+            sleep 1
+          done
+
+          SESSION_FILE="$(find /tmp/gg-cloud -maxdepth 3 -type f -name '*.ardour' -print -quit 2>/dev/null || true)"
+          if [ -z "$SESSION_FILE" ]; then
+            echo '--- Ardour first-start log ---'
+            tail -200 /tmp/gg-ardour-first.log || true
+            echo '--- generated config files ---'
+            find "$HOME" -maxdepth 5 -type f -print 2>/dev/null || true
+            echo 'GG_ARDOUR_HEADLESS_SESSION=FAIL_NOT_CREATED'
+            exit 31
+          fi
+
+          echo "GG_SESSION_FILE=$SESSION_FILE"
+          pkill -TERM -f '/usr/lib/ardour9/ardour-9' 2>/dev/null || true
+          pkill -TERM -x ardour 2>/dev/null || true
+          kill "$ARDOUR_WRAPPER_PID" 2>/dev/null || true
+          sleep 3
+
+          python3 - "$SESSION_FILE" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          p = sys.argv[1]
+          tree = ET.parse(p)
+          root = tree.getroot()
+          cps = root.find("ControlProtocols")
+          if cps is None:
+              cps = ET.SubElement(root, "ControlProtocols")
+          target = None
+          for child in cps.findall("Protocol"):
+              if child.get("name") == "MCP HTTP Server (Experimental)":
+                  target = child
+                  break
+          if target is None:
+              target = ET.SubElement(cps, "Protocol")
+          target.set("name", "MCP HTTP Server (Experimental)")
+          target.set("active", "yes")
+          target.set("port", "4820")
+          target.set("debug-level", "1")
+          target.set("config", "")
+          tree.write(p, encoding="UTF-8", xml_declaration=True)
+          print("GG_MCP_SESSION_STATE_PATCH=PASS")
+          PY
+
+          echo "$SESSION_FILE" >/tmp/gg-session-file.txt
+          kill "$JACK_PID" 2>/dev/null || true
+
+      - name: Restart session and qualify native MCP JSON-RPC
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARDOUR_BIN="$(command -v ardour9 || command -v ardour)"
+          export HOME=/tmp/gg-home
+          SESSION_FILE="$(cat /tmp/gg-session-file.txt)"
+
+          jackd -d dummy -r 48000 -p 1024 >/tmp/gg-jack-second.log 2>&1 &
+          JACK_PID=$!
+          sleep 2
+
+          dbus-run-session -- xvfb-run -a "$ARDOUR_BIN" -a -n -P "$SESSION_FILE" \
+            >/tmp/gg-ardour-second.log 2>&1 &
+          ARDOUR_WRAPPER_PID=$!
+
+          READY=0
+          for i in $(seq 1 40); do
+            if curl -fsS --max-time 2 \
+              -H 'Content-Type: application/json' \
+              -H 'Accept: application/json, text/event-stream' \
+              --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"gg-cloud-qualifier","version":"1"}}}' \
+              http://127.0.0.1:4820/mcp >/tmp/gg-mcp-init.json 2>/tmp/gg-curl.err; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo '--- Ardour second-start log ---'
+            tail -250 /tmp/gg-ardour-second.log || true
+            echo '--- curl error ---'
+            cat /tmp/gg-curl.err || true
+            echo '--- patched ControlProtocols ---'
+            grep -n -A8 -B2 'MCP HTTP Server' "$SESSION_FILE" || true
+            echo 'GG_ARDOUR_NATIVE_MCP_RUNTIME=FAIL_NO_ENDPOINT'
+            exit 41
+          fi
+
+          cat /tmp/gg-mcp-init.json
+          grep -q 'ardour-mcp-http' /tmp/gg-mcp-init.json
+          echo 'GG_ARDOUR_NATIVE_MCP_RUNTIME=PASS_JSONRPC_INITIALIZE'
+
+          curl -fsS --max-time 3 \
+            -H 'Content-Type: application/json' \
+            -H 'Accept: application/json, text/event-stream' \
+            --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+            http://127.0.0.1:4820/mcp >/tmp/gg-mcp-tools.json
+          test -s /tmp/gg-mcp-tools.json
+          echo "GG_MCP_TOOL_BYTES=$(wc -c </tmp/gg-mcp-tools.json)"
+          grep -q 'midi_note' /tmp/gg-mcp-tools.json
+          grep -q 'plugin' /tmp/gg-mcp-tools.json
+          grep -q 'track' /tmp/gg-mcp-tools.json
+          echo 'GG_ARDOUR_NATIVE_MCP_RUNTIME=PASS_TOOL_SURFACE'
+
+          pkill -TERM -f '/usr/lib/ardour9/ardour-9' 2>/dev/null || true
+          pkill -TERM -x ardour 2>/dev/null || true
+          kill "$ARDOUR_WRAPPER_PID" 2>/dev/null || true
+          kill "$JACK_PID" 2>/dev/null || true
+
+      - name: Mark cloud DAW runtime qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'GG_ARDOUR_HEADLESS_PREREQS=PASS'
+          echo 'GG_ARDOUR_CLOUD_RUNTIME_STAGE=NATIVE_MCP_HEADLESS_QUALIFIED'
