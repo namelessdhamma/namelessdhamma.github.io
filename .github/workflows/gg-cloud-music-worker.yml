@@ -37,17 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
-          MARKER="$(python3 - "$GITHUB_EVENT_PATH" <<'PY'
-import json,sys
-p=json.load(open(sys.argv[1]))
-hc=p.get("head_commit") or {}
-paths=[]
-for k in ("added","modified"):
-    paths.extend(hc.get(k) or [])
-paths=[x for x in paths if x.startswith("gg-cloud-jobs/") and x.endswith(".json")]
-print(paths[-1] if paths else "")
-PY
-)"
+          MARKER="$(python3 -c 'import json,os; p=json.load(open(os.environ["GITHUB_EVENT_PATH"])); hc=p.get("head_commit") or {}; xs=(hc.get("added") or [])+(hc.get("modified") or []); xs=[x for x in xs if x.startswith("gg-cloud-jobs/") and x.endswith(".json")]; print(xs[-1] if xs else "")')"
           if [ -z "$MARKER" ]; then
             MARKER="$(find "$GITHUB_WORKSPACE/gg-cloud-jobs" -maxdepth 1 -type f -name '*.json' -printf '%p\n' | sort | tail -n1)"
           fi
