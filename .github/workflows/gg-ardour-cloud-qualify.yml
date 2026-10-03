@@ -71,59 +71,22 @@ jobs:
           kill -0 "$(cat /tmp/gg-xvfb.pid)"
           echo 'GG_ARDOUR_DUMMY_ENGINE_CONFIG=PASS'
 
-      - name: Materialize a valid existing session seed
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/gg-cloud/GGCloud
-          curl -fsSL \
-            https://raw.githubusercontent.com/Ardour/ardour/aeaed7b9359a135569e58e7cb126051bfa0d61a0/libs/ardour/test/profiling/sessions/0tracks/0tracks.ardour \
-            -o /tmp/gg-cloud/GGCloud/GGCloud.ardour
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('/tmp/gg-cloud/GGCloud/GGCloud.ardour')
-          s=p.read_text()
-          s=s.replace('name="3-0tracks"', 'name="GGCloud"', 1)
-          p.write_text(s)
-          PY
-          test -s /tmp/gg-cloud/GGCloud/GGCloud.ardour
-          echo /tmp/gg-cloud/GGCloud/GGCloud.ardour >/tmp/gg-session-file.txt
-          echo 'GG_ARDOUR_SESSION_SEED=PASS'
-
-      - name: Load existing seed on Dummy backend
+      - name: Create current Ardour session headlessly with official utility
         shell: bash
         run: |
           set -euo pipefail
           export HOME=/tmp/gg-home
-          export DISPLAY=:99
           export LANG=C.UTF-8
-          export USER=root
-          export LOGNAME=root
-          export ARDOUR_TRY_AUTOSTART_ENGINE=1
-          ARDOUR_BIN="$(command -v ardour9 || command -v ardour)"
-          SESSION_FILE="$(cat /tmp/gg-session-file.txt)"
-          dbus-run-session -- "$ARDOUR_BIN" -a -n -P "$SESSION_FILE" >/tmp/gg-ardour-create.log 2>&1 &
-          echo $! >/tmp/gg-ardour.pid
-          READY=0
-          for i in $(seq 1 60); do
-            if grep -q -E 'ready for use|Session .* loaded|Loading session' /tmp/gg-ardour-create.log 2>/dev/null; then
-              READY=1
-              break
-            fi
-            if ! kill -0 "$(cat /tmp/gg-ardour.pid)" 2>/dev/null; then break; fi
-            sleep 1
-          done
-          if [ "$READY" -ne 1 ]; then
-            echo '--- Ardour existing-session log ---'
-            cat /tmp/gg-ardour-create.log || true
-            echo '--- Process state ---'
-            ps aux | grep -E '[a]rdour|[X]vfb' || true
-            echo 'GG_ARDOUR_EXISTING_SESSION=FAIL'
-            exit 32
-          fi
-          echo 'GG_ARDOUR_EXISTING_SESSION=PASS_LOADED'
-          kill "$(cat /tmp/gg-ardour.pid)" 2>/dev/null || true
-          sleep 2
+          command -v ardour9-new_session
+          ardour9-new_session --version
+          rm -rf /tmp/gg-cloud/GGCloud
+          ardour9-new_session -s 48000 -m 2 /tmp/gg-cloud/GGCloud GGCloud | tee /tmp/gg-new-session.log
+          SESSION_FILE=/tmp/gg-cloud/GGCloud/GGCloud.ardour
+          test -s "$SESSION_FILE"
+          grep -q '<Session' "$SESSION_FILE"
+          grep -q 'sample-rate="48000"' "$SESSION_FILE"
+          echo "$SESSION_FILE" >/tmp/gg-session-file.txt
+          echo 'GG_ARDOUR_HEADLESS_SESSION_UTILITY=PASS_CREATED_CURRENT_SESSION'
 
       - name: Enable native MCP in session
         shell: bash
