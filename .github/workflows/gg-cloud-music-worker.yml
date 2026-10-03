@@ -1,0 +1,54 @@
+name: GG Cloud Music Worker
+
+on:
+  push:
+    branches:
+      - gg/cloud-music-worker-v1
+    paths:
+      - 'gg-cloud-jobs/*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install free cloud studio runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends ardour curl ca-certificates jq python3 python3-pip xvfb dbus-x11 ffmpeg tar gzip unzip xauth
+          for p in lsp-plugins-lv2 x42-plugins dragonfly-reverb surge-xt sfizz avldrums.lv2 calf-plugins fluid-soundfont-gm; do
+            if apt-cache show "$p" >/dev/null 2>&1; then apt-get install -y --no-install-recommends "$p" || true; fi
+          done
+          echo 'GG_WORKER_RUNTIME=READY'
+      - name: Resolve private job marker
+        id: marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          MARKER="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- 'gg-cloud-jobs/*.json' | tail -n1)"
+          if [ -z "$MARKER" ]; then MARKER="$(find gg-cloud-jobs -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"; fi
+          test -n "$MARKER"
+          JOB_ID="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["job_id"])' "$MARKER")"
+          test -n "$JOB_ID"
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "GG_JOB_ID=$JOB_ID"
+      - name: Mint GitHub OIDC identity and execute job
+        shell: bash
+        env:
+          JOB_ID: ${{ steps.marker.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          OIDC="$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=gg-cloud-studio" | jq -r .value)"
+          test -n "$OIDC"
+          python3 tools/gg_cloud_music_worker.py --job-id "$JOB_ID" --oidc-token "$OIDC"
