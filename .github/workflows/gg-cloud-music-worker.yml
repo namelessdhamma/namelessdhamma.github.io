@@ -31,24 +31,28 @@ jobs:
             if apt-cache show "$p" >/dev/null 2>&1; then apt-get install -y --no-install-recommends "$p" || true; fi
           done
           echo 'GG_WORKER_RUNTIME=READY'
-      - name: Resolve private job marker
+      - name: Resolve job marker
         id: marker
         shell: bash
         run: |
           set -euo pipefail
           MARKER="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- 'gg-cloud-jobs/*.json' | tail -n1)"
-          if [ -z "$MARKER" ]; then MARKER="$(find gg-cloud-jobs -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"; fi
+          if [ -z "$MARKER" ]; then MARKER="$(find gg-cloud-jobs -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\\n' | sort -nr | head -n1 | cut -d' ' -f2-)"; fi
           test -n "$MARKER"
-          JOB_ID="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["job_id"])' "$MARKER")"
-          test -n "$JOB_ID"
-          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
-          echo "GG_JOB_ID=$JOB_ID"
+          echo "marker=$MARKER" >> "$GITHUB_OUTPUT"
       - name: Mint GitHub OIDC identity and execute job
         shell: bash
         env:
-          JOB_ID: ${{ steps.marker.outputs.job_id }}
+          MARKER: ${{ steps.marker.outputs.marker }}
         run: |
           set -euo pipefail
           OIDC="$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=gg-cloud-studio" | jq -r .value)"
           test -n "$OIDC"
+          JOB_ID="$(python3 -c 'import json,os;print(json.load(open(os.environ["MARKER"])).get("job_id",""))')"
+          if [ -z "$JOB_ID" ]; then
+            BOOTSTRAP_BODY="$(python3 -c 'import json,os;d=json.load(open(os.environ["MARKER"])); b=d["bootstrap"]; print(json.dumps({"operation":b["operation"],"payload":b.get("payload",{})}))')"
+            JOB_ID="$(curl -fsSL -H "Authorization: Bearer $OIDC" -H 'Content-Type: application/json' --data "$BOOTSTRAP_BODY" https://gg-cloud-music-studio.onrender.com/runner/bootstrap | jq -r .job_id)"
+          fi
+          test -n "$JOB_ID"
+          echo "GG_JOB_ID=$JOB_ID"
           python3 tools/gg_cloud_music_worker.py --job-id "$JOB_ID" --oidc-token "$OIDC"
