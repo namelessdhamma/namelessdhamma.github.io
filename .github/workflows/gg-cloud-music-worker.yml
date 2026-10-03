@@ -36,6 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
           MARKER="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" -- 'gg-cloud-jobs/*.json' | tail -n1)"
           if [ -z "$MARKER" ]; then MARKER="$(find gg-cloud-jobs -maxdepth 1 -type f -name '*.json' -printf '%T@ %p\\n' | sort -nr | head -n1 | cut -d' ' -f2-)"; fi
           test -n "$MARKER"
@@ -46,6 +47,7 @@ jobs:
           MARKER: ${{ steps.marker.outputs.marker }}
         run: |
           set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
           OIDC="$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=gg-cloud-studio" | jq -r .value)"
           test -n "$OIDC"
           JOB_ID="$(python3 -c 'import json,os;print(json.load(open(os.environ["MARKER"])).get("job_id",""))')"
