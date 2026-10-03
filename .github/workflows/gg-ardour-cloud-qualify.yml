@@ -82,6 +82,8 @@ jobs:
           export HOME=/tmp/gg-home
           export DISPLAY=:99
           export LANG=C.UTF-8
+          export USER=root
+          export LOGNAME=root
 
           ray_control start
           ray_control open_session_off GGCloud
@@ -151,6 +153,8 @@ jobs:
           set -euo pipefail
           export HOME=/tmp/gg-home
           export DISPLAY=:99
+          export USER=root
+          export LOGNAME=root
           CLIENT_ID="$(cat /tmp/gg-client-id.txt)"
 
           ray_control client "$CLIENT_ID" open
