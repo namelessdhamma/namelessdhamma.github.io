@@ -87,9 +87,17 @@ jobs:
           export USER=root
           export LOGNAME=root
 
+          cat >/tmp/gg-ardour-nsm <<'SH'
+          #!/bin/sh
+          export ARDOUR_SELF=/usr/bin/ardour
+          exec /usr/bin/ardour >>/tmp/gg-ardour-nsm.log 2>&1
+          SH
+          chmod +x /tmp/gg-ardour-nsm
+          : >/tmp/gg-ardour-nsm.log
+
           ray_control start
           ray_control open_session_off GGCloud
-          CLIENT_ID="$(ray_control add_executable ardour not_start | tail -n1 | tr -d '\r')"
+          CLIENT_ID="$(ray_control add_executable /tmp/gg-ardour-nsm not_start | tail -n1 | tr -d '\r')"
           if [ -z "$CLIENT_ID" ]; then
             echo 'GG_RAYSESSION_ADD_ARDOUR=FAIL'
             exit 31
@@ -125,6 +133,10 @@ jobs:
             ray_control client "$CLIENT_ID" get_properties || true
             echo '--- Ardour processes ---'
             ps aux | grep -E '[a]rdour|[r]ay' || true
+            echo '--- Ardour NSM stdout/stderr ---'
+            tail -240 /tmp/gg-ardour-nsm.log || true
+            echo '--- JACK state ---'
+            jack_lsp 2>/dev/null || true
             echo 'GG_ARDOUR_HEADLESS_SESSION=FAIL_NOT_CREATED'
             exit 32
           fi
