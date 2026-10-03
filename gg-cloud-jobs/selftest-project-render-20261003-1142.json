@@ -1,0 +1,11 @@
+{
+  "bootstrap": {
+    "operation": "project_render",
+    "payload": {
+      "lua_script": "local tl = Session:new_audio_track(1, 2, ARDOUR.RouteGroup(), 1, \"GG_SINE_EXPORT\", -1, ARDOUR.TrackMode.Normal, true)\nassert(not tl:empty(), \"failed to create export track\")\nlocal r = tl:front()\nassert(not r:isnil(), \"export route nil\")\nlocal p = ARDOUR.LuaAPI.new_luaproc(Session, \"SinGen\")\nassert(not p:isnil(), \"SinGen unavailable\")\nr:add_processor_by_index(p, 0, nil, true)\nassert(ARDOUR.LuaAPI.set_processor_param(p, 0, 440), \"failed frequency\")\nassert(ARDOUR.LuaAPI.set_processor_param(p, 1, -12), \"failed gain\")\nSession:set_session_range_is_free(false)\nSession:set_session_extents(Temporal.timepos_t(0), Temporal.timepos_t(96000))\nprint(\"GG_SINGEN_ROUTE=\" .. r:name())\nprint(\"GG_SESSION_END=\" .. tostring(Session:current_end_sample()))",
+      "bitdepth": 24,
+      "sample_rate": 48000,
+      "normalize": false
+    }
+  }
+}
