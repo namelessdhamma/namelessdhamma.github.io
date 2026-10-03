@@ -135,6 +135,16 @@ async function runnerRoute(req,res,url) {
   await requireRunner(req);
   const parts=url.pathname.split('/').filter(Boolean);
   const kind=parts[1], id=parts[2];
+  if (kind === 'bootstrap' && req.method === 'POST') {
+    const body=await readJson(req,256*1024);
+    const operation=String(body.operation||'');
+    if (!['probe','ardour_batch'].includes(operation)) throw Object.assign(new Error('bootstrap operation not allowed'),{status:400});
+    const jid=crypto.randomUUID();
+    const payloadJson=typeof body.payload_json==='string' ? body.payload_json : JSON.stringify(body.payload||{});
+    const j={id:jid,operation,projectId:'GG-STUDIO-SELFTEST',payloadJson,status:'queued',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),claimedAt:null,completedAt:null,error:null,resultJson:null,assets:new Map(),artifacts:new Map()};
+    jobs.set(jid,j);
+    return json(res,200,{job_id:jid,status:j.status});
+  }
   const j=getJob(id);
   if (kind === 'claim' && req.method === 'GET') {
     if (j.status === 'queued') { j.status='running'; j.claimedAt=new Date().toISOString(); j.updatedAt=j.claimedAt; }
