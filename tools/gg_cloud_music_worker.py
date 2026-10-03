@@ -266,11 +266,88 @@ def probe():
       "megadl":out(["bash","-lc","command -v megadl || command -v megatools || true"])
     }
 
+def install_vocal_stack():
+    cmds=[
+        [sys.executable,"-m","pip","install","--disable-pip-version-check","--quiet","torch==2.8.0","--index-url","https://download.pytorch.org/whl/cpu"],
+        [sys.executable,"-m","pip","install","--disable-pip-version-check","--quiet","numpy==1.26.4","scipy==1.13.1","librosa==0.9.2","onnxruntime==1.16.3","pyyaml>=6","pypinyin>=0.50","soundfile","tqdm"],
+        [sys.executable,"-m","pip","install","--disable-pip-version-check","--quiet","--no-deps","diffsinger-utau==0.3.8"],
+    ]
+    logs=[]
+    for cmd in cmds:
+        cp=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=900)
+        logs.append(cp.stdout[-5000:])
+        if cp.returncode:
+            raise RuntimeError("vocal dependency install failed:\n"+cp.stdout[-12000:])
+    return "\n".join(logs)
+
+def install_awata_ezv(vb, work):
+    import yaml
+    dst=vb/"dsvocoder"
+    cfg_path=dst/"vocoder.yaml"
+    if cfg_path.exists():
+        return {"installed":False,"config":str(cfg_path)}
+    url="https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep"
+    arc=work/"ezv.oudep"
+    arc.write_bytes(urllib.request.urlopen(url,timeout=300).read())
+    dst.mkdir(parents=True,exist_ok=True)
+    with zipfile.ZipFile(arc) as z:
+        names={n.replace("\\\\","/"):n for n in z.namelist()}
+        cfgs=[n for n in names if n.endswith("/vocoder.yaml") or n=="vocoder.yaml"]
+        if not cfgs: raise RuntimeError("ezv package has no vocoder.yaml")
+        cfg_name=cfgs[0]
+        cfg_bytes=z.read(names[cfg_name])
+        config=yaml.safe_load(cfg_bytes)
+        model_ref=config.get("model")
+        if not model_ref: raise RuntimeError("ezv vocoder config has no model")
+        model_matches=[n for n in names if n.split("/")[-1]==model_ref]
+        if not model_matches: raise RuntimeError("ezv package missing referenced model "+model_ref)
+        (dst/"vocoder.yaml").write_bytes(cfg_bytes)
+        with z.open(names[model_matches[0]]) as inf,(dst/model_ref).open("wb") as outf:
+            shutil.copyfileobj(inf,outf,1024*1024)
+    return {"installed":True,"config":str(cfg_path),"model":model_ref}
+
+def render_awata_direct(score, vb, outdir, payload):
+    import numpy as np
+    from diffsinger_utau.voice_bank.commons.voice_bank_reader import VoiceBankReader
+    from diffsinger_utau.voice_bank.commons.ds_reader import DSReader
+    from diffsinger_utau.voice_bank.pred_acoustic import PredAcoustic
+    from diffsinger_utau.voice_bank.pred_vocoder import PredVocoder
+    from diffsinger_utau.voice_bank.commons.utils import resample_align_curve
+
+    raw=json.loads(score.read_text())
+    sections=raw if isinstance(raw,list) else [raw]
+    if not sections: raise RuntimeError("empty DiffSinger score")
+    ac=PredAcoustic(VoiceBankReader.DSAcoustic(vb/"dsconfig.yaml",preload_models=True))
+    vc=PredVocoder(VoiceBankReader.DSVocoder(vb/"dsvocoder/vocoder.yaml",preload_models=True))
+    lang=str(payload.get("lang") or "ru")
+    speaker=payload.get("speaker")
+    gender=float(payload.get("gender",0) or 0)
+    steps=int(payload.get("acoustic_steps",12))
+    waves=[]
+    for idx,sec in enumerate(sections):
+        ds=DSReader.DSSection(sec)
+        mel=ac.predict(ds,lang=lang,speaker=speaker,steps=steps,gender=gender)
+        f0s=sec.get("f0_seq")
+        f0step=sec.get("f0_timestep")
+        if not f0s or not f0step:
+            raise RuntimeError(f"Awata direct render requires f0_seq/f0_timestep in section {idx}")
+        f0=resample_align_curve(np.asarray([float(x) for x in str(f0s).split()],dtype=np.float32),float(f0step),vc.timestep,mel.shape[1])
+        waves.append(vc.predict(mel,f0))
+    wav=np.concatenate(waves) if len(waves)>1 else waves[0]
+    target=outdir/"vocal-1.wav"
+    vc.save_wav(wav,target)
+    return [target]
+
 def vocal_render(payload, job, job_id, token, work):
     bank=work/"voicebank"; bank.mkdir(); score=work/"score.ds"; names={a["name"] for a in job.get("assets",[])}
+    inline=payload.get("score_inline")
     score_name=payload.get("score_asset","score.ds")
-    if score_name not in names: raise RuntimeError("score .ds asset missing")
-    score.write_bytes(get_asset(job_id,score_name,token))
+    if inline is not None:
+        score.write_text(json.dumps(inline,ensure_ascii=False,indent=2))
+    elif score_name in names:
+        score.write_bytes(get_asset(job_id,score_name,token))
+    else:
+        raise RuntimeError("score_inline or score .ds asset required")
 
     voice_id=payload.get("voice_id")
     spec=VOICEBANK_CATALOG.get(voice_id or "",{})
@@ -295,7 +372,7 @@ def vocal_render(payload, job, job_id, token, work):
             cmd=["megatools","dl","--no-progress","--path",str(bank),mega_url]
         else:
             raise RuntimeError("MEGA downloader not installed")
-        cp=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        cp=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=900)
         if cp.returncode:
             raise RuntimeError("MEGA voicebank download failed:\n"+cp.stdout[-10000:])
     else:
@@ -311,21 +388,28 @@ def vocal_render(payload, job, job_id, token, work):
     candidates=list(bank.rglob("dsconfig.yaml"))
     if not candidates: raise RuntimeError("no dsconfig.yaml in voicebank")
     vb=candidates[0].parent
-    cp=subprocess.run([sys.executable,"-m","pip","install","--break-system-packages","diffsinger-utau==0.3.8"],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-    if cp.returncode: raise RuntimeError("install diffsinger-utau failed:\n"+cp.stdout[-10000:])
+    install_log=install_vocal_stack()
     outdir=work/"vocal-out"; outdir.mkdir()
     lang=payload.get("lang") or spec.get("lang") or "ru"
-    cmd=["dsutau",str(score),"--voice-bank",str(vb),"--lang",str(lang),"--output",str(outdir),
-         "--pitch-steps",str(payload.get("pitch_steps",10)),"--variance-steps",str(payload.get("variance_steps",10)),"--acoustic-steps",str(payload.get("acoustic_steps",20))]
-    if payload.get("speaker"): cmd += ["--speaker",str(payload["speaker"])]
-    if payload.get("gender") is not None: cmd += ["--gender",str(payload["gender"])]
-    if payload.get("key_shift") is not None: cmd += ["--key-shift",str(payload["key_shift"])]
-    cp=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
-    if cp.returncode: raise RuntimeError("dsutau failed:\n"+cp.stdout[-10000:])
-    wavs=list(outdir.rglob("*.wav"))
-    if not wavs: raise RuntimeError("dsutau produced no wav")
+
+    ezv=None
+    if voice_id=="awata-weak-v3":
+        ezv=install_awata_ezv(vb,work)
+        wavs=render_awata_direct(score,vb,outdir,{**payload,"lang":lang})
+        render_log="Awata direct acoustic+ezv render"
+    else:
+        cmd=["dsutau",str(score),"--voice-bank",str(vb),"--lang",str(lang),"--output",str(outdir),
+             "--pitch-steps",str(payload.get("pitch_steps",10)),"--variance-steps",str(payload.get("variance_steps",10)),"--acoustic-steps",str(payload.get("acoustic_steps",20))]
+        if payload.get("speaker"): cmd += ["--speaker",str(payload["speaker"])]
+        if payload.get("gender") is not None: cmd += ["--gender",str(payload["gender"])]
+        if payload.get("key_shift") is not None: cmd += ["--key-shift",str(payload["key_shift"])]
+        cp=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=1200)
+        if cp.returncode: raise RuntimeError("dsutau failed:\n"+cp.stdout[-10000:])
+        wavs=list(outdir.rglob("*.wav"))
+        render_log=cp.stdout[-4000:]
+    if not wavs: raise RuntimeError("vocal renderer produced no wav")
     for i,w in enumerate(wavs): upload_artifact(job_id,f"vocal-{i+1}.wav",w,token,"audio/wav")
-    return {"engine":"diffsinger-utau","version":"0.3.8","voice_id":voice_id,"voicebank":vb.name,"language":lang,"wav_count":len(wavs),"log_tail":cp.stdout[-4000:]}
+    return {"engine":"diffsinger-utau","version":"0.3.8","voice_id":voice_id,"voicebank":vb.name,"language":lang,"speaker":payload.get("speaker"),"gender":payload.get("gender"),"wav_count":len(wavs),"ezv":ezv,"dependency_log_tail":install_log[-2000:],"log_tail":render_log}
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--job-id",required=True); ap.add_argument("--oidc-token",required=True); a=ap.parse_args()
