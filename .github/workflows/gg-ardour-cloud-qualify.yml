@@ -95,11 +95,16 @@ jobs:
           echo "$CLIENT_ID" >/tmp/gg-client-id.txt
           echo "GG_RAYSESSION_CLIENT_ID=$CLIENT_ID"
 
-          ray_control client "$CLIENT_ID" open
+          ray_control client "$CLIENT_ID" open || true
 
           SESSION_ROOT="$(ray_control get_session_path)"
           echo "GG_RAYSESSION_PATH=$SESSION_ROOT"
-          SESSION_FILE="$(find "$SESSION_ROOT" -type f -name '*.ardour' -print -quit 2>/dev/null || true)"
+          SESSION_FILE=""
+          for i in $(seq 1 30); do
+            SESSION_FILE="$(find "$SESSION_ROOT" -type f -name '*.ardour' -print -quit 2>/dev/null || true)"
+            [ -n "$SESSION_FILE" ] && break
+            sleep 1
+          done
           if [ -z "$SESSION_FILE" ]; then
             echo '--- Ray clients ---'
             ray_control list_clients || true
@@ -157,7 +162,7 @@ jobs:
           export LOGNAME=root
           CLIENT_ID="$(cat /tmp/gg-client-id.txt)"
 
-          ray_control client "$CLIENT_ID" open
+          ray_control client "$CLIENT_ID" open || true
 
           READY=0
           for i in $(seq 1 30); do
