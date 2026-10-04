@@ -1,0 +1,193 @@
+name: GG OpenUtau Mimosa Dark qualified takes
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-openutau-mimosa-dark-qualified-takes.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  render-and-qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare OpenUtau native Russian DiffSinger runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs" />\n  </ItemGroup>\n'
+          if 'GGVfsUfrOpenUtauQcTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          cp .nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs
+
+      - name: Recover ready-made UFR pack
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-kumi-discovery
+          run-id: 37178003583
+          github-token: ${{ github.token }}
+          path: /tmp/ufr-cache
+
+      - name: Prepare Mimosa Dark bank
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack="$(find /tmp/ufr-cache -type f -name 'ufr-pack.download' -print -quit)"
+          test -n "$pack"
+          mkdir -p /tmp/ufr
+          unzip -q "$pack" -d /tmp/ufr
+          root="$(find /tmp/ufr -type f -path '*/0_CORE/dsacoustic/millefeuille_v001.phonemes.json' -printf '%h\n' | sed 's#/0_CORE/dsacoustic$##' | head -n 1)"
+          bank="$root/Millefeuille_Mimosa"
+          test -f "$bank/dsconfig.yaml"
+          test -f "$bank/dsdur/dsdict-ru.yaml"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Millefeuille Mimosa\nauthor=UFR\nvoice=UFR\nversion=OpenUtau qualified audition\n' > "$bank/character.txt"
+          fi
+          echo "MIMOSA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Build OpenUtau
+        working-directory: /tmp/openutau
+        run: dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+
+      - name: Render ten native Clear takes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/qualified-takes/all"
+          cd /tmp/openutau
+          for i in $(seq -w 1 10); do
+            echo "=== OPENUTAU TAKE $i ==="
+            OPENUTAU_TEST_SINGERS="$MIMOSA_BANK" \
+            GG_VFS_OUT="${GITHUB_WORKSPACE}/qualified-takes/all" \
+            GG_VFS_TAG="Mimosa_Dark_OpenUtau_Take_$i" \
+            GG_VFS_SPEAKER_HINT="Dark" \
+            GG_VFS_VARIANT="clear" \
+            dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+          done
+          test "$(find "${GITHUB_WORKSPACE}/qualified-takes/all" -name '*.wav' | wc -l)" -eq 10
+
+      - name: Install independent listening QC
+        run: python -m pip install faster-whisper allosaurus librosa==0.10.2.post1 soundfile numpy
+
+      - name: Listen, rank, and keep only passed takes
+        shell: bash
+        run: |
+          cat > /tmp/qualify.py <<'PY'
+          import json,re,shutil
+          from pathlib import Path
+          import numpy as np
+          import soundfile as sf
+          import librosa
+          from faster_whisper import WhisperModel
+          from allosaurus.app import read_recognizer
+
+          root=Path("qualified-takes/all")
+          passed_dir=Path("qualified-takes/passed")
+          passed_dir.mkdir(parents=True,exist_ok=True)
+          whisper=WhisperModel("small",device="cpu",compute_type="int8")
+          phone_rec=read_recognizer()
+          target="я говорил не с ним"
+          results=[]
+
+          def norm(x):
+              x=x.lower().replace("ё","е")
+              x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+
+          for p in sorted(root.glob("*.wav")):
+              segs,_=whisper.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,
+                  temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs); words=[]; texts=[]
+              for s in segs:
+                  texts.append(s.text.strip())
+                  for w in s.words or []:
+                      words.append({"word":norm(w.word),"start":float(w.start),"end":float(w.end),"p":float(w.probability)})
+              transcript=norm(" ".join(texts))
+              ne=max((w for w in words if w["word"]=="не"),key=lambda w:w["p"],default=None)
+
+              y,sr=sf.read(p)
+              if y.ndim>1:y=y.mean(axis=1)
+              ne_phones=""
+              if ne:
+                  a=max(0,int((ne["start"]-.07)*sr)); b=min(len(y),int((ne["end"]+.07)*sr))
+                  clip=Path("/tmp")/(p.stem+"_ne.wav")
+                  sf.write(clip,y[a:b],sr)
+                  try: ne_phones=phone_rec.recognize(str(clip),lang_id="rus")
+                  except Exception:
+                      try: ne_phones=phone_rec.recognize(str(clip))
+                      except Exception: ne_phones=""
+
+              f0,_,_=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),sr=sr,
+                  frame_length=2048,hop_length=256)
+              vf=np.where(np.isfinite(f0))[0]
+              jump_rate=1.0
+              p95=999.0
+              if len(vf)>3:
+                  vals=f0[vf]
+                  d=np.abs(1200*np.log2(vals[1:]/vals[:-1]))
+                  d=d[np.diff(vf)==1]
+                  if len(d):
+                      jump_rate=float(np.mean(d>100))
+                      p95=float(np.percentile(d,95))
+              rms=librosa.feature.rms(y=y,frame_length=2048,hop_length=256)[0]
+              ep99=float(np.percentile(np.abs(np.diff(rms)),99)) if len(rms)>1 else 1.0
+              mean_word=float(np.mean([w["p"] for w in words])) if words else 0.0
+              ne_p=float(ne["p"]) if ne else 0.0
+              exact=(transcript==target)
+              passed=bool(exact and ne_p>=0.90 and jump_rate<0.01 and ep99<0.012)
+              score=mean_word + ne_p - jump_rate*5 - ep99*10
+              results.append({"file":p.name,"transcript":transcript,"words":words,"ne_confidence":ne_p,
+                  "ne_phones":ne_phones,"f0_jump_p95_cents":p95,"f0_jump_rate_gt100c":jump_rate,
+                  "energy_jump_p99":ep99,"mean_word_confidence":mean_word,"pass":passed,"score":score})
+
+          winners=sorted([x for x in results if x["pass"]],key=lambda x:x["score"],reverse=True)[:4]
+          for rank,x in enumerate(winners,1):
+              src=root/x["file"]
+              dst=passed_dir/f"{rank:02d}_{src.name}"
+              shutil.copy2(src,dst)
+              x["selected_as"]=dst.name
+          report={"target":target,"pass_count":sum(x["pass"] for x in results),"selected_count":len(winners),
+                  "selected":[x["file"] for x in winners],"results":results}
+          Path("qualified-takes/qc-report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          with Path("qualified-takes/qc-summary.txt").open("w",encoding="utf8") as f:
+              f.write(f"PASS_COUNT={report['pass_count']} SELECTED={len(winners)}\n")
+              for x in results:
+                  f.write(f"{x['file']} | PASS={x['pass']} | text={x['transcript']} | ne={x['ne_confidence']:.3f} | ne_phones={x['ne_phones']} | word={x['mean_word_confidence']:.3f} | f0jump={x['f0_jump_rate_gt100c']:.4f} | energy={x['energy_jump_p99']:.5f}\n")
+          print(Path("qualified-takes/qc-summary.txt").read_text())
+          if len(winners)<2:
+              raise SystemExit("Fewer than two independently QC-passed takes")
+          PY
+          python /tmp/qualify.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-openutau-mimosa-dark-qualified-takes
+          path: |
+            qualified-takes/passed/
+            qualified-takes/qc-report.json
+            qualified-takes/qc-summary.txt
+            qualified-takes/all/*__manifest.txt
+          retention-days: 3
