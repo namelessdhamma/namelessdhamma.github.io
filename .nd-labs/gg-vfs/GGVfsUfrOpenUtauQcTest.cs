@@ -102,8 +102,11 @@ namespace OpenUtau.Test.Core.DiffSinger {
             Directory.CreateDirectory(PathManager.Inst.CachePath);
             Preferences.Default.DiffSingerTensorCache = false;
             Preferences.Default.AdditionalSingerPath = singersRoot!;
-            Preferences.Default.DiffSingerSteps = 30;
-            Preferences.Default.DiffSingerStepsVariance = 20;
+            int renderSteps = 30;
+            int.TryParse(Environment.GetEnvironmentVariable("GG_VFS_STEPS"), out renderSteps);
+            if (renderSteps <= 0) renderSteps = 30;
+            Preferences.Default.DiffSingerSteps = renderSteps;
+            Preferences.Default.DiffSingerStepsVariance = Math.Max(20, renderSteps / 2);
             Preferences.Default.DiffSingerStepsPitch = 12;
             Preferences.Default.DiffSingerDepth = 1.0;
             Preferences.Default.DiffSingerMergeNearbyPhrases = true;
