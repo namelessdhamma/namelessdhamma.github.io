@@ -1,0 +1,29 @@
+name: GG ACE-Step worker contract
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-ace-step-worker-contract.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade gradio_client
+          python - <<'PY'
+          import json
+          from gradio_client import Client
+          c=Client("2Btainment/ace-step",verbose=False)
+          api=c.view_api(return_format="dict")
+          x=api["named_endpoints"]["/_generate"]
+          print("CONTRACT_BEGIN")
+          print(json.dumps(x,ensure_ascii=False,indent=2))
+          print("CONTRACT_END")
+          PY
