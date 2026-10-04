@@ -1,0 +1,37 @@
+name: GG Seed-VC contract qualification
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-seed-vc-contract.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade gradio_client
+          python - <<'PY'
+          import json
+          from gradio_client import Client
+          for space in ["mmwmm/Seed-VC","mengtoa/Seed-VC"]:
+              print("SPACE",space)
+              try:
+                  c=Client(space,verbose=False)
+                  api=c.view_api(return_format="dict")
+                  print("ENDPOINTS",sorted(api.get("named_endpoints",{}).keys()))
+                  for k,x in api.get("named_endpoints",{}).items():
+                      if "convert" in k.lower() or "predict" in k.lower() or len(api.get("named_endpoints",{}))<=4:
+                          print("CONTRACT",k,json.dumps({
+                            "params":[{"name":p.get("parameter_name"),"label":p.get("label"),"default":p.get("parameter_default"),"type":p.get("python_type",{}).get("type")} for p in x.get("parameters",[])],
+                            "returns":[{"label":r.get("label"),"type":r.get("python_type",{}).get("type")} for r in x.get("returns",[])]
+                          },ensure_ascii=False))
+              except Exception as e:
+                  print("ERROR",space,repr(e))
+          PY
