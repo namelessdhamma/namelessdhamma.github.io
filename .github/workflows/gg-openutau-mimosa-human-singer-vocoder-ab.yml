@@ -4,7 +4,6 @@ on:
     branches:
       - "experiment/gg-openutau-mcp-20261004"
     paths:
-      - ".github/workflows/gg-openutau-mimosa-human-singer-vocoder-ab.yml"
       - ".nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs"
   workflow_dispatch:
 permissions:
@@ -81,7 +80,22 @@ jobs:
             -o /tmp/ezv.zip
           echo "02305b5814e8cc832b20b1c84daa95505b6fa7445c496269227ce5ec49ff9129  /tmp/ezv.zip" | sha256sum -c -
           mkdir -p /tmp/ezv_unpack
-          unzip -q /tmp/ezv.zip -d /tmp/ezv_unpack
+          python3 - <<'PY'
+          import zipfile
+          from pathlib import Path
+          root=Path('/tmp/ezv_unpack')
+          with zipfile.ZipFile('/tmp/ezv.zip') as z:
+              for info in z.infolist():
+                  rel=Path(*info.filename.replace('\\\\','/').replace('\\','/').split('/'))
+                  if not str(rel) or str(rel)=='.': continue
+                  dst=root/rel
+                  if info.is_dir():
+                      dst.mkdir(parents=True,exist_ok=True)
+                  else:
+                      dst.parent.mkdir(parents=True,exist_ok=True)
+                      with z.open(info) as src, open(dst,'wb') as out:
+                          out.write(src.read())
+          PY
           ezv_cfg="$(find /tmp/ezv_unpack -type f -name vocoder.yaml -print -quit)"
           test -n "$ezv_cfg"
           ezv_dir="$(dirname "$ezv_cfg")"
