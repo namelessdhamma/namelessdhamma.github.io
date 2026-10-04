@@ -104,10 +104,9 @@ namespace OpenUtau.Test.Core.DiffSinger {
             Preferences.Default.DiffSingerDepth = 1.0;
             Preferences.Default.DiffSingerMergeNearbyPhrases = true;
 
-            var dsconfigPath = Directory.EnumerateFiles(singersRoot!, "dsconfig.yaml", SearchOption.AllDirectories)
-                .FirstOrDefault();
-            Assert.False(string.IsNullOrWhiteSpace(dsconfigPath), "No dsconfig.yaml found in UFR singer bank.");
-            var bankDir = Path.GetDirectoryName(dsconfigPath!)!;
+            var dsconfigPath = Path.Combine(singersRoot!, "dsconfig.yaml");
+            Assert.True(File.Exists(dsconfigPath), "No root dsconfig.yaml found in UFR singer bank.");
+            var bankDir = singersRoot!;
             var acousticConfig = OpenUtau.Core.Yaml.DefaultDeserializer.Deserialize<DsConfig>(
                 File.ReadAllText(Path.Combine(bankDir, "dsconfig.yaml"), Encoding.UTF8));
             var chosenSpeaker = acousticConfig.speakers?
