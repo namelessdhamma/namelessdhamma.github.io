@@ -75,23 +75,13 @@ jobs:
         working-directory: /tmp/openutau
         run: dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
 
-      - name: Render Mimosa Dark — native
+      - name: Render Mimosa Dark — clear soft
         env:
           OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
           GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
-          GG_VFS_TAG: 01_Mimosa_Dark_Native
+          GG_VFS_TAG: 01_Mimosa_Dark_Clear_Soft
           GG_VFS_SPEAKER_HINT: Dark
-          GG_VFS_VARIANT: native
-        working-directory: /tmp/openutau
-        run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
-
-      - name: Render Mimosa Dark — legato
-        env:
-          OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
-          GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
-          GG_VFS_TAG: 02_Mimosa_Dark_Legato
-          GG_VFS_SPEAKER_HINT: Dark
-          GG_VFS_VARIANT: legato
+          GG_VFS_VARIANT: clear_soft
         working-directory: /tmp/openutau
         run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
 
@@ -99,19 +89,29 @@ jobs:
         env:
           OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
           GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
-          GG_VFS_TAG: 03_Mimosa_Dark_Clear
+          GG_VFS_TAG: 02_Mimosa_Dark_Clear
           GG_VFS_SPEAKER_HINT: Dark
           GG_VFS_VARIANT: clear
         working-directory: /tmp/openutau
         run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
 
-      - name: Render Mimosa Dark — expressive
+      - name: Render Mimosa Dark — clear warm
         env:
           OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
           GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
-          GG_VFS_TAG: 04_Mimosa_Dark_Expressive
+          GG_VFS_TAG: 03_Mimosa_Dark_Clear_Warm
           GG_VFS_SPEAKER_HINT: Dark
-          GG_VFS_VARIANT: expressive
+          GG_VFS_VARIANT: clear_warm
+        working-directory: /tmp/openutau
+        run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+
+      - name: Render Mimosa Dark — clear lively
+        env:
+          OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
+          GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
+          GG_VFS_TAG: 04_Mimosa_Dark_Clear_Lively
+          GG_VFS_SPEAKER_HINT: Dark
+          GG_VFS_VARIANT: clear_lively
         working-directory: /tmp/openutau
         run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
 
