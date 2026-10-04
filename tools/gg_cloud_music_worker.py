@@ -467,6 +467,30 @@ def vocal_render(payload, job, job_id, token, work):
     for i,w in enumerate(wavs): upload_artifact(job_id,f"vocal-{i+1}.wav",w,token,"audio/wav")
     return {"engine":"diffsinger-utau","version":"0.3.8","character_normalized":normalized_character,"voice_id":voice_id,"voicebank":vb.name,"language":lang,"speaker":payload.get("speaker"),"gender":payload.get("gender"),"wav_count":len(wavs),"ezv":ezv,"dependency_log_tail":install_log[-2000:],"log_tail":render_log}
 
+def gm_palette_render(payload, job, job_id, token, work):
+    subprocess.run([sys.executable,"-m","pip","install","-q","mido"],check=True)
+    import mido
+    mid=mido.MidiFile(ticks_per_beat=480)
+    programs=[("keys",0,60),("bass",32,40),("guitar",24,52),("orchestral",48,60),("ethnic",104,67),("electronic",80,64)]
+    for name,program,note in programs:
+        tr=mido.MidiTrack(); mid.tracks.append(tr)
+        tr.append(mido.MetaMessage("track_name",name=name,time=0))
+        tr.append(mido.Message("program_change",program=program,channel=0,time=0))
+        tr.append(mido.Message("note_on",note=note,velocity=90,channel=0,time=0))
+        tr.append(mido.Message("note_off",note=note,velocity=0,channel=0,time=480))
+    dr=mido.MidiTrack(); mid.tracks.append(dr); dr.append(mido.MetaMessage("track_name",name="drums",time=0))
+    for n in [36,38,42,46]:
+        dr.append(mido.Message("note_on",note=n,velocity=100,channel=9,time=0))
+        dr.append(mido.Message("note_off",note=n,velocity=0,channel=9,time=240))
+    midi=work/"palette.mid"; mid.save(midi)
+    sf=pathlib.Path("/usr/share/sounds/sf2/FluidR3_GM.sf2")
+    if not sf.exists(): raise RuntimeError("FluidR3 GM soundfont missing")
+    out=work/"palette.wav"
+    cp=subprocess.run(["fluidsynth","-ni","-F",str(out),"-r","44100",str(sf),str(midi)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
+    if cp.returncode or not out.exists() or out.stat().st_size==0: raise RuntimeError("FluidSynth palette render failed:\n"+cp.stdout[-8000:])
+    upload_artifact(job_id,"palette.wav",out,token,"audio/wav")
+    return {"engine":"fluidsynth","soundfont":sf.name,"categories":[x[0] for x in programs]+["drums"],"artifact":"palette.wav","artifact_bytes":out.stat().st_size,"log_tail":cp.stdout[-2000:]}
+
 def song_render(payload, job, job_id, token, work):
     marker=payload.get("vocal_marker_path")
     if marker:
@@ -505,6 +529,7 @@ def main():
         elif op=="project_render": result=project_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="vocal_render": result=vocal_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="song_render": result=song_render(payload,job,a.job_id,a.oidc_token,work)
+        elif op=="gm_palette_render": result=gm_palette_render(payload,job,a.job_id,a.oidc_token,work)
         else: raise RuntimeError(f"unsupported operation: {op}")
         print("GG_WORKER_RESULT="+json.dumps(result,ensure_ascii=False,sort_keys=True),flush=True)
         finish(a.job_id,a.oidc_token,True,result)
