@@ -48,7 +48,11 @@ def get_asset(job_id,name,token): return http_bytes(f"{RELAY}/runner/asset/{job_
 def upload_artifact(job_id,name,path,token,mime=None):
     p=pathlib.Path(path); data=p.read_bytes()
     ctype=mime or mimetypes.guess_type(p.name)[0] or "application/octet-stream"
-    return post_bytes(f"{RELAY}/runner/artifact/{job_id}/{urllib.parse.quote(name)}",data,ctype,auth_headers(token))
+    result=post_bytes(f"{RELAY}/runner/artifact/{job_id}/{urllib.parse.quote(name)}",data,ctype,auth_headers(token))
+    evidence=os.environ.get("GG_EVIDENCE_DIR")
+    if evidence:
+        dst=pathlib.Path(evidence); dst.mkdir(parents=True,exist_ok=True); shutil.copy2(p,dst/name)
+    return result
 
 def finish(job_id, token, ok, result, error=None):
     return http_json(f"{RELAY}/runner/result/{job_id}","POST",{"ok":bool(ok),"result_json":json.dumps(result,ensure_ascii=False),"error":error},auth_headers(token))
