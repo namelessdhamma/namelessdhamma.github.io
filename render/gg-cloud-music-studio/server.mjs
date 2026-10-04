@@ -74,7 +74,7 @@ function getJob(id) {
 }
 function toolList() {
   return [
-    {name:'studio_submit',description:'Create a private ephemeral GG cloud-music job. After this returns, trigger the worker by committing the returned marker JSON to the returned marker path on branch gg/cloud-music-worker-v1.',inputSchema:{type:'object',properties:{operation:{type:'string',description:'probe | ardour_lua | ardour_batch | project_render | vocal_render'},project_id:{type:'string'},payload_json:{type:'string',description:'Private JSON payload as a string; never write it to the public worker repository.'}},required:['operation','payload_json'],additionalProperties:false}},
+    {name:'studio_submit',description:'Create a private ephemeral GG cloud-music job. After this returns, trigger the worker by committing the returned marker JSON to the returned marker path on branch gg/cloud-music-worker-v1.',inputSchema:{type:'object',properties:{operation:{type:'string',description:'probe | ardour_lua | ardour_batch | project_render | vocal_render | song_render | gm_palette_render'},project_id:{type:'string'},payload_json:{type:'string',description:'Private JSON payload as a string; never write it to the public worker repository.'}},required:['operation','payload_json'],additionalProperties:false}},
     {name:'studio_put_asset_chunk',description:'Attach one private binary input to a job in base64 chunks. Chunks are kept only in the relay until the worker consumes them.',inputSchema:{type:'object',properties:{job_id:{type:'string'},name:{type:'string'},mime_type:{type:'string'},part_index:{type:'integer',minimum:0},data_base64:{type:'string'}},required:['job_id','name','part_index','data_base64'],additionalProperties:false}},
     {name:'studio_status',description:'Read one private cloud-music job status and artifact metadata.',inputSchema:{type:'object',properties:{job_id:{type:'string'}},required:['job_id'],additionalProperties:false}},
     {name:'studio_get_result',description:'Read the structured JSON result of a completed cloud-music job.',inputSchema:{type:'object',properties:{job_id:{type:'string'}},required:['job_id'],additionalProperties:false}},
@@ -139,7 +139,7 @@ async function runnerRoute(req,res,url) {
   if (kind === 'bootstrap' && req.method === 'POST') {
     const body=await readJson(req,256*1024);
     const operation=String(body.operation||'');
-    if (!['probe','ardour_lua','ardour_batch','project_render','vocal_render'].includes(operation)) throw Object.assign(new Error('bootstrap operation not allowed'),{status:400});
+    if (!['probe','ardour_lua','ardour_batch','project_render','vocal_render','song_render','gm_palette_render'].includes(operation)) throw Object.assign(new Error('bootstrap operation not allowed'),{status:400});
     const jid=crypto.randomUUID();
     const payloadJson=typeof body.payload_json==='string' ? body.payload_json : JSON.stringify(body.payload||{});
     const j={id:jid,operation,projectId:'GG-STUDIO-SELFTEST',payloadJson,status:'queued',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),claimedAt:null,completedAt:null,error:null,resultJson:null,assets:new Map(),artifacts:new Map()};
