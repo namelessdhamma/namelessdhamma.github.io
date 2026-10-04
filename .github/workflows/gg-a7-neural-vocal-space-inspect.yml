@@ -17,42 +17,44 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Inspect optimized ACE-Step ZeroGPU forks
+      - name: Find warm plain-turbo ACE Spaces
         run: |
-          python -m pip install -q "gradio_client>=1.8,<2" "huggingface_hub>=0.35"
+          python -m pip install -q "gradio_client>=1.8,<2" "huggingface_hub>=0.35" requests
           python - <<'PY'
-          from gradio_client import Client
           from huggingface_hub import HfApi
-          import json
-          targets=[
-            "Opera8/Ace",
-            "Kansasfan/Ace-Step-v1.5",
-            "Blursed/Ace-Step-v1.5",
-            "Blursed/ACE-Step-1.5-XL-ENHANCED",
-            "multimodalart/Ace-Step-v1.5",
-            "DarkCAlex/my-song-engine",
-            "MBLF/ACE-Step-1.5",
-          ]
+          from gradio_client import Client
+          import requests,json,concurrent.futures
           api=HfApi()
-          for t in targets:
-              print("\n=== SPACE",t,"===")
+          meta=requests.get("https://huggingface.co/api/models/ACE-Step/Ace-Step1.5",timeout=30).json()
+          spaces=[]
+          for x in meta.get("spaces",[]) or []:
+              sid=x if isinstance(x,str) else x.get("id") or x.get("repo_id") or x.get("name")
+              if sid and sid not in spaces: spaces.append(sid)
+          def runtime(sid):
               try:
-                  info=api.space_info(t,expand=["runtime","sha","sdk"])
+                  info=api.space_info(sid,expand=["runtime"])
                   rt=info.runtime
-                  print("RUNTIME",json.dumps({
-                    "stage":getattr(rt,"stage",None) if rt else None,
-                    "hardware":getattr(rt,"hardware",None) if rt else None,
-                    "sha":info.sha,"sdk":info.sdk
-                  }))
-                  c=Client(t,verbose=False)
-                  d=c.view_api(return_format="dict")
-                  named=d.get("named_endpoints",d)
-                  for name,v in named.items():
-                      pars=[(p.get("parameter_name"),p.get("parameter_has_default"),p.get("parameter_default")) for p in v.get("parameters",[])]
-                      rets=[q.get("label") for q in v.get("returns",[])]
-                      blob=(name+" "+" ".join(str(x) for x in pars+rets)).lower()
-                      if any(k in blob for k in ["generate","generation","cover","audio2audio","source audio"]):
-                          print("ENDPOINT",name,json.dumps({"params":pars,"returns":rets[:12]},ensure_ascii=False))
+                  if rt and getattr(rt,"stage",None)=="RUNNING" and str(getattr(rt,"hardware","")).startswith("zero-"):
+                      return sid
+              except: pass
+          with concurrent.futures.ThreadPoolExecutor(max_workers=16) as ex:
+              zero=[x for x in ex.map(runtime,spaces[:120]) if x]
+          print("ZERO_COUNT",len(zero))
+          rows=[]
+          def inspect(sid):
+              try:
+                  d=Client(sid,verbose=False).view_api(return_format="dict")
+                  ep=d.get("named_endpoints",d).get("/generation_wrapper")
+                  if not ep:return {"id":sid,"error":"no_generation_wrapper"}
+                  ps=ep.get("parameters",[])
+                  defaults={p.get("parameter_name"):p.get("parameter_default") for p in ps}
+                  return {"id":sid,"model":defaults.get("selected_model"),"steps":defaults.get("param_10"),
+                          "batch":defaults.get("param_16"),"duration":defaults.get("param_15"),
+                          "mode":defaults.get("generation_mode")}
               except Exception as e:
-                  print("ERROR",type(e).__name__,str(e)[:600])
+                  return {"id":sid,"error":type(e).__name__+":"+str(e)[:100]}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+              for row in ex.map(inspect,zero): rows.append(row)
+          print("ROWS",json.dumps(rows,ensure_ascii=False))
+          print("PLAIN_TURBO",json.dumps([r for r in rows if r.get("model")=="acestep-v15-turbo"],ensure_ascii=False))
           PY
