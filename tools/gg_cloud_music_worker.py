@@ -388,6 +388,7 @@ def vocal_render(payload, job, job_id, token, work):
         raise RuntimeError("score_inline or score .ds asset required")
 
     voice_id=payload.get("voice_id")
+    if voice_id=="keiro-ai-v100": voice_id="keiro-revenant-v170"
     spec=VOICEBANK_CATALOG.get(voice_id or "",{})
     bank_asset=payload.get("voicebank_asset")
     bank_url=payload.get("voicebank_url")
