@@ -17,20 +17,44 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Inspect public Gradio API
+      - name: Inspect candidate Spaces
         run: |
-          python -m pip install -q "gradio_client>=1.8,<2"
+          python -m pip install -q "gradio_client>=1.8,<2" "huggingface_hub>=0.35"
           python - <<'PY'
           from gradio_client import Client
+          from huggingface_hub import HfApi
           import json, traceback
-          targets=["ACE-Step/Ace-Step-v1.5"]
+          targets=[
+            "ACE-Step/Ace-Step-v1.5",
+            "techfreakworm/ACE-Music-Studio",
+            "MiquelC/voice-clone-music-demo",
+            "LububMusicAi/ACE-Step-Custom",
+            "Gamahea/ACE-Step-Custom",
+          ]
+          api=HfApi()
           for t in targets:
               print("\n=== SPACE", t, "===")
               try:
-                  c=Client(t, verbose=False)
-                  api=c.view_api(return_format="dict")
-                  print(json.dumps(api, ensure_ascii=False, indent=2)[:120000])
+                  info=api.space_info(t, expand=["runtime","sdk","sha"])
+                  print("RUNTIME",json.dumps({
+                    "stage":getattr(info.runtime,"stage",None) if info.runtime else None,
+                    "hardware":getattr(info.runtime,"hardware",None) if info.runtime else None,
+                    "requested_hardware":getattr(info.runtime,"requested_hardware",None) if info.runtime else None,
+                    "sleep_time":getattr(info.runtime,"sleep_time",None) if info.runtime else None,
+                    "sdk":info.sdk,"sha":info.sha,
+                  },default=str))
               except Exception as e:
-                  print("ERROR", type(e).__name__, str(e))
-                  traceback.print_exc()
+                  print("RUNTIME_ERROR",repr(e))
+              try:
+                  c=Client(t, verbose=False)
+                  d=c.view_api(return_format="dict")
+                  named=d.get("named_endpoints",d)
+                  eps=[]
+                  for name,v in named.items():
+                      if any(k in name.lower() for k in ["generation","generate","cover","audio2audio","predict"]):
+                          eps.append({"name":name,"parameters":[p.get("parameter_name") for p in v.get("parameters",[])],
+                                      "returns":[q.get("label") for q in v.get("returns",[])]})
+                  print("ENDPOINTS",json.dumps(eps[:40],ensure_ascii=False))
+              except Exception as e:
+                  print("API_ERROR",repr(e))
           PY
