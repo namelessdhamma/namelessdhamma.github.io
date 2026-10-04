@@ -1,0 +1,112 @@
+name: A7 Seed-VC singing refinement
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-a7-seedvc-singing-refine.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Recover long source
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: /tmp/source
+
+      - name: Recover selected Human-B reference
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-human-singer-vocoder-ab
+          run-id: 37194439702
+          github-token: ${{ github.token }}
+          path: /tmp/reference
+
+      - name: Refine through Seed-VC singing mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q "gradio_client>=1.8,<2"
+          mkdir -p "${GITHUB_WORKSPACE}/seedvc"
+
+          source="$(find /tmp/source -type f -name '*.wav' | head -n 1)"
+          target="$(find /tmp/reference -type f \( -iname '*singer_b*stock*.wav' -o -iname '*Human*B*Stock*.wav' \) | head -n 1)"
+          if [ -z "$target" ]; then
+            echo "Reference inventory:"
+            find /tmp/reference -type f -maxdepth 5 -print
+            exit 3
+          fi
+          echo "SOURCE=$source"
+          echo "TARGET=$target"
+          export SOURCE="$source" TARGET="$target"
+
+          python - <<'PY'
+          import os, pathlib, shutil, json, time
+          from gradio_client import Client, handle_file
+
+          out=pathlib.Path(os.environ["GITHUB_WORKSPACE"])/"seedvc"
+          c=Client("Uniaff/Seed-VC", verbose=True)
+          print("Calling CPU Seed-VC singing conversion...")
+          t=time.time()
+          result=c.predict(
+              handle_file(os.environ["SOURCE"]),
+              handle_file(os.environ["TARGET"]),
+              8,      # diffusion steps
+              1.0,    # exact length
+              0.62,   # content/intelligibility-vs-similarity balance
+              True,   # F0 conditioning: preserve singing melody
+              False,  # do not auto-shift pitch
+              0,      # zero semitone shift
+              api_name="/predict"
+          )
+          print("ELAPSED",time.time()-t)
+          print("RESULT",result)
+          candidates=result if isinstance(result,(tuple,list)) else [result]
+          def pth(x):
+              if x is None: return None
+              if isinstance(x,str): return x
+              if isinstance(x,dict): return x.get("path") or x.get("name")
+              return getattr(x,"path",None) or getattr(x,"name",None)
+          p=None
+          for x in reversed(candidates):
+              q=pth(x)
+              if q and pathlib.Path(q).exists():
+                  p=q; break
+          if not p:
+              raise SystemExit("Seed-VC returned no local audio")
+          dst=out/"SeedVC_MimosaDark_HumanBRef_F0_8step.wav"
+          shutil.copy2(p,dst)
+          shutil.copy2(os.environ["SOURCE"],out/"Source_OpenUtau_LongA.wav")
+          shutil.copy2(os.environ["TARGET"],out/"Reference_HumanB_STOCK.wav")
+          (out/"metadata.json").write_text(json.dumps({
+              "space":"Uniaff/Seed-VC",
+              "diffusion_steps":8,
+              "length_adjust":1.0,
+              "cfg":0.62,
+              "f0_condition":True,
+              "auto_f0_adjust":False,
+              "pitch_shift":0,
+          },indent=2))
+          print("SAVED",dst,dst.stat().st_size)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a7-seedvc-singing-refine
+          path: seedvc/
+          retention-days: 3
+          if-no-files-found: warn
