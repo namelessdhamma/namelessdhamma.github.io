@@ -1,10 +1,4 @@
 {
-  "bootstrap": {
-    "operation": "ardour_batch",
-    "payload": {
-      "calls": []
-    }
-  },
-  "qualification": "A7-P1-native-mcp-save-session-artifact",
-  "retry": 7
+  "bootstrap": {"operation": "probe", "payload": {}},
+  "qualification": "A7-P2-palette-evidence"
 }
