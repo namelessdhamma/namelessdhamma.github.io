@@ -115,6 +115,71 @@ namespace OpenUtau.Test.Core.DiffSinger {
             }
         }
 
+        static void ApplySingerPhysics(RenderPhrase phrase, string variant) {
+            if (!(variant is "singer_a" or "singer_b" or "singer_c")) return;
+            int level = variant == "singer_a" ? 1 : variant == "singer_b" ? 2 : 3;
+            if (phrase.pitches.Length < 2 || phrase.notes.Length == 0) return;
+
+            float prep = level == 1 ? 14f : level == 2 ? 19f : 24f;
+            float over = level == 1 ? 22f : level == 2 ? 29f : 34f;
+            float fine = level == 1 ? 1.7f : level == 2 ? 2.3f : 2.8f;
+
+            for (int j = 0; j < phrase.pitches.Length; j++) {
+                float tick = -phrase.leading + j * 5;
+                float delta = 0f;
+
+                // Context-sensitive transition physics: preparation before a move,
+                // overshoot just after it, then a damped settle toward the target.
+                for (int i = 1; i < phrase.notes.Length; i++) {
+                    var prev = phrase.notes[i - 1];
+                    var next = phrase.notes[i];
+                    float transition = next.position;
+                    float direction = Math.Sign(next.tone - prev.tone);
+                    if (direction == 0) continue;
+
+                    float prepStart = transition - 58f;
+                    if (tick >= prepStart && tick < transition) {
+                        float u = (tick - prepStart) / (transition - prepStart);
+                        delta += -direction * prep * (float)Math.Sin(Math.PI * u);
+                    }
+                    float settleEnd = transition + 105f;
+                    if (tick >= transition && tick <= settleEnd) {
+                        float u = (tick - transition) / (settleEnd - transition);
+                        // Peak early, then settle smoothly instead of a linear bend.
+                        delta += direction * over * (float)(Math.Sin(Math.PI * Math.Min(1.0, u * 1.45)) * Math.Exp(-1.35 * u));
+                    }
+                }
+
+                // A human singer rarely parks perfectly at one F0. Each sustained note
+                // has a gentle rise/fall shaped by its semantic/metric position.
+                var note = phrase.notes.FirstOrDefault(n => tick >= n.position && tick <= n.end);
+                if (note != null && note.duration > 0) {
+                    float u = Math.Clamp((tick - note.position) / note.duration, 0f, 1f);
+                    float arch = (float)Math.Sin(Math.PI * u);
+                    float semantic = note.lyric switch {
+                        "Я" => 3f,
+                        "говорил" => 8f,
+                        "не" => 11f,
+                        "с" => -2f,
+                        "ним" => -7f,
+                        _ => 0f,
+                    };
+                    delta += arch * semantic * (0.75f + 0.15f * level);
+
+                    // Deterministic fine fluctuation: low amplitude, non-repeating,
+                    // and subordinate to the musical contour (not random jitter).
+                    double ms = note.positionMs + u * note.durationMs;
+                    double sec = ms / 1000.0;
+                    delta += fine * (float)(
+                        0.55 * Math.Sin(2 * Math.PI * 10.9 * sec + 0.31) +
+                        0.30 * Math.Sin(2 * Math.PI * 13.7 * sec + 1.17) +
+                        0.15 * Math.Sin(2 * Math.PI * 17.3 * sec + 2.09));
+                }
+
+                phrase.pitches[j] += delta;
+            }
+        }
+
         [Fact]
         public void RenderUfrVoiceWithOfficialRussianPhonemizer() {
             var singersRoot = Environment.GetEnvironmentVariable("OPENUTAU_TEST_SINGERS");
@@ -182,6 +247,9 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 "human_a" => 76,
                 "human_b" => 75,
                 "human_c" => 74,
+                "singer_a" => 74,
+                "singer_b" => 72,
+                "singer_c" => 70,
                 _ => 80,
             }));
             project.timeAxis.BuildSegments(project);
@@ -213,7 +281,12 @@ namespace OpenUtau.Test.Core.DiffSinger {
             // Exact QC phrase. One lexical word per note lets the official RU phonemizer
             // own every internal phoneme and its relative timing.
             string[] lyrics = { "Я", "говорил", "не", "с", "ним" };
-            int[] tones =      { 57,  59,       60,   59,  57 };
+            int[] tones = variant switch {
+                "singer_a" => new[] { 57, 59, 62, 60, 57 },
+                "singer_b" => new[] { 57, 60, 63, 60, 57 },
+                "singer_c" => new[] { 56, 59, 62, 60, 56 },
+                _ => new[] { 57, 59, 60, 59, 57 },
+            };
             int[] durations = variant switch {
                 "clear_soft" =>   new[] { 580, 1160, 500, 220, 920 },
                 "clear" =>        new[] { 580, 1160, 500, 220, 920 },
@@ -226,6 +299,9 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 "human_a" =>      new[] { 610, 1340, 500, 205, 1065 },
                 "human_b" =>      new[] { 625, 1370, 470, 195, 1090 },
                 "human_c" =>      new[] { 600, 1410, 455, 185, 1120 },
+                "singer_a" =>     new[] { 620, 1450, 500, 185, 1220 },
+                "singer_b" =>     new[] { 610, 1500, 480, 175, 1280 },
+                "singer_c" =>     new[] { 640, 1540, 455, 170, 1340 },
                 _ =>              new[] { 580, 1160, 500, 220, 920 },
             };            int pos = 0;
             for (int i = 0; i < lyrics.Length; i++) {
@@ -233,7 +309,25 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 note.lyric = lyrics[i];
                 // All performance shaping stays inside OpenUtau's native note/vibrato model.
                 if (lyrics[i] is "говорил" or "ним") {
-                    if (variant == "human_a") {
+                    if (variant == "singer_a") {
+                        note.vibrato.length = lyrics[i] == "говорил" ? 32 : 38;
+                        note.vibrato.period = lyrics[i] == "говорил" ? 205 : 195;
+                        note.vibrato.depth = lyrics[i] == "говорил" ? 14 : 18;
+                        note.vibrato.@in = 58;
+                        note.vibrato.@out = 42;
+                    } else if (variant == "singer_b") {
+                        note.vibrato.length = lyrics[i] == "говорил" ? 35 : 42;
+                        note.vibrato.period = lyrics[i] == "говорил" ? 195 : 185;
+                        note.vibrato.depth = lyrics[i] == "говорил" ? 18 : 22;
+                        note.vibrato.@in = 60;
+                        note.vibrato.@out = 44;
+                    } else if (variant == "singer_c") {
+                        note.vibrato.length = lyrics[i] == "говорил" ? 38 : 45;
+                        note.vibrato.period = lyrics[i] == "говорил" ? 188 : 178;
+                        note.vibrato.depth = lyrics[i] == "говорил" ? 21 : 26;
+                        note.vibrato.@in = 63;
+                        note.vibrato.@out = 46;
+                    } else if (variant == "human_a") {
                         note.vibrato.length = lyrics[i] == "говорил" ? 16 : 20;
                         note.vibrato.period = lyrics[i] == "говорил" ? 370 : 350;
                         note.vibrato.depth = lyrics[i] == "говорил" ? 4 : 5;
@@ -324,7 +418,52 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     part.curves.Add(curve);
                 }
             }
-            if (variant == "human_a" || variant == "human_b" || variant == "human_c") {
+            if (variant == "singer_a" || variant == "singer_b" || variant == "singer_c") {
+                int level = variant == "singer_a" ? 1 : variant == "singer_b" ? 2 : 3;
+                AddFlatCurve(DiffSingerUtils.VELC, level == 1 ? 121 : level == 2 ? 120 : 119);
+
+                // Macro phrase arc: enter quietly, build through "говорил",
+                // crest on "не", then relax through "с ним".
+                var n0 = part.notes[0]; var n1 = part.notes[1]; var n2 = part.notes[2];
+                var n3 = part.notes[3]; var n4 = part.notes[4];
+                AddShapeCurve(Ustx.DYN,
+                    new[] { n0.position, n0.position + n0.duration/2, n1.position,
+                            n1.position + n1.duration/2, n2.position, n2.position + n2.duration/2,
+                            n3.position, n4.position, n4.position + n4.duration/2, n4.end, part.Duration },
+                    level == 1 ? new[] { -22, -10, -9, 4, 6, 12, -3, -8, -2, -18, -26 } :
+                    level == 2 ? new[] { -26, -12, -10, 6, 8, 16, -4, -10, 0, -21, -30 } :
+                                 new[] { -30, -14, -12, 8, 10, 20, -5, -12, 2, -24, -34 });
+                AddShapeCurve(DiffSingerUtils.ENE,
+                    new[] { n0.position, n1.position, n1.position + n1.duration/2,
+                            n2.position, n2.position + n2.duration/2, n3.position,
+                            n4.position, n4.position + n4.duration/2, n4.end, part.Duration },
+                    level == 1 ? new[] { -12, -8, -2, 0, 5, -5, -10, -5, -15, -18 } :
+                    level == 2 ? new[] { -14, -9, 0, 2, 8, -6, -12, -5, -17, -20 } :
+                                 new[] { -16, -10, 2, 4, 10, -7, -14, -4, -19, -22 });
+                AddShapeCurve(DiffSingerUtils.PEXP,
+                    new[] { n0.position, n1.position, n1.position + n1.duration/2,
+                            n2.position, n3.position, n4.position, n4.end, part.Duration },
+                    level == 1 ? new[] { 80, 88, 96, 100, 86, 91, 76, 72 } :
+                    level == 2 ? new[] { 78, 90, 100, 100, 84, 94, 74, 70 } :
+                                 new[] { 76, 92, 100, 100, 82, 96, 72, 68 });
+                AddShapeCurve(Ustx.TENC,
+                    new[] { n0.position, n1.position, n1.position + n1.duration/2,
+                            n2.position, n3.position, n4.position, n4.end, part.Duration },
+                    level == 1 ? new[] { -30, -24, -14, -8, -24, -28, -36, -38 } :
+                    level == 2 ? new[] { -34, -26, -12, -5, -25, -30, -39, -41 } :
+                                 new[] { -38, -28, -10, -2, -26, -32, -42, -44 });
+                AddShapeCurve(Ustx.BREC,
+                    new[] { n0.position, n1.position, n1.position + n1.duration/2,
+                            n2.position, n3.position, n4.position, n4.position + n4.duration/2, n4.end, part.Duration },
+                    level == 1 ? new[] { 16, 12, 7, 5, 11, 12, 15, 21, 24 } :
+                    level == 2 ? new[] { 18, 13, 7, 4, 12, 13, 17, 23, 26 } :
+                                 new[] { 20, 14, 6, 3, 13, 14, 19, 25, 28 });
+                AddShapeCurve(Ustx.VOIC,
+                    new[] { n0.position, n1.position, n2.position, n3.position, n4.position, n4.end, part.Duration },
+                    level == 1 ? new[] { 96, 98, 100, 95, 98, 94, 93 } :
+                    level == 2 ? new[] { 95, 99, 100, 94, 98, 93, 92 } :
+                                 new[] { 94, 99, 100, 93, 97, 92, 91 });
+            } else if (variant == "human_a" || variant == "human_b" || variant == "human_c") {
                 int level = variant == "human_a" ? 1 : variant == "human_b" ? 2 : 3;
                 AddFlatCurve(DiffSingerUtils.VELC, level == 1 ? 122 : level == 2 ? 121 : 120);
                 AddShapeCurve(DiffSingerUtils.PEXP,
@@ -476,6 +615,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     Assert.NotNull(generatedPitch);
                     generatedPitchGridPoints += ApplyGeneratedPitch(phrase, generatedPitch);
                     ApplyHumanProsody(phrase, variant);
+                    ApplySingerPhysics(phrase, variant);
                     Assert.True(generatedPitchGridPoints > 0, "OpenUtau dspitch produced no voiced pitch grid points.");
                     var progress = new Progress(Math.Max(1, phrase.phones.Length));
                     var rr = renderer.Render(phrase, progress, 0, cancellation, true, null).GetAwaiter().GetResult();
@@ -486,6 +626,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 }
 
                 var dsSinger = singer as DiffSingerSinger;
+                var usedVocoder = dsSinger?.getVocoder();
                 int sampleRate = dsSinger?.dsConfig.sample_rate ?? 44100;
                 double minStartMs = rendered.Min(x => x.result.positionMs - x.result.leadingMs);
                 double maxEndMs = rendered.Max(x => (x.result.positionMs - x.result.leadingMs) + x.result.samples.Length * 1000.0 / sampleRate);
@@ -516,6 +657,9 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     $"speaker={chosenSpeaker}\n" +
                     $"variant={variant}\n" +
                     $"l_offset_ticks={lOffsetTicks}\n" +
+                    $"render_steps={renderSteps}\n" +
+                    $"vocoder_name={usedVocoder?.config?.name ?? "unknown"}\n" +
+                    $"vocoder_pitch_controllable={usedVocoder?.pitch_controllable ?? false}\n" +
                     $"singer_id={singer.Id}\n" +
                     $"sample_rate={sampleRate}\n" +
                     $"duration_seconds={mix.Length / (double)sampleRate:F3}\n" +
