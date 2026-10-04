@@ -50,6 +50,7 @@ jobs:
         shell: bash
         env:
           MARKER: ${{ steps.marker.outputs.marker }}
+          GG_EVIDENCE_DIR: ${{ github.workspace }}/gg-worker-evidence
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
@@ -63,3 +64,12 @@ jobs:
           test -n "$JOB_ID"
           echo "GG_JOB_ID=$JOB_ID"
           python3 tools/gg_cloud_music_worker.py --job-id "$JOB_ID" --oidc-token "$OIDC"
+
+      - name: Preserve worker evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gg-worker-evidence-${{ github.run_id }}
+          path: gg-worker-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
