@@ -1,0 +1,78 @@
+name: A7 ACE-Step micro transition
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-a7-ace15-microtransition.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  micro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: /tmp/guide
+      - name: Make 2.35s transition guide and cover
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q soundfile numpy "gradio_client>=1.8,<2"
+          guide="$(find /tmp/guide -type f -name '*.wav' | head -n 1)"
+          export GUIDE="$guide"
+          mkdir -p "${GITHUB_WORKSPACE}/micro"
+          python - <<'PY'
+          import os,pathlib,shutil,json
+          import soundfile as sf
+          from gradio_client import Client, handle_file
+          y,sr=sf.read(os.environ["GUIDE"],always_2d=False)
+          a=int(sr*1.95); b=min(len(y),int(sr*4.30))
+          sf.write("/tmp/micro.wav",y[a:b],sr,subtype="PCM_16")
+          c=Client("ACE-Step/Ace-Step-v1.5",verbose=True)
+          prompt=("solo Russian female singing, dry natural human vocal, exact source melody and timing, "
+                  "soft palatalized consonants, seamless consonant-vowel coarticulation, no instruments")
+          lyrics="[verse]\nне с ним"
+          args=[
+            "acestep-v15-xl-turbo","cover","","ru",
+            prompt,lyrics,0,"","","ru",
+            4,4.5,False,"74041",None,2.35,1,handle_file("/tmp/micro.wav"),"",
+            0.0,-1,"Fill the audio semantic mask based on the given conditions:",
+            0.82,"cover",False,0.0,1.0,3.0,"ode","","flac",
+            0.7,False,1.0,0,0.9,"NO USER INPUT",
+            False,False,False,
+            False,False,False,False,0.5,4,"vocals",["vocals"],False
+          ]
+          print("ARG_COUNT",len(args))
+          res=c.predict(*args,api_name="/generation_wrapper")
+          def pth(x):
+              if isinstance(x,str): return x
+              if isinstance(x,dict): return x.get("path") or x.get("name")
+              return getattr(x,"path",None) or getattr(x,"name",None)
+          p=None
+          for x in res[:8]:
+              q=pth(x)
+              if q and pathlib.Path(q).exists(): p=q; break
+          if not p: raise SystemExit("No ACE micro audio returned")
+          dst=pathlib.Path(os.environ["GITHUB_WORKSPACE"])/"micro"/"ACE15_micro_ne_s_nim.flac"
+          shutil.copy2(p,dst)
+          shutil.copy2("/tmp/micro.wav",pathlib.Path(os.environ["GITHUB_WORKSPACE"])/"micro"/"OpenUtau_source_micro.wav")
+          print("SAVED",dst,dst.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a7-ace15-microtransition
+          path: micro/
+          retention-days: 3
+          if-no-files-found: warn
