@@ -613,6 +613,9 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     $"lyrics=Я говорил не с ним, а с тем, кто долго стоял у окна и ждал\n" +
                     $"phrases={rendered.Count}\n" +
                     string.Join("\n", rendered.Select((x, i) => $"phrase_{i+1}_phones={x.phones}")) +
+                    "\n" +
+                    string.Join("\n", part.phonemes.Select((p, i) =>
+                        $"phone_{i+1}=lyric:{p.Parent?.lyric}|idx:{p.index}|phone:{p.phoneme}|raw:{p.rawPhoneme}|pos:{p.position}|dur:{p.Duration}|pos_ms:{p.PositionMs:F2}|dur_ms:{p.DurationMs:F2}|pre:{p.preutter:F2}|ovl:{p.overlap:F2}|adj:{p.adjacent}|overlapped:{p.overlapped}")) +
                     $"\ndspitch_predictor=true\ndspitch_steps=12\ngenerated_pitch_grid_points={generatedPitchGridPoints}\n" +
                     "manual_frame_f0=false\nmanual_phoneme_durations=false\nroute=official_ru_phonemizer+openutau_timing+native_dspitch\n");
                 Assert.True(File.Exists(wav));
