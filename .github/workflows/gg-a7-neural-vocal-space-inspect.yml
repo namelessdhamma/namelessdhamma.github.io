@@ -17,68 +17,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Discover ACE-Step 1.5 public GPU reserves
+      - name: Inspect optimized ACE-Step ZeroGPU forks
         run: |
-          python -m pip install -q "gradio_client>=1.8,<2" "huggingface_hub>=0.35" requests
+          python -m pip install -q "gradio_client>=1.8,<2" "huggingface_hub>=0.35"
           python - <<'PY'
-          from huggingface_hub import HfApi
           from gradio_client import Client
-          import requests, json, concurrent.futures
-
+          from huggingface_hub import HfApi
+          import json
+          targets=[
+            "Opera8/Ace",
+            "Kansasfan/Ace-Step-v1.5",
+            "Blursed/Ace-Step-v1.5",
+            "Blursed/ACE-Step-1.5-XL-ENHANCED",
+            "multimodalart/Ace-Step-v1.5",
+            "DarkCAlex/my-song-engine",
+            "MBLF/ACE-Step-1.5",
+          ]
           api=HfApi()
-          meta=requests.get("https://huggingface.co/api/models/ACE-Step/Ace-Step1.5",timeout=30).json()
-          spaces=[]
-          for x in meta.get("spaces",[]) or []:
-              if isinstance(x,str): spaces.append(x)
-              elif isinstance(x,dict):
-                  sid=x.get("id") or x.get("repo_id") or x.get("name")
-                  if sid: spaces.append(sid)
-          spaces=list(dict.fromkeys(spaces))
-          print("SPACE_COUNT",len(spaces))
-
-          def inspect_runtime(sid):
+          for t in targets:
+              print("\n=== SPACE",t,"===")
               try:
-                  info=api.space_info(sid,expand=["runtime","sdk","sha"])
+                  info=api.space_info(t,expand=["runtime","sha","sdk"])
                   rt=info.runtime
-                  return {
-                      "id":sid,
-                      "stage":getattr(rt,"stage",None) if rt else None,
-                      "hardware":getattr(rt,"hardware",None) if rt else None,
-                      "requested":getattr(rt,"requested_hardware",None) if rt else None,
-                      "sdk":info.sdk,
-                      "sha":info.sha,
-                  }
-              except Exception as e:
-                  return {"id":sid,"error":type(e).__name__+":"+str(e)[:160]}
-
-          rows=[]
-          with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
-              for row in ex.map(inspect_runtime,spaces[:120]):
-                  rows.append(row)
-
-          running=[r for r in rows if r.get("stage")=="RUNNING"]
-          persistent=[r for r in running if r.get("hardware") and not str(r.get("hardware")).startswith("zero-") and r.get("hardware")!="cpu-basic"]
-          zero=[r for r in running if str(r.get("hardware","")).startswith("zero-")]
-          print("RUNNING",len(running),"PERSISTENT_GPU",len(persistent),"ZERO_GPU",len(zero))
-          print("PERSISTENT_ROWS",json.dumps(persistent[:30],ensure_ascii=False))
-          print("ZERO_ROWS",json.dumps(zero[:20],ensure_ascii=False))
-
-          # Inspect generation APIs only on persistent GPU candidates first.
-          for row in persistent[:12]:
-              sid=row["id"]
-              print("\n=== CANDIDATE",sid,row.get("hardware"),"===")
-              try:
-                  c=Client(sid,verbose=False)
+                  print("RUNTIME",json.dumps({
+                    "stage":getattr(rt,"stage",None) if rt else None,
+                    "hardware":getattr(rt,"hardware",None) if rt else None,
+                    "sha":info.sha,"sdk":info.sdk
+                  }))
+                  c=Client(t,verbose=False)
                   d=c.view_api(return_format="dict")
                   named=d.get("named_endpoints",d)
-                  good=[]
                   for name,v in named.items():
-                      pars=[p.get("parameter_name") for p in v.get("parameters",[])]
+                      pars=[(p.get("parameter_name"),p.get("parameter_has_default"),p.get("parameter_default")) for p in v.get("parameters",[])]
                       rets=[q.get("label") for q in v.get("returns",[])]
                       blob=(name+" "+" ".join(str(x) for x in pars+rets)).lower()
-                      if any(k in blob for k in ["cover","generate","generation","audio2audio","source audio"]):
-                          good.append({"name":name,"parameters":pars,"returns":rets})
-                  print("API",json.dumps(good[:20],ensure_ascii=False))
+                      if any(k in blob for k in ["generate","generation","cover","audio2audio","source audio"]):
+                          print("ENDPOINT",name,json.dumps({"params":pars,"returns":rets[:12]},ensure_ascii=False))
               except Exception as e:
-                  print("API_ERROR",repr(e))
+                  print("ERROR",type(e).__name__,str(e)[:600])
           PY
