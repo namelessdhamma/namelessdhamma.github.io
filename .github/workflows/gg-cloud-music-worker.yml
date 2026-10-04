@@ -41,8 +41,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          MARKER="$(jq -r '[((.head_commit.added // [])[]), ((.head_commit.modified // [])[])] | map(select(startswith("gg-cloud-jobs/") and endswith(".json"))) | last // empty' "$GITHUB_EVENT_PATH")"
+          MARKER="$(find "$GITHUB_WORKSPACE/gg-cloud-jobs" -maxdepth 1 -type f -name '*.json' -printf '%T@ %P\\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
           test -n "$MARKER"
+          MARKER="gg-cloud-jobs/$MARKER"
           test -f "$GITHUB_WORKSPACE/$MARKER"
           echo "marker=$MARKER" >> "$GITHUB_OUTPUT"
           echo "GG_MARKER=$MARKER"
