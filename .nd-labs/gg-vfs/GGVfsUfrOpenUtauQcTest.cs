@@ -279,6 +279,26 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     SkipPhonemizer = true,
                 });
 
+                // Optional native OpenUtau phoneme-timing correction. This uses the same
+                // per-phoneme offset users edit in OpenUtau; it does not replace the
+                // phonemizer or hand-author all phone durations.
+                int lOffsetTicks = 0;
+                int.TryParse(Environment.GetEnvironmentVariable("GG_VFS_L_OFFSET_TICKS"), out lOffsetTicks);
+                if (lOffsetTicks != 0) {
+                    var lPhone = part.phonemes.LastOrDefault(p =>
+                        string.Equals(p.Parent?.lyric, "говорил", StringComparison.OrdinalIgnoreCase)
+                        && (string.Equals(p.phoneme, "ru/l", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(p.rawPhoneme, "ru/l", StringComparison.OrdinalIgnoreCase)));
+                    Assert.NotNull(lPhone);
+                    var timing = lPhone!.Parent!.GetPhonemeOverride(lPhone.index);
+                    timing.offset = -Math.Abs(lOffsetTicks);
+                    project.Validate(new ValidateOptions {
+                        SkipTiming = true,
+                        Part = part,
+                        SkipPhonemizer = true,
+                    });
+                }
+
                 Assert.True(part.PhonemesUpToDate, "Official Russian phonemizer response was not applied.");
                 Assert.True(part.phonemes.Count > 0, "Official Russian phonemizer produced no phonemes.");
                 var badPhones = part.phonemes.Where(p => p.Error || string.Equals(p.phoneme, "error", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -336,6 +356,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     $"singer={singer.Name}\n" +
                     $"speaker={chosenSpeaker}\n" +
                     $"variant={variant}\n" +
+                    $"l_offset_ticks={lOffsetTicks}\n" +
                     $"singer_id={singer.Id}\n" +
                     $"sample_rate={sampleRate}\n" +
                     $"duration_seconds={mix.Length / (double)sampleRate:F3}\n" +
