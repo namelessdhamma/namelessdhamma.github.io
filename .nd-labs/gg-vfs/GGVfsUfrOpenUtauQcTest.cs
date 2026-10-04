@@ -27,6 +27,10 @@ namespace OpenUtau.Test.Core.DiffSinger {
             project.RegisterExpression(new UExpressionDescriptor("shift", "shft", -24, 24, 0));
             project.RegisterExpression(new UExpressionDescriptor("attack", "atk", 0, 100, 100));
             project.RegisterExpression(new UExpressionDescriptor("decay", "dec", 0, 100, 100));
+            project.RegisterExpression(new UExpressionDescriptor("tension (curve)", Ustx.TENC, -100, 100, 0) { type = UExpressionType.Curve });
+            project.RegisterExpression(new UExpressionDescriptor("breathiness (curve)", Ustx.BREC, -100, 100, 0) { type = UExpressionType.Curve });
+            project.RegisterExpression(new UExpressionDescriptor("gender (curve)", Ustx.GENC, -100, 100, 0) { type = UExpressionType.Curve });
+            project.RegisterExpression(new UExpressionDescriptor("voicing (curve)", Ustx.VOIC, 0, 100, 100) { type = UExpressionType.Curve });
         }
 
         static void WaitFor(Func<bool> condition, int timeoutMs, string failure) {
@@ -142,6 +146,10 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 "clear" => 80,
                 "clear_warm" => 80,
                 "clear_lively" => 80,
+                "relax_a" => 78,
+                "relax_b" => 78,
+                "relax_c" => 76,
+                "relax_d" => 76,
                 _ => 80,
             }));
             project.timeAxis.BuildSegments(project);
@@ -179,15 +187,42 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 "clear" =>        new[] { 580, 1160, 500, 220, 920 },
                 "clear_warm" =>   new[] { 580, 1160, 500, 220, 920 },
                 "clear_lively" => new[] { 580, 1160, 500, 220, 920 },
+                "relax_a" =>      new[] { 600, 1210, 520, 230, 960 },
+                "relax_b" =>      new[] { 610, 1240, 530, 230, 980 },
+                "relax_c" =>      new[] { 620, 1260, 540, 240, 1000 },
+                "relax_d" =>      new[] { 630, 1280, 550, 240, 1020 },
                 _ =>              new[] { 580, 1160, 500, 220, 920 },
-            };
-            int pos = 0;
+            };            int pos = 0;
             for (int i = 0; i < lyrics.Length; i++) {
                 var note = project.CreateNote(tones[i], pos, durations[i]);
                 note.lyric = lyrics[i];
                 // All performance shaping stays inside OpenUtau's native note/vibrato model.
                 if (lyrics[i] is "говорил" or "ним") {
-                    if (variant == "clear_soft") {
+                    if (variant == "relax_a") {
+                        note.vibrato.length = 24;
+                        note.vibrato.period = 315;
+                        note.vibrato.depth = 7;
+                        note.vibrato.@in = 52;
+                        note.vibrato.@out = 42;
+                    } else if (variant == "relax_b") {
+                        note.vibrato.length = 22;
+                        note.vibrato.period = 330;
+                        note.vibrato.depth = 6;
+                        note.vibrato.@in = 58;
+                        note.vibrato.@out = 45;
+                    } else if (variant == "relax_c") {
+                        note.vibrato.length = 20;
+                        note.vibrato.period = 345;
+                        note.vibrato.depth = 5;
+                        note.vibrato.@in = 62;
+                        note.vibrato.@out = 48;
+                    } else if (variant == "relax_d") {
+                        note.vibrato.length = 18;
+                        note.vibrato.period = 360;
+                        note.vibrato.depth = 4;
+                        note.vibrato.@in = 66;
+                        note.vibrato.@out = 52;
+                    } else if (variant == "clear_soft") {
                         note.vibrato.length = 27;
                         note.vibrato.period = 305;
                         note.vibrato.depth = 8;
@@ -227,7 +262,35 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     part.curves.Add(curve);
                 }
             }
-            if (variant == "clear_soft") {
+            if (variant == "relax_a") {
+                AddFlatCurve(DiffSingerUtils.VELC, 124);
+                AddFlatCurve(DiffSingerUtils.PEXP, 86);
+                AddFlatCurve(DiffSingerUtils.ENE, -3);
+                AddFlatCurve(Ustx.TENC, -8);
+                AddFlatCurve(Ustx.BREC, 4);
+                AddFlatCurve(Ustx.VOIC, 98);
+            } else if (variant == "relax_b") {
+                AddFlatCurve(DiffSingerUtils.VELC, 124);
+                AddFlatCurve(DiffSingerUtils.PEXP, 82);
+                AddFlatCurve(DiffSingerUtils.ENE, -5);
+                AddFlatCurve(Ustx.TENC, -14);
+                AddFlatCurve(Ustx.BREC, 7);
+                AddFlatCurve(Ustx.VOIC, 97);
+            } else if (variant == "relax_c") {
+                AddFlatCurve(DiffSingerUtils.VELC, 123);
+                AddFlatCurve(DiffSingerUtils.PEXP, 78);
+                AddFlatCurve(DiffSingerUtils.ENE, -7);
+                AddFlatCurve(Ustx.TENC, -20);
+                AddFlatCurve(Ustx.BREC, 10);
+                AddFlatCurve(Ustx.VOIC, 96);
+            } else if (variant == "relax_d") {
+                AddFlatCurve(DiffSingerUtils.VELC, 122);
+                AddFlatCurve(DiffSingerUtils.PEXP, 74);
+                AddFlatCurve(DiffSingerUtils.ENE, -9);
+                AddFlatCurve(Ustx.TENC, -26);
+                AddFlatCurve(Ustx.BREC, 13);
+                AddFlatCurve(Ustx.VOIC, 95);
+            } else             if (variant == "clear_soft") {
                 AddFlatCurve(DiffSingerUtils.VELC, 124);
                 AddFlatCurve(DiffSingerUtils.PEXP, 90);
                 AddFlatCurve(DiffSingerUtils.ENE, -2);
