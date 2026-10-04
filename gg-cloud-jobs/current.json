@@ -4,5 +4,6 @@
     "payload": {
       "vocal_marker_path": "gg-cloud-jobs/selftest-vocal-awata-20261003-1201.json"
     }
-  }
+  },
+  "retry_nonce": "2026-10-04T02:11:30Z"
 }
