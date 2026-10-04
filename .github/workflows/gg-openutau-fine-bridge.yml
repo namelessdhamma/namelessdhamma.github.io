@@ -1,0 +1,70 @@
+name: GG OpenUtau fine-control bridge qualification
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-openutau-fine-bridge.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Clone pinned fine-control bridge and OpenUtau refs
+        run: |
+          git clone https://github.com/ain-soph/OpenUtau-MCP-Bridge.git /tmp/bridge
+          git -C /tmp/bridge checkout 7de9c7698cba7f08a2c5aa3468c4bd6ec2fc3076
+          git clone https://github.com/openutau/OpenUtau.git /tmp/openutau-minimum
+          git -C /tmp/openutau-minimum checkout 0.1.568
+          git clone https://github.com/openutau/OpenUtau.git /tmp/openutau-target
+          git -C /tmp/openutau-target checkout 8bef4418feb253d06e8b39956298367294afcf06
+      - name: Match package versions
+        working-directory: /tmp/bridge
+        shell: pwsh
+        run: ./scripts/export-openutau-package-versions.ps1 -OpenUtauCoreProject /tmp/openutau-target/OpenUtau.Core/OpenUtau.Core.csproj
+      - name: Build OpenUtau cores
+        run: |
+          dotnet build /tmp/openutau-minimum/OpenUtau.Core/OpenUtau.Core.csproj --configuration Release -p:ImportDirectoryBuildProps=false -p:CopyLocalLockFileAssemblies=true
+          dotnet build /tmp/openutau-target/OpenUtau.Core/OpenUtau.Core.csproj --configuration Release -p:ImportDirectoryBuildProps=false -p:CopyLocalLockFileAssemblies=true
+      - name: Build bridge
+        working-directory: /tmp/bridge
+        run: >
+          dotnet build OpenUtauMcpBridge.sln --configuration Release
+          -p:OpenUtauPluginCorePath=/tmp/openutau-minimum/OpenUtau.Core/bin/Release/net8.0/OpenUtau.Core.dll
+          -p:OpenUtauCorePath=/tmp/openutau-target/OpenUtau.Core/bin/Release/net8.0/OpenUtau.Core.dll
+      - name: Run HTTP MCP smoke test
+        working-directory: /tmp/bridge
+        env:
+          OPENUTAU_MCP_BRIDGE_PORT: 43103
+        run: >
+          dotnet run --project tests/OpenUtau.Plugin.McpBridge.SmokeTest/OpenUtau.Plugin.McpBridge.SmokeTest.csproj
+          --configuration Release --no-build
+          -p:OpenUtauPluginCorePath=/tmp/openutau-minimum/OpenUtau.Core/bin/Release/net8.0/OpenUtau.Core.dll
+          -p:OpenUtauCorePath=/tmp/openutau-target/OpenUtau.Core/bin/Release/net8.0/OpenUtau.Core.dll
+      - name: Run model and undo smoke test
+        working-directory: /tmp/bridge
+        run: >
+          dotnet run --project tests/OpenUtau.Plugin.McpBridge.SmokeTest/OpenUtau.Plugin.McpBridge.SmokeTest.csproj
+          --configuration Release --no-build
+          -p:OpenUtauPluginCorePath=/tmp/openutau-minimum/OpenUtau.Core/bin/Release/net8.0/OpenUtau.Core.dll
+          -p:OpenUtauCorePath=/tmp/openutau-target/OpenUtau.Core/bin/Release/net8.0/OpenUtau.Core.dll
+          -- --model-only
+      - name: Record fine-control surface
+        if: always()
+        run: |
+          mkdir -p /tmp/report
+          printf 'bridge=%s\nopenutau_target=%s\n'             "$(git -C /tmp/bridge rev-parse HEAD)"             "$(git -C /tmp/openutau-target rev-parse HEAD)" > /tmp/report/pins.txt
+          grep -RniE 'openutau_(set_note_pitch|set_note_vibrato|set_phoneme_override|set_note_expression|set_phoneme_expression|write_curve|read_pitch|list_expressions)' /tmp/bridge/src /tmp/bridge/tests | head -n 500 > /tmp/report/fine-control.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-openutau-fine-control-qualification
+          path: /tmp/report/
+          retention-days: 3
