@@ -1,0 +1,130 @@
+name: GG VFS OpenUtau-native Russian UFR QC
+on:
+  push:
+    branches:
+      - "experiment/gg-vfs-female-sweep-20261004"
+    paths:
+      - ".github/workflows/gg-vfs-openutau-ufr-qc.yml"
+      - ".nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  openutau-qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Fetch current OpenUtau and Russian DiffSinger phonemizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          git clone --depth 1 https://github.com/Megageorgio/hhskt_ru_phonemizer.git /tmp/openutau/hhskt_ru_phonemizer
+          sed -i 's#<TargetFramework>net8.0</TargetFramework>#<TargetFramework>net10.0</TargetFramework>#' /tmp/openutau/hhskt_ru_phonemizer/hhskt_ru_phonemizer.csproj || true
+          dotnet add /tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj reference /tmp/openutau/hhskt_ru_phonemizer/hhskt_ru_phonemizer.csproj
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          first='<PropertyGroup>'
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace(first, first+'\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs" />\n  </ItemGroup>\n'
+          if 'GGVfsUfrOpenUtauQcTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          PY
+          cp .nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs
+
+      - name: Recover cached UFR pack
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-kumi-discovery
+          run-id: 37178003583
+          github-token: ${{ github.token }}
+          path: /tmp/ufr-cache
+
+      - name: Extract UFR singers and make only compatibility aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack="$(find /tmp/ufr-cache -type f -name 'ufr-pack.download' -print -quit)"
+          test -n "$pack"
+          mkdir -p /tmp/ufr
+          unzip -q "$pack" -d /tmp/ufr
+          root="$(find /tmp/ufr -type f -path '*/0_CORE/dsacoustic/millefeuille_v001.phonemes.json' -printf '%h\n' | sed 's#/0_CORE/dsacoustic$##' | head -n 1)"
+          test -n "$root"
+          echo "UFR_ROOT=$root" >> "$GITHUB_ENV"
+          for bank in "$root/UFR_Hitsune Kumi" "$root/Millefeuille_Mimosa" "$root/Millefeuille_Saiun"; do
+            test -f "$bank/dsconfig.yaml"
+            if [ ! -f "$bank/character.txt" ]; then
+              printf 'name=%s\nauthor=UFR\nvoice=UFR\nversion=QC\n' "$(basename "$bank")" > "$bank/character.txt"
+            fi
+            if [ -f "$bank/dspitch/dsdict-ru.yaml" ] && [ ! -f "$bank/dspitch/dsdict.yaml" ]; then
+              cp "$bank/dspitch/dsdict-ru.yaml" "$bank/dspitch/dsdict.yaml"
+            fi
+          done
+
+      - name: Configure OpenUtau test runner
+        shell: bash
+        run: |
+          cd /tmp/openutau
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('global.json')
+          data=json.loads(p.read_text()) if p.exists() else {}
+          data['test']={'runner':'Microsoft.Testing.Platform'}
+          p.write_text(json.dumps(data,indent=2))
+          PY
+
+      - name: Render Kumi through native OpenUtau phonemizer
+        shell: bash
+        env:
+          OPENUTAU_TEST_SINGERS: ${{ env.UFR_ROOT }}/UFR_Hitsune Kumi
+          GG_VFS_OUT: ${{ github.workspace }}/gg-vfs-openutau-ufr-qc
+          GG_VFS_TAG: Kumi
+        run: |
+          cd /tmp/openutau
+          dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+
+      - name: Render Mimosa Core through native OpenUtau phonemizer
+        shell: bash
+        env:
+          OPENUTAU_TEST_SINGERS: ${{ env.UFR_ROOT }}/Millefeuille_Mimosa
+          GG_VFS_OUT: ${{ github.workspace }}/gg-vfs-openutau-ufr-qc
+          GG_VFS_TAG: Mimosa_Core
+        run: |
+          cd /tmp/openutau
+          dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+
+      - name: Render Saiun Core through native OpenUtau phonemizer
+        shell: bash
+        env:
+          OPENUTAU_TEST_SINGERS: ${{ env.UFR_ROOT }}/Millefeuille_Saiun
+          GG_VFS_OUT: ${{ github.workspace }}/gg-vfs-openutau-ufr-qc
+          GG_VFS_TAG: Saiun_Core
+        run: |
+          cd /tmp/openutau
+          dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+
+      - name: Verify rendered evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          find gg-vfs-openutau-ufr-qc -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+          test "$(find gg-vfs-openutau-ufr-qc -name '*__OPENUTAU_RU_QC.wav' -type f | wc -l)" -eq 3
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-openutau-ufr-native-qc
+          path: gg-vfs-openutau-ufr-qc/
+          retention-days: 3
+          if-no-files-found: warn
