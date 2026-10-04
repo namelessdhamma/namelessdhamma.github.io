@@ -109,8 +109,10 @@ namespace OpenUtau.Test.Core.DiffSinger {
             var bankDir = singersRoot!;
             var acousticConfig = OpenUtau.Core.Yaml.DefaultDeserializer.Deserialize<DsConfig>(
                 File.ReadAllText(Path.Combine(bankDir, "dsconfig.yaml"), Encoding.UTF8));
+            var speakerHint = Environment.GetEnvironmentVariable("GG_VFS_SPEAKER_HINT") ?? "";
             var chosenSpeaker = acousticConfig.speakers?
-                .FirstOrDefault(x => x.Contains("core", StringComparison.OrdinalIgnoreCase))
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(speakerHint) && x.Contains(speakerHint, StringComparison.OrdinalIgnoreCase))
+                ?? acousticConfig.speakers?.FirstOrDefault(x => x.Contains("core", StringComparison.OrdinalIgnoreCase))
                 ?? acousticConfig.speakers?.FirstOrDefault(x => x.Contains("natural", StringComparison.OrdinalIgnoreCase))
                 ?? acousticConfig.speakers?.FirstOrDefault();
             Assert.False(string.IsNullOrWhiteSpace(chosenSpeaker), "UFR singer config exposed no speaker embeddings.");
@@ -124,7 +126,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 TextFileEncoding = Encoding.UTF8,
             };
             voicebank.Subbanks.Add(new Subbank {
-                Color = "Core",
+                Color = string.IsNullOrWhiteSpace(speakerHint) ? "Core" : speakerHint,
                 Prefix = "",
                 Suffix = chosenSpeaker!,
                 ToneRanges = new[] { "C1-C7" },
@@ -132,9 +134,15 @@ namespace OpenUtau.Test.Core.DiffSinger {
             var singer = (USinger)new DiffSingerSinger(voicebank);
             Assert.True(singer.Found && singer.Loaded, $"Direct DiffSinger bank failed: {string.Join("; ", singer.Errors)}");
 
+            var variant = (Environment.GetEnvironmentVariable("GG_VFS_VARIANT") ?? "native").Trim().ToLowerInvariant();
             var project = new UProject();
             project.tempos.Clear();
-            project.tempos.Add(new UTempo(0, 80));
+            project.tempos.Add(new UTempo(0, variant switch {
+                "legato" => 76,
+                "clear" => 80,
+                "expressive" => 82,
+                _ => 80,
+            }));
             project.timeAxis.BuildSegments(project);
             RegisterBaseExpressions(project);
 
@@ -165,23 +173,71 @@ namespace OpenUtau.Test.Core.DiffSinger {
             // own every internal phoneme and its relative timing.
             string[] lyrics = { "Я", "говорил", "не", "с", "ним" };
             int[] tones =      { 57,  59,       60,   59,  57 };
-            int[] durations =  { 600, 1200,     540,  240, 960 };
+            int[] durations = variant switch {
+                "legato" =>     new[] { 620, 1260, 560, 220, 1020 },
+                "clear" =>      new[] { 580, 1160, 500, 220, 920 },
+                "expressive" => new[] { 600, 1240, 540, 240, 1000 },
+                _ =>            new[] { 600, 1200, 540, 240, 960 },
+            };
             int pos = 0;
             for (int i = 0; i < lyrics.Length; i++) {
                 var note = project.CreateNote(tones[i], pos, durations[i]);
                 note.lyric = lyrics[i];
-                // Restrained humanization for Voice from Silence: gentle late vibrato only on sustained semantic words.
+                // All performance shaping stays inside OpenUtau's native note/vibrato model.
                 if (lyrics[i] is "говорил" or "ним") {
-                    note.vibrato.length = 38;
-                    note.vibrato.period = 260;
-                    note.vibrato.depth = 16;
-                    note.vibrato.@in = 35;
-                    note.vibrato.@out = 30;
+                    if (variant == "legato") {
+                        note.vibrato.length = 30;
+                        note.vibrato.period = 300;
+                        note.vibrato.depth = 10;
+                        note.vibrato.@in = 42;
+                        note.vibrato.@out = 38;
+                    } else if (variant == "expressive") {
+                        note.vibrato.length = 46;
+                        note.vibrato.period = 235;
+                        note.vibrato.depth = 21;
+                        note.vibrato.@in = 30;
+                        note.vibrato.@out = 28;
+                    } else if (variant == "clear") {
+                        note.vibrato.length = 32;
+                        note.vibrato.period = 280;
+                        note.vibrato.depth = 11;
+                        note.vibrato.@in = 40;
+                        note.vibrato.@out = 35;
+                    } else {
+                        note.vibrato.length = 38;
+                        note.vibrato.period = 260;
+                        note.vibrato.depth = 16;
+                        note.vibrato.@in = 35;
+                        note.vibrato.@out = 30;
+                    }
                 }
                 part.notes.Add(note);
                 pos += durations[i];
             }
             part.Duration = pos + 480;
+
+            // Native DiffSinger expression curves; no external/post-render DSP is used.
+            void AddFlatCurve(string abbr, int value) {
+                if (project.expressions.TryGetValue(abbr, out var descriptor)) {
+                    var curve = new UCurve(descriptor);
+                    curve.xs.AddRange(new[] { 0, part.Duration });
+                    curve.ys.AddRange(new[] { value, value });
+                    part.curves.Add(curve);
+                }
+            }
+            if (variant == "legato") {
+                AddFlatCurve(DiffSingerUtils.VELC, 114);
+                AddFlatCurve(DiffSingerUtils.PEXP, 86);
+                AddFlatCurve(DiffSingerUtils.ENE, -3);
+            } else if (variant == "clear") {
+                AddFlatCurve(DiffSingerUtils.VELC, 124);
+                AddFlatCurve(DiffSingerUtils.PEXP, 92);
+                AddFlatCurve(DiffSingerUtils.ENE, 1);
+            } else if (variant == "expressive") {
+                AddFlatCurve(DiffSingerUtils.VELC, 108);
+                AddFlatCurve(DiffSingerUtils.PEXP, 100);
+                AddFlatCurve(DiffSingerUtils.ENE, 5);
+            }
             project.timeAxis.BuildSegments(project);
 
             var previous = DocManager.Inst.TakeProjectForTest(project);
@@ -269,9 +325,11 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 var safeTag = string.Concat(tag.Select(c => char.IsLetterOrDigit(c) || c == '_' || c == '-' ? c : '_'));
                 var wav = Path.Combine(outDir!, safeTag + "__OPENUTAU_RU_QC.wav");
                 Wave.WriteMono16Wav(wav, mix);
-                var manifest = Path.Combine(outDir!, "manifest.txt");
+                var manifest = Path.Combine(outDir!, safeTag + "__manifest.txt");
                 File.WriteAllText(manifest,
                     $"singer={singer.Name}\n" +
+                    $"speaker={chosenSpeaker}\n" +
+                    $"variant={variant}\n" +
                     $"singer_id={singer.Id}\n" +
                     $"sample_rate={sampleRate}\n" +
                     $"duration_seconds={mix.Length / (double)sampleRate:F3}\n" +
