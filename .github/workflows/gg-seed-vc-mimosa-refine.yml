@@ -24,7 +24,7 @@ jobs:
       - name: Recover Mimosa Human-B reference
         uses: actions/download-artifact@v4
         with:
-          name: gg-openutau-mimosa-dark-human-singer-vocoder-ab
+          name: gg-mimosa-dark-human-singer-vocoder-ab
           run-id: 37194439702
           github-token: ${{ github.token }}
           path: ref
