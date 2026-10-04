@@ -1,0 +1,150 @@
+name: GG ACE-Step vocal boundary QC
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-ace-step-boundary-qc.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: source
+      - uses: actions/download-artifact@v4
+        with:
+          name: gg-ace-step-enhanced-cover
+          run-id: 37245440942
+          github-token: ${{ github.token }}
+          path: ace
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install faster-whisper librosa==0.10.2.post1 soundfile numpy scipy
+          src="$(find source -type f -name '*.wav' -print -quit)"
+          cand="$(find ace -type f \( -name '*.flac' -o -name '*.wav' \) -print -quit)"
+          mkdir -p qc
+          python - "$src" "$cand" <<'PY'
+          import sys,re,json,math
+          from pathlib import Path
+          import numpy as np, soundfile as sf, librosa
+          from scipy.signal import correlate
+          from faster_whisper import WhisperModel
+
+          src,cand=sys.argv[1],sys.argv[2]
+          target="я говорил не с ним а с тем кто долго стоял у окна и ждал"
+          def norm(x):
+              x=x.lower().replace("ё","е")
+              x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          def transcribe(p):
+              segs,_=model.transcribe(p,language="ru",beam_size=5,word_timestamps=True,temperature=0.0,condition_on_previous_text=False)
+              texts=[]; words=[]
+              for s in segs:
+                  texts.append(s.text.strip())
+                  for w in s.words or []:
+                      ww=norm(w.word)
+                      if ww: words.append({"word":ww,"start":float(w.start),"end":float(w.end),"p":float(w.probability)})
+              return norm(" ".join(texts)),words
+          st,sw=transcribe(src); ct,cw=transcribe(cand)
+
+          ys,srs=sf.read(src); yc,srcsr=sf.read(cand)
+          if ys.ndim>1: ys=ys.mean(1)
+          if yc.ndim>1: yc=yc.mean(1)
+          sr=24000
+          ys=librosa.resample(ys,orig_sr=srs,target_sr=sr)
+          yc=librosa.resample(yc,orig_sr=srcsr,target_sr=sr)
+
+          # coarse timing alignment, bounded to +/-0.5 s
+          ds=librosa.resample(ys,orig_sr=sr,target_sr=4000)
+          dc=librosa.resample(yc,orig_sr=sr,target_sr=4000)
+          maxlag=2000
+          cc=correlate(dc,ds,mode="full",method="fft")
+          lags=np.arange(-len(ds)+1,len(dc))
+          mask=np.abs(lags)<=maxlag
+          lag=int(lags[mask][np.argmax(cc[mask])]); lag_sec=lag/4000
+          shift=int(round(lag_sec*sr))
+          if shift>=0:
+              a=ys[:min(len(ys),len(yc)-shift)]
+              b=yc[shift:shift+len(a)]
+          else:
+              a=ys[-shift:]
+              b=yc[:len(a)]
+          n=min(len(a),len(b)); a=a[:n]; b=b[:n]
+
+          hop=256
+          def pitch(y):
+              f0,_,vp=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),
+                                   sr=sr,frame_length=2048,hop_length=hop)
+              return f0,vp
+          fs,vps=pitch(a); fc,vpc=pitch(b)
+          m=np.isfinite(fs)&np.isfinite(fc)
+          abs_med=9999.; shape_corr=-1.; global_shift=0.; shape_mae=9999.
+          if m.sum()>30:
+              cs=1200*np.log2(fs[m]); ccents=1200*np.log2(fc[m])
+              diff=ccents-cs
+              global_shift=float(np.median(diff))
+              abs_med=float(np.median(np.abs(diff)))
+              centered=ccents-global_shift
+              shape_corr=float(np.corrcoef(cs,centered)[0,1])
+              shape_mae=float(np.median(np.abs(centered-cs)))
+
+          def acoustic(y):
+              rms=librosa.feature.rms(y=y,frame_length=2048,hop_length=hop)[0]
+              S=np.abs(librosa.stft(y,n_fft=2048,hop_length=hop))
+              cent=librosa.feature.spectral_centroid(S=S,sr=sr)[0]
+              flat=librosa.feature.spectral_flatness(S=S)[0]
+              return rms,cent,flat
+          sfeat=acoustic(ys); cfeat=acoustic(yc)
+
+          # boundary-local discontinuity at ASR word starts: log-energy and spectral-centroid jump.
+          def boundary_stats(words,feat):
+              rms,cent,flat=feat; vals=[]
+              for w in words[1:]:
+                  t=w["start"]; k=int(round(t*sr/hop))
+                  if k<2 or k>=len(rms)-2: continue
+                  er=abs(20*np.log10((rms[k+1]+1e-8)/(rms[k-1]+1e-8)))
+                  cr=abs(float(cent[k+1]-cent[k-1]))
+                  fr=abs(float(flat[k+1]-flat[k-1]))
+                  vals.append({"word":w["word"],"t":t,"energy_jump_db":float(er),"centroid_jump_hz":cr,"flatness_jump":fr})
+              return vals
+          sb=boundary_stats(sw,sfeat); cb=boundary_stats(cw,cfeat)
+          def med(v,k): return float(np.median([x[k] for x in v])) if v else None
+
+          report={
+            "source":src,"candidate":cand,
+            "target":target,
+            "source_text":st,"candidate_text":ct,
+            "source_exact":st==target,"candidate_exact":ct==target,
+            "source_words":sw,"candidate_words":cw,
+            "duration_source":len(ys)/sr,"duration_candidate":len(yc)/sr,
+            "alignment_lag_sec":lag_sec,
+            "pitch":{"voiced_overlap_frames":int(m.sum()),"absolute_median_diff_cents":abs_med,
+                     "global_median_shift_cents":global_shift,"shape_corr_after_global_shift":shape_corr,
+                     "shape_median_error_after_shift_cents":shape_mae},
+            "boundary":{"source":sb,"candidate":cb,
+                        "source_energy_jump_median_db":med(sb,"energy_jump_db"),
+                        "candidate_energy_jump_median_db":med(cb,"energy_jump_db"),
+                        "source_centroid_jump_median_hz":med(sb,"centroid_jump_hz"),
+                        "candidate_centroid_jump_median_hz":med(cb,"centroid_jump_hz")},
+          }
+          # North-Star control gate: exact Russian lyrics + preserved absolute F0/melody structure.
+          report["control_pass"]=bool(report["candidate_exact"] and abs(global_shift)<100 and abs_med<130 and shape_corr>0.90 and shape_mae<100)
+          Path("qc/report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-ace-step-boundary-qc
+          path: qc/report.json
+          retention-days: 3
