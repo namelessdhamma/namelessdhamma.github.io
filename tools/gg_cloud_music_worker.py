@@ -376,6 +376,22 @@ def render_awata_direct(score, vb, outdir, payload):
     vc.save_wav(wav,target)
     return [target]
 
+def normalize_character_yaml(vb):
+    p=pathlib.Path(vb)/"character.yaml"
+    if not p.exists(): return False
+    try:
+        import yaml
+        d=yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        changed=False
+        for sb in d.get("subbanks",[]) or []:
+            if "prefix" not in sb: sb["prefix"]=""; changed=True
+            if "tone_ranges" not in sb: sb["tone_ranges"]=["C1-C7"]; changed=True
+        if changed: p.write_text(yaml.safe_dump(d,allow_unicode=True,sort_keys=False),encoding="utf-8")
+        return changed
+    except Exception as e:
+        print("GG_CHARACTER_NORMALIZE_WARNING="+str(e),flush=True)
+        return False
+
 def vocal_render(payload, job, job_id, token, work):
     bank=work/"voicebank"; bank.mkdir(); score=work/"score.ds"; names={a["name"] for a in job.get("assets",[])}
     inline=payload.get("score_inline")
@@ -427,6 +443,7 @@ def vocal_render(payload, job, job_id, token, work):
     candidates=list(bank.rglob("dsconfig.yaml"))
     if not candidates: raise RuntimeError("no dsconfig.yaml in voicebank")
     vb=candidates[0].parent
+    normalized_character=normalize_character_yaml(vb)
     install_log=install_vocal_stack()
     outdir=work/"vocal-out"; outdir.mkdir()
     lang=payload.get("lang") or spec.get("lang") or "ru"
@@ -448,7 +465,7 @@ def vocal_render(payload, job, job_id, token, work):
         render_log=cp.stdout[-4000:]
     if not wavs: raise RuntimeError("vocal renderer produced no wav")
     for i,w in enumerate(wavs): upload_artifact(job_id,f"vocal-{i+1}.wav",w,token,"audio/wav")
-    return {"engine":"diffsinger-utau","version":"0.3.8","voice_id":voice_id,"voicebank":vb.name,"language":lang,"speaker":payload.get("speaker"),"gender":payload.get("gender"),"wav_count":len(wavs),"ezv":ezv,"dependency_log_tail":install_log[-2000:],"log_tail":render_log}
+    return {"engine":"diffsinger-utau","version":"0.3.8","character_normalized":normalized_character,"voice_id":voice_id,"voicebank":vb.name,"language":lang,"speaker":payload.get("speaker"),"gender":payload.get("gender"),"wav_count":len(wavs),"ezv":ezv,"dependency_log_tail":install_log[-2000:],"log_tail":render_log}
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--job-id",required=True); ap.add_argument("--oidc-token",required=True); a=ap.parse_args()
