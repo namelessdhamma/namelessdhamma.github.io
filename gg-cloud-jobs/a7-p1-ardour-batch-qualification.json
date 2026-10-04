@@ -6,6 +6,6 @@
     }
   },
   "qualification": "A7-P1-native-mcp-save-session-artifact",
-  "retry": 2,
-  "reason": "marker-resolution-repair"
+  "retry": 3,
+  "reason": "null-safe-marker-repair"
 }
