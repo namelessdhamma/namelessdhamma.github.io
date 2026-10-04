@@ -223,7 +223,7 @@ def ardour_batch(payload, job, job_id, token, work):
     result=apply_ardour_calls(sf,home,work,payload.get("calls",[]))
     archive=work/"session.tar.gz"; archive_project(project,archive)
     upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
-    result.update({"session_file":str(sf.relative_to(project)),"artifact":"session.tar.gz"})
+    result.update({"session_file":str(sf.relative_to(project)),"artifact":"session.tar.gz","artifact_bytes":archive.stat().st_size})
     return result
 
 def project_render(payload, job, job_id, token, work):
