@@ -1,0 +1,220 @@
+name: GG OpenUtau Mimosa Dark four-style gate
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-openutau-mimosa-dark-four-style.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  render-qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare OpenUtau native DiffSinger runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs" />\n  </ItemGroup>\n'
+          if 'GGVfsUfrOpenUtauQcTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          cp .nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs
+
+      - name: Recover ready-made UFR pack
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-kumi-discovery
+          run-id: 37178003583
+          github-token: ${{ github.token }}
+          path: /tmp/ufr-cache
+
+      - name: Prepare Mimosa Dark bank
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack="$(find /tmp/ufr-cache -type f -name 'ufr-pack.download' -print -quit)"
+          test -n "$pack"
+          mkdir -p /tmp/ufr
+          unzip -q "$pack" -d /tmp/ufr
+          root="$(find /tmp/ufr -type f -path '*/0_CORE/dsacoustic/millefeuille_v001.phonemes.json' -printf '%h\n' | sed 's#/0_CORE/dsacoustic$##' | head -n 1)"
+          bank="$root/Millefeuille_Mimosa"
+          test -f "$bank/dsconfig.yaml"
+          test -f "$bank/dsdur/dsdict-ru.yaml"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Millefeuille Mimosa\nauthor=UFR\nvoice=UFR\nversion=OpenUtau four-style audition\n' > "$bank/character.txt"
+          fi
+          echo "MIMOSA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Build OpenUtau
+        working-directory: /tmp/openutau
+        run: dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+
+      - name: Render eight takes per OpenUtau style
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/four-style/all"
+          cd /tmp/openutau
+          for style in clear_soft clear clear_warm clear_lively; do
+            for i in $(seq -w 1 8); do
+              echo "=== $style TAKE $i ==="
+              OPENUTAU_TEST_SINGERS="$MIMOSA_BANK" \
+              GG_VFS_OUT="${GITHUB_WORKSPACE}/four-style/all" \
+              GG_VFS_TAG="Mimosa_Dark_${style}_Take_${i}" \
+              GG_VFS_SPEAKER_HINT="Dark" \
+              GG_VFS_VARIANT="$style" \
+              dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+            done
+          done
+          test "$(find "${GITHUB_WORKSPACE}/four-style/all" -name '*.wav' | wc -l)" -eq 32
+
+      - name: Install independent listening QC
+        run: python -m pip install faster-whisper librosa==0.10.2.post1 soundfile numpy
+
+      - name: Listen, gate, and select one unique take per style
+        shell: bash
+        run: |
+          cat > /tmp/four_style_qc.py <<'PY'
+          import json,re,shutil,hashlib
+          from pathlib import Path
+          import numpy as np
+          import soundfile as sf
+          import librosa
+          from faster_whisper import WhisperModel
+
+          root=Path("four-style/all")
+          selected_dir=Path("four-style/selected")
+          selected_dir.mkdir(parents=True,exist_ok=True)
+          whisper=WhisperModel("small",device="cpu",compute_type="int8")
+          target="я говорил не с ним"
+          styles=["clear_soft","clear","clear_warm","clear_lively"]
+          results=[]
+
+          def norm(x):
+              x=x.lower().replace("ё","е")
+              x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+
+          for p in sorted(root.glob("*.wav")):
+              m=re.search(r"Mimosa_Dark_(clear_soft|clear_warm|clear_lively|clear)_Take_",p.name)
+              if not m:
+                  continue
+              style=m.group(1)
+              segs,_=whisper.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,
+                  temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs); words=[]; texts=[]
+              for s in segs:
+                  texts.append(s.text.strip())
+                  for w in s.words or []:
+                      ww=norm(w.word)
+                      if ww:
+                          words.append({"word":ww,"start":float(w.start),"end":float(w.end),"p":float(w.probability)})
+              transcript=norm(" ".join(texts))
+              ne=max((w for w in words if w["word"]=="не"),key=lambda w:w["p"],default=None)
+              gov=max((w for w in words if w["word"]=="говорил"),key=lambda w:w["p"],default=None)
+
+              y,sr=sf.read(p)
+              if y.ndim>1: y=y.mean(axis=1)
+              f0,_,_=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),sr=sr,
+                  frame_length=2048,hop_length=256)
+              vf=np.where(np.isfinite(f0))[0]
+              jump_rate=1.0; p95=999.0
+              if len(vf)>3:
+                  vals=f0[vf]
+                  d=np.abs(1200*np.log2(vals[1:]/vals[:-1]))
+                  d=d[np.diff(vf)==1]
+                  if len(d):
+                      jump_rate=float(np.mean(d>100))
+                      p95=float(np.percentile(d,95))
+              rms=librosa.feature.rms(y=y,frame_length=2048,hop_length=256)[0]
+              ep99=float(np.percentile(np.abs(np.diff(rms)),99)) if len(rms)>1 else 1.0
+              mean_word=float(np.mean([w["p"] for w in words])) if words else 0.0
+              ne_p=float(ne["p"]) if ne else 0.0
+              gov_p=float(gov["p"]) if gov else 0.0
+
+              manifest=p.with_name(p.name.replace("__OPENUTAU_RU_QC.wav","__manifest.txt"))
+              mt=manifest.read_text(encoding="utf8") if manifest.exists() else ""
+              native_phone_ok=("ru/nj ru/e" in mt and "manual_frame_f0=false" in mt and
+                               "manual_phoneme_durations=false" in mt and "mimosa_dark" in mt.lower())
+              exact=(transcript==target)
+              passed=bool(exact and native_phone_ok and ne_p>=0.90 and gov_p>=0.75 and
+                          jump_rate<0.01 and ep99<0.012)
+              score=mean_word + ne_p + gov_p*0.5 - jump_rate*5 - ep99*10
+              results.append({"file":p.name,"style":style,"transcript":transcript,"words":words,
+                  "ne_confidence":ne_p,"govoril_confidence":gov_p,"native_phone_ok":native_phone_ok,
+                  "f0_jump_p95_cents":p95,"f0_jump_rate_gt100c":jump_rate,
+                  "energy_jump_p99":ep99,"mean_word_confidence":mean_word,
+                  "pass":passed,"score":score})
+
+          winners=[]
+          for style in styles:
+              candidates=sorted([x for x in results if x["style"]==style and x["pass"]],
+                                key=lambda x:x["score"],reverse=True)
+              if not candidates:
+                  raise SystemExit(f"No QC-passed take for style {style}")
+              winners.append(candidates[0])
+
+          hashes=set()
+          for rank,x in enumerate(winners,1):
+              src=root/x["file"]
+              h=hashlib.sha256(src.read_bytes()).hexdigest()
+              if h in hashes:
+                  raise SystemExit(f"Duplicate selected WAV for style {x['style']}")
+              hashes.add(h)
+              title={
+                "clear_soft":"01_Mimosa_Dark_OpenUtau_Clear_Soft.wav",
+                "clear":"02_Mimosa_Dark_OpenUtau_Clear.wav",
+                "clear_warm":"03_Mimosa_Dark_OpenUtau_Clear_Warm.wav",
+                "clear_lively":"04_Mimosa_Dark_OpenUtau_Clear_Lively.wav",
+              }[x["style"]]
+              shutil.copy2(src,selected_dir/title)
+              x["selected_as"]=title
+              x["sha256"]=h
+
+          report={"target":target,"rendered_count":len(results),
+                  "pass_count":sum(x["pass"] for x in results),
+                  "selected_count":len(winners),"selected":winners,"results":results}
+          Path("four-style/qc-report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          with Path("four-style/qc-summary.txt").open("w",encoding="utf8") as f:
+              f.write(f"RENDERED={len(results)} PASS={report['pass_count']} SELECTED={len(winners)}\n")
+              for x in winners:
+                  f.write(f"{x['style']} -> {x['selected_as']} | text={x['transcript']} | "
+                          f"не={x['ne_confidence']:.3f} | говорил={x['govoril_confidence']:.3f} | "
+                          f"word={x['mean_word_confidence']:.3f} | f0jump={x['f0_jump_rate_gt100c']:.4f} | "
+                          f"energy={x['energy_jump_p99']:.5f} | sha256={x['sha256']}\n")
+          print(Path("four-style/qc-summary.txt").read_text())
+          PY
+          python /tmp/four_style_qc.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-openutau-mimosa-dark-four-style-passed
+          path: |
+            four-style/selected/
+            four-style/qc-report.json
+            four-style/qc-summary.txt
+          retention-days: 3
+          if-no-files-found: warn
