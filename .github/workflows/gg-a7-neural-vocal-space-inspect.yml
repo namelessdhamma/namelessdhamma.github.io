@@ -23,7 +23,7 @@ jobs:
           python - <<'PY'
           from gradio_client import Client
           import json, traceback
-          targets=["ACE-Step/ACE-Step"]
+          targets=["ACE-Step/Ace-Step-v1.5"]
           for t in targets:
               print("\n=== SPACE", t, "===")
               try:
