@@ -1,0 +1,85 @@
+name: GG Seed-VC Mimosa refinement
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-seed-vc-mimosa-refine.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Recover source long vocal
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: source
+      - name: Recover Mimosa Human-B reference
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-openutau-mimosa-dark-human-singer-vocoder-ab
+          run-id: 37194439702
+          github-token: ${{ github.token }}
+          path: ref
+      - name: Convert through Seed-VC singing model
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade gradio_client
+          src="$(find source -type f -name '*.wav' -print -quit)"
+          ref="$(find ref -type f \( -iname '*singer_b*stock*.wav' -o -iname '*human*vocal*b*stock*.wav' -o -iname '*B*STOCK*.wav' \) -print -quit)"
+          if [ -z "$ref" ]; then ref="$(find ref -type f -name '*.wav' -print -quit)"; fi
+          echo "SOURCE=$src"
+          echo "REFERENCE=$ref"
+          test -n "$src"; test -n "$ref"
+          mkdir -p out
+          python - "$src" "$ref" <<'PY'
+          import sys,os,shutil,json
+          from pathlib import Path
+          from gradio_client import Client,handle_file
+          src,ref=sys.argv[1],sys.argv[2]
+          c=Client("mmwmm/Seed-VC",verbose=False)
+          r=c.predict(
+              source_audio_path=handle_file(src),
+              target_audio_path=handle_file(ref),
+              diffusion_steps=25,
+              length_adjust=1.0,
+              inference_cfg_rate=0.7,
+              f0_condition=True,
+              auto_f0_adjust=False,
+              pitch_shift=0,
+              api_name="/predict_1")
+          print("RETURN",type(r).__name__,repr(r)[:2000])
+          items=r if isinstance(r,(list,tuple)) else [r]
+          found=[]
+          for i,x in enumerate(items,1):
+              p=None
+              if isinstance(x,str): p=x
+              elif isinstance(x,dict): p=x.get("path") or x.get("url")
+              elif hasattr(x,"path"): p=x.path
+              if p and os.path.exists(p):
+                  ext=Path(p).suffix or ".wav"
+                  dst=Path("out")/f"SeedVC_Mimosa_Refined_{i}{ext}"
+                  shutil.copy2(p,dst)
+                  found.append(str(dst))
+          Path("out/manifest.json").write_text(json.dumps({
+              "source":src,"reference":ref,"diffusion_steps":25,
+              "f0_condition":True,"auto_f0_adjust":False,"pitch_shift":0,
+              "files":found
+          },ensure_ascii=False,indent=2))
+          if not found: raise SystemExit("Seed-VC returned no audio")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-seed-vc-mimosa-refinement
+          path: out/
+          retention-days: 3
+          if-no-files-found: warn
