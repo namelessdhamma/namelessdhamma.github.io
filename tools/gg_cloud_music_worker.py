@@ -276,6 +276,7 @@ def probe():
       "new_session":out(["bash","-lc","command -v ardour9-new_session || true"]),
       "lua":out(["bash","-lc","command -v ardour9-lua || true"]),
       "export":out(["bash","-lc","command -v ardour9-export || true"]),
+      "export_help":out(["bash","-lc","ardour9-export --help 2>&1 | head -120 || true"]),
       "megadl":out(["bash","-lc","command -v megadl || command -v megatools || true"])
     }
 
