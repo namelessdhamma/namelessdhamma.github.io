@@ -424,8 +424,10 @@ namespace OpenUtau.Test.Core.DiffSinger {
 
                 // Macro phrase arc: enter quietly, build through "говорил",
                 // crest on "не", then relax through "с ним".
-                var n0 = part.notes[0]; var n1 = part.notes[1]; var n2 = part.notes[2];
-                var n3 = part.notes[3]; var n4 = part.notes[4];
+                var performanceNotes = part.notes.ToList();
+                Assert.True(performanceNotes.Count == 5, "Singer profile expects the five-word QC phrase.");
+                var n0 = performanceNotes[0]; var n1 = performanceNotes[1]; var n2 = performanceNotes[2];
+                var n3 = performanceNotes[3]; var n4 = performanceNotes[4];
                 AddShapeCurve(Ustx.DYN,
                     new[] { n0.position, n0.position + n0.duration/2, n1.position,
                             n1.position + n1.duration/2, n2.position, n2.position + n2.duration/2,
