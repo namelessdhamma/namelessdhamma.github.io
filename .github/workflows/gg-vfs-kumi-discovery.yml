@@ -1,4 +1,4 @@
-name: GG VFS UFR Kumi discovery
+name: GG VFS UFR female-pack audit
 on:
   push:
     branches:
@@ -9,23 +9,30 @@ on:
 permissions:
   contents: read
 jobs:
-  discover:
+  audit:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Download UFR pack
+      - name: Download and inspect UFR pack
         run: |
-          mkdir -p out
+          set -e
+          mkdir -p report
           python -m pip install --quiet gdown
-          gdown "https://drive.google.com/uc?id=1Ve9cqJypDglNRPtjw-RoMqbin-xvU-WW" -O out/ufr-pack.download || true
-          ls -lh out
-          file out/ufr-pack.download || true
+          gdown "https://drive.google.com/uc?id=1Ve9cqJypDglNRPtjw-RoMqbin-xvU-WW" -O /tmp/ufr-pack
+          stat -c "bytes=%s" /tmp/ufr-pack > report/pack-info.txt
+          file /tmp/ufr-pack >> report/pack-info.txt
+          if unzip -tqq /tmp/ufr-pack >/dev/null 2>&1; then
+            echo "archive=zip" >> report/pack-info.txt
+            unzip -l /tmp/ufr-pack | grep -Ei "Hitsune|Kumi|Mimosa|Saiun|character|dsconfig|phoneme|vocoder" > report/relevant-entries.txt || true
+          else
+            echo "archive=not_zip" >> report/pack-info.txt
+            head -c 256 /tmp/ufr-pack | xxd >> report/pack-info.txt
+          fi
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: gg-vfs-kumi-discovery
-          path: out/
+          name: gg-vfs-ufr-female-pack-audit
+          path: report/
           retention-days: 1
