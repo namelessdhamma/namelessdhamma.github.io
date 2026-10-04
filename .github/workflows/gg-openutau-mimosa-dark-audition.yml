@@ -1,0 +1,134 @@
+name: GG OpenUtau Mimosa Dark audition
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-openutau-mimosa-dark-audition.yml"
+      - ".nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  audition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Fetch OpenUtau and official Russian DiffSinger phonemizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          git clone --depth 1 https://github.com/Megageorgio/hhskt_ru_phonemizer.git /tmp/openutau/hhskt_ru_phonemizer
+          sed -i 's#<TargetFramework>net8.0</TargetFramework>#<TargetFramework>net10.0</TargetFramework>#' /tmp/openutau/hhskt_ru_phonemizer/hhskt_ru_phonemizer.csproj || true
+          dotnet add /tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj reference /tmp/openutau/hhskt_ru_phonemizer/hhskt_ru_phonemizer.csproj
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs" />\n  </ItemGroup>\n'
+          if 'GGVfsUfrOpenUtauQcTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          cp .nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs
+
+      - name: Recover ready-made UFR pack
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-kumi-discovery
+          run-id: 37178003583
+          github-token: ${{ github.token }}
+          path: /tmp/ufr-cache
+
+      - name: Prepare Mimosa bank
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack="$(find /tmp/ufr-cache -type f -name 'ufr-pack.download' -print -quit)"
+          test -n "$pack"
+          mkdir -p /tmp/ufr
+          unzip -q "$pack" -d /tmp/ufr
+          root="$(find /tmp/ufr -type f -path '*/0_CORE/dsacoustic/millefeuille_v001.phonemes.json' -printf '%h\n' | sed 's#/0_CORE/dsacoustic$##' | head -n 1)"
+          test -n "$root"
+          bank="$root/Millefeuille_Mimosa"
+          test -f "$bank/dsconfig.yaml"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Millefeuille Mimosa\nauthor=UFR\nvoice=UFR\nversion=OpenUtau audition\n' > "$bank/character.txt"
+          fi
+          if [ -f "$bank/dspitch/dsdict-ru.yaml" ] && [ ! -f "$bank/dspitch/dsdict.yaml" ]; then
+            cp "$bank/dspitch/dsdict-ru.yaml" "$bank/dspitch/dsdict.yaml"
+          fi
+          echo "MIMOSA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Build once
+        working-directory: /tmp/openutau
+        run: dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+
+      - name: Render Mimosa Dark — native
+        env:
+          OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
+          GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
+          GG_VFS_TAG: 01_Mimosa_Dark_Native
+          GG_VFS_SPEAKER_HINT: Dark
+          GG_VFS_VARIANT: native
+        working-directory: /tmp/openutau
+        run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+
+      - name: Render Mimosa Dark — legato
+        env:
+          OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
+          GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
+          GG_VFS_TAG: 02_Mimosa_Dark_Legato
+          GG_VFS_SPEAKER_HINT: Dark
+          GG_VFS_VARIANT: legato
+        working-directory: /tmp/openutau
+        run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+
+      - name: Render Mimosa Dark — clear
+        env:
+          OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
+          GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
+          GG_VFS_TAG: 03_Mimosa_Dark_Clear
+          GG_VFS_SPEAKER_HINT: Dark
+          GG_VFS_VARIANT: clear
+        working-directory: /tmp/openutau
+        run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+
+      - name: Render Mimosa Dark — expressive
+        env:
+          OPENUTAU_TEST_SINGERS: ${{ env.MIMOSA_BANK }}
+          GG_VFS_OUT: ${{ github.workspace }}/mimosa-dark-openutau
+          GG_VFS_TAG: 04_Mimosa_Dark_Expressive
+          GG_VFS_SPEAKER_HINT: Dark
+          GG_VFS_VARIANT: expressive
+        working-directory: /tmp/openutau
+        run: dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+
+      - name: Verify OpenUtau evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          find mimosa-dark-openutau -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+          test "$(find mimosa-dark-openutau -name '*__OPENUTAU_RU_QC.wav' -type f | wc -l)" -eq 4
+          grep -R "^speaker=.*[Dd]ark" mimosa-dark-openutau/*__manifest.txt
+          grep -R "^manual_frame_f0=false" mimosa-dark-openutau/*__manifest.txt
+          grep -R "^manual_phoneme_durations=false" mimosa-dark-openutau/*__manifest.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-openutau-mimosa-dark-audition
+          path: mimosa-dark-openutau/
+          retention-days: 3
+          if-no-files-found: warn
