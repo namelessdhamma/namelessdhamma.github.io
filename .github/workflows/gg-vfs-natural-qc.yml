@@ -1,0 +1,51 @@
+name: GG VFS natural Russian QC
+on:
+  push:
+    branches:
+      - "experiment/gg-vfs-female-sweep-20261004"
+    paths:
+      - ".github/workflows/gg-vfs-natural-qc.yml"
+      - ".nd-labs/gg-vfs/ufr_natural_qc.py"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  render-qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install DiffSinger pipeline
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch==2.8.0
+          python -m pip install numpy==1.26.4 scipy==1.13.1 librosa==0.9.2 onnxruntime==1.16.3 pyyaml pypinyin soundfile tqdm diffsinger-utau==0.3.8
+      - name: Recover cached UFR pack
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-kumi-discovery
+          run-id: 37178003583
+          github-token: ${{ github.token }}
+          path: /tmp/ufr-cache
+      - name: Extract pack and render natural pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack="$(find /tmp/ufr-cache -type f -name 'ufr-pack.download' -print -quit)"
+          test -n "$pack"
+          mkdir -p /tmp/ufr
+          unzip -q "$pack" -d /tmp/ufr
+          root="$(find /tmp/ufr -type f -path '*/0_CORE/dsacoustic/millefeuille_v001.phonemes.json' -printf '%h\n' | sed 's#/0_CORE/dsacoustic$##' | head -n 1)"
+          test -n "$root"
+          python .nd-labs/gg-vfs/ufr_natural_qc.py "$root" gg-vocal-natural-qc
+          cat gg-vocal-natural-qc/summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vocal-natural-russian-qc
+          path: gg-vocal-natural-qc/
+          retention-days: 3
