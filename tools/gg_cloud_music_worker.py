@@ -467,6 +467,33 @@ def vocal_render(payload, job, job_id, token, work):
     for i,w in enumerate(wavs): upload_artifact(job_id,f"vocal-{i+1}.wav",w,token,"audio/wav")
     return {"engine":"diffsinger-utau","version":"0.3.8","character_normalized":normalized_character,"voice_id":voice_id,"voicebank":vb.name,"language":lang,"speaker":payload.get("speaker"),"gender":payload.get("gender"),"wav_count":len(wavs),"ezv":ezv,"dependency_log_tail":install_log[-2000:],"log_tail":render_log}
 
+def song_render(payload, job, job_id, token, work):
+    marker=payload.get("vocal_marker_path")
+    if marker:
+        root=pathlib.Path(os.environ.get("GITHUB_WORKSPACE",".")).resolve()
+        mp=(root/marker).resolve()
+        if root not in mp.parents: raise RuntimeError("vocal_marker_path outside workspace")
+        vocal_payload=json.loads(mp.read_text())["bootstrap"]["payload"]
+    else:
+        vocal_payload=payload.get("vocal",{})
+    vocal_result=vocal_render(vocal_payload,job,job_id,token,work)
+    vocal_files=list((work/"vocal-out").rglob("*.wav"))
+    if not vocal_files: raise RuntimeError("song render missing vocal wav")
+    vocal=vocal_files[0]
+    import soundfile as sf
+    info=sf.info(str(vocal)); duration=float(info.duration)
+    backing=work/"backing.wav"
+    subprocess.run(["ffmpeg","-y","-v","error","-f","lavfi","-i",f"sine=frequency=220:duration={duration}:sample_rate=44100","-filter:a","volume=0.10",str(backing)],check=True)
+    master=work/"song-master.wav"
+    subprocess.run(["ffmpeg","-y","-v","error","-i",str(vocal),"-i",str(backing),"-filter_complex","[0:a]volume=0.9[v];[1:a]volume=0.45[b];[v][b]amix=inputs=2:duration=longest:normalize=0","-ar","44100",str(master)],check=True)
+    mp3=work/"song-master.mp3"
+    subprocess.run(["ffmpeg","-y","-v","error","-i",str(master),"-codec:a","libmp3lame","-b:a","320k",str(mp3)],check=True)
+    upload_artifact(job_id,"stems/vocal.wav",vocal,token,"audio/wav")
+    upload_artifact(job_id,"stems/backing.wav",backing,token,"audio/wav")
+    upload_artifact(job_id,"master.wav",master,token,"audio/wav")
+    upload_artifact(job_id,"master.mp3",mp3,token,"audio/mpeg")
+    return {"engine":"diffsinger+ffmpeg-stem-mix","vocal":vocal_result,"duration_seconds":duration,"artifacts":["stems/vocal.wav","stems/backing.wav","master.wav","master.mp3"],"master_bytes":master.stat().st_size,"mp3_bytes":mp3.stat().st_size}
+
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--job-id",required=True); ap.add_argument("--oidc-token",required=True); a=ap.parse_args()
     work=pathlib.Path(tempfile.mkdtemp(prefix="gg-studio-"))
@@ -477,6 +504,7 @@ def main():
         elif op=="ardour_lua": result=ardour_lua(payload,job,a.job_id,a.oidc_token,work)
         elif op=="project_render": result=project_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="vocal_render": result=vocal_render(payload,job,a.job_id,a.oidc_token,work)
+        elif op=="song_render": result=song_render(payload,job,a.job_id,a.oidc_token,work)
         else: raise RuntimeError(f"unsupported operation: {op}")
         print("GG_WORKER_RESULT="+json.dumps(result,ensure_ascii=False,sort_keys=True),flush=True)
         finish(a.job_id,a.oidc_token,True,result)
