@@ -586,8 +586,10 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 if (lOffsetTicks != 0) {
                     var lPhone = part.phonemes.LastOrDefault(p =>
                         string.Equals(p.Parent?.lyric, "говорил", StringComparison.OrdinalIgnoreCase)
-                        && (string.Equals(p.phoneme, "ru/l", StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(p.rawPhoneme, "ru/l", StringComparison.OrdinalIgnoreCase)));
+                        && ((p.phoneme?.EndsWith("/l", StringComparison.OrdinalIgnoreCase) ?? false)
+                            || (p.rawPhoneme?.EndsWith("/l", StringComparison.OrdinalIgnoreCase) ?? false)
+                            || string.Equals(p.phoneme, "l", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(p.rawPhoneme, "l", StringComparison.OrdinalIgnoreCase)));
                     Assert.NotNull(lPhone);
                     var timing = lPhone!.Parent!.GetPhonemeOverride(lPhone.index);
                     timing.offset = -Math.Abs(lOffsetTicks);
