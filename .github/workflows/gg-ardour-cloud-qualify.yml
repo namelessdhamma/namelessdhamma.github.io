@@ -26,7 +26,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ardour curl ca-certificates grep coreutils findutils \
-            xvfb dbus-x11 python3 procps xauth xdotool x11-utils
+            xvfb dbus-x11 python3 procps xauth xdotool x11-utils x11-apps
           ARDOUR_BIN="$(command -v ardour9 || command -v ardour)"
           "$ARDOUR_BIN" --version
           find /usr/lib -type f -name 'libardour_mcp_http.so' -print | tee /tmp/mcp-files.txt
@@ -177,7 +177,23 @@ jobs:
             echo '--- curl error ---'
             cat /tmp/gg-curl.err || true
             echo '--- X windows ---'
-            xwininfo -root -tree 2>/dev/null || true
+            xwininfo -root -tree 2>/dev/null | tee /tmp/gg-xwininfo.txt || true
+            echo '--- Ardour visible-window diagnostics ---'
+            : >/tmp/gg-ardour-windows.txt
+            for WID in $(xdotool search --onlyvisible --class 'Ardour' 2>/dev/null || true); do
+              {
+                echo "=== WINDOW $WID ==="
+                xdotool getwindowname "$WID" 2>&1 || true
+                xdotool getwindowclassname "$WID" 2>&1 || true
+                xdotool getwindowgeometry --shell "$WID" 2>&1 || true
+                xprop -id "$WID" 2>&1 || true
+              } | tee -a /tmp/gg-ardour-windows.txt
+              eval "$(xdotool getwindowgeometry --shell "$WID" 2>/dev/null || true)"
+              if [ "${WIDTH:-}" = "444" ] && [ "${HEIGHT:-}" = "192" ]; then
+                echo "GG_ARDOUR_444X192_WINDOW=$WID" | tee -a /tmp/gg-ardour-windows.txt
+                xwd -silent -id "$WID" -out /tmp/gg-ardour-444x192.xwd 2>/dev/null || true
+              fi
+            done
             echo 'GG_ARDOUR_NATIVE_MCP_RUNTIME=FAIL_NO_ENDPOINT'
             exit 41
           fi
