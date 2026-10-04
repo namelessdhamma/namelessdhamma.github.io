@@ -1,9 +1,9 @@
-"""A7 natural Russian vocal audition using available native UFR predictors.
+"""A7 Russian vocal candidate sweep using native UFR predictors.
 Pipeline: duration -> pitch -> acoustic -> vocoder.
-Optional variance is intentionally omitted when the singer pack has no dsvariance config.
+Sweeps available speaker/color embeddings; QC is performed by the workflow.
 """
 from pathlib import Path
-import json, sys, traceback, gc
+import json, sys, traceback, gc, re
 import numpy as np
 from diffsinger_utau.voice_bank.commons.voice_bank_reader import VoiceBankReader
 from diffsinger_utau.voice_bank.commons.ds_reader import DSReader
@@ -23,18 +23,17 @@ def choose(common,*cands):
             return c
     raise KeyError("none of "+repr(cands)+" in common model phoneme inventory")
 
-def make_ds(common, ne_mode):
-    # Use only phonemes accepted by duration, pitch AND acoustic models.
-    # 8 musical groups: SP | Я | го | во | рил | не | с ним | SP
-    ne_vowel = choose(common,"ru/i") if ne_mode=="reduced" else choose(common,"ru/e","ru/ex","ru/i")
+def make_ds(common):
+    # Predictor-compatible Russian proxy sequence. In this UFR model family,
+    # /n/ + /i/ is the compatible soft-context realization candidate.
     groups=[
       [choose(common,"SP")],
       [choose(common,"ru/j","ru/y"),choose(common,"ru/a")],
       [choose(common,"ru/g"),choose(common,"ru/ax","ru/a")],
       [choose(common,"ru/v"),choose(common,"ru/ax","ru/a")],
       [choose(common,"ru/ry","ru/r"),choose(common,"ru/i"),choose(common,"ru/l","ru/ly")],
-      [choose(common,"ru/ny","ru/n"),ne_vowel],
-      [choose(common,"ru/s"),choose(common,"ru/ny","ru/n"),choose(common,"ru/i"),choose(common,"ru/m")],
+      [choose(common,"ru/n"),choose(common,"ru/i")],
+      [choose(common,"ru/s"),choose(common,"ru/n"),choose(common,"ru/i"),choose(common,"ru/m")],
       [choose(common,"SP")],
     ]
     notes=[("rest",.28),("G3",.64),("A3",.64),("B3",.64),("A3",.78),("G3",.62),("F#3",.82),("rest",.30)]
@@ -48,16 +47,19 @@ def make_ds(common, ne_mode):
       "note_slur":" ".join(["0"]*len(notes)),
     })
 
-def pick_speaker(dsdur):
-    names=[sp.speaker_name for sp in (dsdur.speakers or [])]
-    if not names:
-        return None
-    # Prefer neutral/core/natural color when present.
-    for needle in ("core","natural","base"):
-        for n in names:
-            if needle in n.lower():
-                return n
-    return names[0]
+def style_key(name):
+    # embs/millefeuille_v001.mimosa_core -> mimosa_core
+    return name.split("/")[-1].split(".")[-1]
+
+def match_speaker(model, key):
+    names=[sp.speaker_name for sp in (getattr(model,"speakers",None) or [])]
+    for n in names:
+        if style_key(n)==key:
+            return n
+    for n in names:
+        if key in style_key(n):
+            return n
+    return names[0] if names else None
 
 voices=[
  ("Kumi",PACK/"UFR_Hitsune Kumi"),
@@ -65,74 +67,78 @@ voices=[
  ("Saiun",PACK/"Millefeuille_Saiun"),
 ]
 summary={"pipeline":"duration->pitch->acoustic->vocoder","renders":[],"errors":[]}
-for label,root in voices:
+for bank_label,root in voices:
     try:
         dsdur=VoiceBankReader.DSDur(root/"dsdur"/"dsconfig.yaml",preload_models=True)
         dspitch=VoiceBankReader.DSPitch(root/"dspitch"/"dsconfig.yaml",preload_models=True)
         dsac=VoiceBankReader.DSAcoustic(root/"dsconfig.yaml",preload_models=True)
         dsv=VoiceBankReader.DSVocoder(root/"dsvocoder"/"vocoder.yaml",preload_models=True)
         dur=PredDuration(dsdur); pitch=PredPitch(dspitch); ac=PredAcoustic(dsac); vc=PredVocoder(dsv)
-        speaker=pick_speaker(dsdur)
+
         inventories=[]
         for model in (dsdur,dspitch,dsac):
             ph=getattr(model,"phonemes",None)
             if ph is not None:
                 inventories.append(set(ph.content.keys()))
-        if not inventories:
-            raise RuntimeError("No phoneme inventories exposed")
         common=set.intersection(*inventories)
-        print("VOICE",label,"speaker",speaker,"common_phonemes",len(common),flush=True)
-        for ne_mode,tag in [("reduced","SOFT_NE_HYBRID")]:
+        proxy=make_ds(common)
+
+        dur_speakers=[sp.speaker_name for sp in (dsdur.speakers or [])]
+        keys=[]
+        for n in dur_speakers:
+            k=style_key(n)
+            if k not in keys:
+                keys.append(k)
+        if not keys:
+            keys=["default"]
+
+        print("BANK",bank_label,"styles",keys,"common_phonemes",len(common),flush=True)
+
+        for key in keys:
             try:
-                # Predictor-compatible proxy sequence first.
-                base=make_ds(common,ne_mode)
-                ph_dur=dur.predict(base,lang="ru",speaker=speaker)
-                ds1=DSReader.DSSection(dict(base))
+                sp_d=match_speaker(dsdur,key)
+                sp_p=match_speaker(dspitch,key)
+                sp_a=match_speaker(dsac,key)
+                print("STYLE",bank_label,key,"dur",sp_d,"pitch",sp_p,"acoustic",sp_a,flush=True)
+
+                ph_dur=dur.predict(proxy,lang="ru",speaker=sp_d)
+                ds1=DSReader.DSSection(dict(proxy))
                 ds1["ph_dur"]=" ".join(f"{x:.6f}" for x in ph_dur.tolist())
 
-                f0=pitch.predict(ds1,lang="ru",speaker=speaker,key_shift=0,steps=14)
-
-                # Acoustic stage can expose a richer Russian inventory than
-                # duration/pitch. Preserve predictor timings/F0, but restore
-                # palatalized /nʲ/ for «не» and «ним» when acoustic supports it.
+                f0=pitch.predict(ds1,lang="ru",speaker=sp_p,key_shift=0,steps=14)
                 ds2=DSReader.DSSection(dict(ds1))
-                phs=ds2["ph_seq"].split()
-                ac_inv=set(dsac.phonemes.content.keys()) if dsac.phonemes is not None else set()
-                if "ru/ny" not in ac_inv:
-                    raise RuntimeError("Acoustic model has no ru/ny for Russian soft n")
-                n_positions=[i for i,p in enumerate(phs) if p=="ru/n"]
-                if len(n_positions) < 2:
-                    raise RuntimeError("Expected two proxy ru/n positions")
-                for i in n_positions[-2:]:
-                    phs[i]="ru/ny"
-                ds2["ph_seq"]=" ".join(phs)
                 ds2["f0_seq"]=" ".join(f"{x:.4f}" for x in f0.tolist())
                 ds2["f0_timestep"]=str(pitch.timestep)
 
-                mel=ac.predict(ds2,lang="ru",speaker=speaker,steps=20)
+                mel=ac.predict(ds2,lang="ru",speaker=sp_a,steps=20)
                 f0a=resample_align_curve(np.asarray(f0,dtype=np.float32),pitch.timestep,vc.timestep,mel.shape[1])
                 wav=vc.predict(mel,f0a)
-                target=OUT/f"{label}__{tag}.wav"
+
+                tag=re.sub(r"[^A-Za-z0-9_-]+","_",key)
+                target=OUT/f"{bank_label}__{tag}.wav"
                 vc.save_wav(wav,target)
+                (OUT/f"{bank_label}__{tag}.ds").write_text(
+                    json.dumps([dict(ds2)],ensure_ascii=False,indent=2),encoding="utf8")
                 meta={
-                  "voice":label,"speaker":speaker,"variant":tag,"file":target.name,
-                  "bytes":target.stat().st_size,
+                  "bank":bank_label,"style":key,
+                  "duration_speaker":sp_d,"pitch_speaker":sp_p,"acoustic_speaker":sp_a,
+                  "file":target.name,"bytes":target.stat().st_size,
                   "ph_dur":[round(float(x),6) for x in ph_dur.tolist()],
                   "f0_frames":int(len(f0)),
                   "f0_voiced_ratio":round(float((np.asarray(f0)>0).mean()),4),
                 }
                 summary["renders"].append(meta)
-                (OUT/f"{label}__{tag}.ds").write_text(json.dumps([dict(ds2)],ensure_ascii=False,indent=2),encoding="utf8")
-                print("OK",label,tag,target.stat().st_size,flush=True)
+                print("OK",bank_label,key,target.stat().st_size,flush=True)
             except Exception as e:
-                summary["errors"].append({"voice":label,"variant":tag,"error":repr(e)})
-                print("ERR",label,tag,repr(e),traceback.format_exc()[-5000:],flush=True)
+                summary["errors"].append({"bank":bank_label,"style":key,"error":repr(e)})
+                print("ERR",bank_label,key,repr(e),traceback.format_exc()[-5000:],flush=True)
+
         del dsdur,dspitch,dsac,dsv,dur,pitch,ac,vc
         gc.collect()
     except Exception as e:
-        summary["errors"].append({"voice":label,"variant":"INIT","error":repr(e)})
-        print("INIT_ERR",label,repr(e),traceback.format_exc()[-5000:],flush=True)
+        summary["errors"].append({"bank":bank_label,"style":"INIT","error":repr(e)})
+        print("INIT_ERR",bank_label,repr(e),traceback.format_exc()[-5000:],flush=True)
 
 (OUT/"summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding="utf8")
 if not summary["renders"]:
-    raise SystemExit("No partial-natural renders succeeded")
+    raise SystemExit("No natural renders succeeded")
