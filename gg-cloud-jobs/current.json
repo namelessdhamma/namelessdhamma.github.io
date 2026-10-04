@@ -1,3 +1,8 @@
 {
-  "job_file": "gg-cloud-jobs/a7-p1-ardour-batch-qualification.json"
+  "bootstrap": {
+    "operation": "song_render",
+    "payload": {
+      "vocal_marker_path": "gg-cloud-jobs/selftest-vocal-awata-20261003-1201.json"
+    }
+  }
 }
