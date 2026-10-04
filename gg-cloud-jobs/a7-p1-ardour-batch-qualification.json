@@ -5,5 +5,7 @@
       "calls": []
     }
   },
-  "qualification": "A7-P1-native-mcp-save-session-artifact"
+  "qualification": "A7-P1-native-mcp-save-session-artifact",
+  "retry": 2,
+  "reason": "marker-resolution-repair"
 }
