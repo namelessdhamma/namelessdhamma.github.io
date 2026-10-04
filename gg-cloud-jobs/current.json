@@ -1,4 +1,3 @@
 {
-  "bootstrap": {"operation": "ardour_batch", "payload": {"calls": []}},
-  "qualification": "A7-P1-native-mcp-evidence-8"
+  "job_file": "gg-cloud-jobs/a7-p4-keiro-russian-vocal-qualification.json"
 }
