@@ -1,0 +1,203 @@
+name: GG OpenUtau Mimosa Dark human prosody
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-openutau-mimosa-dark-human-prosody.yml"
+      - ".nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  render-qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare OpenUtau native DiffSinger runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs" />\n  </ItemGroup>\n'
+          if 'GGVfsUfrOpenUtauQcTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          cp .nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGVfsUfrOpenUtauQcTest.cs
+
+      - name: Recover UFR pack
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-kumi-discovery
+          run-id: 37178003583
+          github-token: ${{ github.token }}
+          path: /tmp/ufr-cache
+
+      - name: Prepare Mimosa Dark bank
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack="$(find /tmp/ufr-cache -type f -name 'ufr-pack.download' -print -quit)"
+          test -n "$pack"
+          mkdir -p /tmp/ufr
+          unzip -q "$pack" -d /tmp/ufr
+          root="$(find /tmp/ufr -type f -path '*/0_CORE/dsacoustic/millefeuille_v001.phonemes.json' -printf '%h\n' | sed 's#/0_CORE/dsacoustic$##' | head -n 1)"
+          bank="$root/Millefeuille_Mimosa"
+          test -f "$bank/dsconfig.yaml"
+          test -f "$bank/dsdur/dsdict-ru.yaml"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Millefeuille Mimosa\nauthor=UFR\nvoice=UFR\nversion=OpenUtau human-prosody audition\n' > "$bank/character.txt"
+          fi
+          echo "MIMOSA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Build OpenUtau
+        working-directory: /tmp/openutau
+        run: dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+
+      - name: Render three human-prosody D variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/human/all"
+          cd /tmp/openutau
+          for style in human_a human_b human_c; do
+            echo "=== $style ==="
+            OPENUTAU_TEST_SINGERS="$MIMOSA_BANK" \
+            GG_VFS_OUT="${GITHUB_WORKSPACE}/human/all" \
+            GG_VFS_TAG="Mimosa_Dark_OpenUtau_${style}" \
+            GG_VFS_SPEAKER_HINT="Dark" \
+            GG_VFS_VARIANT="$style" \
+            GG_VFS_L_OFFSET_TICKS="55" \
+            GG_VFS_STEPS="44" \
+            dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderUfrVoiceWithOfficialRussianPhonemizer
+          done
+          test "$(find "${GITHUB_WORKSPACE}/human/all" -name '*.wav' | wc -l)" -eq 3
+
+      - name: Install independent QC
+        run: python -m pip install faster-whisper librosa==0.10.2.post1 soundfile numpy
+
+      - name: Gate diction plus prosodic variation
+        shell: bash
+        run: |
+          cat > /tmp/human_qc.py <<'PY'
+          import json,re,hashlib,shutil
+          from pathlib import Path
+          import numpy as np
+          import soundfile as sf
+          import librosa
+          from faster_whisper import WhisperModel
+
+          root=Path("human/all"); out=Path("human/passed"); out.mkdir(parents=True,exist_ok=True)
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          target="я говорил не с ним"
+          results=[]
+          def norm(x):
+              x=x.lower().replace("ё","е"); x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+
+          for p in sorted(root.glob("*.wav")):
+              m=re.search(r"OpenUtau_(human_[abc])__",p.name); style=m.group(1) if m else p.stem
+              segs,_=model.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,
+                  temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs); words=[]; texts=[]
+              for s in segs:
+                  texts.append(s.text.strip())
+                  for w in s.words or []:
+                      ww=norm(w.word)
+                      if ww: words.append({"word":ww,"start":float(w.start),"end":float(w.end),"p":float(w.probability)})
+              transcript=norm(" ".join(texts))
+              ne=max((w for w in words if w["word"]=="не"),key=lambda x:x["p"],default=None)
+              gov=max((w for w in words if w["word"]=="говорил"),key=lambda x:x["p"],default=None)
+
+              y,sr=sf.read(p)
+              if y.ndim>1:y=y.mean(axis=1)
+              hop=256
+              f0,_,_=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),
+                                  sr=sr,frame_length=2048,hop_length=hop)
+              idx=np.where(np.isfinite(f0))[0]
+              jump_rate=1.0; local_motion=0.0; pitch_span=0.0
+              if len(idx)>4:
+                  vals=f0[idx]
+                  cents=1200*np.log2(vals/np.median(vals))
+                  pitch_span=float(np.percentile(cents,90)-np.percentile(cents,10))
+                  d=1200*np.log2(vals[1:]/vals[:-1])
+                  cont=np.diff(idx)==1
+                  d=d[cont]
+                  if len(d):
+                      jump_rate=float(np.mean(np.abs(d)>100))
+                      local=d[np.abs(d)<100]
+                      local_motion=float(np.mean(np.abs(local))) if len(local) else 0.0
+              rms=librosa.feature.rms(y=y,frame_length=2048,hop_length=hop)[0]
+              active=rms>np.max(rms)*0.01
+              db=librosa.amplitude_to_db(rms,ref=np.max)
+              loud_span=float(np.percentile(db[active],90)-np.percentile(db[active],10)) if np.any(active) else 0.0
+              energy_jump=float(np.percentile(np.abs(np.diff(rms)),99)) if len(rms)>1 else 1.0
+              ne_p=float(ne["p"]) if ne else 0.0; gov_p=float(gov["p"]) if gov else 0.0
+              mean_word=float(np.mean([w["p"] for w in words])) if words else 0.0
+              manifest=p.with_name(p.name.replace("__OPENUTAU_RU_QC.wav","__manifest.txt"))
+              mt=manifest.read_text(encoding="utf8") if manifest.exists() else ""
+              native_ok=("ru/rj ru/i ru/l" in mt and "ru/nj ru/e" in mt and "l_offset_ticks=55" in mt and
+                         "manual_frame_f0=false" in mt and "manual_phoneme_durations=false" in mt)
+              # D baseline measured locally: local pitch motion ~2.61c/frame; loudness span ~5.70 dB.
+              prosody_gain=(local_motion>=2.8 and loud_span>=5.9)
+              passed=bool(transcript==target and native_ok and ne_p>=0.85 and gov_p>=0.75 and
+                          jump_rate<0.015 and energy_jump<0.014 and prosody_gain)
+              score=mean_word + ne_p + gov_p + 0.04*local_motion + 0.02*loud_span - 4*jump_rate
+              results.append({"file":p.name,"style":style,"text":transcript,"ne":ne_p,"govoril":gov_p,
+                  "word":mean_word,"pitch_span_cents":pitch_span,"local_pitch_motion_cents":local_motion,
+                  "loudness_span_db":loud_span,"f0_jump_rate":jump_rate,"energy_jump_p99":energy_jump,
+                  "native_ok":native_ok,"prosody_gain":prosody_gain,"pass":passed,"score":score})
+
+          passed=sorted([x for x in results if x["pass"]],key=lambda x:x["score"],reverse=True)
+          Path("human/qc-report.json").write_text(json.dumps({"target":target,"results":results},ensure_ascii=False,indent=2))
+          if not passed:
+              print(json.dumps(results,ensure_ascii=False,indent=2))
+              raise SystemExit("No human-prosody variant passed diction + variation gate")
+          names={"human_a":"01_Mimosa_Dark_OpenUtau_Human_A.wav",
+                 "human_b":"02_Mimosa_Dark_OpenUtau_Human_B.wav",
+                 "human_c":"03_Mimosa_Dark_OpenUtau_Human_C.wav"}
+          hashes=set(); selected=[]
+          for x in passed:
+              src=root/x["file"]; h=hashlib.sha256(src.read_bytes()).hexdigest()
+              if h in hashes: continue
+              hashes.add(h); dst=out/names[x["style"]]; shutil.copy2(src,dst)
+              x["selected_as"]=dst.name; x["sha256"]=h; selected.append(x)
+          Path("human/qc-report.json").write_text(json.dumps({"target":target,"selected":selected,"results":results},ensure_ascii=False,indent=2))
+          with Path("human/qc-summary.txt").open("w",encoding="utf8") as f:
+              for x in selected:
+                  f.write(f"{x['selected_as']} | text={x['text']} | не={x['ne']:.3f} | говорил={x['govoril']:.3f} | "
+                          f"word={x['word']:.3f} | local_pitch={x['local_pitch_motion_cents']:.2f}c | "
+                          f"pitch_span={x['pitch_span_cents']:.1f}c | loudness_span={x['loudness_span_db']:.2f}dB | "
+                          f"jump={x['f0_jump_rate']:.4f} | sha256={x['sha256']}\n")
+          print(Path("human/qc-summary.txt").read_text())
+          PY
+          python /tmp/human_qc.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-openutau-mimosa-dark-human-prosody-passed
+          path: |
+            human/passed/
+            human/qc-report.json
+            human/qc-summary.txt
+          retention-days: 3
+          if-no-files-found: warn
