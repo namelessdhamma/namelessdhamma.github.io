@@ -443,7 +443,7 @@ def vocal_render(payload, job, job_id, token, work):
     candidates=list(bank.rglob("dsconfig.yaml"))
     if not candidates: raise RuntimeError("no dsconfig.yaml in voicebank")
     vb=candidates[0].parent
-    normalized_character=normalize_character_yaml(vb)
+    normalized_character=normalize_character_yaml(vb.parent)
     install_log=install_vocal_stack()
     outdir=work/"vocal-out"; outdir.mkdir()
     lang=payload.get("lang") or spec.get("lang") or "ru"
