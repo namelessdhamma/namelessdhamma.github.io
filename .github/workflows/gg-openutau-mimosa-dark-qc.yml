@@ -1,0 +1,111 @@
+name: GG OpenUtau Mimosa Dark listening QC
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-openutau-mimosa-dark-qc.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Recover successful OpenUtau audition
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-openutau-mimosa-dark-audition
+          run-id: 37185244615
+          github-token: ${{ github.token }}
+          path: audition
+      - name: Install listening QC
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install faster-whisper allosaurus librosa==0.10.2.post1 soundfile numpy
+      - name: Listen and analyze
+        shell: bash
+        run: |
+          cat > /tmp/qc.py <<'PY'
+          import json, math, re
+          from pathlib import Path
+          import numpy as np
+          import soundfile as sf
+          import librosa
+          from faster_whisper import WhisperModel
+          from allosaurus.app import read_recognizer
+
+          root=Path("audition")
+          wavs=sorted(root.glob("*.wav"))
+          target="я говорил не с ним"
+          whisper=WhisperModel("small",device="cpu",compute_type="int8")
+          phones=read_recognizer()
+          out=[]
+          for p in wavs:
+              segs,info=whisper.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,
+                  temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs)
+              words=[]
+              text=[]
+              for s in segs:
+                  text.append(s.text.strip())
+                  for w in s.words or []:
+                      words.append({"word":w.word.strip().lower().strip(".,!?;:«»"),"start":w.start,"end":w.end,"p":w.probability})
+              transcript=" ".join(text).strip().lower().strip(".,!?;:«»")
+              transcript=re.sub(r"\s+"," ",transcript)
+              try:
+                  phon=phones.recognize(str(p),lang_id="rus")
+              except Exception:
+                  phon=phones.recognize(str(p))
+              y,sr=sf.read(p)
+              if y.ndim>1:y=y.mean(axis=1)
+              # F0 and energy continuity diagnostics, excluding silence/unvoiced.
+              f0,voiced_flag,voiced_prob=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),sr=sr,
+                  frame_length=2048,hop_length=256)
+              rms=librosa.feature.rms(y=y,frame_length=2048,hop_length=256)[0]
+              vf=np.where(np.isfinite(f0))[0]
+              cents_jump_p95=None
+              jump_rate=None
+              if len(vf)>3:
+                  vals=f0[vf]
+                  d=np.abs(1200*np.log2(vals[1:]/vals[:-1]))
+                  # only consecutive voiced frames
+                  consec=(np.diff(vf)==1)
+                  d=d[consec]
+                  if len(d):
+                      cents_jump_p95=float(np.percentile(d,95))
+                      jump_rate=float(np.mean(d>100))
+              rdiff=np.abs(np.diff(rms))
+              energy_jump_p99=float(np.percentile(rdiff,99)) if len(rdiff) else 0.0
+              # critical word confidence
+              ne=[w for w in words if w["word"]=="не"]
+              ne_p=max([w["p"] for w in ne],default=0.0)
+              exact=(transcript==target)
+              out.append({
+                "file":p.name,"transcript":transcript,"exact":exact,"words":words,
+                "ne_confidence":ne_p,"phonemes":phon,
+                "f0_jump_p95_cents":cents_jump_p95,"f0_jump_rate_gt100c":jump_rate,
+                "energy_jump_p99":energy_jump_p99,
+              })
+          Path("qc-report.json").write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          for x in out:
+              print("\n===",x["file"],"===")
+              print("TEXT",x["transcript"],"EXACT",x["exact"],"NE_P",round(x["ne_confidence"],4))
+              print("WORDS"," | ".join(f'{w["word"]}:{w["p"]:.3f}' for w in x["words"]))
+              print("PHONES",x["phonemes"])
+              print("F0_P95_CENTS",x["f0_jump_p95_cents"],"F0_JUMP_RATE",x["f0_jump_rate_gt100c"],"ENERGY_P99",x["energy_jump_p99"])
+          PY
+          python /tmp/qc.py | tee qc-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-openutau-mimosa-dark-listening-qc
+          path: |
+            qc-report.json
+            qc-report.txt
+          retention-days: 3
