@@ -138,9 +138,10 @@ namespace OpenUtau.Test.Core.DiffSinger {
             var project = new UProject();
             project.tempos.Clear();
             project.tempos.Add(new UTempo(0, variant switch {
-                "legato" => 76,
+                "clear_soft" => 80,
                 "clear" => 80,
-                "expressive" => 82,
+                "clear_warm" => 80,
+                "clear_lively" => 80,
                 _ => 80,
             }));
             project.timeAxis.BuildSegments(project);
@@ -174,10 +175,11 @@ namespace OpenUtau.Test.Core.DiffSinger {
             string[] lyrics = { "Я", "говорил", "не", "с", "ним" };
             int[] tones =      { 57,  59,       60,   59,  57 };
             int[] durations = variant switch {
-                "legato" =>     new[] { 620, 1260, 560, 220, 1020 },
-                "clear" =>      new[] { 580, 1160, 500, 220, 920 },
-                "expressive" => new[] { 600, 1240, 540, 240, 1000 },
-                _ =>            new[] { 600, 1200, 540, 240, 960 },
+                "clear_soft" =>   new[] { 580, 1160, 500, 220, 920 },
+                "clear" =>        new[] { 580, 1160, 500, 220, 920 },
+                "clear_warm" =>   new[] { 580, 1160, 500, 220, 920 },
+                "clear_lively" => new[] { 580, 1160, 500, 220, 920 },
+                _ =>              new[] { 580, 1160, 500, 220, 920 },
             };
             int pos = 0;
             for (int i = 0; i < lyrics.Length; i++) {
@@ -185,30 +187,30 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 note.lyric = lyrics[i];
                 // All performance shaping stays inside OpenUtau's native note/vibrato model.
                 if (lyrics[i] is "говорил" or "ним") {
-                    if (variant == "legato") {
-                        note.vibrato.length = 30;
-                        note.vibrato.period = 300;
-                        note.vibrato.depth = 10;
-                        note.vibrato.@in = 42;
-                        note.vibrato.@out = 38;
-                    } else if (variant == "expressive") {
-                        note.vibrato.length = 46;
-                        note.vibrato.period = 235;
-                        note.vibrato.depth = 21;
-                        note.vibrato.@in = 30;
-                        note.vibrato.@out = 28;
-                    } else if (variant == "clear") {
+                    if (variant == "clear_soft") {
+                        note.vibrato.length = 27;
+                        note.vibrato.period = 305;
+                        note.vibrato.depth = 8;
+                        note.vibrato.@in = 44;
+                        note.vibrato.@out = 40;
+                    } else if (variant == "clear_warm") {
+                        note.vibrato.length = 34;
+                        note.vibrato.period = 270;
+                        note.vibrato.depth = 13;
+                        note.vibrato.@in = 38;
+                        note.vibrato.@out = 34;
+                    } else if (variant == "clear_lively") {
+                        note.vibrato.length = 37;
+                        note.vibrato.period = 250;
+                        note.vibrato.depth = 15;
+                        note.vibrato.@in = 34;
+                        note.vibrato.@out = 31;
+                    } else {
                         note.vibrato.length = 32;
                         note.vibrato.period = 280;
                         note.vibrato.depth = 11;
                         note.vibrato.@in = 40;
                         note.vibrato.@out = 35;
-                    } else {
-                        note.vibrato.length = 38;
-                        note.vibrato.period = 260;
-                        note.vibrato.depth = 16;
-                        note.vibrato.@in = 35;
-                        note.vibrato.@out = 30;
                     }
                 }
                 part.notes.Add(note);
@@ -225,18 +227,22 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     part.curves.Add(curve);
                 }
             }
-            if (variant == "legato") {
-                AddFlatCurve(DiffSingerUtils.VELC, 114);
-                AddFlatCurve(DiffSingerUtils.PEXP, 86);
-                AddFlatCurve(DiffSingerUtils.ENE, -3);
-            } else if (variant == "clear") {
+            if (variant == "clear_soft") {
+                AddFlatCurve(DiffSingerUtils.VELC, 120);
+                AddFlatCurve(DiffSingerUtils.PEXP, 84);
+                AddFlatCurve(DiffSingerUtils.ENE, -4);
+            } else if (variant == "clear_warm") {
+                AddFlatCurve(DiffSingerUtils.VELC, 122);
+                AddFlatCurve(DiffSingerUtils.PEXP, 90);
+                AddFlatCurve(DiffSingerUtils.ENE, 3);
+            } else if (variant == "clear_lively") {
+                AddFlatCurve(DiffSingerUtils.VELC, 126);
+                AddFlatCurve(DiffSingerUtils.PEXP, 96);
+                AddFlatCurve(DiffSingerUtils.ENE, 4);
+            } else {
                 AddFlatCurve(DiffSingerUtils.VELC, 124);
                 AddFlatCurve(DiffSingerUtils.PEXP, 92);
                 AddFlatCurve(DiffSingerUtils.ENE, 1);
-            } else if (variant == "expressive") {
-                AddFlatCurve(DiffSingerUtils.VELC, 108);
-                AddFlatCurve(DiffSingerUtils.PEXP, 100);
-                AddFlatCurve(DiffSingerUtils.ENE, 5);
             }
             project.timeAxis.BuildSegments(project);
 
