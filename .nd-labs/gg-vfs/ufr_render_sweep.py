@@ -1,135 +1,93 @@
-#!/usr/bin/env python3
-import json, math, sys, gc
+"""Render a fair Russian female-voice sweep from the ready-made UFR DiffSinger pack."""
 from pathlib import Path
-import numpy as np
-import soundfile as sf
-import yaml
-from diffsinger_utau.voice_bank import VoiceBankReader, PredAcoustic, PredVocoder
+import json, math, sys, gc, traceback
+import numpy as np, yaml
+from diffsinger_utau.voice_bank.commons.voice_bank_reader import VoiceBankReader
+from diffsinger_utau.voice_bank.commons.ds_reader import DSReader
+from diffsinger_utau.voice_bank.pred_acoustic import PredAcoustic
+from diffsinger_utau.voice_bank.pred_vocoder import PredVocoder
+from diffsinger_utau.voice_bank.commons.utils import resample_align_curve
+from librosa import note_to_hz
 
-PACK = Path(sys.argv[1]).resolve()
-OUT = Path(sys.argv[2]).resolve()
-OUT.mkdir(parents=True, exist_ok=True)
+PACK=Path(sys.argv[1]).resolve(); OUT=Path(sys.argv[2]).resolve(); OUT.mkdir(parents=True,exist_ok=True)
+logs=[]
+def log(*x):
+ s=" ".join(map(str,x)); print(s,flush=True); logs.append(s)
 
-core = PACK / "0_CORE" / "dsacoustic"
-phoneme_json = core / "millefeuille_v001.phonemes.json"
-inventory = json.loads(phoneme_json.read_text(encoding="utf-8"))
-inv = set(inventory)
+inventory=json.loads((PACK/"0_CORE/dsacoustic/millefeuille_v001.phonemes.json").read_text(encoding="utf8"))
+def ph(*options):
+ for p in options:
+  if p in inventory:return p
+ raise ValueError("Absent phoneme "+str(options))
 
-def choose(sym):
-    if sym in ("SP","AP"):
-        for c in (sym, sym.lower()):
-            if c in inv:
-                return c
-        raise KeyError(sym)
-    aliases = {
-      "j":["j","y","i0"], "a":["a","A"], "g":["g"], "o":["o","O"],
-      "v":["v"], "r":["r","r0"], "i":["i","I"], "l":["l","l0"],
-      "n":["n"], "e":["e","E"], "s":["s"], "m":["m"]
-    }[sym]
-    cands=[]
-    for a in aliases:
-        cands += [f"ru/{a}", f"ru_{a}", f"ru-{a}", f"ru:{a}", a]
-    for c in cands:
-        if c in inv:
-            return c
-    # relaxed suffix match, preferring explicit Russian namespace
-    for c in inventory:
-        cs=str(c)
-        if any(cs.endswith("/"+a) or cs.endswith("_"+a) or cs.endswith(":"+a) for a in aliases):
-            if "ru" in cs.lower():
-                return cs
-    raise KeyError(f"{sym}: no candidate; examples={inventory[:120]}")
-
-raw = ["SP","j","a","g","o","v","o","r","i","l","n","e","s","n","i","m","SP"]
-ph = [choose(x) for x in raw]
-# Fair 5.2 s phrase. Consonants are short; vowels deliberately sustained.
-dur = [0.18, .08,.46,.07,.48,.07,.42,.09,.42,.10,.08,.56,.08,.08,.48,.10,.18]
-assert len(ph)==len(dur)
-# Note targets for each phone; rests at edges. G3-A3-B3-A3-G3-F#3 contour.
-hz = {
- "G3":196.00, "A3":220.00, "B3":246.94, "F#3":185.00
-}
-target = [0,220,220,246.94,246.94,220,220,196,196,196,196,185,185,196,196,196,0]
-step=0.005
-f0=[]
-for idx,(d,base) in enumerate(zip(dur,target)):
-    n=max(1,round(d/step))
-    if base<=0:
-        f0.extend([0.0]*n); continue
-    for k in range(n):
-        t=k*step
-        # restrained vibrato on sustained voiced phones; slight phrase rise/fall
-        vib = 1.0 + (0.0035*math.sin(2*math.pi*5.2*t) if d>=0.30 else 0.0)
-        phrase = 1.0 + 0.004*math.sin(math.pi*(k/max(1,n-1)))
-        f0.append(base*vib*phrase)
-
-section = {
- "offset":0.0,
- "text":"SP Я говорил не с ним SP",
- "ph_seq":" ".join(ph),
- "ph_dur":" ".join(f"{x:.4f}" for x in dur),
- "ph_num":" ".join(["1"]*len(ph)),
- "note_seq":"rest A3 A3 B3 B3 A3 A3 G3 G3 G3 G3 F#3 F#3 G3 G3 G3 rest",
- "note_dur":" ".join(f"{x:.4f}" for x in dur),
- "note_slur":" ".join(["0"]*len(ph)),
- "f0_seq":" ".join(f"{x:.4f}" for x in f0),
- "f0_timestep":str(step)
-}
-
-class DS(dict):
-    def get_list(self,key):
-        if key not in self: return []
-        vals=str(self[key]).split()
-        if "seq" in key or key=="text": return vals
-        if key in ("note_slur","ph_num"): return [int(float(x)) for x in vals]
-        return [float(x) for x in vals]
-    def has_dur(self): return "ph_dur" in self
-    def has_pitch(self): return "f0_seq" in self and "f0_timestep" in self
-    def has_breathiness(self): return False
-    def has_energy(self): return False
-    def has_tension(self): return False
-    def has_voicing(self): return False
-
-ds=DS(section)
-candidates = [
- ("Kumi", PACK/"UFR_Hitsune Kumi"),
- ("Mimosa", PACK/"Millefeuille_Mimosa"),
- ("Saiun", PACK/"Millefeuille_Saiun"),
+groups=[
+ [ph("ru/j","ru/y"),ph("ru/a")],
+ [ph("ru/g"),ph("ru/ax","ru/a")],
+ [ph("ru/v"),ph("ru/ax","ru/a")],
+ [ph("ru/ry","ru/r"),ph("ru/i"),ph("ru/l","ru/ly")],
+ [ph("ru/ny","ru/n"),ph("ru/e","ru/ex")],
+ [ph("ru/s"),ph("ru/ny","ru/n"),ph("ru/i"),ph("ru/m")],
 ]
-summary={"phrase":section["text"],"phonemes":ph,"duration":sum(dur),"renders":[],"errors":[]}
-for label,root in candidates:
-    cfg=yaml.safe_load((root/"dsconfig.yaml").read_text(encoding="utf-8"))
-    speakers=cfg.get("speakers") or [None]
-    # Keep every declared speaker; these are the model's native controllable colors.
-    print(label, "speakers", speakers, flush=True)
-    try:
-        acoustic=VoiceBankReader.DSAcoustic(root/"dsconfig.yaml", preload_models=True)
-        vocoder=VoiceBankReader.DSVocoder(root/"dsvocoder"/"vocoder.yaml", preload_models=True)
-        pa=PredAcoustic(dsacoustic=acoustic)
-        pv=PredVocoder(vocoder)
-        for speaker in speakers:
-            spk = speaker
-            safe = ("default" if spk is None else str(spk).replace("/","_").replace(" ","_").replace(".","_"))
-            name=f"{label}__{safe}.wav"
-            try:
-                mel=pa.predict(ds, speaker=spk)
-                wav=pv.predict(mel, np.asarray(f0,dtype=np.float32))
-                wav=np.asarray(wav).squeeze().astype(np.float32)
-                peak=float(np.max(np.abs(wav))) if wav.size else 0.0
-                if peak>0.97: wav=wav*(0.97/peak)
-                sf.write(OUT/name,wav,44100,subtype="PCM_16")
-                summary["renders"].append({"voice":label,"speaker":spk,"file":name,"samples":int(wav.size),"peak":peak})
-                print("OK",name,wav.shape,peak,flush=True)
-            except Exception as e:
-                summary["errors"].append({"voice":label,"speaker":spk,"error":repr(e)})
-                print("ERR",label,spk,repr(e),flush=True)
-        del pa,pv,acoustic,vocoder
-        gc.collect()
-    except Exception as e:
-        summary["errors"].append({"voice":label,"speaker":"__init__","error":repr(e)})
-        print("INIT_ERR",label,repr(e),flush=True)
+phonemes=["SP"]+[p for g in groups for p in g]+["SP"]
+phdur=[.375]
+for g in groups:
+ phdur += {2:[.10,.65],3:[.12,.53,.10],4:[.12,.08,.45,.10]}[len(g)]
+phdur.append(.375)
+notes=[("rest",.375),("G3",.75),("A3",.75),("B3",.75),("A3",.75),("G3",.75),("F#3",.75),("rest",.375)]
+hop=512/44100
+f0=[]
+for name,duration in notes:
+ frames=round(duration/hop)
+ if name=="rest":
+  f0.extend([0.0]*frames); continue
+ hz=float(note_to_hz(name))
+ for frame in range(frames):
+  t=frame*hop
+  approach=-.06*math.exp(-t/.10)
+  vib=.026*math.sin(2*math.pi*4.8*(t-.30))*min(1,max(0,(t-.30)/.22))
+  f0.append(hz*2**((approach+vib)/12))
+ds={"offset":0.0,"text":"SP Я го во рил не с ним SP",
+ "ph_seq":" ".join(phonemes),"ph_dur":" ".join(f"{d:.5f}" for d in phdur),
+ "ph_num":"1 2 2 2 3 2 4 1",
+ "note_seq":" ".join(p for p,_ in notes),
+ "note_dur":" ".join(str(d) for _,d in notes),
+ "note_slur":" ".join(["0"]*len(notes)),
+ "f0_seq":" ".join(f"{x:.3f}" for x in f0),"f0_timestep":str(hop)}
+assert len(phonemes)==sum(map(int,ds["ph_num"].split()))==len(phdur)
+assert abs(sum(phdur)-sum(d for _,d in notes))<1e-5
+(OUT/"test-score.ds").write_text(json.dumps([ds],ensure_ascii=False,indent=2),encoding="utf8")
 
-(OUT/"render-summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding="utf-8")
-(OUT/"test-score.ds").write_text(json.dumps([section],ensure_ascii=False,indent=2),encoding="utf-8")
-if not summary["renders"]:
-    raise SystemExit("No renders succeeded")
+candidates=[
+ ("Kumi",PACK/"UFR_Hitsune Kumi"),
+ ("Mimosa",PACK/"Millefeuille_Mimosa"),
+ ("Saiun",PACK/"Millefeuille_Saiun"),
+]
+summary={"phrase":ds["text"],"phonemes":phonemes,"duration":sum(phdur),"renders":[],"errors":[]}
+for label,root in candidates:
+ try:
+  cfg=yaml.safe_load((root/"dsconfig.yaml").read_text(encoding="utf8"))
+  speakers=cfg.get("speakers") or [None]
+  log("VOICE",label,"SPEAKERS",speakers)
+  dsa=VoiceBankReader.DSAcoustic(root/"dsconfig.yaml",preload_models=True)
+  dsv=VoiceBankReader.DSVocoder(root/"dsvocoder/vocoder.yaml",preload_models=True)
+  ac=PredAcoustic(dsa); vc=PredVocoder(dsv)
+  for spk in speakers:
+   safe=("default" if spk is None else str(spk).replace("/","_").replace(" ","_").replace(".","_"))
+   target=OUT/f"{label}__{safe}.wav"
+   try:
+    mel=ac.predict(DSReader.DSSection(ds),lang="ru",speaker=spk,steps=12)
+    f0a=resample_align_curve(np.asarray(f0,dtype=np.float32),hop,vc.timestep,mel.shape[1])
+    wav=vc.predict(mel,f0a)
+    vc.save_wav(wav,target)
+    summary["renders"].append({"voice":label,"speaker":spk,"file":target.name,"bytes":target.stat().st_size})
+    log("OK",target.name,target.stat().st_size)
+   except Exception as e:
+    summary["errors"].append({"voice":label,"speaker":spk,"error":repr(e)})
+    log("ERR",label,spk,repr(e))
+  del ac,vc,dsa,dsv; gc.collect()
+ except Exception as e:
+  summary["errors"].append({"voice":label,"speaker":"__init__","error":repr(e)})
+  log("INIT_ERR",label,repr(e),traceback.format_exc()[-2000:])
+(OUT/"render-summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding="utf8")
+(OUT/"render-audit.txt").write_text("\n".join(logs),encoding="utf8")
+if not summary["renders"]: raise SystemExit("No renders succeeded")
