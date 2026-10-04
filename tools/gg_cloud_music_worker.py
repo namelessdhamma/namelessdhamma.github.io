@@ -188,7 +188,7 @@ def ardour_lua(payload, job, job_id, token, work):
     result=run_ardour_lua(sf,home,work,payload.get("script",""))
     archive=work/"session.tar.gz"; archive_project(project,archive)
     upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
-    result.update({"session_file":str(sf.relative_to(project)),"artifact":"session.tar.gz"})
+    result.update({"session_file":str(sf.relative_to(project)),"artifact":"session.tar.gz","artifact_bytes":archive.stat().st_size})
     return result
 
 def apply_ardour_calls(sf, home, work, calls):
@@ -449,6 +449,7 @@ def main():
         elif op=="project_render": result=project_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="vocal_render": result=vocal_render(payload,job,a.job_id,a.oidc_token,work)
         else: raise RuntimeError(f"unsupported operation: {op}")
+        print("GG_WORKER_RESULT="+json.dumps(result,ensure_ascii=False,sort_keys=True),flush=True)
         finish(a.job_id,a.oidc_token,True,result)
     except Exception as e:
         try: finish(a.job_id,a.oidc_token,False,{},str(e))
