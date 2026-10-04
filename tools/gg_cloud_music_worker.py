@@ -113,8 +113,19 @@ def start_ardour(sf, home, work):
     xvlog=open(work/"xvfb.log","wb"); xv=subprocess.Popen(["Xvfb",":99","-screen","0","1280x800x24"],stdout=xvlog,stderr=subprocess.STDOUT,env=env); time.sleep(1)
     log=open(work/"ardour.log","wb"); proc=subprocess.Popen(["dbus-run-session","--","/usr/bin/ardour","-a","-n","-P",str(sf)],stdout=log,stderr=subprocess.STDOUT,env=env)
     setup_accepted=False
+    memory_warning_accepted=False
     for _ in range(90):
         if proc.poll() is not None: break
+        try:
+            wins=subprocess.check_output(["xdotool","search","--onlyvisible","--class","Ardour"],env=env,text=True,stderr=subprocess.DEVNULL).splitlines()
+            for wid in wins:
+                geom=subprocess.check_output(["xdotool","getwindowgeometry","--shell",wid],env=env,text=True,stderr=subprocess.DEVNULL)
+                vals=dict(line.split("=",1) for line in geom.splitlines() if "=" in line)
+                if vals.get("WIDTH")=="444" and vals.get("HEIGHT")=="192":
+                    subprocess.run(["xdotool","key","--window",wid,"Return"],env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=False)
+                    memory_warning_accepted=True
+        except Exception:
+            pass
         if not setup_accepted:
             try:
                 wins=subprocess.check_output(["xdotool","search","--onlyvisible","--name","Audio/MIDI Setup"],env=env,text=True,stderr=subprocess.DEVNULL).splitlines()
@@ -135,7 +146,7 @@ def start_ardour(sf, home, work):
         wins=str(e)
     for p in (proc,xv):
         if p.poll() is None: p.terminate()
-    raise RuntimeError("Ardour native MCP did not become ready. setup_accepted=%s\nTail:\n%s\nWindows:\n%s"%(setup_accepted,detail,wins))
+    raise RuntimeError("Ardour native MCP did not become ready. setup_accepted=%s memory_warning_accepted=%s\\nTail:\\n%s\\nWindows:\\n%s"%(setup_accepted,memory_warning_accepted,detail,wins))
 
 def stop_proc(p):
     if p and p.poll() is None:
