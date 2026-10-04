@@ -40,7 +40,7 @@ async function readJson(req, limit) {
   return JSON.parse(b.toString('utf8'));
 }
 function safeName(name) {
-  if (typeof name !== 'string' || !/^[A-Za-z0-9._-]{1,160}$/.test(name)) throw new Error('invalid asset name');
+  if (typeof name !== 'string' || !/^[A-Za-z0-9._/-]{1,160}$/.test(name) || name.startsWith('/') || name.includes('..')) throw new Error('invalid asset name');
   return name;
 }
 function jobView(j) {
