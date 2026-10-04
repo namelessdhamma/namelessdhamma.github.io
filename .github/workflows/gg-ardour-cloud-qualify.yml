@@ -144,17 +144,27 @@ jobs:
           echo $! >/tmp/gg-ardour.pid
 
           SETUP_ACCEPTED=0
+          MEMORY_WARNING_ACCEPTED=0
           for i in $(seq 1 30); do
+            for WID in $(xdotool search --onlyvisible --class 'Ardour' 2>/dev/null || true); do
+              eval "$(xdotool getwindowgeometry --shell "$WID" 2>/dev/null || true)"
+              if [ "${WIDTH:-}" = "444" ] && [ "${HEIGHT:-}" = "192" ]; then
+                xdotool key --window "$WID" Return || true
+                MEMORY_WARNING_ACCEPTED=1
+                echo "GG_ARDOUR_MEMORY_WARNING=ACCEPTED window=$WID"
+              fi
+            done
             WID="$(xdotool search --onlyvisible --name 'Audio/MIDI Setup' 2>/dev/null | head -n1 || true)"
             if [ -n "$WID" ]; then
               xdotool key --window "$WID" Return || true
               SETUP_ACCEPTED=1
               echo "GG_ARDOUR_AUDIO_MIDI_SETUP=ACCEPTED window=$WID"
-              break
             fi
+            if [ "$MEMORY_WARNING_ACCEPTED" -eq 1 ] || [ "$SETUP_ACCEPTED" -eq 1 ]; then break; fi
             if ! kill -0 "$(cat /tmp/gg-ardour.pid)" 2>/dev/null; then break; fi
             sleep 1
           done
+          echo "GG_ARDOUR_MEMORY_WARNING_ACCEPTED=$MEMORY_WARNING_ACCEPTED"
           echo "GG_ARDOUR_AUDIO_MIDI_SETUP_ACCEPTED=$SETUP_ACCEPTED"
 
           READY=0
