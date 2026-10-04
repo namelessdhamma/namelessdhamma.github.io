@@ -122,7 +122,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
 
             float prep = level == 1 ? 14f : level == 2 ? 19f : 24f;
             float over = level == 1 ? 22f : level == 2 ? 29f : 34f;
-            float fine = level == 1 ? 1.7f : level == 2 ? 2.3f : 2.8f;
+
 
             for (int j = 0; j < phrase.pitches.Length; j++) {
                 float tick = -phrase.leading + j * 5;
@@ -134,19 +134,24 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     var prev = phrase.notes[i - 1];
                     var next = phrase.notes[i];
                     float transition = next.position;
-                    float direction = Math.Sign(next.tone - prev.tone);
+                    int interval = next.tone - prev.tone;
+                    float direction = Math.Sign(interval);
                     if (direction == 0) continue;
+                    // Real singers scale transition behavior with musical context.
+                    // Keep small steps subtle and let larger leaps receive fuller preparation/overshoot.
+                    float intervalScale = Math.Clamp(Math.Abs(interval) / 3f, 0.45f, 1.25f);
 
-                    float prepStart = transition - 58f;
+                    float prepStart = transition - (42f + 8f * Math.Min(4, Math.Abs(interval)));
                     if (tick >= prepStart && tick < transition) {
                         float u = (tick - prepStart) / (transition - prepStart);
-                        delta += -direction * prep * (float)Math.Sin(Math.PI * u);
+                        delta += -direction * prep * intervalScale * (float)Math.Sin(Math.PI * u);
                     }
-                    float settleEnd = transition + 105f;
+                    float settleEnd = transition + (72f + 10f * Math.Min(4, Math.Abs(interval)));
                     if (tick >= transition && tick <= settleEnd) {
                         float u = (tick - transition) / (settleEnd - transition);
-                        // Peak early, then settle smoothly instead of a linear bend.
-                        delta += direction * over * (float)(Math.Sin(Math.PI * Math.Min(1.0, u * 1.45)) * Math.Exp(-1.35 * u));
+                        // Peak early, then settle smoothly instead of a fixed spike.
+                        delta += direction * over * intervalScale *
+                            (float)(Math.Sin(Math.PI * Math.Min(1.0, u * 1.45)) * Math.Exp(-1.35 * u));
                     }
                 }
 
@@ -166,14 +171,9 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     };
                     delta += arch * semantic * (0.75f + 0.15f * level);
 
-                    // Deterministic fine fluctuation: low amplitude, non-repeating,
-                    // and subordinate to the musical contour (not random jitter).
-                    double ms = note.positionMs + u * note.durationMs;
-                    double sec = ms / 1000.0;
-                    delta += fine * (float)(
-                        0.55 * Math.Sin(2 * Math.PI * 10.9 * sec + 0.31) +
-                        0.30 * Math.Sin(2 * Math.PI * 13.7 * sec + 1.17) +
-                        0.15 * Math.Sin(2 * Math.PI * 17.3 * sec + 2.09));
+                    // Do not inject synthetic high-frequency jitter here.
+                    // The native dspitch predictor remains responsible for fine fluctuation;
+                    // this layer only supplies musical transition and phrase-scale behavior.
                 }
 
                 phrase.pitches[j] += delta;
@@ -451,13 +451,13 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 AddShapeCurve(Ustx.TENC,
                     new[] { n0.position, n1.position, n1.position + n1.duration/2,
                             n2.position, n3.position, n4.position, n4.end, part.Duration },
-                    level == 1 ? new[] { -30, -24, -14, -8, -24, -28, -36, -38 } :
+                    level == 1 ? new[] { -26, -24, -20, -18, -24, -26, -30, -32 } :
                     level == 2 ? new[] { -34, -26, -12, -5, -25, -30, -39, -41 } :
                                  new[] { -38, -28, -10, -2, -26, -32, -42, -44 });
                 AddShapeCurve(Ustx.BREC,
                     new[] { n0.position, n1.position, n1.position + n1.duration/2,
                             n2.position, n3.position, n4.position, n4.position + n4.duration/2, n4.end, part.Duration },
-                    level == 1 ? new[] { 16, 12, 7, 5, 11, 12, 15, 21, 24 } :
+                    level == 1 ? new[] { 14, 12, 10, 9, 11, 12, 14, 17, 18 } :
                     level == 2 ? new[] { 18, 13, 7, 4, 12, 13, 17, 23, 26 } :
                                  new[] { 20, 14, 6, 3, 13, 14, 19, 25, 28 });
                 AddShapeCurve(Ustx.VOIC,
