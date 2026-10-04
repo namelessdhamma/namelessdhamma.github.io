@@ -253,6 +253,12 @@ def project_render(payload, job, job_id, token, work):
     if not out.exists() or out.stat().st_size == 0:
         raise RuntimeError("Ardour export produced no master (rc=%s):\n%s"%(cp.returncode,cp.stdout[-12000:]))
     upload_artifact(job_id,"master.wav",out,token,"audio/wav")
+    mp3=work/"master.mp3"
+    mp3cp=subprocess.run(["ffmpeg","-y","-v","error","-i",str(out),"-codec:a","libmp3lame","-b:a","320k",str(mp3)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    if mp3cp.returncode==0 and mp3.exists() and mp3.stat().st_size>0:
+        upload_artifact(job_id,"master.mp3",mp3,token,"audio/mpeg")
+    else:
+        mp3=None
     archive=work/"session.tar.gz"; archive_project(project,archive)
     upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
     ffprobe=shutil.which("ffprobe")
@@ -262,7 +268,7 @@ def project_render(payload, job, job_id, token, work):
         if q.returncode==0:
             try: duration=float(q.stdout.strip())
             except Exception: pass
-    return {"engine":"ardour-session-utils-export","export_rc":cp.returncode,"master_bytes":out.stat().st_size,"duration_seconds":duration,"edit":edit_result,"artifacts":["master.wav","session.tar.gz"],"log_tail":cp.stdout[-4000:]}
+    return {"engine":"ardour-session-utils-export","export_rc":cp.returncode,"master_bytes":out.stat().st_size,"mp3_bytes":mp3.stat().st_size if mp3 else 0,"session_bytes":archive.stat().st_size,"duration_seconds":duration,"edit":edit_result,"artifacts":["master.wav"]+(["master.mp3"] if mp3 else [])+["session.tar.gz"],"log_tail":cp.stdout[-4000:]}
 
 def probe():
     def out(cmd):
