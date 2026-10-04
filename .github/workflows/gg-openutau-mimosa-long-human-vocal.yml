@@ -1,0 +1,261 @@
+name: GG Mimosa Dark long human vocal
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-openutau-mimosa-long-human-vocal.yml"
+      - ".nd-labs/gg-vfs/GGVfsLongHumanVocalTest.cs"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  render-qc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Prepare OpenUtau native runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGVfsLongHumanVocalTest.cs" />\n  </ItemGroup>\n'
+          if 'GGVfsLongHumanVocalTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          mkdir -p /tmp/openutau/OpenUtau.Test/Core/DiffSinger
+          cp .nd-labs/gg-vfs/GGVfsLongHumanVocalTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGVfsLongHumanVocalTest.cs
+
+      - name: Recover UFR pack
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-kumi-discovery
+          run-id: 37178003583
+          github-token: ${{ github.token }}
+          path: /tmp/ufr-cache
+
+      - name: Prepare stock Mimosa Dark bank
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack="$(find /tmp/ufr-cache -type f -name 'ufr-pack.download' -print -quit)"
+          test -n "$pack"
+          mkdir -p /tmp/ufr
+          unzip -q "$pack" -d /tmp/ufr
+          root="$(find /tmp/ufr -type f -path '*/0_CORE/dsacoustic/millefeuille_v001.phonemes.json' -printf '%h\n' | sed 's#/0_CORE/dsacoustic$##' | head -n 1)"
+          bank="$root/Millefeuille_Mimosa"
+          test -f "$bank/dsconfig.yaml"
+          test -f "$bank/dsdur/dsdict-ru.yaml"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Millefeuille Mimosa\nauthor=UFR\nvoice=UFR\nversion=OpenUtau long human vocal\n' > "$bank/character.txt"
+          fi
+          echo "MIMOSA_BANK=$bank" >> "$GITHUB_ENV"
+          echo "Stock vocoder evidence:"
+          grep -n '^vocoder:' "$bank/dsconfig.yaml" || true
+          find "$bank" -maxdepth 2 -name vocoder.yaml -print -exec sed -n '1,50p' {} \; || true
+
+      - name: Build
+        working-directory: /tmp/openutau
+        run: dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+
+      - name: Render 9 long human takes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/long-human/all"
+          cd /tmp/openutau
+          for style in long_a long_b long_c; do
+            for take in 1 2 3; do
+              echo "=== $style take $take ==="
+              OPENUTAU_TEST_SINGERS="$MIMOSA_BANK" \
+              GG_VFS_OUT="${GITHUB_WORKSPACE}/long-human/all" \
+              GG_VFS_TAG="Mimosa_Dark_${style}_STOCK_Take_${take}" \
+              GG_VFS_SPEAKER_HINT="Dark" \
+              GG_VFS_VARIANT="$style" \
+              GG_VFS_L_OFFSET_TICKS="55" \
+              GG_VFS_STEPS="64" \
+              dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build \
+                --filter RenderLongHumanVocal
+            done
+          done
+          test "$(find "${GITHUB_WORKSPACE}/long-human/all" -name '*.wav' | wc -l)" -eq 9
+
+      - name: Install independent QC
+        run: python -m pip install faster-whisper librosa==0.10.2.post1 soundfile numpy scipy
+
+      - name: Gate Russian diction and expressive continuity
+        shell: bash
+        run: |
+          cat > /tmp/qc.py <<'PY'
+          import json,re,hashlib,shutil
+          from pathlib import Path
+          import numpy as np
+          import soundfile as sf
+          import librosa
+          from faster_whisper import WhisperModel
+
+          root=Path("long-human/all"); out=Path("long-human/passed"); out.mkdir(parents=True,exist_ok=True)
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          target="я говорил не с ним а с тем кто долго стоял у окна и ждал"
+          target_words=target.split()
+          critical={"говорил","не","ним","тем","долго","стоял","окна","ждал"}
+
+          def norm(x):
+              x=x.lower().replace("ё","е")
+              x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+
+          def edit_distance(a,b):
+              prev=list(range(len(b)+1))
+              for i,x in enumerate(a,1):
+                  cur=[i]
+                  for j,y in enumerate(b,1):
+                      cur.append(min(cur[-1]+1,prev[j]+1,prev[j-1]+(x!=y)))
+                  prev=cur
+              return prev[-1]
+
+          results=[]
+          for p in sorted(root.glob("*.wav")):
+              m=re.search(r"Mimosa_Dark_(long_[abc])_STOCK_Take_(\d+)",p.name)
+              if not m: continue
+              style,take=m.group(1),int(m.group(2))
+              segs,_=model.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,
+                  temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs); texts=[]; words=[]
+              for seg in segs:
+                  texts.append(seg.text.strip())
+                  for w in seg.words or []:
+                      ww=norm(w.word)
+                      if ww: words.append({"word":ww,"start":float(w.start),"end":float(w.end),"p":float(w.probability)})
+              transcript=norm(" ".join(texts))
+              got=transcript.split()
+              ed=edit_distance(target_words,got)
+              wer=ed/max(1,len(target_words))
+              present={w["word"] for w in words}
+              critical_ok=critical.issubset(present)
+              mean_word=float(np.mean([w["p"] for w in words])) if words else 0.
+              ne=max((w["p"] for w in words if w["word"]=="не"),default=0.)
+              stood=max((w["p"] for w in words if w["word"]=="стоял"),default=0.)
+
+              y,sr=sf.read(p)
+              if y.ndim>1:y=y.mean(axis=1)
+              hop=256
+              f0,_,_=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),
+                                  sr=sr,frame_length=2048,hop_length=hop)
+              idx=np.where(np.isfinite(f0))[0]
+              pitch_span=0.; local_motion=0.; gross_jump=1.
+              if len(idx)>5:
+                  vals=f0[idx]
+                  cents=1200*np.log2(vals/np.median(vals))
+                  pitch_span=float(np.percentile(cents,95)-np.percentile(cents,5))
+                  d=1200*np.log2(vals[1:]/vals[:-1]); d=d[np.diff(idx)==1]
+                  if len(d):
+                      gross_jump=float(np.mean(np.abs(d)>350))
+                      local=d[np.abs(d)<100]
+                      local_motion=float(np.mean(np.abs(local))) if len(local) else 0.
+
+              rms=librosa.feature.rms(y=y,frame_length=2048,hop_length=hop)[0]
+              active=rms>np.max(rms)*0.01
+              db=librosa.amplitude_to_db(rms,ref=np.max)
+              loud_span=float(np.percentile(db[active],90)-np.percentile(db[active],10)) if np.any(active) else 0.
+              energy_jump=float(np.percentile(np.abs(np.diff(rms)),99)) if len(rms)>1 else 1.
+
+              S=np.abs(librosa.stft(y,n_fft=4096,hop_length=hop,win_length=4096))
+              freqs=librosa.fft_frequencies(sr=sr,n_fft=4096); P=S*S+1e-12
+              frames=np.where(np.sum(P,axis=0)>np.max(np.sum(P,axis=0))*0.01)[0]
+              upper=(freqs>=8000)
+              total=np.sum(P[:,frames],axis=0)+1e-12 if len(frames) else np.array([1.])
+              upper_ratio=float(np.median(np.sum(P[upper][:,frames],axis=0)/total)) if len(frames) else 0.
+              flat=librosa.feature.spectral_flatness(S=S)[0]
+              flat_med=float(np.median(flat[frames])) if len(frames) else 0.
+
+              manifest=p.with_name(p.name.replace("__OPENUTAU_RU_QC.wav","__manifest.txt"))
+              mt=manifest.read_text(encoding="utf8") if manifest.exists() else ""
+              native_ok=("speaker=" in mt and "dark" in mt.lower() and "l_offset_ticks=55" in mt and
+                         "render_steps=64" in mt and "manual_frame_f0=false" in mt and
+                         "manual_phoneme_durations=false" in mt and
+                         "adaptive_singer_physics" in mt)
+
+              diction_ok=(wer<=0.07 and critical_ok and ne>=0.75 and stood>=0.65)
+              prosody_ok=(520<=pitch_span<=900 and 2.4<=local_motion<=5.8 and
+                          6.0<=loud_span<=13.5 and gross_jump<0.02 and energy_jump<0.025)
+              passed=bool(native_ok and diction_ok and prosody_ok)
+              # Favor Human-B center profile, intelligibility, and expressive-but-bounded movement.
+              target_motion=3.6; target_dyn=8.5
+              score=(2.2*(1-wer)+mean_word+0.5*ne+0.35*stood
+                     -0.08*abs(local_motion-target_motion)
+                     -0.025*abs(loud_span-target_dyn)
+                     -4*gross_jump)
+              results.append({"file":p.name,"style":style,"take":take,"text":transcript,"wer":wer,
+                  "critical_ok":critical_ok,"ne":ne,"stoyal":stood,"mean_word":mean_word,
+                  "pitch_span_cents":pitch_span,"local_pitch_motion_cents":local_motion,
+                  "loudness_span_db":loud_span,"gross_jump_rate":gross_jump,
+                  "energy_jump_p99":energy_jump,"upper_8k_ratio":upper_ratio,
+                  "spectral_flatness":flat_med,"native_ok":native_ok,"pass":passed,"score":score})
+
+          passed=sorted([x for x in results if x["pass"]],key=lambda x:x["score"],reverse=True)
+          report={"target":target,"rendered":len(results),"passed":len(passed),"results":results}
+          Path("long-human/qc-report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          if not passed:
+              print(json.dumps(report,ensure_ascii=False,indent=2))
+              raise SystemExit("No long human vocal passed the gate")
+
+          # Keep the top Human-B take whenever it passed; add the best alternate for comparison.
+          chosen=[]
+          b=next((x for x in passed if x["style"]=="long_b"),None)
+          if b: chosen.append(b)
+          for x in passed:
+              if len(chosen)>=3: break
+              if x["file"] not in {c["file"] for c in chosen}: chosen.append(x)
+
+          hashes=set(); selected=[]
+          for rank,x in enumerate(chosen,1):
+              src=root/x["file"]; h=hashlib.sha256(src.read_bytes()).hexdigest()
+              if h in hashes: continue
+              hashes.add(h)
+              dst=out/f"{rank:02d}_Mimosa_Dark_Long_Human_{x['style'].upper()}_Take_{x['take']}.wav"
+              shutil.copy2(src,dst)
+              x=dict(x); x["selected_as"]=dst.name; x["sha256"]=h; selected.append(x)
+
+          report["selected"]=selected
+          Path("long-human/qc-report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          with Path("long-human/qc-summary.txt").open("w",encoding="utf8") as f:
+              for x in selected:
+                  f.write(f"{x['selected_as']} | text={x['text']} | WER={x['wer']:.3f} | "
+                          f"не={x['ne']:.3f} | стоял={x['stoyal']:.3f} | "
+                          f"pitch={x['pitch_span_cents']:.1f}c | local={x['local_pitch_motion_cents']:.2f}c | "
+                          f"dyn={x['loudness_span_db']:.2f}dB | jump={x['gross_jump_rate']:.4f} | "
+                          f">8k={x['upper_8k_ratio']:.6f} | flat={x['spectral_flatness']:.8f}\n")
+          print(Path("long-human/qc-summary.txt").read_text())
+          PY
+          python /tmp/qc.py
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-mimosa-dark-long-human-vocal
+          path: |
+            long-human/passed/
+            long-human/qc-report.json
+            long-human/qc-summary.txt
+          retention-days: 3
+          if-no-files-found: warn
