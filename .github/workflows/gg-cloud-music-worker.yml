@@ -41,10 +41,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          MARKER="$(find "$GITHUB_WORKSPACE/gg-cloud-jobs" -maxdepth 1 -type f -name '*.json' -printf '%T@ %P\\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+          MARKER="$(find "$GITHUB_WORKSPACE/gg-cloud-jobs" -maxdepth 1 -type f -name '*.json' -print | sort | tail -n1)"
           test -n "$MARKER"
-          MARKER="gg-cloud-jobs/$MARKER"
-          test -f "$GITHUB_WORKSPACE/$MARKER"
+          test -f "$MARKER"
+          MARKER="gg-cloud-jobs/$(basename "$MARKER")"
           echo "marker=$MARKER" >> "$GITHUB_OUTPUT"
           echo "GG_MARKER=$MARKER"
 
