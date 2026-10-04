@@ -153,7 +153,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
             track.Singer = singer;
             track.RendererSettings.renderer = Renderers.DIFFSINGER;
             track.RendererSettings.Renderer = renderer;
-            track.Phonemizer = new DiffSingerRussianHhsktPhonemizer();
+            track.Phonemizer = new DiffSingerRussianPhonemizer();
 
             foreach (var descriptor in renderer.GetSuggestedExpressions(singer, track.RendererSettings)) {
                 if (!project.expressions.ContainsKey(descriptor.abbr)) {
