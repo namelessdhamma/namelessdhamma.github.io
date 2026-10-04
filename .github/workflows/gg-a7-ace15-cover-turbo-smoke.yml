@@ -1,0 +1,89 @@
+name: A7 ACE-Step 1.5 turbo vocal cover smoke
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-a7-ace15-cover-turbo-smoke.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  cover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Recover accepted OpenUtau guide
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: /tmp/guide
+      - name: Prepare short guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          guide="$(find /tmp/guide -type f -name '*.wav' | head -n 1)"
+          test -n "$guide"
+          ffmpeg -y -hide_banner -loglevel error -i "$guide" -t 5.4 -ar 48000 -ac 1 /tmp/guide_short.wav
+          test -s /tmp/guide_short.wav
+      - name: Run ACE-Step turbo cover
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q "gradio_client>=1.8,<2"
+          mkdir -p "${GITHUB_WORKSPACE}/ace-cover"
+          python - <<'PY'
+          import json, shutil, pathlib, os
+          from gradio_client import Client, handle_file
+          guide="/tmp/guide_short.wav"
+          out=pathlib.Path(os.environ["GITHUB_WORKSPACE"])/"ace-cover"
+          client=Client("ACE-Step/Ace-Step-v1.5", verbose=True)
+          prompt=("solo female Russian a cappella vocal, dry studio recording, natural human singer, "
+                  "smooth coarticulation, seamless syllable transitions, soft Russian consonants, "
+                  "relaxed expressive delivery, no instruments, no backing vocals, preserve source melody and timing")
+          lyrics="[verse]\nЯ говорил не с ним"
+          args=[
+            "acestep-v15-turbo","cover","","ru",
+            prompt,lyrics,0,"","","ru",
+            6,6.0,False,"74031",None,5.4,1,handle_file(guide),"",
+            0.0,-1,"Fill the audio semantic mask based on the given conditions:",
+            0.68,"cover",False,0.0,1.0,3.0,"ode","","flac",
+            0.75,False,1.5,0,0.9,"NO USER INPUT",
+            True,True,True,
+            False,False,False,False,0.5,8,"vocals",["vocals"],False
+          ]
+          print("ARG_COUNT",len(args))
+          result=client.predict(*args, api_name="/generation_wrapper")
+          print("LEN",len(result))
+          def path_of(x):
+              if x is None:return None
+              if isinstance(x,str):return x
+              if isinstance(x,dict):return x.get("path") or x.get("name")
+              return getattr(x,"path",None) or getattr(x,"name",None)
+          p=None
+          for x in result[:8]:
+              pp=path_of(x)
+              if pp and pathlib.Path(pp).exists(): p=pp; break
+          if not p: raise SystemExit(f"No generated audio: status={result[10] if len(result)>10 else None}")
+          dst=out/"ACE15_Turbo_cover_068.flac"; shutil.copy2(p,dst)
+          (out/"metadata.json").write_text(json.dumps({
+              "prompt":prompt,"lyrics":lyrics,"strength":0.68,
+              "status":result[10] if len(result)>10 else None,
+              "seed":result[11] if len(result)>11 else None
+          },ensure_ascii=False,indent=2))
+          print("SAVED",dst,dst.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a7-ace15-turbo-cover-smoke
+          path: ace-cover/
+          retention-days: 3
+          if-no-files-found: warn
