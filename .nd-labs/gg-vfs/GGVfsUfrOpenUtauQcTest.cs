@@ -228,17 +228,17 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 }
             }
             if (variant == "clear_soft") {
-                AddFlatCurve(DiffSingerUtils.VELC, 120);
-                AddFlatCurve(DiffSingerUtils.PEXP, 84);
-                AddFlatCurve(DiffSingerUtils.ENE, -4);
-            } else if (variant == "clear_warm") {
-                AddFlatCurve(DiffSingerUtils.VELC, 122);
+                AddFlatCurve(DiffSingerUtils.VELC, 124);
                 AddFlatCurve(DiffSingerUtils.PEXP, 90);
-                AddFlatCurve(DiffSingerUtils.ENE, 3);
+                AddFlatCurve(DiffSingerUtils.ENE, -2);
+            } else if (variant == "clear_warm") {
+                AddFlatCurve(DiffSingerUtils.VELC, 124);
+                AddFlatCurve(DiffSingerUtils.PEXP, 92);
+                AddFlatCurve(DiffSingerUtils.ENE, 2);
             } else if (variant == "clear_lively") {
-                AddFlatCurve(DiffSingerUtils.VELC, 126);
-                AddFlatCurve(DiffSingerUtils.PEXP, 96);
-                AddFlatCurve(DiffSingerUtils.ENE, 4);
+                AddFlatCurve(DiffSingerUtils.VELC, 125);
+                AddFlatCurve(DiffSingerUtils.PEXP, 94);
+                AddFlatCurve(DiffSingerUtils.ENE, 2);
             } else {
                 AddFlatCurve(DiffSingerUtils.VELC, 124);
                 AddFlatCurve(DiffSingerUtils.PEXP, 92);
