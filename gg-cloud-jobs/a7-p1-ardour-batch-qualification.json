@@ -1,5 +1,10 @@
 {
-  "bootstrap": {"operation": "ardour_batch", "payload": {"calls": []}},
+  "bootstrap": {
+    "operation": "ardour_batch",
+    "payload": {
+      "calls": []
+    }
+  },
   "qualification": "A7-P1-native-mcp-save-session-artifact",
-  "retry": 5
+  "retry": 6
 }
