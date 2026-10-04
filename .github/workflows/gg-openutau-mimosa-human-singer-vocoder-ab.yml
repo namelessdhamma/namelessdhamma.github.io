@@ -66,12 +66,15 @@ jobs:
             printf 'name=Millefeuille Mimosa\nauthor=UFR\nvoice=UFR\nversion=OpenUtau human singer audition\n' > "$bank/character.txt"
           fi
 
-          cp -a "$bank" /tmp/Mimosa_stock
+          # Keep stock bank in its original UFR tree so shared ../0_CORE paths remain valid.
+          stock_bank="$bank"
+          # EZV trial gets an isolated bank copy; shared UFR core remains read-only via symlink.
           cp -a "$bank" /tmp/Mimosa_ezv
+          ln -s "$root/0_CORE" /tmp/0_CORE
 
           echo "=== STOCK VOCODER EVIDENCE ==="
-          grep -nE '^(vocoder|sample_rate|hop_size|num_mel_bins)' /tmp/Mimosa_stock/dsconfig.yaml || true
-          find /tmp/Mimosa_stock -maxdepth 2 -type f -name 'vocoder.yaml' -print -exec sed -n '1,80p' {} \; || true
+          grep -nE '^(vocoder|sample_rate|hop_size|num_mel_bins)' "$stock_bank/dsconfig.yaml" || true
+          find "$stock_bank" -maxdepth 2 -type f -name 'vocoder.yaml' -print -exec sed -n '1,80p' {} \; || true
 
           # Official upstream release only. License permits commercial rendered audio
           # but prohibits redistribution/modification of the vocoder itself.
@@ -106,7 +109,7 @@ jobs:
           echo "=== EZV VOCODER EVIDENCE ==="
           sed -n '1,100p' /tmp/Mimosa_ezv/dsvocoder/vocoder.yaml
 
-          echo "MIMOSA_STOCK=/tmp/Mimosa_stock" >> "$GITHUB_ENV"
+          echo "MIMOSA_STOCK=$stock_bank" >> "$GITHUB_ENV"
           echo "MIMOSA_EZV=/tmp/Mimosa_ezv" >> "$GITHUB_ENV"
 
       - name: Build OpenUtau
