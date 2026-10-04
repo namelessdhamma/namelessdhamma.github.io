@@ -1,59 +1,10 @@
-name: GG VFS UFR config audit
+name: GG VFS UFR diagnostic archive
 on:
-  push:
-    branches:
-      - "experiment/gg-vfs-female-sweep-20261004"
-    paths:
-      - ".github/workflows/gg-vfs-kumi-discovery.yml"
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  audit:
+  archived:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Download and extract UFR configs
-        run: |
-          set -e
-          mkdir -p report
-          python -m pip install --quiet gdown
-          gdown "https://drive.google.com/uc?id=1Ve9cqJypDglNRPtjw-RoMqbin-xvU-WW" -O /tmp/ufr.zip
-          python - <<'PY'
-import zipfile, json, re, pathlib
-z=zipfile.ZipFile('/tmp/ufr.zip')
-base='UFR-V1.0/UFR-V1.0/'
-wanted=[
- base+'0_CORE/dsacoustic/millefeuille_v001.phonemes.json',
- base+'UFR_Hitsune Kumi/dsconfig.yaml',
- base+'UFR_Hitsune Kumi/character.yaml',
- base+'UFR_Hitsune Kumi/dsdur/dsdict-ru.yaml',
- base+'Millefeuille_Mimosa/dsconfig.yaml',
- base+'Millefeuille_Mimosa/character.yaml',
- base+'Millefeuille_Saiun/dsconfig.yaml',
- base+'Millefeuille_Saiun/character.yaml',
-]
-out=pathlib.Path('report/configs.txt')
-with out.open('w',encoding='utf8') as f:
-  for n in wanted:
-    f.write('\n===== '+n+' =====\n')
-    data=z.read(n).decode('utf8','replace')
-    if n.endswith('.phonemes.json'):
-      arr=json.loads(data)
-      ru=[x for x in arr if 'ru' in str(x).lower()]
-      f.write('TOTAL='+str(len(arr))+'\nRU='+json.dumps(ru,ensure_ascii=False)+'\n')
-      f.write('HEAD='+json.dumps(arr[:250],ensure_ascii=False)+'\n')
-    elif n.endswith('dsdict-ru.yaml'):
-      lines=[ln for ln in data.splitlines() if any(w in ln.lower() for w in ['говор','ним',' я','^я',' не ',' с '])]
-      f.write('\n'.join(lines[:200]))
-    else:
-      f.write(data)
-PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gg-vfs-ufr-config-audit
-          path: report/
-          retention-days: 1
+      - run: echo "Discovery completed; retained only as a manual diagnostic."
