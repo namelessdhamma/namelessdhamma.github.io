@@ -1,0 +1,92 @@
+name: A7 phoneme boundary diagnostic
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-a7-phoneme-boundary-diagnostic.yml"
+      - ".nd-labs/gg-vfs/GGVfsLongHumanVocalTest.cs"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Prepare OpenUtau
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGVfsLongHumanVocalTest.cs" />\n  </ItemGroup>\n'
+          if 'GGVfsLongHumanVocalTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          mkdir -p /tmp/openutau/OpenUtau.Test/Core/DiffSinger
+          cp .nd-labs/gg-vfs/GGVfsLongHumanVocalTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGVfsLongHumanVocalTest.cs
+
+      - name: Recover UFR pack
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-kumi-discovery
+          run-id: 37178003583
+          github-token: ${{ github.token }}
+          path: /tmp/ufr-cache
+
+      - name: Prepare Mimosa Dark
+        shell: bash
+        run: |
+          set -euo pipefail
+          pack="$(find /tmp/ufr-cache -type f -name 'ufr-pack.download' -print -quit)"
+          test -n "$pack"
+          mkdir -p /tmp/ufr
+          unzip -q "$pack" -d /tmp/ufr
+          root="$(find /tmp/ufr -type f -path '*/0_CORE/dsacoustic/millefeuille_v001.phonemes.json' -printf '%h\n' | sed 's#/0_CORE/dsacoustic$##' | head -n 1)"
+          bank="$root/Millefeuille_Mimosa"
+          test -f "$bank/dsconfig.yaml"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Millefeuille Mimosa\nauthor=UFR\nvoice=UFR\n' > "$bank/character.txt"
+          fi
+          echo "MIMOSA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Build
+        working-directory: /tmp/openutau
+        run: dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+
+      - name: Render and dump boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/diag"
+          cd /tmp/openutau
+          OPENUTAU_TEST_SINGERS="$MIMOSA_BANK" \
+          GG_VFS_OUT="${GITHUB_WORKSPACE}/diag" \
+          GG_VFS_TAG="Mimosa_Dark_LongA_BoundaryDiag" \
+          GG_VFS_SPEAKER_HINT="Dark" \
+          GG_VFS_VARIANT="long_a" \
+          GG_VFS_L_OFFSET_TICKS="55" \
+          GG_VFS_STEPS="64" \
+          dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build \
+            --filter RenderLongHumanVocal
+          cat "${GITHUB_WORKSPACE}"/diag/*__manifest.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a7-phoneme-boundary-diagnostic
+          path: diag/
+          retention-days: 3
