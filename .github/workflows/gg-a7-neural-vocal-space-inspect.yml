@@ -1,0 +1,36 @@
+name: A7 Neural Vocal Space Inspect
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-a7-neural-vocal-space-inspect.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Inspect public Gradio API
+        run: |
+          python -m pip install -q "gradio_client>=1.8,<2"
+          python - <<'PY'
+          from gradio_client import Client
+          import json, traceback
+          targets=["ACE-Step/ACE-Step"]
+          for t in targets:
+              print("\n=== SPACE", t, "===")
+              try:
+                  c=Client(t, verbose=False)
+                  api=c.view_api(return_format="dict")
+                  print(json.dumps(api, ensure_ascii=False, indent=2)[:120000])
+              except Exception as e:
+                  print("ERROR", type(e).__name__, str(e))
+                  traceback.print_exc()
+          PY
