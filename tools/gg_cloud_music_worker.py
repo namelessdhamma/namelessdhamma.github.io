@@ -269,6 +269,8 @@ def probe():
       "ardour":out(["/usr/bin/ardour","--version"]),
       "ffmpeg":ff[0] if ff else None,
       "plugins":out(["bash","-lc","dpkg-query -W 2>/dev/null | grep -E '^(ardour|lsp-plugins|x42|dragonfly|surge|sfizz|avldrums|calf|fluid-soundfont)' || true"]),
+      "lv2_bundles":out(["bash","-lc","find /usr/lib /usr/local/lib -type d -name '*.lv2' 2>/dev/null | sort | head -200"]),
+      "instrument_files":out(["bash","-lc","find /usr/share /usr/lib /usr/local/share -type f \\( -iname '*.sf2' -o -iname '*.sfz' \\) 2>/dev/null | sort | head -200"]),
       "mcp_library":out(["bash","-lc","find /usr/lib -name libardour_mcp_http.so -print -quit"]),
       "dummy_backend":out(["bash","-lc","find /usr/lib -name libdummy_audiobackend.so -print -quit"]),
       "new_session":out(["bash","-lc","command -v ardour9-new_session || true"]),
