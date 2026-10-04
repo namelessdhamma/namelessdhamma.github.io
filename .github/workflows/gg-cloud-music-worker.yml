@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y --no-install-recommends ardour curl ca-certificates jq python3 python3-pip xvfb dbus-x11 ffmpeg tar gzip unzip xauth git xdotool x11-utils patchelf
+          apt-get install -y --no-install-recommends ardour curl ca-certificates jq python3 python3-pip xvfb dbus-x11 ffmpeg fluidsynth tar gzip unzip xauth git xdotool x11-utils patchelf
           for p in lsp-plugins-lv2 x42-plugins dragonfly-reverb surge-xt sfizz avldrums.lv2 calf-plugins fluid-soundfont-gm megatools; do
             if apt-cache show "$p" >/dev/null 2>&1; then apt-get install -y --no-install-recommends "$p" || true; fi
           done
