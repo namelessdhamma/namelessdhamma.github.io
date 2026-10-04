@@ -1,0 +1,49 @@
+name: GG OpenUtau MCP qualification
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-openutau-mcp-qualify.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Clone pinned OpenUtau MCP candidate
+        run: |
+          git clone https://github.com/toarujs/OpenUtau-mcp.git /tmp/OpenUtau-mcp
+          cd /tmp/OpenUtau-mcp
+          git checkout e7382435b911a516e760233ee44b78e602229d45
+          test "$(git rev-parse HEAD)" = "e7382435b911a516e760233ee44b78e602229d45"
+      - name: Build OpenUtau MCP candidate
+        working-directory: /tmp/OpenUtau-mcp
+        run: dotnet build OpenUtau/OpenUtau.csproj --configuration Release
+      - name: Run bridge protocol tests
+        working-directory: /tmp/OpenUtau-mcp
+        run: |
+          dotnet test OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-restore --filter "FullyQualifiedName~BridgeProtocolTest" --logger "trx;LogFileName=bridge.trx"
+      - name: Inventory AgentBridge implementation
+        if: always()
+        working-directory: /tmp/OpenUtau-mcp
+        run: |
+          mkdir -p /tmp/report
+          find OpenUtau.Core/AgentBridge -maxdepth 3 -type f -print | sort > /tmp/report/agentbridge-files.txt || true
+          grep -RniE "openutau_(read|plan|apply|diagnostics)|render|phonem|pitch|vibrato|expression|note|lyric" OpenUtau.Core/AgentBridge OpenUtau.Test 2>/dev/null | head -n 600 > /tmp/report/agentbridge-capabilities.txt || true
+          printf 'commit=%s\n' "$(git rev-parse HEAD)" > /tmp/report/pinned.txt
+          dotnet --info > /tmp/report/dotnet-info.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-openutau-mcp-qualification
+          path: |
+            /tmp/report/
+            /tmp/OpenUtau-mcp/OpenUtau.Test/TestResults/
+          retention-days: 3
