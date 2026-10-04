@@ -1,0 +1,133 @@
+name: A7 ACE-Step 1.5 vocal cover smoke
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-a7-ace15-cover-smoke.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  cover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Recover accepted OpenUtau guide
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: /tmp/guide
+      - name: Run ACE-Step cover
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q "gradio_client>=1.8,<2"
+          guide="$(find /tmp/guide -type f -name '*.wav' | head -n 1)"
+          test -n "$guide"
+          export GUIDE="$guide"
+          mkdir -p "${GITHUB_WORKSPACE}/ace-cover"
+          python - <<'PY'
+          import os, json, shutil, pathlib
+          from gradio_client import Client, handle_file
+
+          guide=os.environ["GUIDE"]
+          out=pathlib.Path(os.environ["GITHUB_WORKSPACE"])/"ace-cover"
+          client=Client("ACE-Step/Ace-Step-v1.5", verbose=True)
+          prompt=("solo female Russian a cappella vocal, dry intimate studio recording, "
+                  "natural human singer, smooth legato syllable transitions, clear soft Russian consonants, "
+                  "expressive but relaxed, no instruments, no backing vocals, preserve exact source melody rhythm timing")
+          lyrics="[verse]\nЯ говорил не с ним, а с тем, кто долго стоял у окна и ждал"
+          args=[
+            "acestep-v15-xl-turbo",  # selected_model
+            "cover",                 # generation_mode
+            "",                      # simple_query_input
+            "ru",                    # simple_vocal_language
+            prompt,                  # caption
+            lyrics,                  # lyrics
+            0,                       # bpm optional
+            "",                      # key
+            "",                      # time sig
+            "ru",                    # vocal language
+            8,                       # inference steps
+            7.0,                     # guidance
+            False,                   # random seed
+            "74017",                 # seed
+            None,                    # reference audio
+            13.5,                    # duration
+            1,                       # batch size
+            handle_file(guide),      # source audio
+            "",                      # audio code string
+            0.0,                     # repaint start
+            -1,                      # repaint end
+            "Fill the audio semantic mask based on the given conditions:",
+            0.76,                    # audio cover strength
+            "cover",                 # task type
+            False,                   # use adg
+            0.0,                     # cfg interval start
+            1.0,                     # cfg interval end
+            3.0,                     # shift
+            "ode",                   # infer method
+            "",                      # custom timesteps
+            "flac",                  # output
+            0.85,                    # lm temp
+            False,                   # thinking
+            2.0,                     # lm cfg
+            0,                       # top-k
+            0.9,                     # top-p
+            "NO USER INPUT",         # negative prompt
+            True,                    # cot metas
+            True,                    # cot caption
+            True,                    # cot language
+            False,                   # allow lm batch / mapped p41
+            True,                    # auto score / mapped p42
+            False,                   # auto lrc / mapped p43
+            False,                   # p44
+            0.5,                     # score scale
+            8,                       # lm batch chunk
+            "vocals",                # track name
+            ["vocals"],              # complete track classes
+            False,                   # instrumental
+          ]
+          print("ARG_COUNT",len(args))
+          result=client.predict(*args, api_name="/generation_wrapper")
+          print("RESULT_TYPE",type(result), "LEN", len(result) if isinstance(result,(tuple,list)) else None)
+          # First 8 outputs are audio paths / Nones.
+          audio=result[0] if isinstance(result,(tuple,list)) else result
+          print("AUDIO_RESULT",audio)
+          def extract_path(x):
+              if x is None: return None
+              if isinstance(x,str): return x
+              if isinstance(x,dict): return x.get("path") or x.get("name") or x.get("url")
+              return getattr(x,"path",None) or getattr(x,"name",None)
+          p=extract_path(audio)
+          if not p or not pathlib.Path(p).exists():
+              # inspect other first 8 results
+              for x in result[:8]:
+                  pp=extract_path(x)
+                  if pp and pathlib.Path(pp).exists():
+                      p=pp; break
+          if not p or not pathlib.Path(p).exists():
+              raise SystemExit("No generated audio path returned")
+          dst=out/"ACE15_cover_strength_076.flac"
+          shutil.copy2(p,dst)
+          meta={"source":guide,"prompt":prompt,"lyrics":lyrics,"strength":0.76,
+                "generation_status": result[10] if len(result)>10 else None,
+                "seed": result[11] if len(result)>11 else None}
+          (out/"metadata.json").write_text(json.dumps(meta,ensure_ascii=False,indent=2))
+          print("SAVED",dst, dst.stat().st_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: a7-ace15-cover-smoke
+          path: ace-cover/
+          retention-days: 3
+          if-no-files-found: warn
