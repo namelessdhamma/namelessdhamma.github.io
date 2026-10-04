@@ -17,17 +17,25 @@ PACK=Path(sys.argv[1]).resolve()
 OUT=Path(sys.argv[2]).resolve()
 OUT.mkdir(parents=True,exist_ok=True)
 
-def make_ds(ne_vowel):
+def choose(common,*cands):
+    for c in cands:
+        if c in common:
+            return c
+    raise KeyError("none of "+repr(cands)+" in common model phoneme inventory")
+
+def make_ds(common, ne_mode):
+    # Use only phonemes accepted by duration, pitch AND acoustic models.
     # 8 musical groups: SP | Я | го | во | рил | не | с ним | SP
+    ne_vowel = choose(common,"ru/i") if ne_mode=="reduced" else choose(common,"ru/e","ru/ex","ru/i")
     groups=[
-      ["SP"],
-      ["ru/j","ru/a"],
-      ["ru/g","ru/ax"],
-      ["ru/v","ru/ax"],
-      ["ru/ry","ru/i","ru/l"],
-      ["ru/ny",ne_vowel],
-      ["ru/s","ru/ny","ru/i","ru/m"],
-      ["SP"],
+      [choose(common,"SP")],
+      [choose(common,"ru/j","ru/y"),choose(common,"ru/a")],
+      [choose(common,"ru/g"),choose(common,"ru/ax","ru/a")],
+      [choose(common,"ru/v"),choose(common,"ru/ax","ru/a")],
+      [choose(common,"ru/ry","ru/r"),choose(common,"ru/i"),choose(common,"ru/l","ru/ly")],
+      [choose(common,"ru/ny","ru/n"),ne_vowel],
+      [choose(common,"ru/s"),choose(common,"ru/ny","ru/n"),choose(common,"ru/i"),choose(common,"ru/m")],
+      [choose(common,"SP")],
     ]
     notes=[("rest",.28),("G3",.64),("A3",.64),("B3",.64),("A3",.78),("G3",.62),("F#3",.82),("rest",.30)]
     return DSReader.DSSection({
@@ -65,10 +73,18 @@ for label,root in voices:
         dsv=VoiceBankReader.DSVocoder(root/"dsvocoder"/"vocoder.yaml",preload_models=True)
         dur=PredDuration(dsdur); pitch=PredPitch(dspitch); ac=PredAcoustic(dsac); vc=PredVocoder(dsv)
         speaker=pick_speaker(dsdur)
-        print("VOICE",label,"speaker",speaker,flush=True)
-        for ne_vowel,tag in [("ru/i","NE_REDUCED"),("ru/e","NE_OPEN")]:
+        inventories=[]
+        for model in (dsdur,dspitch,dsac):
+            ph=getattr(model,"phonemes",None)
+            if ph is not None:
+                inventories.append(set(ph.content.keys()))
+        if not inventories:
+            raise RuntimeError("No phoneme inventories exposed")
+        common=set.intersection(*inventories)
+        print("VOICE",label,"speaker",speaker,"common_phonemes",len(common),flush=True)
+        for ne_mode,tag in [("reduced","NE_REDUCED"),("open","NE_OPEN")]:
             try:
-                base=make_ds(ne_vowel)
+                base=make_ds(common,ne_mode)
                 ph_dur=dur.predict(base,lang="ru",speaker=speaker)
                 ds1=DSReader.DSSection(dict(base))
                 ds1["ph_dur"]=" ".join(f"{x:.6f}" for x in ph_dur.tolist())
