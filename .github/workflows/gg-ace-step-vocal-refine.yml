@@ -45,7 +45,7 @@ jobs:
               "no robotic articulation, no metallic halo, no synthetic syllable seams"
           )
           kwargs=dict(
-              selected_model="acestep-v15-xl-turbo",
+              selected_model="acestep-v15-turbo",
               generation_mode="cover",
               simple_query_input="",
               simple_vocal_language="ru",
@@ -61,7 +61,7 @@ jobs:
               param_13="6142026",
               param_14=handle_file(src),
               param_15=14.0,
-              param_16=2,
+              param_16=1,
               param_17=handle_file(src),
               param_18="",
               param_19=0.0,
