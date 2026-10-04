@@ -1,0 +1,73 @@
+name: GG ACE-Step MBLF cover qualification
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-ace-step-mblf-cover.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  cover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: source
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade gradio_client
+          src="$(find source -type f -name '*.wav' -print -quit)"
+          mkdir -p out
+          python - "$src" <<'PY'
+          import os,sys,shutil,json
+          from pathlib import Path
+          from gradio_client import Client,handle_file
+          src=sys.argv[1]
+          c=Client("MBLF/ACE-Step-1.5",verbose=False)
+          lyrics="Я говорил не с ним, а с тем, кто долго стоял у окна и ждал"
+          prompt="solo female Russian a cappella vocal, natural human coarticulation, fluid syllable transitions, relaxed expressive singing, preserve source melody and rhythm, no instruments, no metallic or robotic artifacts"
+          result=c.predict(
+            selected_model="acestep-v15-turbo",
+            generation_mode="cover",
+            simple_query_input="",
+            simple_vocal_language="ru",
+            param_4=prompt,param_5=lyrics,param_6=72,param_7="A minor",param_8="4",param_9="ru",
+            param_10=4,param_11=7.0,param_12=False,param_13="6142026",param_14=None,param_15=14.0,param_16=1,
+            param_17=handle_file(src),param_18="",param_19=0.0,param_20=-1.0,
+            param_21="Fill the audio semantic mask based on the given conditions:",param_22=0.96,param_23="cover",
+            param_24=False,param_25=0.0,param_26=1.0,param_27=3.0,param_28="ode",param_29="",param_30="flac",
+            param_31=0.75,param_32=False,param_33=2.0,param_34=0,param_35=0.9,
+            param_36="robotic vocal, metallic resonance, syllable seams, hard phoneme cuts, accompaniment, instruments",
+            param_37=False,param_38=False,param_39=False,param_41=False,param_42=False,param_43=False,param_44=False,
+            param_45=0.5,param_46=8,param_47="vocals",param_48=[],param_49=False,
+            api_name="/generation_wrapper")
+          if not isinstance(result,(tuple,list)): result=[result]
+          found=[]
+          for i,item in enumerate(result[:8],1):
+            p=None
+            if isinstance(item,str): p=item
+            elif isinstance(item,dict): p=item.get("path") or item.get("url")
+            elif hasattr(item,"path"): p=item.path
+            if p and os.path.exists(p):
+              dst=Path("out")/f"ACE_MBLF_Cover_{i}{Path(p).suffix or '.flac'}"
+              shutil.copy2(p,dst); found.append(str(dst))
+          meta={"files":found,"details":str(result[9])[:4000] if len(result)>9 else "","status":str(result[10])[:2000] if len(result)>10 else ""}
+          Path("out/manifest.json").write_text(json.dumps(meta,ensure_ascii=False,indent=2))
+          print(Path("out/manifest.json").read_text())
+          if not found: raise SystemExit("no output audio")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-ace-step-mblf-cover
+          path: out/
+          retention-days: 3
+          if-no-files-found: warn
