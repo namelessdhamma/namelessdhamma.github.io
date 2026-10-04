@@ -82,15 +82,30 @@ for label,root in voices:
             raise RuntimeError("No phoneme inventories exposed")
         common=set.intersection(*inventories)
         print("VOICE",label,"speaker",speaker,"common_phonemes",len(common),flush=True)
-        for ne_mode,tag in [("reduced","NE_REDUCED"),("open","NE_OPEN")]:
+        for ne_mode,tag in [("reduced","SOFT_NE_HYBRID")]:
             try:
+                # Predictor-compatible proxy sequence first.
                 base=make_ds(common,ne_mode)
                 ph_dur=dur.predict(base,lang="ru",speaker=speaker)
                 ds1=DSReader.DSSection(dict(base))
                 ds1["ph_dur"]=" ".join(f"{x:.6f}" for x in ph_dur.tolist())
 
                 f0=pitch.predict(ds1,lang="ru",speaker=speaker,key_shift=0,steps=14)
+
+                # Acoustic stage can expose a richer Russian inventory than
+                # duration/pitch. Preserve predictor timings/F0, but restore
+                # palatalized /nʲ/ for «не» and «ним» when acoustic supports it.
                 ds2=DSReader.DSSection(dict(ds1))
+                phs=ds2["ph_seq"].split()
+                ac_inv=set(dsac.phonemes.content.keys()) if dsac.phonemes is not None else set()
+                if "ru/ny" not in ac_inv:
+                    raise RuntimeError("Acoustic model has no ru/ny for Russian soft n")
+                n_positions=[i for i,p in enumerate(phs) if p=="ru/n"]
+                if len(n_positions) < 2:
+                    raise RuntimeError("Expected two proxy ru/n positions")
+                for i in n_positions[-2:]:
+                    phs[i]="ru/ny"
+                ds2["ph_seq"]=" ".join(phs)
                 ds2["f0_seq"]=" ".join(f"{x:.4f}" for x in f0.tolist())
                 ds2["f0_timestep"]=str(pitch.timestep)
 
