@@ -217,6 +217,18 @@ jobs:
           kill "$(cat /tmp/gg-ardour.pid)" 2>/dev/null || true
           kill "$(cat /tmp/gg-xvfb.pid)" 2>/dev/null || true
 
+      - name: Upload Ardour startup diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gg-ardour-startup-diagnostics
+          path: |
+            /tmp/gg-ardour-444x192.xwd
+            /tmp/gg-ardour-windows.txt
+            /tmp/gg-xwininfo.txt
+            /tmp/gg-ardour-mcp.log
+          if-no-files-found: warn
+
       - name: Mark cloud DAW runtime qualification
         shell: bash
         run: |
