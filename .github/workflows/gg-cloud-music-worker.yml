@@ -43,6 +43,11 @@ jobs:
           set -euo pipefail
           MARKER="gg-cloud-jobs/current.json"
           test -f "$GITHUB_WORKSPACE/$MARKER"
+          JOB_FILE="$(jq -r '.job_file // empty' "$GITHUB_WORKSPACE/$MARKER")"
+          if [ -n "$JOB_FILE" ]; then
+            case "$JOB_FILE" in gg-cloud-jobs/*.json) MARKER="$JOB_FILE" ;; *) exit 2 ;; esac
+            test -f "$GITHUB_WORKSPACE/$MARKER"
+          fi
           echo "marker=$MARKER" >> "$GITHUB_OUTPUT"
           echo "GG_MARKER=$MARKER"
 
