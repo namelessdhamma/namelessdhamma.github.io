@@ -2884,7 +2884,7 @@ const server = http.createServer(async (req,res) => {
     const fileId=decodeURIComponent(req.url.slice(prefix.length).split('?')[0]||'').trim();
     if(!fileId || !/^[A-Za-z0-9_-]{10,200}$/.test(fileId)) return json(res,400,{ok:false,error:'invalid_drive_file_id'});
     try{
-      const result=await authContext.run({user:false},async()=>{
+      const result=await authContext.run({user:true},async()=>{
         const m=await metadata(fileId);
         if(!String(m.mimeType||'').startsWith('image/')) throw new Error('ltx input must be an image');
         const raw=await gbytes('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(fileId)+'?alt=media&supportsAllDrives=true');
