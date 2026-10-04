@@ -29,9 +29,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python -m pip install -q soundfile numpy
           guide="$(find /tmp/guide -type f -name '*.wav' | head -n 1)"
           test -n "$guide"
-          ffmpeg -y -hide_banner -loglevel error -i "$guide" -t 5.4 -ar 48000 -ac 1 /tmp/guide_short.wav
+          export GUIDE="$guide"
+          python - <<'PY'
+          import os
+          import soundfile as sf
+          y,sr=sf.read(os.environ["GUIDE"],always_2d=False)
+          n=min(len(y),round(sr*5.4))
+          sf.write("/tmp/guide_short.wav",y[:n],sr,subtype="PCM_16")
+          PY
           test -s /tmp/guide_short.wav
       - name: Run ACE-Step turbo cover
         shell: bash
