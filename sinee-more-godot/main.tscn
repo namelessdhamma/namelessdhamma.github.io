@@ -66,7 +66,7 @@ text = "СИНЕЕ МОРЕ"
 horizontal_alignment = 1
 
 [node name="BoardAspect" type="AspectRatioContainer" parent="SafeArea/Landscape/Center"]
-custom_minimum_size = Vector2(0, 180)
+custom_minimum_size = Vector2(0, 210)
 layout_mode = 2
 size_flags_vertical = 3
 ratio = 1.0
@@ -93,17 +93,17 @@ custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
 text = "P"
 
-[node name="DriedSea" type="Button" parent="SafeArea/Landscape/Center/WorldStrip"]
+[node name="SandSea" type="Button" parent="SafeArea/Landscape/Center/WorldStrip"]
 custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
-text = "D"
+text = "S"
 
 [node name="Atlantis" type="Button" parent="SafeArea/Landscape/Center/WorldStrip"]
 custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
 text = "A"
 
-[node name="Abyssal" type="Button" parent="SafeArea/Landscape/Center/WorldStrip"]
+[node name="GodsOfDeep" type="Button" parent="SafeArea/Landscape/Center/WorldStrip"]
 custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
 text = "G"
@@ -111,7 +111,17 @@ text = "G"
 [node name="NDVoid" type="Button" parent="SafeArea/Landscape/Center/WorldStrip"]
 custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
+text = "V"
+
+[node name="NightSea" type="Button" parent="SafeArea/Landscape/Center/WorldStrip"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
 text = "N"
+
+[node name="NorthernSea" type="Button" parent="SafeArea/Landscape/Center/WorldStrip"]
+custom_minimum_size = Vector2(44, 44)
+layout_mode = 2
+text = "F"
 
 [node name="RightRail" type="VBoxContainer" parent="SafeArea/Landscape"]
 custom_minimum_size = Vector2(132, 0)
