@@ -51,7 +51,7 @@ def upload_artifact(job_id,name,path,token,mime=None):
     result=post_bytes(f"{RELAY}/runner/artifact/{job_id}/{urllib.parse.quote(name)}",data,ctype,auth_headers(token))
     evidence=os.environ.get("GG_EVIDENCE_DIR")
     if evidence:
-        dst=pathlib.Path(evidence); dst.mkdir(parents=True,exist_ok=True); shutil.copy2(p,dst/name)
+        dst=pathlib.Path(evidence); target=dst/name; target.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(p,target)
     return result
 
 def finish(job_id, token, ok, result, error=None):
