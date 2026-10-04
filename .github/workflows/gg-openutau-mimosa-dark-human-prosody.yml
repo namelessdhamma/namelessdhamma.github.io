@@ -1,11 +1,5 @@
 name: GG OpenUtau Mimosa Dark human prosody
 on:
-  push:
-    branches:
-      - "experiment/gg-openutau-mcp-20261004"
-    paths:
-      - ".github/workflows/gg-openutau-mimosa-dark-human-prosody.yml"
-      - ".nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs"
   workflow_dispatch:
 permissions:
   actions: read
