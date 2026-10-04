@@ -431,37 +431,37 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 AddShapeCurve(Ustx.DYN,
                     new[] { n0.position, n0.position + n0.duration/2, n1.position,
                             n1.position + n1.duration/2, n2.position, n2.position + n2.duration/2,
-                            n3.position, n4.position, n4.position + n4.duration/2, n4.end, part.Duration },
+                            n3.position, n4.position, n4.position + n4.duration/2, n4.End, part.Duration },
                     level == 1 ? new[] { -22, -10, -9, 4, 6, 12, -3, -8, -2, -18, -26 } :
                     level == 2 ? new[] { -26, -12, -10, 6, 8, 16, -4, -10, 0, -21, -30 } :
                                  new[] { -30, -14, -12, 8, 10, 20, -5, -12, 2, -24, -34 });
                 AddShapeCurve(DiffSingerUtils.ENE,
                     new[] { n0.position, n1.position, n1.position + n1.duration/2,
                             n2.position, n2.position + n2.duration/2, n3.position,
-                            n4.position, n4.position + n4.duration/2, n4.end, part.Duration },
+                            n4.position, n4.position + n4.duration/2, n4.End, part.Duration },
                     level == 1 ? new[] { -12, -8, -2, 0, 5, -5, -10, -5, -15, -18 } :
                     level == 2 ? new[] { -14, -9, 0, 2, 8, -6, -12, -5, -17, -20 } :
                                  new[] { -16, -10, 2, 4, 10, -7, -14, -4, -19, -22 });
                 AddShapeCurve(DiffSingerUtils.PEXP,
                     new[] { n0.position, n1.position, n1.position + n1.duration/2,
-                            n2.position, n3.position, n4.position, n4.end, part.Duration },
+                            n2.position, n3.position, n4.position, n4.End, part.Duration },
                     level == 1 ? new[] { 80, 88, 96, 100, 86, 91, 76, 72 } :
                     level == 2 ? new[] { 78, 90, 100, 100, 84, 94, 74, 70 } :
                                  new[] { 76, 92, 100, 100, 82, 96, 72, 68 });
                 AddShapeCurve(Ustx.TENC,
                     new[] { n0.position, n1.position, n1.position + n1.duration/2,
-                            n2.position, n3.position, n4.position, n4.end, part.Duration },
+                            n2.position, n3.position, n4.position, n4.End, part.Duration },
                     level == 1 ? new[] { -26, -24, -20, -18, -24, -26, -30, -32 } :
                     level == 2 ? new[] { -34, -26, -12, -5, -25, -30, -39, -41 } :
                                  new[] { -38, -28, -10, -2, -26, -32, -42, -44 });
                 AddShapeCurve(Ustx.BREC,
                     new[] { n0.position, n1.position, n1.position + n1.duration/2,
-                            n2.position, n3.position, n4.position, n4.position + n4.duration/2, n4.end, part.Duration },
+                            n2.position, n3.position, n4.position, n4.position + n4.duration/2, n4.End, part.Duration },
                     level == 1 ? new[] { 14, 12, 10, 9, 11, 12, 14, 17, 18 } :
                     level == 2 ? new[] { 18, 13, 7, 4, 12, 13, 17, 23, 26 } :
                                  new[] { 20, 14, 6, 3, 13, 14, 19, 25, 28 });
                 AddShapeCurve(Ustx.VOIC,
-                    new[] { n0.position, n1.position, n2.position, n3.position, n4.position, n4.end, part.Duration },
+                    new[] { n0.position, n1.position, n2.position, n3.position, n4.position, n4.End, part.Duration },
                     level == 1 ? new[] { 96, 98, 100, 95, 98, 94, 93 } :
                     level == 2 ? new[] { 95, 99, 100, 94, 98, 93, 92 } :
                                  new[] { 94, 99, 100, 93, 97, 92, 91 });
