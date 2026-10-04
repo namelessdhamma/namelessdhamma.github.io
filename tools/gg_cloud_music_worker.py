@@ -11,12 +11,12 @@ VOICEBANK_CATALOG={
         "gender":"female",
         "terms":"commercial voicebank use allowed by creator"
     },
-    "keiro-ai-v100":{
-        "kind":"mega",
-        "url":"https://mega.nz/folder/DOgSgZaR#98KEq3hNX0W6v0tAuMujVg",
+    "keiro-revenant-v170":{
+        "kind":"zip",
+        "url":"https://github.com/lunaiproject/lunai_singers/releases/download/170/Keiro_Revenant_v170.zip",
         "lang":"ru",
         "gender":"male",
-        "range":"F2-A4"
+        "terms":"LUNAI Project terms: non-commercial fan use; commercial use requires permission; AI-music restrictions apply"
     }
 }
 
