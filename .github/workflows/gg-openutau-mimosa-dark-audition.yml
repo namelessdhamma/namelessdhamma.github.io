@@ -1,11 +1,5 @@
 name: GG OpenUtau Mimosa Dark audition
 on:
-  push:
-    branches:
-      - "experiment/gg-openutau-mcp-20261004"
-    paths:
-      - ".github/workflows/gg-openutau-mimosa-dark-audition.yml"
-      - ".nd-labs/gg-vfs/GGVfsUfrOpenUtauQcTest.cs"
   workflow_dispatch:
 permissions:
   actions: read
