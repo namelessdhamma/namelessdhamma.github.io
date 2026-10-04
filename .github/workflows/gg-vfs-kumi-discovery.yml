@@ -1,42 +1,28 @@
 name: GG VFS UFR Kumi discovery
 on:
   push:
-    branches: [experiment/gg-vfs-female-sweep-20261004]
-    paths: [.github/workflows/gg-vfs-kumi-discovery.yml]
+    branches:
+      - "experiment/gg-vfs-female-sweep-20261004"
+    paths:
+      - ".github/workflows/gg-vfs-kumi-discovery.yml"
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Inspect UFR page and download endpoints
-        shell: bash
+          python-version: "3.11"
+      - name: Download UFR pack
         run: |
-          set -euo pipefail
           mkdir -p out
-          curl -fsSL --retry 2 https://utaufrance.com/en/diffsinger-ufr-pack-download/ -o page.html
-          grep -Eoi 'https?://[^"'"'"'<> ]+|[A-Za-z0-9_./?-]*(download|voicebank|api|ajax)[A-Za-z0-9_./?=&-]*' page.html | sed 's/&amp;/\&/g' | grep -Ei 'kumi|download|voicebank|api|ajax|drive' | head -n 200 > out/page-links.txt || true
-          grep -Ein 'Hitsune|Kumi|download|voicebank|ajax|api|script' page.html | head -n 250 > out/page-context.txt || true
           python -m pip install --quiet gdown
-          set +e
-          gdown --id 1Ve9cqJypDglNRPtjw-RoMqbin-xvU-WW -O out/ufr-pack.download
-          code=$?
-          set -e
-          echo "gdown_exit=$code" > out/download-status.txt
-          if [ -f out/ufr-pack.download ]; then
-            stat -c 'bytes=%s' out/ufr-pack.download >> out/download-status.txt
-            file out/ufr-pack.download >> out/download-status.txt
-            python - <<'PY' >> out/download-status.txt
-from pathlib import Path
-p=Path('out/ufr-pack.download')
-print('head',p.read_bytes()[:64])
-PY
-          fi
+          gdown "https://drive.google.com/uc?id=1Ve9cqJypDglNRPtjw-RoMqbin-xvU-WW" -O out/ufr-pack.download || true
+          ls -lh out
+          file out/ufr-pack.download || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
