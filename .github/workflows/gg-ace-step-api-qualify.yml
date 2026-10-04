@@ -1,0 +1,32 @@
+name: GG ACE-Step 1.5 API qualification
+on:
+  push:
+    branches:
+      - "experiment/gg-openutau-mcp-20261004"
+    paths:
+      - ".github/workflows/gg-ace-step-api-qualify.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Inspect official ACE-Step Space API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade gradio_client
+          python - <<'PY'
+          from gradio_client import Client
+          c = Client("ACE-Step/Ace-Step-v1.5", verbose=False)
+          print("SPACE_OK")
+          api = c.view_api(return_format="dict")
+          print(api)
+          PY
