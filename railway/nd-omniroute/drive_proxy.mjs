@@ -3142,17 +3142,17 @@ server.listen(OUTER_PORT,'0.0.0.0',()=>{
   if(KAGGLE_API_TOKEN && String(process.env.ND_KAGGLE_WAN21_CACHE_ON_START||'false').trim().toLowerCase()==='true') setTimeout(()=>kaggleWan21Cache().catch(e=>console.error(JSON.stringify({event:'ND_KAGGLE_WAN21_CACHE',state:'FAIL',error:String(e?.message||e).slice(0,12000)}))),14000);
   if(KAGGLE_API_TOKEN && String(process.env.ND_A8_LTX_SUBMIT_ON_START||'false').trim().toLowerCase()==='true') setTimeout(async()=>{
     try{
-      const payload={jsonrpc:'2.0',id:'a8-r01-e002',method:'tools/call',params:{name:'ltx_generate_keyframes',arguments:{
+      const payload={jsonrpc:'2.0',id:'a8-r01-e003',method:'tools/call',params:{name:'ltx_generate_keyframes',arguments:{
         start_image_url:'drive:1E7-sudthCN5KnHpHOJRV_a6TVr7MR1f9',
         end_image_url:'drive:1DeX44ecaXSIR3eVTZahiVvbY375TD05H',
         prompt:'Horizontal 16:9 cinematic live-action pirate duel on the same rain-soaked deck. Preserve the exact dark-haired swordsman on the left and red-haired opponent on the right from the first and last anchors. Over 2.5 seconds the dark-haired fighter drives a continuous forward attack: weight shifts through hips and feet, weapon arm advances with a believable blade trajectory, the red-haired fighter reacts defensively with coordinated hands, torso and footwork, and the action lands naturally on the supplied final frame. Preserve faces, costumes, weapons, deck geography and camera side. Rain, spray, wet hair, coats, cloth, reflections, rigging and background deck activity all move continuously with the storm and ship motion. Real articulated body and environmental motion throughout; restrained camera inertia only.',
         negative_prompt:'slideshow, crossfade, dissolve, frozen fighters, parallax-only, pan-only, zoom-only, static background, frozen rain, identity swap, face morph, duplicate people, extra limbs, malformed hands, disappearing weapon, rubber sword, warped blade, teleportation, sudden cut, extra ship, text, watermark, UI',
-        duration_seconds:2.5,width:768,height:432,seed:80502,idempotency_key:'A8-R01-E002-BLUE_SEA_DUEL_TEST_V1'
+        duration_seconds:2.5,width:768,height:432,seed:80502,idempotency_key:'A8-R01-E003-BLUE_SEA_DUEL_TEST_V1-RETRY1'
       }}};
       const rr=await boundedFetch('http://127.0.0.1:'+OUTER_PORT+LTX_MCP_PATH,{method:'POST',headers:{'content-type':'application/json','accept':'application/json'},body:JSON.stringify(payload)},35000);
       const txt=await rr.text();
-      console.log(JSON.stringify({event:'ND_A8_R01_E002_SUBMIT',http_status:rr.status,response:txt.slice(0,12000)}));
-    }catch(e){console.error(JSON.stringify({event:'ND_A8_R01_E002_SUBMIT',state:'FAIL',error:String(e?.message||e).slice(0,1200)}));}
+      console.log(JSON.stringify({event:'ND_A8_R01_E003_SUBMIT',http_status:rr.status,response:txt.slice(0,12000)}));
+    }catch(e){console.error(JSON.stringify({event:'ND_A8_R01_E003_SUBMIT',state:'FAIL',error:String(e?.message||e).slice(0,1200)}));}
   },25000);
   if(String(process.env.ND_LTX_SELFTEST_ON_START||'false').toLowerCase()==='true'){
     ltxSelftestState={state:'RUNNING',updated_at:new Date().toISOString()};
