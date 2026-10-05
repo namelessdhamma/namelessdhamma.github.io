@@ -38,10 +38,10 @@ jobs:
             selected_model="acestep-v15-xl-turbo",generation_mode="cover",
             simple_query_input="",simple_vocal_language="ru",
             param_4=prompt,param_5=lyrics,param_6=72,param_7="A minor",param_8="4",param_9="ru",
-            param_10=4,param_11=1.0,param_12=False,param_13="6142026",param_14=None,param_15=14.0,param_16=1,
+            param_10=8,param_11=1.0,param_12=False,param_13="6142026",param_14=None,param_15=14.0,param_16=1,
             param_17=handle_file(src),param_18="",param_19=0.0,param_20=-1.0,
-            param_21="Generate audio semantic tokens based on the given conditions:",param_22=0.97,param_23="cover",
-            param_24=False,param_25=0.0,param_26=1.0,param_27=3.0,param_28="jkass_fast",param_29="",param_30="flac",
+            param_21="Generate audio semantic tokens based on the given conditions:",param_22=1.0,param_23="cover",
+            param_24=False,param_25=0.0,param_26=1.0,param_27=3.0,param_28="ode",param_29="",param_30="flac",
             param_31=0.75,param_32=False,param_33=2.0,param_34=0,param_35=0.9,
             param_36="robotic vocal, metallic resonance, syllable seams, hard phoneme cuts, accompaniment, instruments",
             param_37=False,param_38=False,param_39=False,param_41=False,param_42=False,param_43=False,param_44=False,
@@ -61,7 +61,7 @@ jobs:
                   elif hasattr(x,"path"): p=x.path
                   if p and os.path.exists(p):
                       ext=Path(p).suffix or ".flac"
-                      dst=Path("out")/f"ACE_ENH_{label}_{j}{ext}"
+                      dst=Path("out")/f"ACE_ENH8_{label}_{j}{ext}"
                       shutil.copy2(p,dst)
                       if str(dst) not in found: found.append(str(dst))
           for i,item in enumerate(r[:8],1): collect(item,f"Sample_{i}")
