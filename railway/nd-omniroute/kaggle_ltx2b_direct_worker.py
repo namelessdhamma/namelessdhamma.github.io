@@ -594,6 +594,16 @@ def main() -> None:
 
     print("ND_LTX2B_STAGE=generate", flush=True)
     started = time.time()
+    import threading
+    heartbeat_stop = threading.Event()
+    def _generation_heartbeat():
+        while not heartbeat_stop.wait(20.0):
+            print(
+                "ND_LTX2B_GENERATE_HEARTBEAT elapsed_s="
+                + str(round(time.time() - started, 1)),
+                flush=True,
+            )
+    threading.Thread(target=_generation_heartbeat, daemon=True).start()
     with attention_config_shared_state("sdpa"):
         with torch.inference_mode():
             (
@@ -638,6 +648,7 @@ def main() -> None:
                 ltxv_model=ltxv_state,
             )
             samples = images.sub(0.5).mul(2).squeeze(0)
+    heartbeat_stop.set()
     generation_seconds = time.time() - started
     if samples is None:
         raise RuntimeError("LTX 2B returned no samples")
