@@ -982,8 +982,20 @@ async function ltxKaggle2bSubmit(args={},opts={}){
     : 'NvidiaTeslaT4';
 
   const workerUrl=direct
-    ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/45fac08b04f7f22ff4a0a2f80305f6b4ed3ef548/railway/nd-omniroute/kaggle_ltx2b_diffusers_worker.py'
+    ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/4ee86d6a1123268b12583ea9274d63603b204b87/railway/nd-omniroute/kaggle_ltx2b_diffusers_worker.py'
     : 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py';
+  let directWorkerSource=null;
+  if(direct){
+    const wr=await fetch(workerUrl,{headers:{'user-agent':'nd-kaggle-ltx2b-control/1.0'}});
+    if(!wr.ok) throw new Error('Failed to fetch pinned direct worker HTTP '+wr.status);
+    directWorkerSource=await wr.text();
+    directWorkerSource=directWorkerSource
+      .replace(/^#![^\n]*\n/,'')
+      .replace('from __future__ import annotations\n','');
+    if(!directWorkerSource.includes('ND_LTX2B_DIFF_STAGE=import_torch_begin')){
+      throw new Error('Pinned direct worker content failed integrity marker');
+    }
+  }
   const buildKernelScript=(useInline)=>{
     const request={
       start_image_url:useInline?undefined:(startInput.url||undefined),
@@ -998,11 +1010,22 @@ async function ltxKaggle2bSubmit(args={},opts={}){
       seed
     };
     const reqB64=Buffer.from(JSON.stringify(request),'utf8').toString('base64');
-    return [
-      'import base64,sys,urllib.request',
+    const preamble=[
+      'import base64,sys',
       'from pathlib import Path',
       "request_path=Path('/kaggle/working/nd-ltx2b-request.json')",
-      "request_path.write_bytes(base64.b64decode('"+reqB64+"'))",
+      "request_path.write_bytes(base64.b64decode('"+reqB64+"'))"
+    ];
+    if(direct){
+      return [
+        ...preamble,
+        "sys.argv=['kaggle_ltx2b_diffusers_worker.py',str(request_path)]",
+        directWorkerSource
+      ].join('\n');
+    }
+    return [
+      ...preamble,
+      'import urllib.request',
       "worker=Path('/kaggle/working/kaggle_ltx2b_wan2gp_worker.py')",
       "req=urllib.request.Request('"+workerUrl+"',headers={'User-Agent':'nd-kaggle-ltx2b/1.0'})",
       "worker.write_bytes(urllib.request.urlopen(req,timeout=120).read())",
