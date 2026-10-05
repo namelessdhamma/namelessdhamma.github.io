@@ -99,8 +99,8 @@ jobs:
               duration=frames/fps
               if duration < 2.0:
                   raise SystemExit(f'{path}: 2.0s request rounded down to {frames} frames / {duration:.6f}s')
-              if frames != 65:
-                  raise SystemExit(f'{path}: expected 65 frames for 2.0s request, got {frames}')
+              if frames != 57:
+                  raise SystemExit(f'{path}: expected stable 57-frame lattice for 2.0s request, got {frames}')
               print('ND_LTX_2S_DURATION_CONTRACT=PASS',path,frames,duration)
           PY
 
