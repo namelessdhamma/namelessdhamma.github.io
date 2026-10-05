@@ -38,10 +38,10 @@ async function list(){
 
 {
   const names=(await list()).tools.map(x=>x.name);
-  const expected=['ltx_generate_keyframes','ltx_keyframe_reconcile','ltx_keyframe_status','ltx_keyframe_result'];
+  const expected=['ltx_shot','ltx_generate_keyframes','ltx_keyframe_reconcile','ltx_keyframe_status','ltx_keyframe_result'];
   if(JSON.stringify(names)!==JSON.stringify(expected))throw new Error('surface mismatch '+JSON.stringify(names));
   const h=await ltxHealth();
-  if(h.runtime_profile!=='DURABLE_ASYNC'||h.control_contract?.ambiguous_submit!=='RECONCILE_SAME_EFFECT_BEFORE_RESUBMIT')throw new Error('health contract missing');
+  if(h.runtime_profile!=='DURABLE_ASYNC'||h.control_contract?.ambiguous_submit!=='RECONCILE_SAME_EFFECT_BEFORE_RESUBMIT'||h.recommended_tool!=='ltx_shot')throw new Error('health contract missing');
   console.log('PRIMARY_V2_SURFACE=PASS');
 }
 
