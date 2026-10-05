@@ -41,6 +41,13 @@ jobs:
           handle={"tag":tag,"kernel":k,"slug":slug,"version":version,"provider_ref":f"{user}/{slug}/v{version}"}
           (out/"handle.json").write_text(json.dumps(handle,default=str,indent=2))
           print(json.dumps(handle,default=str,indent=2),flush=True)
+          try:
+              st=rpc("GetKernelSessionStatus",{"userName":user,"kernelSlug":slug,"versionLabel":f"v{version}"})
+              (out/"session-status.json").write_text(json.dumps(st,default=str,indent=2))
+              print("SESSION_STATUS",json.dumps(st,default=str),flush=True)
+          except Exception as e:
+              (out/"session-status-error.txt").write_text(repr(e))
+              print("SESSION_STATUS_ERROR",repr(e),flush=True)
 
           def dl(path):
               r=requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,
@@ -78,3 +85,5 @@ jobs:
           if-no-files-found: error
 
 # inspect: minimal-disk-v2
+
+# status-probe-v2
