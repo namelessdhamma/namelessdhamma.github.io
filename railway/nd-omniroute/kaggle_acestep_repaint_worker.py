@@ -117,6 +117,8 @@ baseline=out/"BASELINE_8423_REPLAY.wav"; shutil.copy2(bsrc,baseline)
 baseline_sha=sha(baseline)
 expected=base["expected_sha256"]
 print("BASELINE_REPLAY_SHA",baseline_sha,"MATCH",baseline_sha==expected,flush=True)
+if baseline_sha != expected:
+    raise RuntimeError(f"accepted 8423 baseline replay drift: expected {expected}, got {baseline_sha}")
 
 # 2) Native Repaint candidates. Only repaint strength changes between variants.
 rp=req["repaint"]
