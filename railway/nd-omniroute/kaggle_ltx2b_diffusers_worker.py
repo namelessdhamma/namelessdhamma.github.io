@@ -132,35 +132,38 @@ def main() -> None:
     request_path = str(sys.argv[1])
     request = json.loads(Path(request_path).read_text(encoding="utf-8"))
 
-    TMP.mkdir(parents=True, exist_ok=True)
-    start_path = TMP / "start.png"
-    end_path = TMP / "end.png"
-
-    if os.environ.get("ND_LTX2B_DIFF_INPUTS_READY") != "1":
-        print("ND_LTX2B_DIFF_STAGE=materialize_inputs", flush=True)
-        _materialize(request, "start", start_path)
-        _materialize(request, "end", end_path)
-        print(
-            "ND_LTX2B_DIFF_STAGE=materialize_inputs_done start_bytes="
-            + str(start_path.stat().st_size)
-            + " end_bytes="
-            + str(end_path.stat().st_size),
-            flush=True,
-        )
-        os.environ["ND_LTX2B_DIFF_INPUTS_READY"] = "1"
-
     _install_runtime()
     print("ND_LTX2B_DIFF_STAGE=import_torch_begin", flush=True)
     import torch
     print("ND_LTX2B_DIFF_STAGE=import_torch_done version=" + str(torch.__version__), flush=True)
+    print("ND_LTX2B_DIFF_STAGE=import_pillow_begin", flush=True)
     from PIL import Image, ImageOps
+    print("ND_LTX2B_DIFF_STAGE=import_pillow_done", flush=True)
+    print("ND_LTX2B_DIFF_STAGE=import_diffusers_begin", flush=True)
     from diffusers import GGUFQuantizationConfig, LTXVideoTransformer3DModel
     from diffusers.pipelines.ltx.pipeline_ltx_condition import (
         LTXConditionPipeline,
         LTXVideoCondition,
     )
     from diffusers.utils import export_to_video
+    print("ND_LTX2B_DIFF_STAGE=import_diffusers_done", flush=True)
+    print("ND_LTX2B_DIFF_STAGE=import_transformers_begin", flush=True)
     from transformers import T5EncoderModel
+    print("ND_LTX2B_DIFF_STAGE=import_transformers_done", flush=True)
+
+    TMP.mkdir(parents=True, exist_ok=True)
+    start_path = TMP / "start.png"
+    end_path = TMP / "end.png"
+    print("ND_LTX2B_DIFF_STAGE=materialize_inputs", flush=True)
+    _materialize(request, "start", start_path)
+    _materialize(request, "end", end_path)
+    print(
+        "ND_LTX2B_DIFF_STAGE=materialize_inputs_done start_bytes="
+        + str(start_path.stat().st_size)
+        + " end_bytes="
+        + str(end_path.stat().st_size),
+        flush=True,
+    )
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA GPU required")
