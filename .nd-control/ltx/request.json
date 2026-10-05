@@ -1,6 +1,6 @@
 {
   "op": "status",
-  "nonce": "a8-r01-historical-success-diagnostics-20261005",
-  "request_id": "k2b-r0d5139ce62ef-11cb-v1",
+  "nonce": "a8-r01-live-diagnostics-20261005-1",
+  "request_id": "k2b-r05983ab6a94b-0c6c-v1",
   "include_diagnostics": true
 }
