@@ -125,4 +125,36 @@ async function list(){
   console.log('PRIMARY_V2_EXTERNAL_INPUT_BRIDGE=PASS');
 }
 
+
+{
+  let kernels=[],saveCalls=0,nextVersion=1,providerStatus=1;
+  globalThis.fetch=async (url,opts={})=>{
+    const u=String(url),body=opts.body?JSON.parse(String(opts.body)):{};
+    if(u.includes('/security.OAuthService/IntrospectToken'))return json({active:true,username:'testuser'});
+    if(u.includes('/kernels.KernelsApiService/ListKernels')){
+      const search=String(body.search||'').toLowerCase();
+      return json({kernels:kernels.filter(k=>String(k.slug).toLowerCase().includes(search))});
+    }
+    if(u.includes('/kernels.KernelsApiService/GetAcceleratorQuotaStatistics'))return json({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:'108000s'}});
+    if(u.includes('/kernels.KernelsApiService/GetKernelSessionStatus'))return json({status:providerStatus});
+    if(u.includes('/kernels.KernelsApiService/SaveKernel')){
+      saveCalls++;
+      const slug=String(body.slug).split('/').pop(),version=nextVersion++;
+      kernels=[{slug,ref:'testuser/'+slug,author:'testuser',currentVersionNumber:version}];
+      return json({versionNumber:version});
+    }
+    throw new Error('unexpected '+u);
+  };
+  const args={start_image_url:'https://example.org/a.jpg',end_image_url:'https://example.org/b.jpg',prompt:'terminal retry',duration_seconds:2,width:512,height:288,seed:99,idempotency_key:'primary-terminal-retry'};
+  const first=(await call('ltx_generate_keyframes',args)).structuredContent;
+  if(first?.state!=='SUBMITTED'||saveCalls!==1)throw new Error('primary terminal retry initial submit failed '+JSON.stringify(first));
+  providerStatus=4;
+  const blocked=(await call('ltx_generate_keyframes',args)).structuredContent;
+  if(blocked?.state!=='CANCELLED'||blocked?.reused_existing!==true||saveCalls!==1)throw new Error('primary ordinary repeat was not blocked '+JSON.stringify(blocked));
+  const retried=(await call('ltx_generate_keyframes',{...args,retry_terminal:true})).structuredContent;
+  if(retried?.state!=='SUBMITTED'||saveCalls!==2)throw new Error('primary explicit terminal retry failed '+JSON.stringify(retried));
+  if(retried?.effect_id!==first?.effect_id||retried?.request_id===first?.request_id)throw new Error('primary retry identity/version mismatch');
+  console.log('PRIMARY_V2_TERMINAL_RETRY=PASS',first.request_id,'->',retried.request_id);
+}
+
 console.log('ND_LTX_PRIMARY_V2_ANTI_HANG=PASS');
