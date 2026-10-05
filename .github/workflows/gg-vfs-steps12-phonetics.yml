@@ -22,7 +22,7 @@ jobs:
           github-token: ${{ github.token }}
           path: in
       - name: Install exact ASR route
-        run: python -m pip install -q faster-whisper==1.2.0 soundfile numpy
+        run: python -m pip install -q faster-whisper==1.2.0 soundfile numpy requests
       - name: Qualify Russian content with faster-whisper small
         shell: bash
         run: |
