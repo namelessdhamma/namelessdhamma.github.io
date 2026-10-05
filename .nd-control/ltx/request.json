@@ -1,15 +1,5 @@
 {
-  "op": "submit",
-  "nonce": "a8-r01-repair-import-probe-20261005-1",
-  "args": {
-    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/382ecc95-cb75-4b41-b39c-47a7d53c10d1.jpg",
-    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/84110699-a0f7-4529-815f-a954a274541c.jpg",
-    "prompt": "BLUE_SEA_DUEL_TEST_V1 repair probe. Preserve the exact dark-haired swordsman on the left and red-haired opponent on the right. Animate one continuous two-second sword-fight movement from the supplied first frame toward the supplied last frame with coordinated feet, hips, torso, arms, hands and blades. Preserve identities, costumes, wet pirate deck, camera side and endpoint composition. Rain, wet hair, cloth, spray and reflections move continuously. No cut.",
-    "negative_prompt": "slideshow, hard cuts, crossfade, dissolve, frozen fighters, pan-only, zoom-only, identity swap, duplicate people, extra limbs, malformed hands, disappearing weapon, warped blade, text, watermark, UI",
-    "duration_seconds": 2,
-    "width": 512,
-    "height": 288,
-    "seed": 80601,
-    "idempotency_key": "A8-R01-REPAIR-IMPORT-PROBE-20261005-1"
-  }
+  "op": "status",
+  "nonce": "a8-r01-repair-import-probe-status-20261005-1",
+  "request_id": "k2b-r05983ab6a94b-0c6c-v1"
 }
