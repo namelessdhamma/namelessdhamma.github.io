@@ -1,0 +1,86 @@
+name: GG VFS ACE8423 repaint reconcile
+
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths:
+      - ".github/workflows/gg-vfs-acestep-repaint-reconcile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Reconcile existing repaint v1 only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python - <<'PY'
+          import hashlib,json,os,time
+          from pathlib import Path
+          import requests
+          token=os.environ["KAGGLE_API_TOKEN"].strip()
+          user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          slug="gg-vfs-ace8423-repaint-28c84d9bfd4c23e6"; version=1
+          api="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-repaint-reconcile/1.0"}
+          out=Path("out")
+          expected=[
+            "gg-vfs-ace-repaint-output/result.json",
+            "gg-vfs-ace-repaint-output/REPRODUCTION_RECIPE.md",
+            "gg-vfs-ace-repaint-output/BASELINE_8423_REPLAY.wav",
+            "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p2.wav",
+            "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p4.wav",
+          ]
+          def probe(name):
+              return requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,json={"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},timeout=40,allow_redirects=False)
+          deadline=time.time()+22*60
+          while True:
+              r=probe(expected[0])
+              print("RESULT_PROBE",r.status_code,flush=True)
+              if 200<=r.status_code<400: break
+              if time.time()>=deadline: raise RuntimeError("existing repaint effect did not expose result within bounded reconcile")
+              time.sleep(30)
+          def download(name):
+              r=probe(name)
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  data=requests.get(r.headers["location"],timeout=180).content
+              elif r.ok:
+                  u=None
+                  if "json" in r.headers.get("content-type",""):
+                      try:
+                          o=r.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                      except Exception: pass
+                  data=requests.get(u,timeout=180).content if u else r.content
+              else:
+                  raise RuntimeError(f"download {name} HTTP {r.status_code}: {r.text[:1200]}")
+              p=out/Path(name).name;p.write_bytes(data)
+              return {"provider":name,"file":p.name,"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()}
+          got=[]
+          # result first; if it says failure, preserve it and stop without pretending WAV exists.
+          rec=download(expected[0]); got.append(rec)
+          result=json.loads((out/"result.json").read_text())
+          print(json.dumps(result,ensure_ascii=False,indent=2),flush=True)
+          if not result.get("ok"):
+              (out/"result-index.json").write_text(json.dumps({"state":"FAILED","provider_ref":f"{user}/{slug}/v1","downloads":got,"result":result},ensure_ascii=False,indent=2))
+              raise SystemExit(3)
+          for n in expected[1:]: got.append(download(n))
+          idx={"state":"READY","provider_ref":f"{user}/{slug}/v1","downloads":got,"result":result}
+          (out/"result-index.json").write_text(json.dumps(idx,ensure_ascii=False,indent=2))
+          print(json.dumps(idx,ensure_ascii=False,indent=2),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-ace8423-repaint-reconciled
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
