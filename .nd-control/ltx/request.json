@@ -1,6 +1,5 @@
 {
-  "op": "status",
-  "nonce": "a8-r01-live-diagnostics-20261005-1",
-  "request_id": "k2b-r05983ab6a94b-0c6c-v1",
-  "include_diagnostics": true
+  "op": "result",
+  "nonce": "a8-r01-repair-probe-result-20261005",
+  "request_id": "k2b-r05983ab6a94b-0c6c-v1"
 }
