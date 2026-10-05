@@ -979,7 +979,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
   const preflight=await kaggleLtxPreflight();
 
   const workerUrl=direct
-    ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_diffusers_worker.py'
+    ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/45fac08b04f7f22ff4a0a2f80305f6b4ed3ef548/railway/nd-omniroute/kaggle_ltx2b_diffusers_worker.py'
     : 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py';
   const buildKernelScript=(useInline)=>{
     const request={
