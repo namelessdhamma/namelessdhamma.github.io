@@ -25,25 +25,33 @@ jobs:
           slug="gg-vfs-ace8423-flowedit-8855c06cd61ed77a";version=1
           h={"Authorization":"Bearer "+t,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-flowedit-salvage/1.0"}
           api="https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput"
-          names=[
+          required=[
             "gg-vfs-flowedit-output/result.json",
-            "gg-vfs-flowedit-output/REPRODUCTION_RECIPE.md",
-            "gg-vfs-flowedit-output/child.log",
             "gg-vfs-flowedit-output/BASELINE_8423_EXACT.wav",
             "gg-vfs-flowedit-output/GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav",
           ]
+          optional=[
+            "gg-vfs-flowedit-output/REPRODUCTION_RECIPE.md",
+            "gg-vfs-flowedit-output/child.log",
+          ]
           out=Path("work"); idx=[]
-          for name in names:
+          for name in required+optional:
               r=requests.post(api,headers=h,json={"ownerSlug":u,"kernelSlug":slug,"filePath":name,"versionNumber":version},timeout=40,allow_redirects=False)
+              rec={"provider":name,"http":r.status_code}
               if not (300<=r.status_code<400 and r.headers.get("location")):
-                  raise RuntimeError(f"{name}: HTTP {r.status_code} {r.text[:1000]}")
+                  if name in required: raise RuntimeError(f"{name}: HTTP {r.status_code} {r.text[:1000]}")
+                  idx.append(rec); continue
               g=requests.get(r.headers["location"],timeout=180)
-              if not g.ok: raise RuntimeError(f"{name}: signed download {g.status_code}")
+              if not g.ok:
+                  if name in required: raise RuntimeError(f"{name}: signed download {g.status_code}")
+                  rec["signed_http"]=g.status_code;idx.append(rec);continue
               p=out/Path(name).name;p.write_bytes(g.content)
-              idx.append({"file":p.name,"bytes":len(g.content),"sha256":hashlib.sha256(g.content).hexdigest()})
+              rec.update({"file":p.name,"bytes":len(g.content),"sha256":hashlib.sha256(g.content).hexdigest()})
+              idx.append(rec)
           result=json.loads((out/"result.json").read_text())
           if not result.get("ok"): raise RuntimeError("provider effect failed: "+json.dumps(result,ensure_ascii=False))
-          if idx[3]["sha256"]!="a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2":
+          base_rec=next(x for x in idx if x.get("file")=="BASELINE_8423_EXACT.wav")
+          if base_rec["sha256"]!="a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2":
               raise RuntimeError("baseline SHA mismatch")
           (out/"download-index.json").write_text(json.dumps({"provider_ref":f"{u}/{slug}/v1","files":idx},indent=2))
           print(json.dumps(result,ensure_ascii=False,indent=2))
