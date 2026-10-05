@@ -27,7 +27,6 @@ jobs:
           api="https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput"
           required=[
             "gg-vfs-flowedit-output/result.json",
-            "gg-vfs-flowedit-output/BASELINE_8423_EXACT.wav",
             "gg-vfs-flowedit-output/GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav",
           ]
           optional=[
@@ -50,9 +49,15 @@ jobs:
               idx.append(rec)
           result=json.loads((out/"result.json").read_text())
           if not result.get("ok"): raise RuntimeError("provider effect failed: "+json.dumps(result,ensure_ascii=False))
-          base_rec=next(x for x in idx if x.get("file")=="BASELINE_8423_EXACT.wav")
-          if base_rec["sha256"]!="a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2":
+          # Canonical accepted baseline is immutable in GitHub; provider need not duplicate it.
+          src_url="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/b0525d1/gg-vfs-assets/accepted/GG-VFS-F01_ACE-Step15_RU_8423_1.wav"
+          g=requests.get(src_url,headers={"User-Agent":"nd-vfs-flowedit-salvage/1.0"},timeout=120)
+          if not g.ok: raise RuntimeError(f"baseline raw fetch HTTP {g.status_code}")
+          bp=out/"BASELINE_8423_EXACT.wav";bp.write_bytes(g.content)
+          bsha=hashlib.sha256(g.content).hexdigest()
+          if bsha!="a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2":
               raise RuntimeError("baseline SHA mismatch")
+          idx.append({"provider":"canonical_git_baseline","file":bp.name,"bytes":len(g.content),"sha256":bsha})
           (out/"download-index.json").write_text(json.dumps({"provider_ref":f"{u}/{slug}/v1","files":idx},indent=2))
           print(json.dumps(result,ensure_ascii=False,indent=2))
           PY
