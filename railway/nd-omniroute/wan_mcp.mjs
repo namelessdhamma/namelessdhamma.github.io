@@ -2799,6 +2799,36 @@ const TOOLS=[
     }
   },
   {
+    name:'wan_ltx13b_generate',
+    description:'Generation-recovery surface for the existing FREE_ONLY Kaggle LTX 13B mounted-cache first/last-frame route. Submit only; returns durable request_id.',
+    inputSchema:{
+      type:'object',
+      properties:{
+        start_image_url:{type:'string'},
+        end_image_url:{type:'string'},
+        prompt:{type:'string'},
+        negative_prompt:{type:'string'},
+        duration_seconds:{type:'number',default:2,minimum:1,maximum:6},
+        width:{type:'integer',default:864,minimum:256,maximum:864},
+        height:{type:'integer',default:480,minimum:256,maximum:480},
+        seed:{type:'integer',default:42},
+        randomize_seed:{type:'boolean',default:false}
+      },
+      required:['start_image_url','end_image_url'],
+      additionalProperties:false
+    }
+  },
+  {
+    name:'wan_ltx13b_status',
+    description:'One bounded status read for a FREE_ONLY Kaggle LTX 13B mounted-cache request.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
+    name:'wan_ltx13b_result',
+    description:'One bounded result read for a completed FREE_ONLY Kaggle LTX 13B mounted-cache request; persists completed MP4 to Drive.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
     name:'wan_get_capabilities',
     description:'Return the complete Gradio API schema for any public Hugging Face Space. No capability allowlist is applied.',
     inputSchema:{type:'object',properties:{space_id:{type:'string',default:DEFAULT_SPACE}},additionalProperties:false}
@@ -3018,7 +3048,10 @@ export function createWanMcpHandler(){
         const name=String(msg?.params?.name||'');
         const args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
         let result;
-        if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
+        if(name==='wan_ltx13b_generate') result=await ltxKaggleSubmit(args);
+        else if(name==='wan_ltx13b_status') result=await ltxKaggleStatus(args);
+        else if(name==='wan_ltx13b_result') result=await ltxKaggleResult(args);
+        else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
         else return json(res,200,{jsonrpc:'2.0',id,error:{code:-32601,message:'Unknown tool'}});
