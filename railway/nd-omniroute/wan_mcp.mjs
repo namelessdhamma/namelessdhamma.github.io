@@ -1039,7 +1039,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
       ...(direct?{}:{enableGpu:true}),
       enableTpu:false,
       enableInternet:true,
-      kernelExecutionType:'SaveAndRunAll',
+      ...(direct?{}:{kernelExecutionType:'SaveAndRunAll'}),
       machineShape:requestedShape,
       sessionTimeoutSeconds:3600
     });
