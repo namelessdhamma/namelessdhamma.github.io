@@ -7,7 +7,8 @@ const LTX_INPUT_TOKEN=String(process.env.ND_LTX_INPUT_TOKEN||'').trim();
 const LTX_PUBLIC_BASE=String(process.env.ND_LTX_PUBLIC_BASE||'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
 const LTX_INPUT_BASE=String(process.env.ND_LTX_INPUT_BASE||LTX_PUBLIC_BASE).replace(/\/$/,'');
 const LTX_RESULT_TOKEN=String(process.env.ND_LTX_MCP_PATH_TOKEN||'').trim();
-const WORKER_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py';
+const QUALIFIED_WORKER_COMMIT='49a4c2c7e59a367a5b60bcd19460a8e58212f7ff';
+const WORKER_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+QUALIFIED_WORKER_COMMIT+'/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py';
 
 function errorText(e){return String(e?.message||e||'error').slice(0,1800);}
 function json(res,status,obj){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(obj));}
@@ -193,8 +194,27 @@ async function result(args={}){
   });
 }
 
+async function simpleShot(args={}){
+  const requestId=String(args.request_id||'').trim();
+  if(requestId){
+    const st=await status({request_id:requestId});
+    if(st?.state==='COMPLETED') return await result({request_id:requestId});
+    return st;
+  }
+  return await submit({
+    start_image_url:args.start_image_url,
+    end_image_url:args.end_image_url,
+    prompt:args.prompt,
+    negative_prompt:args.negative_prompt,
+    duration_seconds:args.duration_seconds??2,
+    seed:args.seed??42,
+    idempotency_key:args.idempotency_key
+  });
+}
+
 const TOOLS=[
-  {name:'ltx_generate_keyframes',description:'DURABLE_ASYNC FREE_ONLY submit. Returns control with request/effect identity; never waits for inference.',inputSchema:{type:'object',properties:{start_image_url:{type:'string'},end_image_url:{type:'string'},prompt:{type:'string'},negative_prompt:{type:'string'},duration_seconds:{type:'number',default:2,minimum:1,maximum:6},width:{type:'integer',default:512},height:{type:'integer',default:288},seed:{type:'integer',default:42},idempotency_key:{type:'string'},retry_terminal:{type:'boolean',default:false}},required:['start_image_url','end_image_url'],additionalProperties:false}},
+  {name:'ltx_shot',description:'SIMPLE FREE_ONLY Blue Sea/ND shot tool. First call: provide start_image_url + end_image_url (prompt optional) to submit a proven stable ~2 s LTX shot. Later call: provide request_id; it returns status, or the ready video reference automatically when complete.',inputSchema:{type:'object',properties:{request_id:{type:'string'},start_image_url:{type:'string'},end_image_url:{type:'string'},prompt:{type:'string'},negative_prompt:{type:'string'},duration_seconds:{type:'number',default:2,minimum:1,maximum:6},seed:{type:'integer',default:42},idempotency_key:{type:'string'}},anyOf:[{required:['request_id']},{required:['start_image_url','end_image_url']}],additionalProperties:false}},
+  {name:'ltx_generate_keyframes',description:'ADVANCED DURABLE_ASYNC FREE_ONLY submit. Returns control with request/effect identity; never waits for inference.',inputSchema:{type:'object',properties:{start_image_url:{type:'string'},end_image_url:{type:'string'},prompt:{type:'string'},negative_prompt:{type:'string'},duration_seconds:{type:'number',default:2,minimum:1,maximum:6},width:{type:'integer',default:512},height:{type:'integer',default:288},seed:{type:'integer',default:42},idempotency_key:{type:'string'},retry_terminal:{type:'boolean',default:false}},required:['start_image_url','end_image_url'],additionalProperties:false}},
   {name:'ltx_keyframe_reconcile',description:'Reconcile an ambiguous submit by stable effect identity. Never resubmits.',inputSchema:{type:'object',properties:{effect_id:{type:'string'},effect_token:{type:'string'}},anyOf:[{required:['effect_id']},{required:['effect_token']}],additionalProperties:false}},
   {name:'ltx_keyframe_status',description:'One bounded status read under a shared end-to-end control deadline.',inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}},
   {name:'ltx_keyframe_result',description:'One bounded provider-reference result read. Persistence is separate.',inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}}
@@ -208,14 +228,15 @@ export function createLtxMcpHandler(){
     let msg={};try{msg=JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}');}catch{return json(res,400,{jsonrpc:'2.0',id:null,error:{code:-32700,message:'Parse error'}});}
     const id=msg.id??null,method=String(msg.method||'');
     try{
-      if(method==='initialize')return json(res,200,{jsonrpc:'2.0',id,result:{protocolVersion:String(msg?.params?.protocolVersion||'2025-06-18'),capabilities:{tools:{}},serverInfo:{name:'ND Kaggle LTX MCP',version:'2.0.0'}}});
+      if(method==='initialize')return json(res,200,{jsonrpc:'2.0',id,result:{protocolVersion:String(msg?.params?.protocolVersion||'2025-06-18'),capabilities:{tools:{}},serverInfo:{name:'ND Kaggle LTX MCP',version:'2.1.0'}}});
       if(method==='ping')return json(res,200,{jsonrpc:'2.0',id,result:{}});
       if(method.startsWith('notifications/')){res.writeHead(202,{'cache-control':'no-store'});return res.end();}
       if(method==='tools/list')return json(res,200,{jsonrpc:'2.0',id,result:{tools:TOOLS}});
       if(method==='tools/call'){
         const name=String(msg?.params?.name||''),args=(msg?.params?.arguments&&typeof msg.params.arguments==='object')?msg.params.arguments:{};
         let out;
-        if(name==='ltx_generate_keyframes')out=await submit(args);
+        if(name==='ltx_shot')out=await simpleShot(args);
+        else if(name==='ltx_generate_keyframes')out=await submit(args);
         else if(name==='ltx_keyframe_reconcile')out=await reconcile(args);
         else if(name==='ltx_keyframe_status')out=await status(args);
         else if(name==='ltx_keyframe_result')out=await result(args);
@@ -231,7 +252,7 @@ export function createLtxMcpHandler(){
 }
 
 export async function ltxHealth(){
-  return {ok:true,mode:'production_nonblocking',runtime_profile:'DURABLE_ASYNC',production_tools:TOOLS.map(x=>x.name),cost_policy:'FREE_ONLY',route:'kaggle_ltx2b_direct_f2l',control_contract:{submit_timeout_ms:ltxControlTimeout('submit'),status_timeout_ms:ltxControlTimeout('status'),result_timeout_ms:ltxControlTimeout('result'),reconcile_timeout_ms:ltxControlTimeout('reconcile'),result_mode:'PROVIDER_REFERENCE',ambiguous_submit:'RECONCILE_SAME_EFFECT_BEFORE_RESUBMIT'}};
+  return {ok:true,mode:'production_nonblocking',runtime_profile:'DURABLE_ASYNC',recommended_tool:'ltx_shot',qualified_worker_commit:QUALIFIED_WORKER_COMMIT,production_tools:TOOLS.map(x=>x.name),cost_policy:'FREE_ONLY',route:'kaggle_ltx2b_direct_f2l',simple_contract:'ltx_shot(start,end)->request_id; ltx_shot(request_id)->status_or_ready_video',control_contract:{submit_timeout_ms:ltxControlTimeout('submit'),status_timeout_ms:ltxControlTimeout('status'),result_timeout_ms:ltxControlTimeout('result'),reconcile_timeout_ms:ltxControlTimeout('reconcile'),result_mode:'PROVIDER_REFERENCE',ambiguous_submit:'RECONCILE_SAME_EFFECT_BEFORE_RESUBMIT'}};
 }
 
 export async function ltxResultBytes(requestId){
