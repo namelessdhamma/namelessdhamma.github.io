@@ -2995,6 +2995,27 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
   },
   {
+    name:'wan_ltx2b_direct_generate',
+    description:'Generation-recovery surface for the existing FREE_ONLY Kaggle LTX 2B direct route. Uses the compact qualified 2B caches and returns a durable request_id.',
+    inputSchema:{
+      type:'object',
+      properties:{
+        start_image_url:{type:'string'},
+        end_image_url:{type:'string'},
+        prompt:{type:'string'},
+        negative_prompt:{type:'string'},
+        duration_seconds:{type:'number',default:2,minimum:1,maximum:6},
+        width:{type:'integer',default:512},
+        height:{type:'integer',default:288},
+        seed:{type:'integer',default:42},
+        randomize_seed:{type:'boolean',default:false},
+        idempotency_key:{type:'string'}
+      },
+      required:['start_image_url','end_image_url'],
+      additionalProperties:false
+    }
+  },
+  {
     name:'wan_ltx2b_wrapper_generate',
     description:'Generation-recovery surface for the existing FREE_ONLY Kaggle LTX 2B Wan2GP wrapper route. Submit only; returns durable request_id.',
     inputSchema:{
@@ -3347,6 +3368,7 @@ export function createWanMcpHandler(){
         if(name==='wan_ltx13b_generate') result=await ltxKaggleSubmit(args);
         else if(name==='wan_ltx13b_status') result=await ltxKaggleStatus(args);
         else if(name==='wan_ltx13b_result') result=await ltxKaggleResult(args);
+        else if(name==='wan_ltx2b_direct_generate') result=await ltxKaggle2bSubmit(args,{direct:true});
         else if(name==='wan_ltx2b_wrapper_generate') result=await ltxKaggle2bSubmit(args,{direct:false});
         else if(name==='wan_ltx2b_wrapper_status') result=await ltxKaggle2bStatus(args);
         else if(name==='wan_ltx2b_wrapper_result') result=await ltxKaggle2bResult({...args,persist_to_drive:false});
