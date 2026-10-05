@@ -2352,6 +2352,88 @@ async function ltxKaggleListInitProbes(){
   return {ok:true,count:out.length,probes:out};
 }
 
+function kaggleLtxInitProbeRef(requestId){
+  const id=String(requestId||'').trim();
+  const m=id.match(/^kinit-(r[a-z0-9]+-[a-z0-9]+)-v(\d+)$/i);
+  if(!m) throw new Error('valid init probe request_id required');
+  return {request_id:id,kernel_slug:'nd-ltx-init-probe-'+m[1],version:Number(m[2])};
+}
+
+async function ltxKaggleInitProbeSubmit(){
+  const preflight=await kaggleLtxPreflight();
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  const slug='nd-ltx-init-probe-'+token;
+  const script=[
+    'import json,subprocess,sys,platform',
+    'print("ND_LTX_INIT_STAGE=python version="+platform.python_version(),flush=True)',
+    'subprocess.run([sys.executable,"-m","pip","install","--no-cache-dir","-q","diffusers>=0.37.0","transformers>=4.48.0","accelerate>=1.2.0","bitsandbytes","sentencepiece","protobuf","imageio","imageio-ffmpeg","safetensors"],check=True,timeout=900)',
+    'print("ND_LTX_INIT_STAGE=dependencies_ready",flush=True)',
+    'import torch',
+    'print("ND_LTX_INIT_STAGE=torch version="+torch.__version__,flush=True)',
+    'gpu={"cuda_available":torch.cuda.is_available(),"gpu_count":torch.cuda.device_count(),"gpus":[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]}',
+    'print("ND_LTX_INIT_GPU="+json.dumps(gpu,separators=(",",":"),sort_keys=True),flush=True)',
+    'import imageio.v2 as imageio',
+    'print("ND_LTX_INIT_STAGE=imageio",flush=True)',
+    'import numpy as np',
+    'print("ND_LTX_INIT_STAGE=numpy version="+np.__version__,flush=True)',
+    'from PIL import Image',
+    'print("ND_LTX_INIT_STAGE=pillow",flush=True)',
+    'from diffusers import AutoencoderKLLTXVideo, BitsAndBytesConfig as DiffusersBnBConfig, LTXConditionPipeline, LTXVideoTransformer3DModel',
+    'print("ND_LTX_INIT_STAGE=diffusers",flush=True)',
+    'from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition',
+    'from diffusers.schedulers import FlowMatchEulerDiscreteScheduler',
+    'print("ND_LTX_INIT_STAGE=ltx_imports",flush=True)',
+    'from transformers import BitsAndBytesConfig as TransformersBnBConfig, T5EncoderModel, T5TokenizerFast',
+    'print("ND_LTX_INIT_STAGE=transformers",flush=True)',
+    'import bitsandbytes as bnb',
+    'print("ND_LTX_INIT_STAGE=bitsandbytes version="+getattr(bnb,"__version__","unknown"),flush=True)',
+    'print("ND_LTX_INIT_JSON="+json.dumps({"ok":True,"python":platform.python_version(),**gpu},separators=(",",":"),sort_keys=True),flush=True)'
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+slug,newTitle:'ND LTX Init Probe '+token,
+    text:script,language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    isPrivate:true,enableTpu:false,enableInternet:true,machineShape:'NvidiaTeslaP100',sessionTimeoutSeconds:900
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('init probe submit failed '+JSON.stringify({error:save?.error||null}));
+  return {
+    ok:true,state:'SUBMITTED',request_id:'kinit-'+token+'-v'+version,
+    provider_ref:preflight.username+'/'+slug+'/'+version,
+    machine_shape_requested:'NvidiaTeslaP100',cost_policy:'FREE_ONLY',gpu_quota:preflight.gpu
+  };
+}
+
+async function ltxKaggleInitProbeStatus(args={}){
+  const ref=kaggleLtxInitProbeRef(args.request_id);
+  const username=String(KAGGLE_USERNAME_SLUG||'').trim();
+  if(!username) throw new Error('KAGGLE_USERNAME_SLUG is not configured');
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+  });
+  const state=kaggleState(st?.status);
+  let diagnostics=null,receipt=null;
+  if(['COMPLETED','FAILED','CANCELLED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+        userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:50
+      });
+      receipt=extractKaggleMarker(out?.log||'','ND_LTX_INIT_JSON=');
+      diagnostics={
+        files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+        log_tail:String(out?.log||'').slice(-16000)
+      };
+    }catch(e){diagnostics={error:errorText(e)};}
+  }
+  return {
+    ok:state==='COMPLETED'&&!!receipt,request_id:ref.request_id,state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
+    receipt,diagnostics
+  };
+}
+
 async function ltxKaggleAdaptiveInitProbe(){
   const preflight=await kaggleLtxPreflight();
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
@@ -3023,6 +3105,16 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
   },
   {
+    name:'wan_kaggle_init_probe_submit',
+    description:'Submit a nonblocking FREE_ONLY Kaggle dependency/import probe for the current LTX Python stack. No model is loaded and no video is generated.',
+    inputSchema:{type:'object',properties:{},additionalProperties:false}
+  },
+  {
+    name:'wan_kaggle_init_probe_status',
+    description:'One bounded status/readback for the Kaggle LTX dependency/import probe.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
     name:'wan_get_capabilities',
     description:'Return the complete Gradio API schema for any public Hugging Face Space. No capability allowlist is applied.',
     inputSchema:{type:'object',properties:{space_id:{type:'string',default:DEFAULT_SPACE}},additionalProperties:false}
@@ -3271,6 +3363,8 @@ export function createWanMcpHandler(){
         else if(name==='wan_kaggle_recent_kernels') result=await ltxKaggleRecentKernelMetadata();
         else if(name==='wan_kaggle_accel_probe_submit') result=await ltxKaggleAccelProbeSubmit(args);
         else if(name==='wan_kaggle_accel_probe_status') result=await ltxKaggleAccelProbeStatus(args);
+        else if(name==='wan_kaggle_init_probe_submit') result=await ltxKaggleInitProbeSubmit();
+        else if(name==='wan_kaggle_init_probe_status') result=await ltxKaggleInitProbeStatus(args);
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
