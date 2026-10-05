@@ -1,15 +1,6 @@
 {
-  "op": "submit",
-  "nonce": "a8-r01-stability-shot-1-20261005",
-  "args": {
-    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/382ecc95-cb75-4b41-b39c-47a7d53c10d1.jpg",
-    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/84110699-a0f7-4529-815f-a954a274541c.jpg",
-    "prompt": "BLUE_SEA_DUEL_TEST_V1 stability shot 1. Preserve the exact dark-haired swordsman on the left and red-haired opponent on the right. Animate one continuous sword-fight action from the literal supplied first frame toward the literal supplied last frame. The dark-haired fighter advances with coordinated feet, hips, torso, arms, hands and blade; the red-haired fighter reacts defensively with coherent body and weapon motion. Preserve identities, costumes, wet pirate deck, camera side and endpoint composition. Rain, wet hair, cloth, spray, reflections and rigging move continuously. No cut.",
-    "negative_prompt": "slideshow, hard cuts, crossfade, dissolve, frozen fighters, pan-only, zoom-only, identity swap, duplicate people, extra limbs, malformed hands, disappearing weapon, warped blade, teleportation, text, watermark, UI",
-    "duration_seconds": 2,
-    "width": 512,
-    "height": 288,
-    "seed": 80611,
-    "idempotency_key": "A8-R01-STABILITY-2S-SHOT-1-20261005"
-  }
+  "op": "status",
+  "nonce": "a8-r01-stability-shot1-status-20261005-1",
+  "request_id": "k2b-r28c857c864cf-b2b7-v1",
+  "include_diagnostics": true
 }
