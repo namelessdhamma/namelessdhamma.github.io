@@ -89,9 +89,32 @@ for p in shared_needed:
  if not p.exists() or not any(p.iterdir()):
   raise RuntimeError(f"required shared model missing after minimal download: {p}")
 
-# Reclaim package/download caches before 50-step FP32 inference.
+# Verify exact components needed by THIS SFT run before bypassing the pinned
+# upstream "main bundle" precheck. That precheck otherwise requires unused
+# turbo + 1.7B LM and starts a second multi-GB download.
+required_files=[
+ ck/"acestep-v15-sft"/"model.safetensors",
+ ck/"acestep-5Hz-lm-0.6B"/"model.safetensors",
+ ck/"vae"/"diffusion_pytorch_model.safetensors",
+ ck/"Qwen3-Embedding-0.6B"/"model.safetensors",
+]
+missing=[str(p) for p in required_files if not p.exists() or p.stat().st_size==0]
+if missing:
+ raise RuntimeError("required minimal SFT assets missing: "+repr(missing))
+
+import acestep.core.generation.handler.init_service_downloads as _init_downloads
+_real_check_main=_init_downloads.check_main_model_exists
+_init_downloads.check_main_model_exists=lambda checkpoint_path: True
+print("PATCHED_MAIN_BUNDLE_PRECHECK_FOR_EXACT_SFT_LAYOUT",flush=True)
+
+# Reclaim package + HF/Xet download caches. Local checkpoint files above are
+# materialized and already verified; these caches are not needed for inference.
 import shutil as _shutil
-for cache in [Path.home()/".cache"/"uv",Path.home()/".cache"/"pip"]:
+for cache in [
+ Path.home()/".cache"/"uv",
+ Path.home()/".cache"/"pip",
+ Path(os.environ.get("HF_HOME","/nonexistent")),
+]:
  if cache.exists():
   _shutil.rmtree(cache,ignore_errors=True)
 print("MINIMAL_MODEL_LAYOUT_READY",flush=True)
@@ -121,7 +144,7 @@ p=Path(res.audios[0]["path"]);dst=out/"GG-VFS-F01_ACE8423_SFT_CFG7_COVER090.wav"
 rec={"ok":True,"engine":"ACE-Step 1.5","engine_commit":ACE_COMMIT,"model":"acestep-v15-sft","lm_model":"acestep-5Hz-lm-0.6B",
 "source_sha256":SOURCE_SHA,"candidate_sha256":sha(dst),"seed":SEED,"task_type":"cover","audio_cover_strength":0.90,"cover_noise_strength":0.20,
 "inference_steps":50,"guidance_scale":7.0,"shift":1.0,"target_lyrics":LYRICS,"caption":CAPTION,
-"runtime_precision":"DiT FP32 + official CPU offload on T4; minimal shared-model download","manual_phoneme_durations":False,"manual_vowel_durations":False,
+"runtime_precision":"DiT FP32 + official CPU offload on T4; minimal shared-model download; exact SFT main-bundle precheck bypass","manual_phoneme_durations":False,"manual_vowel_durations":False,
 "wall_seconds":round(time.time()-t,3)}
 (out/"result.json").write_text(json.dumps(rec,ensure_ascii=False,indent=2))
 (out/"REPRODUCTION_RECIPE.md").write_text(f"""# GG-VFS-F01 ACE8423 SFT CFG7 Cover090
