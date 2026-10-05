@@ -1,0 +1,204 @@
+name: GG VFS ACE8423 Flow-Edit read-only reconcile
+
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-acestep-flowedit-reconcile.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 48
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Find existing semantic effect and retrieve exact outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          python - <<'PY'
+          import hashlib,json,os,time
+          from pathlib import Path
+          import requests
+
+          token=os.environ["KAGGLE_API_TOKEN"].strip()
+          user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          tag="3aeb9185e45d9b62"
+          api="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-flowedit-reconcile/1.0"}
+          out=Path("work")
+
+          def rpc(method,body=None,timeout=40):
+              r=requests.post(f"{api}/kernels.KernelsApiService/{method}",headers=H,json=body or {},timeout=timeout)
+              if not r.ok: raise RuntimeError(f"{method} HTTP {r.status_code}: {r.text[:1200]}")
+              return r.json() if r.text.strip() else {}
+
+          # Read-only discovery: never SaveKernel.
+          deadline=time.time()+8*60
+          k=None
+          while time.time()<deadline:
+              obj=rpc("ListKernels",{"user":user,"search":tag,"pageSize":50})
+              exact=[x for x in (obj.get("kernels") or []) if tag in str(x.get("slug","")) or tag in str(x.get("ref",""))]
+              if exact:
+                  k=exact[0];break
+              time.sleep(15)
+          if not k: raise RuntimeError("existing Flow-Edit effect not found by semantic tag")
+
+          raw_slug=k.get("slug")
+          raw_ref=str(k.get("ref") or "")
+          actual_slug=str(raw_slug or raw_ref.split("/")[-1]).strip()
+          if not actual_slug or actual_slug.lower()=="none":
+              raise RuntimeError("provider effect has no resolvable slug: "+json.dumps(k,default=str))
+          version=int(k.get("currentVersionNumber") or k.get("current_version_number") or 1)
+          handle={"provider_ref":f"{user}/{actual_slug}/v{version}","kernel":k,"semantic_tag":tag}
+          (out/"handle.json").write_text(json.dumps(handle,default=str,indent=2))
+          print(json.dumps(handle,default=str,indent=2),flush=True)
+
+          def dl(path):
+              r=requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,
+                json={"ownerSlug":user,"kernelSlug":actual_slug,"filePath":path,"versionNumber":version},
+                timeout=40,allow_redirects=False)
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  g=requests.get(r.headers["location"],timeout=180)
+                  return g.content if g.ok and g.content else None
+              if r.ok and r.content:
+                  if "json" in r.headers.get("content-type",""):
+                      try:
+                          o=r.json()
+                          u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                      except Exception:
+                          u=None
+                      if u:
+                          g=requests.get(u,timeout=180); return g.content if g.ok else None
+                  return r.content
+              return None
+
+          prefix="gg-vfs-flowedit-output/"
+          deadline=time.time()+38*60
+          result=None
+          while time.time()<deadline:
+              b=dl(prefix+"result.json")
+              if b:
+                  try:
+                      x=json.loads(b.decode("utf-8"))
+                      if isinstance(x,dict) and "ok" in x:
+                          result=x;(out/"result.json").write_bytes(b);break
+                  except Exception: pass
+              time.sleep(30)
+          if result is None: raise RuntimeError("terminal result not available in bounded reconcile window")
+
+          names=["REPRODUCTION_RECIPE.md","child.log","BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav"]
+          got=[]
+          for name in names:
+              b=dl(prefix+name)
+              if not b:
+                  if result.get("ok"): raise RuntimeError("missing successful output "+name)
+                  continue
+              p=out/name;p.write_bytes(b)
+              got.append({"file":name,"bytes":len(b),"sha256":hashlib.sha256(b).hexdigest()})
+          (out/"download-index.json").write_text(json.dumps({"handle":handle["provider_ref"],"result":result,"files":got},ensure_ascii=False,indent=2))
+          if not result.get("ok"): raise RuntimeError("Flow-Edit provider failed: "+json.dumps(result,ensure_ascii=False))
+          PY
+
+      - name: Qualify Russian content and structure
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'faster-whisper==1.2.0' 'scipy>=1.11'
+          python - <<'PY'
+          import json,math,re,wave
+          from pathlib import Path
+          import numpy as np
+          from scipy.signal import resample_poly,correlate,correlation_lags
+          from faster_whisper import WhisperModel
+
+          root=Path("work")
+          names=["BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav"]
+          expected="я говорила не с ним а с тем кто долго стоял у окна и ждал".split()
+
+          def read(path):
+              with wave.open(str(path),"rb") as w:
+                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth();n=w.getnframes()
+                  if sw!=2: raise RuntimeError("PCM16 required")
+                  x=np.frombuffer(w.readframes(n),dtype="<i2").astype(np.float32).reshape(-1,ch)/32768.0
+              return sr,x
+          def norm(text):
+              return re.sub(r"[^а-яё\s]"," ",text.lower()).replace("ё","е").split()
+          def ed(a,b):
+              d=list(range(len(b)+1))
+              for i,x in enumerate(a,1):
+                  nd=[i]+[0]*len(b)
+                  for j,y in enumerate(b,1): nd[j]=min(nd[j-1]+1,d[j]+1,d[j-1]+(x!=y))
+                  d=nd
+              return d[-1]
+
+          m=WhisperModel("small",device="cpu",compute_type="int8")
+          rep={"expected_words":expected,"items":[]}
+          wavs={}
+          for name in names:
+              sr,x=read(root/name);wavs[name]=(sr,x)
+              mono=x.mean(axis=1);a=resample_poly(mono,1,3).astype(np.float32) if sr==48000 else resample_poly(mono,16000,sr).astype(np.float32)
+              segs,info=m.transcribe(a,language="ru",beam_size=5,word_timestamps=True,temperature=0.0,condition_on_previous_text=False,vad_filter=False)
+              ss=[];ww=[]
+              for s in segs:
+                  ss.append({"start":s.start,"end":s.end,"text":s.text,"avg_logprob":getattr(s,"avg_logprob",None)})
+                  for w in (s.words or []): ww.append({"start":w.start,"end":w.end,"word":w.word,"probability":w.probability})
+              txt=" ".join(s["text"].strip() for s in ss);nw=norm(txt);dist=ed(expected,nw)
+              rep["items"].append({"file":name,"transcript":txt,"normalized_words":nw,"word_edit_distance":dist,
+                "word_error_ratio":dist/len(expected),"contains_ne":"не" in nw,"segments":ss,"words":ww,"language_probability":info.language_probability})
+
+          bsr,b=wavs[names[0]];csr,c=wavs[names[1]]
+          structural={"baseline_duration":len(b)/bsr,"candidate_duration":len(c)/csr}
+          if bsr==csr:
+              n=min(len(b),len(c));bm=b[:n].mean(1);cm=c[:n].mean(1);hop=960
+              def env(x):
+                  z=x[:(len(x)//hop)*hop].reshape(-1,hop);return np.sqrt(np.mean(z*z,axis=1)+1e-12)
+              e1,e2=env(bm),env(cm);mm=min(len(e1),len(e2));e1=e1[:mm];e2=e2[:mm]
+              structural["rms_envelope_correlation"]=float(np.corrcoef(e1,e2)[0,1])
+              co=correlate(e2-e2.mean(),e1-e1.mean(),mode="full");lags=correlation_lags(mm,mm,mode="full");near=np.abs(lags)<=25
+              structural["envelope_best_lag_ms"]=float(lags[near][np.argmax(co[near])]*hop/bsr*1000)
+          rep["structural"]=structural
+          base,cand=rep["items"]
+          rep["classification"]="CONTENT_IMPROVEMENT_CANDIDATE" if cand["word_edit_distance"]<base["word_edit_distance"] and cand["contains_ne"] else "NO_VERIFIED_CONTENT_COMPLETENESS_GAIN"
+          rep["auditory_gates"]=["lexical_stress","GG_voice_from_silence","same_singer_identity","naturalness","no_background_buzz"]
+          (root/"qualification.json").write_text(json.dumps(rep,ensure_ascii=False,indent=2))
+          print(json.dumps(rep,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Build A-B
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import wave
+          from pathlib import Path
+          import numpy as np
+          root=Path("work"); names=["BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav"]
+          xs=[];sr0=ch0=None
+          for i,n in enumerate(names):
+              with wave.open(str(root/n),"rb") as w:
+                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth();x=np.frombuffer(w.readframes(w.getnframes()),dtype="<i2").reshape(-1,ch)
+              if sw!=2: raise RuntimeError("PCM16 required")
+              if sr0 is None: sr0,ch0=sr,ch
+              xs.append(x)
+              if i==0: xs.append(np.zeros((sr0,ch0),dtype=np.int16))
+          y=np.concatenate(xs);p=root/"GG_VFS_AUDITION_ACE8423_vs_FLOWEDIT_GG001.wav"
+          with wave.open(str(p),"wb") as w:
+              w.setnchannels(ch0);w.setsampwidth(2);w.setframerate(sr0);w.writeframes(y.astype("<i2").tobytes())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-ace8423-flowedit-readonly-reconcile
+          path: work/
+          retention-days: 30
+          if-no-files-found: error
