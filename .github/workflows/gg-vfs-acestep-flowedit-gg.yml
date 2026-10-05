@@ -254,3 +254,5 @@ jobs:
           path: work/
           retention-days: 30
           if-no-files-found: error
+
+# trigger: resume-2026-10-05
