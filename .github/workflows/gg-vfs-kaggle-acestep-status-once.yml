@@ -1,0 +1,41 @@
+name: GG VFS ACE-Step Kaggle status once
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-kaggle-acestep-status-once.yml"]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p status
+          python - <<'PY'
+          import json,os,requests
+          token=os.environ["KAGGLE_API_TOKEN"];user=os.environ["KAGGLE_USERNAME_SLUG"]
+          slug="gg-vfs-ace-2216c6d8342585e8"; API="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json"}
+          def p(method,body):
+            r=requests.post(f"{API}/kernels.KernelsApiService/{method}",headers=H,json=body,timeout=30)
+            return {"http":r.status_code,"body":(r.json() if "json" in r.headers.get("content-type","") else r.text[:5000])}
+          st=p("GetKernelSessionStatus",{"userName":user,"kernelSlug":slug,"versionLabel":"v1"})
+          out=p("ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100})
+          Path=None
+          open("status/status.json","w").write(json.dumps({"status":st,"output":out},ensure_ascii=False,indent=2,default=str))
+          print(json.dumps({"status":st,"output_summary":{"http":out["http"],"files":[(x.get("fileName") or x.get("name") or x.get("path")) for x in (out["body"].get("files",[]) if isinstance(out["body"],dict) else [])],"log_tail":str(out["body"].get("log",""))[-10000:] if isinstance(out["body"],dict) else str(out["body"])[-10000:]}},ensure_ascii=False,indent=2,default=str))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-ace-step15-status-once
+          path: status/
+          retention-days: 1
+          if-no-files-found: error
