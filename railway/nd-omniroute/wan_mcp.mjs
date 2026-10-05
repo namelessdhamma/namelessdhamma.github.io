@@ -886,8 +886,6 @@ async function ltxKaggleSubmit(args={}){
   const request={
     start_image_url:startInput.url||undefined,
     end_image_url:endInput.url||undefined,
-    start_image_base64:startInput.base64||undefined,
-    end_image_base64:endInput.base64||undefined,
     prompt:String(args.prompt||'').trim(),
     negative_prompt:String(args.negative_prompt||'').trim()||undefined,
     duration_seconds:Number(args.duration_seconds??2),
