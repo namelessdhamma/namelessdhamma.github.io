@@ -168,11 +168,29 @@ def main() -> None:
     seed = int(request.get("seed") or 42)
 
     TMP.mkdir(parents=True, exist_ok=True)
-    print("ND_LTX_STAGE=materialize_inputs", flush=True)
     start_path = TMP / "start"
     end_path = TMP / "end"
-    _materialize_image(request, "start", start_path)
-    _materialize_image(request, "end", end_path)
+    if os.environ.get("ND_LTX_ADAPTIVE_INPUTS_READY") == "1":
+        if not start_path.exists() or not end_path.exists():
+            raise RuntimeError("adaptive child inputs missing")
+        print(
+            "ND_LTX_STAGE=reuse_materialized_inputs start_bytes="
+            + str(start_path.stat().st_size)
+            + " end_bytes="
+            + str(end_path.stat().st_size),
+            flush=True,
+        )
+    else:
+        print("ND_LTX_STAGE=materialize_inputs", flush=True)
+        _materialize_image(request, "start", start_path)
+        _materialize_image(request, "end", end_path)
+        print(
+            "ND_LTX_STAGE=materialize_inputs_done start_bytes="
+            + str(start_path.stat().st_size)
+            + " end_bytes="
+            + str(end_path.stat().st_size),
+            flush=True,
+        )
 
     if os.environ.get("ND_LTX_ADAPTIVE_RUNTIME_READY") != "1":
         print("ND_LTX_STAGE=install_dependencies", flush=True)
@@ -180,6 +198,7 @@ def main() -> None:
         print("ND_LTX_STAGE=dependencies_ready", flush=True)
         env = dict(os.environ)
         env["ND_LTX_ADAPTIVE_RUNTIME_READY"] = "1"
+        env["ND_LTX_ADAPTIVE_INPUTS_READY"] = "1"
         worker_path = Path("/kaggle/working/kaggle_ltx_worker.py")
         if not worker_path.exists():
             worker_path = Path(sys.argv[0]).resolve()
