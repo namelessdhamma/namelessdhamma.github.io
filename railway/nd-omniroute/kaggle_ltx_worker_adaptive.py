@@ -154,24 +154,35 @@ def main() -> None:
     _install()
     print("ND_LTX_STAGE=dependencies_ready", flush=True)
 
+    print("ND_LTX_STAGE=import_imageio_begin", flush=True)
     import imageio.v2 as imageio
+    print("ND_LTX_STAGE=import_imageio_done", flush=True)
     import numpy as np
+    print("ND_LTX_STAGE=import_numpy_done", flush=True)
     import torch
+    print(f"ND_LTX_STAGE=import_torch_done version={torch.__version__}", flush=True)
     import torch.nn as nn
+    print("ND_LTX_STAGE=import_torch_nn_done", flush=True)
     from PIL import Image
+    print("ND_LTX_STAGE=import_pillow_done", flush=True)
+    print("ND_LTX_STAGE=import_diffusers_begin", flush=True)
     from diffusers import (
         AutoencoderKLLTXVideo,
         BitsAndBytesConfig as DiffusersBnBConfig,
         LTXConditionPipeline,
         LTXVideoTransformer3DModel,
     )
+    print("ND_LTX_STAGE=import_diffusers_done", flush=True)
     from diffusers.pipelines.ltx.pipeline_ltx_condition import LTXVideoCondition
+    print("ND_LTX_STAGE=import_ltx_condition_done", flush=True)
     from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
+    print("ND_LTX_STAGE=import_scheduler_done", flush=True)
     from transformers import (
         BitsAndBytesConfig as TransformersBnBConfig,
         T5EncoderModel,
         T5TokenizerFast,
     )
+    print("ND_LTX_STAGE=import_transformers_done", flush=True)
 
     if not torch.cuda.is_available() or torch.cuda.device_count() < 1:
         raise RuntimeError("ND Kaggle LTX requires at least one CUDA GPU")
