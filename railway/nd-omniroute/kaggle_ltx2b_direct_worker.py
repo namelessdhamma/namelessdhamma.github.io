@@ -431,6 +431,15 @@ def main() -> None:
         raise SystemExit("usage: kaggle_ltx2b_wan2gp_worker.py request.json")
     request = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 
+    # Current Kaggle runtime compatibility: the qualified import probe proves
+    # MMGP loads in a fresh interpreter before the broader worker import graph.
+    # Preload it at the earliest clean-child point and reuse the same modules
+    # later instead of importing MMGP after an explicit torch import.
+    if os.environ.get("ND_LTX2B_RUNTIME_READY") == "1":
+        print("ND_LTX2B_STAGE=mmgp_bootstrap_begin", flush=True)
+        from mmgp import offload, profile_type
+        print("ND_LTX2B_STAGE=mmgp_bootstrap_done", flush=True)
+
     width = align32(int(request.get("width") or 512))
     height = align32(int(request.get("height") or 288))
     if width * height > 768 * 448:
@@ -469,22 +478,7 @@ def main() -> None:
         print(f"ND_LTX2B_IMPORT_STAGE={name} maxrss_kb={rss}", flush=True)
 
     print("ND_LTX2B_STAGE=direct_import_begin", flush=True)
-    gpu0_name = torch.cuda.get_device_name(0) if torch.cuda.device_count() else ""
-    try:
-        gpu0_capability = tuple(torch.cuda.get_device_capability(0))
-    except Exception:
-        gpu0_capability = None
-    print(
-        "ND_LTX2B_CUDA_COMPAT="
-        + repr({"gpu": gpu0_name, "reported_capability": gpu0_capability}),
-        flush=True,
-    )
-    if "T4" in gpu0_name:
-        torch.cuda.get_device_capability = lambda device=None: (7, 5)
-        print("ND_LTX2B_CUDA_COMPAT=t4_capability_forced_7_5", flush=True)
-    import_stage("mmgp_begin")
-    from mmgp import offload, profile_type
-    import_stage("mmgp_done")
+    import_stage("mmgp_preloaded")
     from shared.utils import files_locator as fl
     import_stage("files_locator_done")
     fl.set_checkpoints_paths([str(CK)])
