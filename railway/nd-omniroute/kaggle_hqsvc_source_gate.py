@@ -174,6 +174,10 @@ print(json.dumps(receipt,ensure_ascii=False),flush=True)
     # Keep Kaggle's host NVIDIA driver path. HQ-SVC README says to unset
     # LD_LIBRARY_PATH only as an optional workaround for a specific segfault;
     # unsetting it on Kaggle hides libcuda from the official CUDA env.
+    run(["nvidia-smi"],timeout=60,env=child_env)
+    run([str(ENV/"bin/python"),"-c",
+         "import torch; print('HQENV_TORCH',torch.__version__,'CUDA_BUILD',torch.version.cuda,'CUDA_AVAILABLE',torch.cuda.is_available()); assert torch.cuda.is_available()"],
+        timeout=120,env=child_env)
     cmd=[str(ENV/"bin/python"),str(infer),str(REPO),str(SOURCE),str(TARGET),str(OUT)]
     log=OUT/"child.log"
     with log.open("w") as fh:
