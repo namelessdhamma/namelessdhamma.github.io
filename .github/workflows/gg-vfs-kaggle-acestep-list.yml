@@ -25,7 +25,7 @@ jobs:
           token=os.environ["KAGGLE_API_TOKEN"].strip(); user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
           h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-list/1.0"}
           url="https://api.kaggle.com/v1/kernels.KernelsApiService/ListKernels"
-          r=requests.post(url,headers=h,json={"user":user,"search":"gg-vfs-ace-2216c6d8342585e8","pageSize":50},timeout=30)
+          r=requests.post(url,headers=h,json={"user":user,"search":"ACE8423 Repaint","pageSize":50},timeout=30)
           Path("out/http.txt").write_text(f"HTTP {r.status_code}\n"+r.text)
           print("HTTP",r.status_code,flush=True)
           print(r.text[:10000],flush=True)
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gg-vfs-ace-step15-list-metadata
+          name: gg-vfs-ace8423-repaint-list-metadata
           path: out/
           retention-days: 30
           if-no-files-found: error
