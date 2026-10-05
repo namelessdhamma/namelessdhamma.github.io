@@ -27,8 +27,17 @@ jobs:
           set -euo pipefail
           src="$(find source -type f -name '*.wav' -print -quit)"
           test -n "$src"
-          ffmpeg -hide_banner -loglevel error -y -i "$src" -t 5.8 -ar 44100 -ac 1 source-short.wav
-          ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 source-short.wav
+          python -m pip install soundfile numpy
+          python - "$src" <<'PY'
+          import sys, soundfile as sf, numpy as np
+          src=sys.argv[1]
+          y,sr=sf.read(src)
+          if y.ndim>1: y=y.mean(axis=1)
+          n=min(len(y), int(sr*5.8))
+          y=y[:n]
+          sf.write("source-short.wav", y, sr)
+          print("SHORT_SECONDS", len(y)/sr, "SR", sr)
+          PY
       - name: ACE-Step 1.5 lightweight cover
         shell: bash
         run: |
