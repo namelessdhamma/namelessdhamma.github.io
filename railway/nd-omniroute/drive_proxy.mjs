@@ -3007,6 +3007,10 @@ const server = http.createServer(async (req,res) => {
     const handled = await ltxMcpHandler(req,res);
     if (handled !== false) return;
   }
+  if (WAN_MCP_TOKEN && req.url === WAN_MCP_PATH + '/ltx') {
+    const handled = await ltxMcpHandler(req,res);
+    if (handled !== false) return;
+  }
   if (WAN_MCP_TOKEN && req.url === WAN_MCP_PATH) {
     const handled = await wanMcpHandler(req,res);
     if (handled !== false) return;
