@@ -32,12 +32,14 @@ jobs:
           set -euo pipefail
           python -m pip install -q 'faster-whisper==1.2.0'
           python - <<'PY'
-          import json
+          import json, subprocess, numpy as np
           from faster_whisper import WhisperModel
           wav="in/GG-VFS-F01_ACE-Step15_RU_8423_1.wav"
+          raw=subprocess.check_output(["ffmpeg","-v","error","-i",wav,"-ac","1","-ar","16000","-f","f32le","pipe:1"])
+          audio=np.frombuffer(raw,dtype=np.float32)
           model=WhisperModel("small",device="cpu",compute_type="int8")
           segments, info=model.transcribe(
-              wav,language="ru",beam_size=5,word_timestamps=True,
+              audio,language="ru",beam_size=5,word_timestamps=True,
               temperature=0.0,condition_on_previous_text=False,
               vad_filter=False,
           )
