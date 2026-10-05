@@ -171,7 +171,9 @@ print(json.dumps(receipt,ensure_ascii=False),flush=True)
 ''',encoding="utf-8")
 
     child_env=os.environ.copy()
-    child_env.pop("LD_LIBRARY_PATH",None)
+    # Keep Kaggle's host NVIDIA driver path. HQ-SVC README says to unset
+    # LD_LIBRARY_PATH only as an optional workaround for a specific segfault;
+    # unsetting it on Kaggle hides libcuda from the official CUDA env.
     cmd=[str(ENV/"bin/python"),str(infer),str(REPO),str(SOURCE),str(TARGET),str(OUT)]
     log=OUT/"child.log"
     with log.open("w") as fh:
