@@ -2887,6 +2887,36 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
   },
   {
+    name:'wan_ltx13b_adaptive_generate',
+    description:'Generation-recovery surface for the existing FREE_ONLY adaptive Kaggle LTX 13B mounted-cache worker. Submits exactly one first/last-frame segment through the adaptive batch runner.',
+    inputSchema:{
+      type:'object',
+      properties:{
+        start_image_url:{type:'string'},
+        end_image_url:{type:'string'},
+        prompt:{type:'string'},
+        negative_prompt:{type:'string'},
+        duration_seconds:{type:'number',default:2,minimum:1,maximum:6},
+        width:{type:'integer',default:768,minimum:256,maximum:864},
+        height:{type:'integer',default:432,minimum:256,maximum:480},
+        seed:{type:'integer',default:42},
+        machine_shape:{type:'string',enum:['NvidiaTeslaT4','NvidiaTeslaP100'],default:'NvidiaTeslaP100'}
+      },
+      required:['start_image_url','end_image_url'],
+      additionalProperties:false
+    }
+  },
+  {
+    name:'wan_ltx13b_adaptive_status',
+    description:'One bounded status read for an adaptive Kaggle LTX 13B request.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
+    name:'wan_ltx13b_adaptive_result',
+    description:'One bounded result read for a completed adaptive Kaggle LTX 13B request; persists its MP4 to Drive.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
     name:'wan_get_capabilities',
     description:'Return the complete Gradio API schema for any public Hugging Face Space. No capability allowlist is applied.',
     inputSchema:{type:'object',properties:{space_id:{type:'string',default:DEFAULT_SPACE}},additionalProperties:false}
@@ -3115,6 +3145,22 @@ export function createWanMcpHandler(){
         else if(name==='wan_ltx23_generate') result=await ltxKaggleWan2gpSubmit(args);
         else if(name==='wan_ltx23_status') result=await ltxKaggleStatus(args);
         else if(name==='wan_ltx23_result') result=await ltxKaggleResult(args);
+        else if(name==='wan_ltx13b_adaptive_generate') result=await ltxKaggleBatchSubmit({
+          adaptive:true,
+          machine_shape:String(args.machine_shape||'NvidiaTeslaP100'),
+          segments:[{
+            start_image_url:args.start_image_url,
+            end_image_url:args.end_image_url,
+            prompt:args.prompt,
+            negative_prompt:args.negative_prompt,
+            duration_seconds:args.duration_seconds,
+            width:args.width,
+            height:args.height,
+            seed:args.seed
+          }]
+        });
+        else if(name==='wan_ltx13b_adaptive_status') result=await ltxKaggleBatchStatus(args);
+        else if(name==='wan_ltx13b_adaptive_result') result=await ltxKaggleBatchResult(args);
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
