@@ -1,0 +1,207 @@
+name: GG VFS qualify exact-source ACE8423 repaint
+
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths:
+      - ".github/workflows/gg-vfs-acestep-repaint-qualify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Reconcile exact existing effect and download artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          python - <<'PY'
+          import hashlib,json,os,time
+          from pathlib import Path
+          import requests
+
+          token=os.environ["KAGGLE_API_TOKEN"].strip()
+          user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          slug="gg-vfs-ace8423-repaint-6e1ad7e93603370a"; version=1
+          api="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-repaint-qualify/1.0"}
+          out=Path("work")
+          paths=[
+              "gg-vfs-ace-repaint-output/result.json",
+              "gg-vfs-ace-repaint-output/REPRODUCTION_RECIPE.md",
+              "gg-vfs-ace-repaint-output/child.log",
+              "gg-vfs-ace-repaint-output/BASELINE_8423_EXACT.wav",
+              "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p2.wav",
+              "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p4.wav",
+          ]
+          def post(name):
+              return requests.post(
+                  f"{api}/kernels.KernelsApiService/DownloadKernelOutput",
+                  headers=H,
+                  json={"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},
+                  timeout=40,allow_redirects=False)
+          def resolve(name):
+              r=post(name)
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  g=requests.get(r.headers["location"],timeout=180)
+                  return g.content if g.ok and g.content else None
+              if r.ok and r.content:
+                  if "json" in r.headers.get("content-type",""):
+                      try:
+                          o=r.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                      except Exception:u=None
+                      if u:
+                          g=requests.get(u,timeout=180)
+                          return g.content if g.ok and g.content else None
+                  return r.content
+              return None
+
+          deadline=time.time()+24*60
+          result=None
+          while time.time()<deadline:
+              b=resolve(paths[0])
+              if b:
+                  try:
+                      x=json.loads(b.decode("utf-8"))
+                      if isinstance(x,dict) and "ok" in x:
+                          result=x; (out/"result.json").write_bytes(b); break
+                  except Exception: pass
+              time.sleep(30)
+          if result is None:
+              raise RuntimeError("terminal repaint result not available in bounded window")
+          if not result.get("ok"):
+              child=resolve(paths[2])
+              if child: (out/"child.log").write_bytes(child)
+              raise RuntimeError("repaint provider failed: "+json.dumps(result,ensure_ascii=False))
+
+          got=[]
+          for name in paths[1:]:
+              b=resolve(name)
+              if not b: raise RuntimeError("missing expected provider file: "+name)
+              p=out/Path(name).name;p.write_bytes(b)
+              got.append({"file":p.name,"bytes":len(b),"sha256":hashlib.sha256(b).hexdigest()})
+          exact=hashlib.sha256((out/"BASELINE_8423_EXACT.wav").read_bytes()).hexdigest()
+          expected="a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2"
+          if exact!=expected: raise RuntimeError(f"source hash mismatch {exact}")
+          (out/"download-index.json").write_text(json.dumps({"provider_ref":f"{user}/{slug}/v1","files":got},indent=2))
+          print(json.dumps({"provider_ref":f"{user}/{slug}/v1","files":got},indent=2),flush=True)
+          PY
+
+      - name: Russian ASR and preservation qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'faster-whisper==1.2.0' 'scipy<2'
+          python - <<'PY'
+          import json, math, wave
+          from pathlib import Path
+          import numpy as np
+          from scipy.signal import resample_poly
+          from faster_whisper import WhisperModel
+
+          root=Path("work")
+          files=[
+            "BASELINE_8423_EXACT.wav",
+            "GG-VFS-F01_ACE8423_REPAINT_0p2.wav",
+            "GG-VFS-F01_ACE8423_REPAINT_0p4.wav",
+          ]
+          expected_words=["я","говорила","не","с","ним","а","с","тем","кто","долго","стоял","у","окна","и","ждал"]
+
+          def read_wav(path):
+              with wave.open(str(path),"rb") as w:
+                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth();n=w.getnframes()
+                  if sw!=2: raise RuntimeError(f"expected PCM16 {path}, got sampwidth={sw}")
+                  x=np.frombuffer(w.readframes(n),dtype="<i2").astype(np.float32)/32768.0
+              x=x.reshape(-1,ch)
+              return sr,x
+
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          report={"expected":"Я говорила не с ним, а с тем, кто долго стоял у окна и ждал.","items":[]}
+          waves={}
+          for name in files:
+              sr,x=read_wav(root/name); waves[name]=(sr,x)
+              mono=x.mean(axis=1)
+              audio=resample_poly(mono,1,3).astype(np.float32) if sr==48000 else resample_poly(mono,16000,sr).astype(np.float32)
+              segs,info=model.transcribe(audio,language="ru",beam_size=5,word_timestamps=True,temperature=0.0,condition_on_previous_text=False,vad_filter=False)
+              srec=[];wrec=[]
+              for s in segs:
+                  srec.append({"start":s.start,"end":s.end,"text":s.text,"avg_logprob":getattr(s,"avg_logprob",None)})
+                  for w in (s.words or []):
+                      wrec.append({"start":w.start,"end":w.end,"word":w.word,"probability":w.probability})
+              text=" ".join(s["text"].strip() for s in srec)
+              report["items"].append({"file":name,"language_probability":info.language_probability,"transcript":text,"segments":srec,"words":wrec})
+
+          # Preservation after repaint interval + crossfade margin.
+          bsr,bx=waves[files[0]]
+          for item,name in zip(report["items"][1:],files[1:]):
+              sr,x=waves[name]
+              if sr!=bsr or x.shape!=bx.shape:
+                  item["outside_preservation"]={"compatible":False,"source_shape":list(bx.shape),"candidate_shape":list(x.shape)}
+                  continue
+              start=int(7.5*sr)
+              a=bx[start:].reshape(-1).astype(np.float64);b=x[start:].reshape(-1).astype(np.float64)
+              # raw + best linear-scale residual to distinguish normalization from structural drift
+              raw_rms=float(np.sqrt(np.mean((a-b)**2)))
+              aa=float(np.dot(a,a))
+              scale=float(np.dot(a,b)/aa) if aa>1e-15 else 1.0
+              resid=b-scale*a
+              resid_rms=float(np.sqrt(np.mean(resid**2)))
+              sig=float(np.sqrt(np.mean(a*a)))
+              corr=float(np.corrcoef(a,b)[0,1]) if np.std(a)>0 and np.std(b)>0 else 0.0
+              item["outside_preservation"]={
+                  "compatible":True,"start_sec":7.5,
+                  "raw_rms_error":raw_rms,"best_scale":scale,
+                  "scale_adjusted_rms_error":resid_rms,
+                  "signal_to_residual_db":20*math.log10(max(sig,1e-12)/max(resid_rms,1e-12)),
+                  "correlation":corr,
+              }
+
+          (root/"qualification.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          for it in report["items"]:
+              print("\nFILE",it["file"])
+              print("TRANSCRIPT",it["transcript"])
+              for w in it["words"]: print(f"{w['start']:.2f}-{w['end']:.2f} {w['word']} p={w['probability']:.3f}")
+              if "outside_preservation" in it: print("PRESERVATION",json.dumps(it["outside_preservation"],ensure_ascii=False))
+          PY
+
+      - name: Build listening comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import wave
+          from pathlib import Path
+          import numpy as np
+          root=Path("work")
+          names=["BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_REPAINT_0p2.wav","GG-VFS-F01_ACE8423_REPAINT_0p4.wav"]
+          chunks=[];sr0=None;ch0=None
+          for i,n in enumerate(names):
+              with wave.open(str(root/n),"rb") as w:
+                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth()
+                  if sw!=2: raise RuntimeError("PCM16 required")
+                  x=np.frombuffer(w.readframes(w.getnframes()),dtype="<i2").reshape(-1,ch)
+              if sr0 is None: sr0,ch0=sr,ch
+              if (sr,ch)!=(sr0,ch0): raise RuntimeError("format mismatch")
+              chunks.append(x)
+              if i<len(names)-1: chunks.append(np.zeros((int(sr*1.0),ch),dtype=np.int16))
+          y=np.concatenate(chunks,axis=0)
+          out=root/"GG_VFS_AUDITION_8423_vs_REPAINT02_vs_REPAINT04.wav"
+          with wave.open(str(out),"wb") as w:
+              w.setnchannels(ch0);w.setsampwidth(2);w.setframerate(sr0);w.writeframes(y.astype("<i2").tobytes())
+          print(out, len(y)/sr0)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-ace8423-repaint-qualified
+          path: work/
+          retention-days: 30
+          if-no-files-found: error
