@@ -2426,6 +2426,73 @@ async function ltxKaggleAdaptiveInitProbe(){
   };
 }
 
+function kaggleLtxAccelProbeRef(requestId){
+  const id=String(requestId||'').trim();
+  const m=id.match(/^kacc-(r[a-z0-9]+-[a-z0-9]+)-v(\d+)$/i);
+  if(!m) throw new Error('valid accelerator probe request_id required');
+  return {request_id:id,kernel_slug:'nd-ltx-accel-probe-'+m[1],version:Number(m[2])};
+}
+
+async function ltxKaggleAccelProbeSubmit(args={}){
+  const shape=['NvidiaTeslaT4','NvidiaTeslaP100'].includes(String(args.machine_shape||''))?String(args.machine_shape):'NvidiaTeslaP100';
+  const preflight=await kaggleLtxPreflight();
+  const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
+  const slug='nd-ltx-accel-probe-'+token;
+  const marker='ND_LTX_ACCEL_PROBE_JSON=';
+  const script=[
+    'import json,torch,platform',
+    'out={"python":platform.python_version(),"cuda_available":torch.cuda.is_available(),"gpu_count":torch.cuda.device_count(),"gpus":[]}',
+    'for i in range(torch.cuda.device_count()):',
+    '    p=torch.cuda.get_device_properties(i)',
+    '    out["gpus"].append({"index":i,"name":torch.cuda.get_device_name(i),"total_memory_bytes":int(p.total_memory),"major":int(p.major),"minor":int(p.minor)})',
+    'print("'+marker+'"+json.dumps(out,separators=(",",":"),sort_keys=True))'
+  ].join('\n');
+  const save=await kaggleRpc('kernels.KernelsApiService','SaveKernel',{
+    slug:preflight.username+'/'+slug,
+    newTitle:'ND LTX Accel Probe '+token,
+    text:script,language:'python',kernelType:'script',
+    datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],
+    isPrivate:true,enableTpu:false,enableInternet:false,machineShape:shape,sessionTimeoutSeconds:600
+  });
+  const version=Number(save?.versionNumber||save?.version_number||0);
+  if(!version||save?.error) throw new Error('accelerator probe submit failed '+JSON.stringify({error:save?.error||null}));
+  return {
+    ok:true,state:'SUBMITTED',request_id:'kacc-'+token+'-v'+version,
+    provider_ref:preflight.username+'/'+slug+'/'+version,
+    machine_shape_requested:shape,cost_policy:'FREE_ONLY',gpu_quota:preflight.gpu
+  };
+}
+
+async function ltxKaggleAccelProbeStatus(args={}){
+  const ref=kaggleLtxAccelProbeRef(args.request_id);
+  const username=String(KAGGLE_USERNAME_SLUG||'').trim();
+  if(!username) throw new Error('KAGGLE_USERNAME_SLUG is not configured');
+  const st=await kaggleRpc('kernels.KernelsApiService','GetKernelSessionStatus',{
+    userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version
+  });
+  const state=kaggleState(st?.status);
+  let diagnostics=null,receipt=null;
+  if(['COMPLETED','FAILED','CANCELLED'].includes(state)){
+    try{
+      const out=await kaggleRpc('kernels.KernelsApiService','ListKernelSessionOutput',{
+        userName:username,kernelSlug:ref.kernel_slug,versionLabel:'v'+ref.version,pageSize:50
+      });
+      receipt=extractKaggleMarker(out?.log||'','ND_LTX_ACCEL_PROBE_JSON=');
+      diagnostics={
+        files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+        log_tail:String(out?.log||'').slice(-10000)
+      };
+    }catch(e){diagnostics={error:errorText(e)};}
+  }
+  return {
+    ok:state==='COMPLETED'&&!!receipt,request_id:ref.request_id,state,
+    provider_status:st?.status??null,
+    failure_message:st?.failureMessage||st?.failure_message||null,
+    provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,
+    receipt,diagnostics
+  };
+}
+
 async function ltxKaggleAcceleratorProbe(shape='NvidiaTeslaP100'){
   const preflight=await kaggleLtxPreflight();
   const token='r'+Date.now().toString(36)+'-'+Math.floor(Math.random()*1679616).toString(36).padStart(4,'0');
@@ -2946,6 +3013,16 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{},additionalProperties:false}
   },
   {
+    name:'wan_kaggle_accel_probe_submit',
+    description:'Submit a minimal FREE_ONLY Kaggle GPU runtime probe with no model load or package installation. Returns a durable request_id immediately.',
+    inputSchema:{type:'object',properties:{machine_shape:{type:'string',enum:['NvidiaTeslaT4','NvidiaTeslaP100'],default:'NvidiaTeslaP100'}},additionalProperties:false}
+  },
+  {
+    name:'wan_kaggle_accel_probe_status',
+    description:'One bounded status/readback for a minimal Kaggle GPU runtime probe.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
     name:'wan_get_capabilities',
     description:'Return the complete Gradio API schema for any public Hugging Face Space. No capability allowlist is applied.',
     inputSchema:{type:'object',properties:{space_id:{type:'string',default:DEFAULT_SPACE}},additionalProperties:false}
@@ -3192,6 +3269,8 @@ export function createWanMcpHandler(){
         else if(name==='wan_ltx13b_adaptive_result') result=await ltxKaggleBatchResult(args);
         else if(name==='wan_kaggle_diagnose_sessions') result=await ltxKaggleDiagnoseSessions();
         else if(name==='wan_kaggle_recent_kernels') result=await ltxKaggleRecentKernelMetadata();
+        else if(name==='wan_kaggle_accel_probe_submit') result=await ltxKaggleAccelProbeSubmit(args);
+        else if(name==='wan_kaggle_accel_probe_status') result=await ltxKaggleAccelProbeStatus(args);
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
