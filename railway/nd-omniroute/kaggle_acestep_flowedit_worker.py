@@ -67,6 +67,60 @@ import hashlib,json,os,sys,time,shutil
 from pathlib import Path
 import torch
 repo=Path(sys.argv[1]); src=Path(sys.argv[2]); out=Path(sys.argv[3])
+
+# Pinned ACE-Step commit has a Flow-Edit offload bug: the final
+# prepare_condition used for downstream LRC/scoring sits outside the model
+# offload context. On T4 FP32 this mixes CUDA hidden states with CPU weights.
+# Patch ONLY that post-diffusion context boundary; generation math/conditioning
+# remain unchanged.
+flow_file=repo/"acestep/core/generation/handler/service_generate_flow_edit.py"
+flow_src=flow_file.read_text(encoding="utf-8")
+old_block="""    # Return target-side encoder/context for downstream auto-LRC + scoring.
+    attn = torch.ones(bsz, seq, device=device, dtype=dtype)
+    enc_hs, enc_am, ctx = handler.model.prepare_condition(
+        text_hidden_states=payload["text_hidden_states"],
+        text_attention_mask=payload["text_attention_mask"],
+        lyric_hidden_states=payload["lyric_hidden_states"],
+        lyric_attention_mask=payload["lyric_attention_mask"],
+        refer_audio_acoustic_hidden_states_packed=payload["refer_audio_acoustic_hidden_states_packed"],
+        refer_audio_order_mask=payload["refer_audio_order_mask"],
+        hidden_states=ctx_input,
+        attention_mask=attn,
+        silence_latent=handler.silence_latent,
+        src_latents=ctx_input,
+        chunk_masks=payload["chunk_mask"],
+        is_covers=is_covers_arg,
+        precomputed_lm_hints_25Hz=precomputed_lm_hints_arg,
+    )
+    return outputs, enc_hs, enc_am, ctx
+"""
+new_block="""    # Return target-side encoder/context for downstream auto-LRC + scoring.
+    # Keep this post-diffusion prepare_condition inside the same official
+    # model offload context as the main Flow-Edit call.
+    attn = torch.ones(bsz, seq, device=device, dtype=dtype)
+    with handler._load_model_context("model"):
+        enc_hs, enc_am, ctx = handler.model.prepare_condition(
+            text_hidden_states=payload["text_hidden_states"],
+            text_attention_mask=payload["text_attention_mask"],
+            lyric_hidden_states=payload["lyric_hidden_states"],
+            lyric_attention_mask=payload["lyric_attention_mask"],
+            refer_audio_acoustic_hidden_states_packed=payload["refer_audio_acoustic_hidden_states_packed"],
+            refer_audio_order_mask=payload["refer_audio_order_mask"],
+            hidden_states=ctx_input,
+            attention_mask=attn,
+            silence_latent=handler.silence_latent,
+            src_latents=ctx_input,
+            chunk_masks=payload["chunk_mask"],
+            is_covers=is_covers_arg,
+            precomputed_lm_hints_25Hz=precomputed_lm_hints_arg,
+        )
+    return outputs, enc_hs, enc_am, ctx
+"""
+if old_block not in flow_src:
+    raise RuntimeError("Pinned Flow-Edit patch anchor not found")
+flow_file.write_text(flow_src.replace(old_block,new_block),encoding="utf-8")
+print("PATCHED_FLOWEDIT_POSTCONDITION_CONTEXT",flush=True)
+
 sys.path.insert(0,str(repo))
 from acestep.handler import AceStepHandler
 from acestep.llm_inference import LLMHandler
@@ -147,7 +201,7 @@ shutil.copy2(src,out/"BASELINE_8423_EXACT.wav")
 receipt={
  "ok":True,"engine":"ACE-Step 1.5","engine_commit":ACE_COMMIT,
  "model":"acestep-v15-turbo","lm_model":"acestep-5Hz-lm-0.6B",
- "runtime_precision":"DiT FP32 + official CPU offload on T4",
+ "runtime_precision":"DiT FP32 + official CPU offload on T4; pinned Flow-Edit postcondition context patch",
  "task_type":"text2music+flow_edit","source_sha256":sha(src),"candidate_sha256":sha(dst),
  "seed":SEED,"flow_edit":{"n_min":0.0,"n_max":1.0,"n_avg":1},
  "source_caption":SOURCE_CAPTION,"source_lyrics":SOURCE_LYRICS,
