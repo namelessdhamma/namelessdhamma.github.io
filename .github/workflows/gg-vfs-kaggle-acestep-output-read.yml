@@ -1,0 +1,74 @@
+name: GG VFS ACE-Step direct output read
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-kaggle-acestep-output-read.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Read existing v1 outputs without status API
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python - <<'PY'
+          import hashlib,json,os,requests
+          from pathlib import Path
+          token=os.environ["KAGGLE_API_TOKEN"].strip()
+          user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          slug="gg-vfs-ace-2216c6d8342585e8"; version=1
+          api="https://api.kaggle.com/v1"
+          h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-direct-output/1.0"}
+          out=Path("out")
+          def post(path,body,redir=True):
+              r=requests.post(api+"/"+path,headers=h,json=body,timeout=40,allow_redirects=redir)
+              return r
+          # Read list once. Do not poll and do not resubmit.
+          r=post("kernels.KernelsApiService/ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100})
+          (out/"list-response.txt").write_text(f"HTTP {r.status_code}\n"+r.text)
+          if not r.ok:
+              print("LIST_HTTP",r.status_code,r.text[:2000],flush=True)
+              raise SystemExit(2)
+          obj=r.json() if r.text.strip() else {}
+          (out/"provider-output.json").write_text(json.dumps(obj,default=str,indent=2))
+          files=obj.get("files",[]) or []
+          names=[]
+          for x in files:
+              n=x.get("fileName") or x.get("name") or x.get("path")
+              if n:names.append(str(n))
+          print("FILES",json.dumps(names),flush=True)
+          wanted=[n for n in names if n.endswith(".wav") or n.endswith("result.json") or n.endswith("REPRODUCTION_RECIPE.md")]
+          got=[]
+          for name in wanted:
+              rr=post("kernels.KernelsApiService/DownloadKernelOutput",{"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},redir=False)
+              if 300<=rr.status_code<400 and rr.headers.get("location"):
+                  data=requests.get(rr.headers["location"],timeout=180).content
+              elif rr.ok:
+                  try:
+                      o=rr.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                  except: u=None
+                  data=requests.get(u,timeout=180).content if u else rr.content
+              else:
+                  got.append({"provider":name,"download_http":rr.status_code,"error":rr.text[:1000]});continue
+              p=out/Path(name).name;p.write_bytes(data)
+              got.append({"provider":name,"file":p.name,"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()})
+          (out/"result-index.json").write_text(json.dumps({"provider_ref":f"{user}/{slug}/v1","files":got},indent=2))
+          if not wanted:
+              raise SystemExit(3)
+          PY
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-ace-step15-direct-output-v1
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
