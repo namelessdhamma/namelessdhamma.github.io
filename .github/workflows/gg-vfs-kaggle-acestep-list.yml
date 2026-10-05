@@ -9,36 +9,50 @@ permissions:
 jobs:
   list:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
     steps:
-      - name: Inspect exact repaint provider output
+      - name: Inspect partial repaint checkpoints
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p out
           python - <<'PY'
-          import json,os,requests
+          import hashlib,json,os,requests
           from pathlib import Path
           token=os.environ["KAGGLE_API_TOKEN"].strip(); user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
-          h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-list/1.1"}
+          h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-partial/1.0"}
           api="https://api.kaggle.com/v1"
-          slug="gg-vfs-ace8423-repaint-28c84d9bfd4c23e6"
-          r=requests.post(api+"/kernels.KernelsApiService/ListKernels",headers=h,json={"user":user,"search":"ACE8423 Repaint","pageSize":50},timeout=30)
-          print("LIST_HTTP",r.status_code,r.text[:4000],flush=True)
-          Path("out/list.txt").write_text(f"HTTP {r.status_code}\n"+r.text)
-          o=requests.post(api+"/kernels.KernelsApiService/ListKernelSessionOutput",headers=h,json={"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100},timeout=40)
-          print("OUTPUT_HTTP",o.status_code,flush=True)
-          print(o.text[-16000:],flush=True)
-          Path("out/output.txt").write_text(f"HTTP {o.status_code}\n"+o.text)
-          if not o.ok: raise SystemExit(2)
+          slug="gg-vfs-ace8423-repaint-28c84d9bfd4c23e6"; version=1
+          paths=[
+            "gg-vfs-ace-repaint-output/result.json",
+            "gg-vfs-ace-repaint-output/BASELINE_8423_REPLAY.wav",
+            "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p2.wav",
+            "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p4.wav",
+            "gg-vfs-ace-repaint-output/REPRODUCTION_RECIPE.md",
+          ]
+          recs=[]
+          for name in paths:
+              r=requests.post(api+"/kernels.KernelsApiService/DownloadKernelOutput",headers=h,json={"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},timeout=40,allow_redirects=False)
+              rec={"path":name,"post_status":r.status_code}
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  g=requests.get(r.headers["location"],timeout=180)
+                  rec.update({"get_status":g.status_code,"bytes":len(g.content)})
+                  if g.ok and g.content:
+                      p=Path("out")/Path(name).name;p.write_bytes(g.content)
+                      rec["sha256"]=hashlib.sha256(g.content).hexdigest()
+              elif r.ok and r.content:
+                  rec.update({"get_status":r.status_code,"bytes":len(r.content),"sha256":hashlib.sha256(r.content).hexdigest()})
+                  (Path("out")/Path(name).name).write_bytes(r.content)
+              recs.append(rec); print(json.dumps(rec),flush=True)
+          Path("out/checkpoints.json").write_text(json.dumps(recs,indent=2))
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gg-vfs-ace8423-repaint-provider-inspect
+          name: gg-vfs-ace8423-repaint-partial-checkpoints
           path: out/
           retention-days: 30
           if-no-files-found: error
