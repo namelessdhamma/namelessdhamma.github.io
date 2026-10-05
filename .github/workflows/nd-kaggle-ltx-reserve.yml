@@ -81,6 +81,29 @@ jobs:
           console.log('ND_LTX_MULTIROUTE_CORE=PASS');
           NODE
 
+      - name: Validate LTX worker duration contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile railway/nd-omniroute/kaggle_ltx2b_direct_worker.py
+          python3 -m py_compile railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py
+          python3 - <<'PY'
+          import runpy
+          for path in [
+              'railway/nd-omniroute/kaggle_ltx2b_direct_worker.py',
+              'railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py',
+          ]:
+              ns=runpy.run_path(path,run_name='a8_duration_contract')
+              frames=ns['frame_count'](2.0)
+              fps=ns['FPS']
+              duration=frames/fps
+              if duration < 2.0:
+                  raise SystemExit(f'{path}: 2.0s request rounded down to {frames} frames / {duration:.6f}s')
+              if frames != 65:
+                  raise SystemExit(f'{path}: expected 65 frames for 2.0s request, got {frames}')
+              print('ND_LTX_2S_DURATION_CONTRACT=PASS',path,frames,duration)
+          PY
+
       - name: Validate Railway v2 control candidate
         shell: bash
         run: |
