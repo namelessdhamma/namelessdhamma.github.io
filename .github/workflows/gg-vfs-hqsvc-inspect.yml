@@ -1,0 +1,63 @@
+name: GG VFS HQ-SVC read-only inspect
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-hqsvc-inspect.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Inspect existing HQ-SVC provider effect only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python - <<'PY'
+          import hashlib,json,os,requests
+          from pathlib import Path
+          token=os.environ["KAGGLE_API_TOKEN"].strip();user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          tag="13b27f2b8b5d3271";api="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-hqsvc-inspect/1.0"}
+          out=Path("out")
+          def rpc(method,body):
+              r=requests.post(f"{api}/kernels.KernelsApiService/{method}",headers=H,json=body,timeout=30)
+              if not r.ok:raise RuntimeError(f"{method} {r.status_code}: {r.text[:1200]}")
+              return r.json() if r.text.strip() else {}
+          listed=rpc("ListKernels",{"user":user,"search":tag,"pageSize":50})
+          exact=[k for k in (listed.get("kernels") or []) if tag in str(k.get("slug","")) or tag in str(k.get("ref",""))]
+          if not exact:raise RuntimeError("effect not found")
+          k=exact[0];slug=str(k.get("slug") or str(k.get("ref") or "").split("/")[-1]).strip();version=int(k.get("currentVersionNumber") or 1)
+          h={"kernel":k,"provider_ref":f"{user}/{slug}/v{version}"};(out/"handle.json").write_text(json.dumps(h,default=str,indent=2));print(json.dumps(h,default=str,indent=2))
+          def dl(path):
+              r=requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,
+                  json={"ownerSlug":user,"kernelSlug":slug,"filePath":path,"versionNumber":version},timeout=40,allow_redirects=False)
+              data=None
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  g=requests.get(r.headers["location"],timeout=180);data=g.content if g.ok else None
+              elif r.ok and r.content:
+                  if "json" in r.headers.get("content-type",""):
+                      try:
+                          o=r.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                      except Exception:u=None
+                      if u:
+                          g=requests.get(u,timeout=180);data=g.content if g.ok else None
+                  if data is None:data=r.content
+              rec={"path":path,"http":r.status_code,"bytes":len(data) if data else 0}
+              if data:(out/Path(path).name).write_bytes(data);rec["sha256"]=hashlib.sha256(data).hexdigest()
+              return rec
+          reads=[dl("gg-vfs-hqsvc-output/result.json"),dl("gg-vfs-hqsvc-output/child.log")]
+          (out/"reads.json").write_text(json.dumps(reads,indent=2));print(json.dumps(reads,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-hqsvc-readonly-inspect
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
