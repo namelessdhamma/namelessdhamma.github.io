@@ -23,7 +23,7 @@ jobs:
           from pathlib import Path
           token=os.environ["KAGGLE_API_TOKEN"].strip()
           user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
-          tag=hashlib.sha256(b"ACE8423-SFT-CFG7-COVER090-002-MINIMAL-DISK").hexdigest()[:16]
+          tag=hashlib.sha256(b"ACE8423-SFT-CFG7-COVER090-003-EXACT-SFT-PRECHECK").hexdigest()[:16]
           api="https://api.kaggle.com/v1"
           H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-sft-inspect/1.0"}
           out=Path("out")
@@ -86,4 +86,4 @@ jobs:
 
 # inspect: minimal-disk-v2
 
-# status-probe-v2-3
+# status-probe-v3-1
