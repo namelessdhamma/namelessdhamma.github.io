@@ -142,7 +142,8 @@ async function submit(args={}){
     const username=await identity(ctx),seed=Number(args.seed??42),prompt=String(args.prompt||'').trim(),negativePrompt=String(args.negative_prompt||'').trim()||undefined,duration=Number(args.duration_seconds??2),width=Number(args.width??512),height=Number(args.height??288);
     const effect=effectRef({startInput,endInput,prompt,negativePrompt,duration,width,height,seed,idempotencyKey:args.idempotency_key});
     const prior=await existing(username,effect.kernel_slug,ctx);
-    if(prior)return {ok:true,state:prior.state,reused_existing:true,request_id:'k2b-'+effect.token+'-v'+prior.version,effect_id:effect.effect_id,effect_token:effect.token,provider_ref:username+'/'+effect.kernel_slug+'/'+prior.version,provider_status:prior.provider_status,route:'kaggle_ltx2b_direct_f2l',cost_policy:'FREE_ONLY',seed,nonblocking:true,caller_action:'CONTINUE_OTHER_USEFUL_WORK'};
+    const retryTerminal=args.retry_terminal===true;
+    if(prior && !(retryTerminal && (prior.state==='FAILED'||prior.state==='CANCELLED')))return {ok:true,state:prior.state,reused_existing:true,request_id:'k2b-'+effect.token+'-v'+prior.version,effect_id:effect.effect_id,effect_token:effect.token,provider_ref:username+'/'+effect.kernel_slug+'/'+prior.version,provider_status:prior.provider_status,route:'kaggle_ltx2b_direct_f2l',cost_policy:'FREE_ONLY',seed,nonblocking:true,caller_action:'CONTINUE_OTHER_USEFUL_WORK'};
     const pf=await preflight(username,ctx);
     const req={start_image_url:startInput.url,end_image_url:endInput.url,prompt,negative_prompt:negativePrompt,duration_seconds:duration,width,height,seed};
     const reqB64=Buffer.from(JSON.stringify(req),'utf8').toString('base64');
@@ -193,7 +194,7 @@ async function result(args={}){
 }
 
 const TOOLS=[
-  {name:'ltx_generate_keyframes',description:'DURABLE_ASYNC FREE_ONLY submit. Returns control with request/effect identity; never waits for inference.',inputSchema:{type:'object',properties:{start_image_url:{type:'string'},end_image_url:{type:'string'},prompt:{type:'string'},negative_prompt:{type:'string'},duration_seconds:{type:'number',default:2,minimum:1,maximum:6},width:{type:'integer',default:512},height:{type:'integer',default:288},seed:{type:'integer',default:42},idempotency_key:{type:'string'}},required:['start_image_url','end_image_url'],additionalProperties:false}},
+  {name:'ltx_generate_keyframes',description:'DURABLE_ASYNC FREE_ONLY submit. Returns control with request/effect identity; never waits for inference.',inputSchema:{type:'object',properties:{start_image_url:{type:'string'},end_image_url:{type:'string'},prompt:{type:'string'},negative_prompt:{type:'string'},duration_seconds:{type:'number',default:2,minimum:1,maximum:6},width:{type:'integer',default:512},height:{type:'integer',default:288},seed:{type:'integer',default:42},idempotency_key:{type:'string'},retry_terminal:{type:'boolean',default:false}},required:['start_image_url','end_image_url'],additionalProperties:false}},
   {name:'ltx_keyframe_reconcile',description:'Reconcile an ambiguous submit by stable effect identity. Never resubmits.',inputSchema:{type:'object',properties:{effect_id:{type:'string'},effect_token:{type:'string'}},anyOf:[{required:['effect_id']},{required:['effect_token']}],additionalProperties:false}},
   {name:'ltx_keyframe_status',description:'One bounded status read under a shared end-to-end control deadline.',inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}},
   {name:'ltx_keyframe_result',description:'One bounded provider-reference result read. Persistence is separate.',inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}}
