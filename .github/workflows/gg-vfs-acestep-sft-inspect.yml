@@ -49,6 +49,15 @@ jobs:
               (out/"session-status-error.txt").write_text(repr(e))
               print("SESSION_STATUS_ERROR",repr(e),flush=True)
 
+          try:
+              live=rpc("ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":f"v{version}","pageSize":20})
+              (out/"live-output.json").write_text(json.dumps(live,default=str,indent=2))
+              print("LIVE_LOG_TAIL",str(live.get("log",""))[-12000:],flush=True)
+              print("LIVE_FILES",json.dumps([x.get("fileName") or x.get("name") or x.get("path") for x in (live.get("files") or [])][:20]),flush=True)
+          except Exception as e:
+              (out/"live-output-error.txt").write_text(repr(e))
+              print("LIVE_OUTPUT_ERROR",repr(e),flush=True)
+
           def dl(path):
               r=requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,
                   json={"ownerSlug":user,"kernelSlug":slug,"filePath":path,"versionNumber":version},
@@ -86,4 +95,4 @@ jobs:
 
 # inspect: minimal-disk-v2
 
-# status-probe-v3-3
+# status-probe-v3-live1
