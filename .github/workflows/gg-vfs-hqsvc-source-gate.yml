@@ -71,7 +71,7 @@ jobs:
 
           src=out/"AWATA_MATURE_SOURCE.wav"
           src64=base64.b64encode(src.read_bytes()).decode()
-          semantic="HQSVC-AWATA-MATURE-TO-ACE8423-GATE-001"
+          semantic="HQSVC-AWATA-MATURE-TO-ACE8423-GATE-002-CUDAFIX"
           tag=hashlib.sha256(semantic.encode()).hexdigest()[:16]
           requested=f"gg-vfs-hqsvc-{tag}"
           worker_url=f"https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/{sha}/railway/nd-omniroute/kaggle_hqsvc_source_gate.py"
@@ -259,3 +259,5 @@ jobs:
           path: work/
           retention-days: 30
           if-no-files-found: error
+
+# runtime-fix: cuda-path-v2
