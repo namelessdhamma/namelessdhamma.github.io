@@ -486,7 +486,7 @@ export async function status(args={},cfg=configFromEnv()){
     const resolved=await resolveKernel(cfg,username,ref,ctx);
     const state=stateOf(resolved.st?.status);
     let terminal_diagnostics=null;
-    if(state==="FAILED"||state==="CANCELLED"){
+    if(state==="FAILED"||state==="CANCELLED"||args.include_diagnostics===true){
       try{
         const out=await rpc(cfg.token,"kernels.KernelsApiService","ListKernelSessionOutput",{
           userName:username,kernelSlug:resolved.slug,versionLabel:"v"+ref.version,pageSize:100
