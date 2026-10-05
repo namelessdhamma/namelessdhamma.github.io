@@ -22,7 +22,7 @@ jobs:
           import hashlib,json,os,requests
           from pathlib import Path
           token=os.environ["KAGGLE_API_TOKEN"].strip();user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
-          tag="13b27f2b8b5d3271";api="https://api.kaggle.com/v1"
+          tag="a14e05f8c08aa93f";api="https://api.kaggle.com/v1"
           H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-hqsvc-inspect/1.0"}
           out=Path("out")
           def rpc(method,body):
@@ -69,3 +69,5 @@ jobs:
           if-no-files-found: error
 
 # inspect-status-v3
+
+# inspect-v2-cudafix
