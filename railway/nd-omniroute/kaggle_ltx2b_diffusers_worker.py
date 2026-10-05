@@ -308,7 +308,7 @@ def main() -> None:
     }
     (WORK / "result.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")
     print(
-        "ND_LTX2B_RECEIPT_JSON="
+        "ND_LTX2B_F2L_JSON="
         + json.dumps(receipt, separators=(",", ":"), sort_keys=True),
         flush=True,
     )
