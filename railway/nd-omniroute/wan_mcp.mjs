@@ -979,7 +979,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
   const preflight=await kaggleLtxPreflight();
 
   const workerUrl=direct
-    ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py'
+    ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_diffusers_worker.py'
     : 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/main/railway/nd-omniroute/kaggle_ltx2b_wan2gp_worker.py';
   const buildKernelScript=(useInline)=>{
     const request={
@@ -1015,7 +1015,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
     script=buildKernelScript(false);
   }
   if(Buffer.byteLength(script,'utf8')>=900000) throw new Error('Kaggle LTX2B kernel source preflight exceeds 900 KB');
-  const cacheSources=[
+  const cacheSources=direct?[]:[
     preflight.username+'/nd-ltx-2b-distilled-cache',
     preflight.username+'/nd-ltx2b-load-probe-fixed'
   ];
