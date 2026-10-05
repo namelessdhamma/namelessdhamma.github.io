@@ -1,0 +1,199 @@
+name: GG VFS Sveta steps12 qualified cycle
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-sveta-steps12.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      OMP_NUM_THREADS: "8"
+      MKL_NUM_THREADS: "8"
+      TOKENIZERS_PARALLELISM: "false"
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.14"
+
+      - name: Recover historical baseline artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-soulx-northstar-candidate
+          run-id: 37248278728
+          github-token: ${{ github.token }}
+          path: historical
+
+      - name: Prepare pinned source and inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/input work/model work/hf-cache
+          export GIT_LFS_SKIP_SMUDGE=1
+          git clone -q https://huggingface.co/spaces/Soul-AILab/SoulX-Singer work/source
+          git -C work/source checkout -q 339c325cbfbf8cf81bb1c1c9860df351f45758ae
+          test "$(git -C work/source rev-parse HEAD)" = "339c325cbfbf8cf81bb1c1c9860df351f45758ae"
+
+          curl -fL --retry 4 --retry-all-errors -o work/input/Sveta_neutral_reference.wav             "https://huggingface.co/datasets/langswap/dialogs-ru-emotional-conversations/resolve/main/wavs/masha_sveta_part10_2109.wav?download=true"
+          echo "2a8514f2ac45df87cc3752f0f1378704b5cef4f8e5e767ba170ffb61c98390e1  work/input/Sveta_neutral_reference.wav" | sha256sum -c -
+
+          python - <<'PY'
+          from pathlib import Path
+          import soundfile as sf, hashlib
+          ab=next(Path("historical").rglob("AB_OpenUtau_then_SoulX.wav"))
+          old=next(Path("historical").rglob("SoulX_NorthStar_Candidate.wav"))
+          y,sr=sf.read(ab)
+          if y.ndim>1:y=y.mean(axis=1)
+          n=round(13.464791666666667*sr)
+          sf.write("work/input/FROZEN_RUSSIAN_SOURCE.wav",y[:n],sr,subtype="PCM_16")
+          Path("work/input/SoulX_NorthStar_Candidate.wav").write_bytes(old.read_bytes())
+          def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          assert sha("work/input/FROZEN_RUSSIAN_SOURCE.wav")=="5f50a4383dbc3925adbffb689d4c17f4078083c07b63a3bdfb4630ef1d9f3520",sha("work/input/FROZEN_RUSSIAN_SOURCE.wav")
+          assert sha("work/input/SoulX_NorthStar_Candidate.wav")=="434bb2e766ba458689c8787ac9e4ce7ed52ca922f01fd517ee30a1c8242d3e43",sha("work/input/SoulX_NorthStar_Candidate.wav")
+          print("INPUT_HASHES_OK")
+          PY
+
+      - name: Install exact CPU runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q --upgrade pip
+          python -m pip install -q --index-url https://download.pytorch.org/whl/cpu torch==2.8.0 torchaudio==2.8.0
+          python -m pip install -q accelerate==1.11.0 antlr4-python3-runtime==4.9.3 audioread==3.1.0 cffi==2.1.1 cloudpickle==3.1.2 decorator==5.3.1 einops==0.8.2 filelock==3.20.0 fsspec==2026.9.0 huggingface-hub==0.36.2 jinja2==3.1.6 joblib==1.6.0 lazy-loader==0.6 librosa==0.11.0 llvmlite==0.46.0 markupsafe==3.0.3 mpmath==1.3.0 msgpack==1.1.2 networkx==3.5 numba==0.63.1 numpy==1.26.4 omegaconf==2.3.0 packaging==25.0 platformdirs==4.5.0 pooch==1.9.0 psutil==7.1.0 pyyaml==6.0.3 regex==2026.9.29 requests==2.32.5 safetensors==0.6.2 scikit-learn==1.7.2 scipy==1.15.3 soundfile==0.13.1 soxr==1.0.0 sympy==1.14.0 threadpoolctl==3.6.0 tokenizers==0.21.4 tqdm==4.67.1 transformers==4.53.0 typing-extensions==4.15.0
+
+      - name: Download and verify pinned model assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work/model/soulx work/model/rmvpe work/model/whisper-base
+          curl -fL --retry 5 --retry-all-errors -o work/model/soulx/model-svc.pt "https://huggingface.co/Soul-AILab/SoulX-Singer/resolve/40493ad90286056c7a9095035164434a79daa8c9/model-svc.pt?download=true"
+          echo "38e72d9e15be6eef3cc937daaf81421a7b5b546816786530bb9aa346cee5d43c  work/model/soulx/model-svc.pt" | sha256sum -c -
+          curl -fL --retry 5 --retry-all-errors -o work/model/rmvpe/rmvpe.pt "https://huggingface.co/Soul-AILab/SoulX-Singer-Preprocess/resolve/83dc50289d22a81b1e9998f5b9e111aef7c1fdcd/rmvpe/rmvpe.pt?download=true"
+          echo "6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193  work/model/rmvpe/rmvpe.pt" | sha256sum -c -
+          for f in model.safetensors config.json preprocessor_config.json generation_config.json added_tokens.json merges.txt normalizer.json special_tokens_map.json tokenizer_config.json vocab.json; do
+            curl -fL --retry 4 --retry-all-errors -o "work/model/whisper-base/$f" "https://huggingface.co/openai/whisper-base/resolve/e37978b90ca9030d5170a5c07aadb050351a65bb/$f?download=true"
+          done
+          echo "07cadb9f25677c8d50df603e66a98fbd842cce45047139baeb16e6219a1e807b  work/model/whisper-base/model.safetensors" | sha256sum -c -
+          echo "9715fd2243b6f06a5858b5e32950d2853f73dd5bc201aafcf76f5082a2d8acd1  work/model/whisper-base/added_tokens.json" | sha256sum -c -
+          echo "2df2990a395e35e8dfbc7511e08c12d56018d8d04691e0133e5d63b21e154dc6  work/model/whisper-base/merges.txt" | sha256sum -c -
+          echo "bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd  work/model/whisper-base/normalizer.json" | sha256sum -c -
+          echo "e67ae3a0aaa99abcd9f187138e12db1f65c16a14761c50ef10eef2c174a7a691  work/model/whisper-base/special_tokens_map.json" | sha256sum -c -
+          echo "2a4c4281cf9f51ac6ccc406fdc711a087afe6530f671fa7b80953edc498275ce  work/model/whisper-base/tokenizer_config.json" | sha256sum -c -
+          echo "8f680bba319e01a653d2e8a5dbc17a9157179e0576e6ce74ce0c06356c6e24f9  work/model/whisper-base/vocab.json" | sha256sum -c -
+
+      - name: Execute causal control + steps12 candidate + replay + qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > work/run_cycle.py <<'PY'
+          import os,sys,json,hashlib,random,gc
+          from pathlib import Path
+          import numpy as np
+          import soundfile as sf
+          import librosa
+          import torch,torchaudio
+          from omegaconf import OmegaConf
+          W=Path("work").resolve(); SRC=W/"source"; MODEL=W/"model"; OUT=W/"result"; OUT.mkdir(exist_ok=True)
+          def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
+          cache=W/"hf-cache"; snap=cache/"models--openai--whisper-base/snapshots/e37978b90ca9030d5170a5c07aadb050351a65bb"
+          snap.mkdir(parents=True,exist_ok=True)
+          for p in (MODEL/"whisper-base").iterdir():
+              d=snap/p.name
+              if not d.exists():d.symlink_to(p)
+          refs=cache/"models--openai--whisper-base/refs";refs.mkdir(parents=True,exist_ok=True);(refs/"main").write_text("e37978b90ca9030d5170a5c07aadb050351a65bb")
+          os.environ["HF_HUB_CACHE"]=str(cache);os.environ["HF_HUB_OFFLINE"]="1";os.environ["TRANSFORMERS_OFFLINE"]="1"
+          sys.path.insert(0,str(SRC))
+          import importlib.util
+          spec=importlib.util.spec_from_file_location("pinned_rmvpe",SRC/"preprocess/tools/f0_extraction.py")
+          f0mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(f0mod)
+          from soulxsinger.models.soulxsinger_svc import SoulXSingerSVC
+
+          source=W/"input/FROZEN_RUSSIAN_SOURCE.wav";identity=W/"input/Sveta_neutral_reference.wav";old=W/"input/SoulX_NorthStar_Candidate.wav"
+          assert sha(source)=="5f50a4383dbc3925adbffb689d4c17f4078083c07b63a3bdfb4630ef1d9f3520"
+          assert sha(identity)=="2a8514f2ac45df87cc3752f0f1378704b5cef4f8e5e767ba170ffb61c98390e1"
+          y,sr=sf.read(source);split=111120
+          for i,seg in enumerate([y[:split],y[split:]],1):sf.write(OUT/f"source_seg{i}.wav",seg,sr,subtype="PCM_16")
+          f0=f0mod.F0Extractor(str(MODEL/"rmvpe/rmvpe.pt"),device="cpu",verbose=True)
+          paths={}
+          for label,p in [("identity",identity),("target_seg1",OUT/"source_seg1.wav"),("target_seg2",OUT/"source_seg2.wav")]:
+              v,_=librosa.load(str(p),sr=44100,mono=True);raw=OUT/f"{label}_raw_44100.wav";sf.write(raw,v,44100,subtype="PCM_16")
+              v,srr=librosa.load(str(raw),sr=None,mono=True);vocal=OUT/f"{label}_vocal.wav";sf.write(vocal,v,srr,subtype="PCM_16")
+              fp=OUT/f"{label}_f0.npy";f0.process(str(vocal),f0_path=str(fp));paths[label]=(vocal,fp)
+          del f0;gc.collect()
+          torch.set_num_threads(4);torch.set_num_interop_threads(1);torch.use_deterministic_algorithms(True)
+          cfg=OmegaConf.load(SRC/"soulxsinger/config/soulxsinger.yaml");model=SoulXSingerSVC(cfg).to("cpu")
+          ck=torch.load(MODEL/"soulx/model-svc.pt",map_location="cpu",weights_only=False,mmap=True);model.load_state_dict(ck["state_dict"],strict=True);del ck;gc.collect();model.eval()
+          def wav(p):
+              a,s=sf.read(p,dtype="float32");t=torch.from_numpy(a).unsqueeze(0)
+              return torchaudio.functional.resample(t,s,24000) if s!=24000 else t
+          ptwav=wav(paths["identity"][0]);ptf0=torch.from_numpy(np.load(paths["identity"][1])).unsqueeze(0)
+          target1=wav(paths["target_seg1"][0]);f01=torch.from_numpy(np.load(paths["target_seg1"][1])).unsqueeze(0)
+          target2=wav(paths["target_seg2"][0]);f02=torch.from_numpy(np.load(paths["target_seg2"][1])).unsqueeze(0)
+          def infer(gt,gtf0,steps,cfgv,seed):
+              torch.manual_seed(seed);np.random.seed(seed);random.seed(seed)
+              with torch.inference_mode():z,_=model.infer(pt_wav=ptwav,gt_wav=gt,pt_f0=ptf0,gt_f0=gtf0,auto_shift=False,pitch_shift=0,n_steps=steps,cfg=cfgv,use_fp16=True)
+              return z.squeeze().float().cpu().numpy()
+          seg1=infer(target1,f01,12,.8,143);control2=infer(target2,f02,8,.55,314);cand2=infer(target2,f02,12,.55,314);replay2=infer(target2,f02,12,.55,314)
+          for name,a in [("raw_seg1.wav",seg1),("raw_control_seg2.wav",control2),("raw_steps12_seg2.wav",cand2),("raw_steps12_replay_seg2.wav",replay2)]:sf.write(OUT/name,a,24000,subtype="PCM_16")
+          q1,_=sf.read(OUT/"raw_seg1.wav");qc,_=sf.read(OUT/"raw_control_seg2.wav");qn,_=sf.read(OUT/"raw_steps12_seg2.wav");qr,_=sf.read(OUT/"raw_steps12_replay_seg2.wav")
+          sf.write(OUT/"Sveta_steps8_control.wav",np.concatenate([q1,qc]),24000,subtype="PCM_16")
+          sf.write(OUT/"GG-VFS-F01_Sveta_Steps12_003.wav",np.concatenate([q1,qn]),24000,subtype="PCM_16")
+          sf.write(OUT/"GG-VFS-F01_Sveta_Steps12_003_replay.wav",np.concatenate([q1,qr]),24000,subtype="PCM_16")
+          reproducible=sha(OUT/"GG-VFS-F01_Sveta_Steps12_003.wav")==sha(OUT/"GG-VFS-F01_Sveta_Steps12_003_replay.wav")
+          wins=[(.757,.832),(2.315,2.411),(4.149,4.299),(5.483,5.547),(6.645,6.688),(6.912,6.955),(9.515,9.867),(9.920,9.963)]
+          def features(p):
+              a,s=sf.read(p);a=a.mean(1) if a.ndim>1 else a;hop=256
+              f0x,_,_=librosa.pyin(a,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),sr=s,frame_length=2048,hop_length=hop)
+              S=np.abs(librosa.stft(a,n_fft=2048,hop_length=hop))+1e-12;Sn=S/(np.sum(S,axis=0,keepdims=True)+1e-12);flux=np.sqrt(np.sum(np.diff(Sn,axis=1)**2,axis=0));times=librosa.frames_to_time(np.arange(S.shape[1]),sr=s,hop_length=hop)
+              return a,s,f0x,flux,times
+          src=features(source);ctrl=features(OUT/"Sveta_steps8_control.wav");cand=features(OUT/"GG-VFS-F01_Sveta_Steps12_003.wav");prev=features(old)
+          def pitchcmp(ref,test):
+              n=min(len(ref[2]),len(test[2]));r=ref[2][:n];t=test[2][:n];m=np.isfinite(r)&np.isfinite(t)&(r>0)&(t>0);c=np.abs(1200*np.log2(t[m]/r[m])) if m.any() else np.array([])
+              return {"matched_voiced":int(m.sum()),"median_abs_cents":float(np.median(c)) if len(c) else None,"p95_abs_cents":float(np.percentile(c,95)) if len(c) else None,"gt100_fraction":float(np.mean(c>100)) if len(c) else None}
+          def fluxwins(x):
+              out=[]
+              for a,b in wins:
+                  m=(x[4][1:]>=a)&(x[4][1:]<=b);v=x[3][m];out.append({"start_s":a,"end_s":b,"p95":float(np.percentile(v,95)) if len(v) else None,"median":float(np.median(v)) if len(v) else None})
+              return out
+          cwin=fluxwins(ctrl);nwin=fluxwins(cand);deltas=[]
+          for a,b in zip(cwin,nwin):
+              ratio=(b["p95"]/a["p95"]) if a["p95"] else None;deltas.append({"start_s":b["start_s"],"end_s":b["end_s"],"control_p95":a["p95"],"candidate_p95":b["p95"],"p95_ratio":ratio,"p95_change":ratio-1 if ratio is not None else None})
+          target=[d for d in deltas if (d["start_s"],d["end_s"]) in [(5.483,5.547),(9.515,9.867)]];other=[d for d in deltas if d not in target];pc=pitchcmp(src,cand)
+          reject=(pc["median_abs_cents"] is not None and pc["median_abs_cents"]>100) or any(d["p95_ratio"] and d["p95_ratio"]>2 for d in deltas)
+          improve=(not reject and all(d["p95_ratio"] is not None and d["p95_ratio"]<.95 for d in target) and all(d["p95_ratio"] is None or d["p95_ratio"]<1.25 for d in other))
+          status="REGRESSION" if reject else ("USEFUL_PARTIAL_IMPROVEMENT" if improve else "NO_MEANINGFUL_DELTA")
+          del model;gc.collect()
+          from transformers import pipeline
+          asr=pipeline("automatic-speech-recognition",model=str(snap),tokenizer=str(snap),feature_extractor=str(snap),device=-1)
+          texts={label:asr(str(p),generate_kwargs={"language":"ru","task":"transcribe"})["text"] for label,p in [("source",source),("control",OUT/"Sveta_steps8_control.wav"),("candidate",OUT/"GG-VFS-F01_Sveta_Steps12_003.wav")]}
+          silence=np.zeros(int(.8*24000));sf.write(OUT/"AB_steps8_control_then_steps12.wav",np.concatenate([ctrl[0],silence,cand[0]]),24000,subtype="PCM_16");sf.write(OUT/"AB_previousSoulX_then_steps12.wav",np.concatenate([prev[0],silence,cand[0]]),24000,subtype="PCM_16")
+          report={"schema":"GG-VFS-F01/QUALIFIED-CYCLE/1","attempt_id":"sveta-steps12-003","hypothesis":"segment2 steps8→12 at fixed CFG0.55 seed314 may reduce acoustic boundary instability","changed_variables":{"segment2.steps":{"control":8,"candidate":12}},"invariants":{"source_sha256":sha(source),"identity_sha256":sha(identity),"segment1_sha256":sha(OUT/"raw_seg1.wav"),"cfg":0.55,"seed":314,"pitch_shift":0},"output":{"file":"GG-VFS-F01_Sveta_Steps12_003.wav","sha256":sha(OUT/"GG-VFS-F01_Sveta_Steps12_003.wav"),"duration_s":len(cand[0])/24000,"sample_rate":24000},"replay":{"bit_identical":reproducible,"replay_sha256":sha(OUT/"GG-VFS-F01_Sveta_Steps12_003_replay.wav")},"classification":status,"source_pitch_comparison":pc,"regression_window_flux_vs_same_runtime_steps8":deltas,"supporting_asr":texts,"limits":["Spectral/F0/ASR metrics cannot grant boundary naturalness, stable identity, artistic acceptance or user acceptance.","This cycle changes sampler resolution only."],"gates":{"REPRODUCIBILITY_PASS_THIS_CANDIDATE":reproducible,"BOUNDARY_NATURALNESS_PASS":"AUDITORY_REQUIRED","RUSSIAN_PHONETICS_PASS":"NOT_GRANTED","USER_AUDITORY_ACCEPTANCE":"PENDING"},"next_action":"Stop steps/CFG parameter probing. Compare Steps12 vs Sveta001/control by ear for boundary naturalness and identity. If not materially better, keep Sveta001 and move to targeted phonetic/boundary intervention rather than more sampler sweeps."}
+          (OUT/"qualification.json").write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n")
+          recipe="# REPRODUCTION_RECIPE — GG-VFS-F01_Sveta_Steps12_003\n\nClassification: "+status+"\n\nInputs:\n- frozen source SHA-256: "+sha(source)+"\n- Sveta identity SHA-256: "+sha(identity)+"\n\nEngine:\n- SoulX Space source revision 339c325cbfbf8cf81bb1c1c9860df351f45758ae\n- SVC checkpoint revision 40493ad90286056c7a9095035164434a79daa8c9, SHA-256 38e72d9e15be6eef3cc937daaf81421a7b5b546816786530bb9aa346cee5d43c\n- RMVPE revision 83dc50289d22a81b1e9998f5b9e111aef7c1fdcd, SHA-256 6d62215f4306e3ca278246188607209f09af3dc77ed4232efdd069798c4ec193\n- Python3.12.14, Torch2.8 CPU, Librosa0.11.0, deterministic algorithms\n\nParameters:\n- source split111120 samples at24kHz\n- segment1 steps12 CFG0.8 seed143\n- segment2 steps12 CFG0.55 seed314\n- pitch shift0, auto shift false, no separation/automix, effective FP32\n- no denoise/normalization/crossfade\n\nProcedure:\nRun workflow .github/workflows/gg-vfs-sveta-steps12.yml at the recorded commit. It SHA-verifies exact assets, executes same-runtime steps8 control and steps12 candidate, repeats the candidate inference, qualifies all eight frozen windows, and emits A/B audio plus this recipe.\n\nExpected:\n- candidate SHA-256: "+sha(OUT/"GG-VFS-F01_Sveta_Steps12_003.wav")+"\n- replay bit-identical: "+str(reproducible)+"\n- classification: "+status+"\n"
+          (OUT/"REPRODUCTION_RECIPE.md").write_text(recipe)
+          manifest={str(p.relative_to(OUT)):sha(p) for p in sorted(OUT.iterdir()) if p.is_file()};(OUT/"SHA256SUMS.json").write_text(json.dumps(manifest,indent=2)+"\n")
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+          python work/run_cycle.py
+
+      - name: Package qualified cycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp work/run_cycle.py work/result/EXECUTABLE_CYCLE.py
+          (cd work/result && zip -q ../GG_VFS_F01_Sveta_Steps12_003_QUALIFIED.zip ./*)
+          sha256sum work/GG_VFS_F01_Sveta_Steps12_003_QUALIFIED.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-f01-sveta-steps12-qualified
+          path: |
+            work/result/
+            work/GG_VFS_F01_Sveta_Steps12_003_QUALIFIED.zip
+          retention-days: 30
+          if-no-files-found: error
