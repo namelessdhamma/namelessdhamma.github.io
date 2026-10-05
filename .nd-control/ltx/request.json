@@ -1,15 +1,6 @@
 {
-  "op": "submit",
-  "nonce": "a8-r01-stable28-shot-a-20261005",
-  "args": {
-    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/382ecc95-cb75-4b41-b39c-47a7d53c10d1.jpg",
-    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e0ee7086-9c40-40aa-a9ee-102f7ddee612.jpg",
-    "prompt": "BLUE_SEA_DUEL_TEST_V1 stable 28fps shot A, literal F01 to literal F05. Preserve the dark-haired swordsman on the left and red-haired opponent on the right, identities, costumes, weapons, wet pirate deck and camera side. Animate one continuous causal attack from F01 toward F05 with coordinated feet, hips, torso, arms, hands and blade motion; the red-haired opponent reacts defensively. Rain, wet hair, cloth, spray and reflections remain temporally alive. No cut.",
-    "negative_prompt": "slideshow, hard cuts, crossfade, dissolve, frozen fighters, pan-only, zoom-only, identity swap, duplicate people, extra limbs, malformed hands, disappearing weapon, warped blade, teleportation, text, watermark, UI",
-    "duration_seconds": 2,
-    "width": 512,
-    "height": 288,
-    "seed": 80621,
-    "idempotency_key": "A8-R01-STABLE28-SHOT-A-20261005"
-  }
+  "op": "status",
+  "nonce": "a8-r01-stable28-shotA-status-20261005-1",
+  "request_id": "k2b-rc454b6d32c07-50f1-v1",
+  "include_diagnostics": true
 }
