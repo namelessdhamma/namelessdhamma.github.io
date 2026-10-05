@@ -1,5 +1,6 @@
 {
   "op": "status",
-  "nonce": "a8-r01-old-cancel-diagnostics-20261005",
-  "request_id": "k2b-ra9ecec74363c-e7d4-v1"
+  "nonce": "a8-r01-historical-success-diagnostics-20261005",
+  "request_id": "k2b-r0d5139ce62ef-11cb-v1",
+  "include_diagnostics": true
 }
