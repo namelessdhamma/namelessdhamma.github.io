@@ -1,0 +1,78 @@
+name: GG VFS ACE8423 SFT read-only inspect
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-acestep-sft-inspect.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Inspect existing SFT provider effect only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python - <<'PY'
+          import hashlib,json,os,requests
+          from pathlib import Path
+          token=os.environ["KAGGLE_API_TOKEN"].strip()
+          user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          tag=hashlib.sha256(b"ACE8423-SFT-CFG7-COVER090-001").hexdigest()[:16]
+          api="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-sft-inspect/1.0"}
+          out=Path("out")
+          def rpc(method,body=None):
+              r=requests.post(f"{api}/kernels.KernelsApiService/{method}",headers=H,json=body or {},timeout=30)
+              (out/f"{method}.http.txt").write_text(f"HTTP {r.status_code}\n"+r.text)
+              if not r.ok: raise RuntimeError(f"{method} HTTP {r.status_code}: {r.text[:1200]}")
+              return r.json() if r.text.strip() else {}
+          listed=rpc("ListKernels",{"user":user,"search":tag,"pageSize":50})
+          exact=[k for k in (listed.get("kernels") or []) if tag in str(k.get("slug","")) or tag in str(k.get("ref",""))]
+          if not exact: raise RuntimeError("SFT effect not found by semantic tag")
+          k=exact[0]
+          slug=str(k.get("slug") or str(k.get("ref") or "").split("/")[-1]).strip()
+          version=int(k.get("currentVersionNumber") or k.get("current_version_number") or 1)
+          handle={"tag":tag,"kernel":k,"slug":slug,"version":version,"provider_ref":f"{user}/{slug}/v{version}"}
+          (out/"handle.json").write_text(json.dumps(handle,default=str,indent=2))
+          print(json.dumps(handle,default=str,indent=2),flush=True)
+
+          def dl(path):
+              r=requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,
+                  json={"ownerSlug":user,"kernelSlug":slug,"filePath":path,"versionNumber":version},
+                  timeout=35,allow_redirects=False)
+              rec={"path":path,"http":r.status_code}
+              data=None
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  g=requests.get(r.headers["location"],timeout=120);data=g.content if g.ok else None
+              elif r.ok and r.content:
+                  if "json" in r.headers.get("content-type",""):
+                      try:
+                          o=r.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                      except Exception:u=None
+                      if u:
+                          g=requests.get(u,timeout=120);data=g.content if g.ok else None
+                  if data is None:data=r.content
+              if data:
+                  p=out/Path(path).name;p.write_bytes(data)
+                  rec.update({"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()})
+              else:
+                  rec["body"]=r.text[:1200]
+              return rec
+
+          reads=[dl("gg-vfs-sft-output/result.json"),dl("gg-vfs-sft-output/child.log")]
+          (out/"reads.json").write_text(json.dumps(reads,indent=2))
+          print(json.dumps(reads,indent=2),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-ace8423-sft-readonly-inspect
+          path: out/
+          retention-days: 7
+          if-no-files-found: error
