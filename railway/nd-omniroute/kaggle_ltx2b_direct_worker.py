@@ -469,6 +469,19 @@ def main() -> None:
         print(f"ND_LTX2B_IMPORT_STAGE={name} maxrss_kb={rss}", flush=True)
 
     print("ND_LTX2B_STAGE=direct_import_begin", flush=True)
+    gpu0_name = torch.cuda.get_device_name(0) if torch.cuda.device_count() else ""
+    try:
+        gpu0_capability = tuple(torch.cuda.get_device_capability(0))
+    except Exception:
+        gpu0_capability = None
+    print(
+        "ND_LTX2B_CUDA_COMPAT="
+        + repr({"gpu": gpu0_name, "reported_capability": gpu0_capability}),
+        flush=True,
+    )
+    if "T4" in gpu0_name:
+        torch.cuda.get_device_capability = lambda device=None: (7, 5)
+        print("ND_LTX2B_CUDA_COMPAT=t4_capability_forced_7_5", flush=True)
     import_stage("mmgp_begin")
     from mmgp import offload, profile_type
     import_stage("mmgp_done")
