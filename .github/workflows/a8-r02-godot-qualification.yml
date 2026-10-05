@@ -1,0 +1,171 @@
+name: A8 R02 Godot Qualification
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02-godot-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Install Godot 4.7.2 and runtime dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2
+          mkdir -p /tmp/a8-r02/bin /tmp/a8-r02/project /tmp/a8-r02/out
+          curl -L --fail --retry 3 -o /tmp/a8-r02/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02/godot.zip -d /tmp/a8-r02/bin
+          chmod +x /tmp/a8-r02/bin/Godot_v4.7.2-stable_linux.x86_64
+          /tmp/a8-r02/bin/Godot_v4.7.2-stable_linux.x86_64 --version
+
+      - name: Write isolated BLUE_SEA_DUEL_TEST_V1 Godot scene
+        run: |
+          cat > /tmp/a8-r02/project/project.godot <<'EOF'
+          [application]
+          config/name="A8 R02 Godot Qualification"
+          run/main_scene="res://main.tscn"
+
+          [display]
+          window/size/viewport_width=768
+          window/size/viewport_height=432
+          window/size/window_width_override=768
+          window/size/window_height_override=432
+
+          [rendering]
+          renderer/rendering_method="gl_compatibility"
+          renderer/rendering_method.mobile="gl_compatibility"
+          EOF
+
+          cat > /tmp/a8-r02/project/main.tscn <<'EOF'
+          [gd_scene load_steps=2 format=3]
+
+          [ext_resource path="res://duel.gd" type="Script" id="1"]
+
+          [node name="A8GodotDuel" type="Node2D"]
+          script = ExtResource("1")
+          EOF
+
+          cat > /tmp/a8-r02/project/duel.gd <<'EOF'
+          extends Node2D
+
+          var f := 0
+          var total_frames := 72
+          var kfs := [0.0,9.0,18.0,27.0,36.0,45.0,54.0,63.0,71.0]
+
+          func _ready():
+              var env = OS.get_environment("A8_TOTAL_FRAMES")
+              if env != "":
+                  total_frames = max(2, int(env))
+              set_process(true)
+              queue_redraw()
+
+          func _process(_delta):
+              f += 1
+              queue_redraw()
+
+          func kval(vf: float, values: Array) -> float:
+              if vf <= kfs[0]:
+                  return float(values[0])
+              for i in range(kfs.size()-1):
+                  if vf <= kfs[i+1]:
+                      var t = (vf-kfs[i])/(kfs[i+1]-kfs[i])
+                      return lerp(float(values[i]), float(values[i+1]), t)
+              return float(values[values.size()-1])
+
+          func joint(origin: Vector2, length: float, ang: float) -> Vector2:
+              return origin + Vector2(cos(deg_to_rad(ang)), sin(deg_to_rad(ang))) * length
+
+          func draw_fighter(left: bool, vf: float):
+              var x = kval(vf,[176,190,214,248,282,305,324,337,346] if left else [590,582,570,552,535,522,511,501,493])
+              var y = kval(vf,[354,352,349,347,349,352,354,356,355] if left else [354,353,352,350,349,351,353,354,355])
+              var lean = kval(vf,[-8,-5,1,8,13,7,2,-3,-5] if left else [7,8,6,2,-4,-8,-5,0,4])
+              var sword = kval(vf,[-18,-8,4,16,31,18,5,-8,-15] if left else [202,194,187,177,163,170,181,191,197])
+              var front_leg = kval(vf,[22,28,35,45,55,48,42,35,31] if left else [-20,-24,-30,-36,-43,-40,-34,-28,-24])
+              var rear_leg = kval(vf,[-24,-26,-29,-32,-35,-33,-29,-26,-23] if left else [23,26,30,34,36,34,31,27,24])
+              var attack = kval(vf,[-30,-24,-15,-4,10,4,-8,-18,-25] if left else [30,26,20,12,2,-4,4,14,24])
+              var guard = kval(vf,[34,30,25,20,15,18,23,28,31] if left else [-34,-30,-25,-18,-12,-16,-22,-28,-31])
+              var coat = Color("#16191f") if left else Color("#2a1518")
+              var trim = Color("#8e929b") if left else Color("#8c603f")
+              var hair = Color("#121212") if left else Color("#9b2f24")
+              draw_set_transform(Vector2(x,y),deg_to_rad(lean),Vector2.ONE)
+              var p1 = joint(Vector2(-18,0),78,92+front_leg)
+              var p2 = joint(Vector2(18,0),78,88+rear_leg)
+              draw_line(Vector2(-18,0),p1,Color("#171719"),18,true)
+              draw_line(Vector2(18,0),p2,Color("#171719"),18,true)
+              var body = PackedVector2Array([Vector2(-31,-8),Vector2(-42,-92),Vector2(0,-112),Vector2(42,-92),Vector2(31,-8)])
+              draw_colored_polygon(body,coat)
+              draw_polyline(PackedVector2Array([Vector2(-31,-8),Vector2(-42,-92),Vector2(0,-112),Vector2(42,-92),Vector2(31,-8),Vector2(-31,-8)]),trim,4,true)
+              draw_circle(Vector2(0,-125),27,Color("#b98b72"))
+              draw_arc(Vector2(0,-125),27,0,TAU,48,Color("#201915"),3,true)
+              var hp = PackedVector2Array([Vector2(-27,-139),Vector2(-10,-160),Vector2(18,-156),Vector2(31,-134),Vector2(7,-146),Vector2(-22,-126)])
+              draw_colored_polygon(hp,hair)
+              var sh = Vector2(0,-58)
+              var elbow = joint(sh,46,attack if left else 180-attack)
+              var hand = joint(elbow,42,attack+5 if left else 175-attack)
+              var sh2 = Vector2(0,-50)
+              var elbow2 = joint(sh2,40,guard if left else 180-guard)
+              var hand2 = joint(elbow2,36,guard+6 if left else 174-guard)
+              draw_line(sh,elbow,coat,17,true)
+              draw_line(elbow,hand,Color("#b98b72"),13,true)
+              draw_line(sh2,elbow2,coat,15,true)
+              draw_line(elbow2,hand2,Color("#b98b72"),11,true)
+              var tip = joint(hand,116,sword)
+              draw_line(hand,tip,Color("#d7dde5"),5,true)
+              draw_line(hand+Vector2(-8,-10),hand+Vector2(8,10),Color("#9d784f"),6,true)
+              draw_set_transform(Vector2.ZERO,0,Vector2.ONE)
+
+          func _draw():
+              var vf = clamp(float(f)/float(max(1,total_frames-1))*71.0,0.0,71.0)
+              draw_rect(Rect2(0,0,768,432),Color("#08111c"))
+              draw_rect(Rect2(0,250,768,182),Color("#2b211c"))
+              for i in range(14):
+                  draw_line(Vector2(0,278+i*12),Vector2(768,288+i*10),Color(0.43,0.32,0.26,0.55),2)
+              draw_line(Vector2(92,20),Vector2(120,286),Color("#2b211d"),12)
+              draw_line(Vector2(675,10),Vector2(640,286),Color("#2b211d"),11)
+              for i in range(26):
+                  var rx = float((i*37+13)%790)-10.0
+                  var ry = fmod(float(i*53)+vf*18.0,520.0)-70.0
+                  draw_line(Vector2(rx,ry),Vector2(rx-11,ry+34),Color(0.72,0.82,0.89,0.55),2)
+              draw_fighter(true,vf)
+              draw_fighter(false,vf)
+              var flash = max(0.0,1.0-abs(vf-36.0)/3.0)
+              if flash > 0:
+                  draw_circle(Vector2(410,242),14+flash*18,Color(1.0,0.95,0.78,flash*0.75))
+          EOF
+
+      - name: Render Godot movie outputs
+        run: |
+          GODOT=/tmp/a8-r02/bin/Godot_v4.7.2-stable_linux.x86_64
+          cd /tmp/a8-r02/project
+          A8_TOTAL_FRAMES=72 xvfb-run -a "$GODOT" --path . --rendering-method gl_compatibility --write-movie /tmp/a8-r02/out/canonical.avi --fixed-fps 24 --quit-after 72
+          A8_TOTAL_FRAMES=60 xvfb-run -a "$GODOT" --path . --rendering-method gl_compatibility --write-movie /tmp/a8-r02/out/variant.avi --fixed-fps 24 --quit-after 60
+          rm -f /tmp/a8-r02/out/canonical-repro.avi
+          A8_TOTAL_FRAMES=72 xvfb-run -a "$GODOT" --path . --rendering-method gl_compatibility --write-movie /tmp/a8-r02/out/canonical-repro.avi --fixed-fps 24 --quit-after 72
+          ffmpeg -y -v error -i /tmp/a8-r02/out/canonical.avi -c:v libx264 -pix_fmt yuv420p /tmp/a8-r02/out/canonical.mp4
+          ffmpeg -y -v error -i /tmp/a8-r02/out/variant.avi -c:v libx264 -pix_fmt yuv420p /tmp/a8-r02/out/variant-2p5s.mp4
+          ffmpeg -y -v error -i /tmp/a8-r02/out/canonical-repro.avi -c:v libx264 -pix_fmt yuv420p /tmp/a8-r02/out/canonical-repro.mp4
+          rm -f /tmp/a8-r02/out/*.avi
+
+      - name: Verify output and write receipt
+        run: |
+          cd /tmp/a8-r02/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json canonical.mp4 > canonical.ffprobe.json
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json variant-2p5s.mp4 > variant.ffprobe.json
+          ffmpeg -v error -i canonical.mp4 -f framemd5 canonical.framemd5
+          ffmpeg -v error -i canonical-repro.mp4 -f framemd5 canonical-repro.framemd5
+          sha256sum canonical.mp4 canonical-repro.mp4 variant-2p5s.mp4 > sha256.txt
+          cmp canonical.framemd5 canonical-repro.framemd5
+          printf '{"godot":"4.7.2","renderer":"gl_compatibility","movie_writer":"Godot CLI --write-movie under Xvfb","frame_reproduction":"byte-identical decoded frames"}\n' > runtime.json
+
+      - name: Upload qualification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02-godot-qualification
+          path: /tmp/a8-r02/out
+          retention-days: 7
