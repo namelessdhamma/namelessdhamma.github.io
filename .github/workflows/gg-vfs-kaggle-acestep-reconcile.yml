@@ -1,0 +1,95 @@
+name: GG VFS ACE-Step Kaggle reconcile v1
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-kaggle-acestep-reconcile.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Read exact provider effect and retrieve outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ace-result
+          cat >/tmp/reconcile.py <<'PY'
+          import hashlib,json,os,time
+          from pathlib import Path
+          import requests
+          token=os.environ["KAGGLE_API_TOKEN"].strip()
+          user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          slug="gg-vfs-ace-2216c6d8342585e8"; version=1
+          out=Path("ace-result")
+          API="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-gg-vfs-acestep-reconcile/1.0"}
+          def rpc(method,body,timeout=30):
+              r=requests.post(f"{API}/kernels.KernelsApiService/{method}",headers=H,json=body,timeout=timeout)
+              if not r.ok: raise RuntimeError(f"{method} HTTP {r.status_code}: {r.text[:1500]}")
+              return r.json() if r.text.strip() else {}
+          def stateof(v):
+              s=str(v).upper()
+              if s=="2" or "COMPLETE" in s:return "COMPLETED"
+              if s=="3" or "ERROR" in s or "FAIL" in s:return "FAILED"
+              if s in ("4","5") or "CANCEL" in s:return "CANCELLED"
+              if s=="1" or "RUN" in s:return "RUNNING"
+              return "QUEUED"
+          deadline=time.time()+28*60
+          state="QUEUED"; st={}
+          while True:
+              try:
+                  st=rpc("GetKernelSessionStatus",{"userName":user,"kernelSlug":slug,"versionLabel":"v1"})
+                  state=stateof(st.get("status"))
+                  (out/"status.json").write_text(json.dumps({"state":state,"raw":st,"provider_ref":f"{user}/{slug}/v1"},default=str,indent=2))
+                  print("STATE",state,st.get("status"),flush=True)
+              except Exception as e:
+                  print("STATUS_TRANSIENT",repr(e),flush=True)
+                  if time.time()>=deadline: raise
+                  time.sleep(20); continue
+              if state in ("COMPLETED","FAILED","CANCELLED") or time.time()>=deadline:break
+              time.sleep(30)
+          listing=rpc("ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100})
+          (out/"provider-output.json").write_text(json.dumps(listing,default=str,indent=2))
+          if state!="COMPLETED":
+              (out/"terminal.json").write_text(json.dumps({"state":state,"failure":st.get("failureMessage") or st.get("failure_message"),"log_tail":str(listing.get("log",""))[-30000:],"files":listing.get("files",[])},default=str,indent=2))
+              raise RuntimeError("Provider terminal/noncomplete: "+state)
+          names=[]
+          for x in listing.get("files",[]) or []:
+              n=x.get("fileName") or x.get("name") or x.get("path")
+              if n:names.append(str(n))
+          wanted=[n for n in names if n.endswith(".wav") or n.endswith("result.json") or n.endswith("REPRODUCTION_RECIPE.md")]
+          def download(name):
+              r=requests.post(f"{API}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,json={"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},timeout=30,allow_redirects=False)
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  data=requests.get(r.headers["location"],timeout=180).content
+              else:
+                  if not r.ok: raise RuntimeError(f"download {name}: {r.status_code} {r.text[:800]}")
+                  if "json" in r.headers.get("content-type",""):
+                      o=r.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                      if not u: raise RuntimeError("missing URL "+name)
+                      data=requests.get(u,timeout=180).content
+                  else:data=r.content
+              dst=out/Path(name).name;dst.write_bytes(data)
+              return {"provider":name,"file":dst.name,"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()}
+          got=[download(n) for n in wanted]
+          idx={"state":"READY","provider_ref":f"{user}/{slug}/v1","files":got}
+          (out/"result-index.json").write_text(json.dumps(idx,indent=2))
+          print(json.dumps(idx,indent=2))
+          PY
+          python /tmp/reconcile.py
+      - name: Upload reconcile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-ace-step15-reconcile-v1
+          path: ace-result/
+          retention-days: 30
+          if-no-files-found: error
