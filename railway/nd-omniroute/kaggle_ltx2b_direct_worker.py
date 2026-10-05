@@ -27,7 +27,7 @@ ROOT = WORK / "Wan2GP"
 CK = ROOT / "ckpts"
 T5 = CK / "T5_xxl_1.1"
 TMP = Path("/tmp/nd-ltx2b-f2l")
-FPS = 30
+FPS = 28  # 57-frame 2s lattice: 57/28 = 2.036s; avoids 65-frame T4 performance cliff
 WANGP_COMMIT = "2345ae148f82740f66e82c41292dbbdd592e713d"
 LTX_CONFIG_COMMIT = "4b2d053057623ddd4d0a1d3e9cd28890e9ef487f"
 MODEL_NAME = "diffusion_pytorch_model.bf16.safetensors"
