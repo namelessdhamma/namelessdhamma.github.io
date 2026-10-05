@@ -7,7 +7,7 @@ const LTX_INPUT_TOKEN=String(process.env.ND_LTX_INPUT_TOKEN||'').trim();
 const LTX_PUBLIC_BASE=String(process.env.ND_LTX_PUBLIC_BASE||'https://nd-external-intelligence-production.up.railway.app').replace(/\/$/,'');
 const LTX_INPUT_BASE=String(process.env.ND_LTX_INPUT_BASE||LTX_PUBLIC_BASE).replace(/\/$/,'');
 const LTX_RESULT_TOKEN=String(process.env.ND_LTX_MCP_PATH_TOKEN||'').trim();
-const QUALIFIED_WORKER_COMMIT='49a4c2c7e59a367a5b60bcd19460a8e58212f7ff';
+const QUALIFIED_WORKER_COMMIT='5a2b782b81557dabd477588ca5ce80fdc11427c5';
 const WORKER_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+QUALIFIED_WORKER_COMMIT+'/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py';
 
 function errorText(e){return String(e?.message||e||'error').slice(0,1800);}
