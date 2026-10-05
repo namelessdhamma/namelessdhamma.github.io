@@ -25,56 +25,43 @@ jobs:
           token=os.environ["KAGGLE_API_TOKEN"].strip()
           user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
           slug="gg-vfs-ace-step-ru-bca086e8febcc3c9"; version=1
-          api="https://api.kaggle.com/v1"
-          h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-direct-output/1.0"}
+          api="https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput"
+          h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-direct-output/1.1"}
           out=Path("out")
-          def post(path,body,redir=True):
-              r=requests.post(api+"/"+path,headers=h,json=body,timeout=40,allow_redirects=redir)
-              return r
-          # Paginate every output file of this exact existing effect. Never resubmit.
-          files=[]; page_token=None; page=0; logs=[]
-          while True:
-              body={"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100}
-              if page_token: body["pageToken"]=page_token
-              r=post("kernels.KernelsApiService/ListKernelSessionOutput",body)
-              if not r.ok:
-                  print("LIST_HTTP",r.status_code,r.text[:2000],flush=True)
-                  raise SystemExit(2)
-              obj=r.json() if r.text.strip() else {}
-              page+=1
-              (out/f"provider-output-page-{page}.json").write_text(json.dumps(obj,default=str,indent=2))
-              batch=obj.get("files",[]) or []
-              files.extend(batch)
-              if obj.get("log"): logs.append(str(obj.get("log")))
-              page_token=obj.get("nextPageToken") or obj.get("next_page_token")
-              print("PAGE",page,"FILES",len(batch),"NEXT",bool(page_token),flush=True)
-              if not page_token: break
-              if page>=50: raise RuntimeError("pagination safety cap exceeded")
-          if logs: (out/"provider-log.txt").write_text("\n".join(logs))
-          names=[]
-          for x in files:
-              n=x.get("fileName") or x.get("name") or x.get("path")
-              if n:names.append(str(n))
-          print("TOTAL_FILES",len(names),flush=True)
-          wanted=[n for n in names if n.endswith(".wav") or n.endswith("result.json") or n.endswith("REPRODUCTION_RECIPE.md")]
-          (out/"wanted.json").write_text(json.dumps(wanted,indent=2,ensure_ascii=False))
-          print("WANTED",json.dumps(wanted),flush=True)
+          names=[
+            "gg-vfs-ace-output/result.json",
+            "gg-vfs-ace-output/REPRODUCTION_RECIPE.md",
+            "gg-vfs-ace-output/GG-VFS-F01_ACE-Step15_RU_8423_1.wav",
+            "gg-vfs-ace-output/GG-VFS-F01_ACE-Step15_RU_8424_1.wav",
+          ]
           got=[]
-          for name in wanted:
-              rr=post("kernels.KernelsApiService/DownloadKernelOutput",{"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},redir=False)
-              if 300<=rr.status_code<400 and rr.headers.get("location"):
-                  data=requests.get(rr.headers["location"],timeout=180).content
-              elif rr.ok:
-                  try:
-                      o=rr.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
-                  except: u=None
-                  data=requests.get(u,timeout=180).content if u else rr.content
-              else:
-                  got.append({"provider":name,"download_http":rr.status_code,"error":rr.text[:1000]});continue
-              p=out/Path(name).name;p.write_bytes(data)
-              got.append({"provider":name,"file":p.name,"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()})
-          (out/"result-index.json").write_text(json.dumps({"provider_ref":f"{user}/{slug}/v1","files":got},indent=2))
-          if not wanted:
+          for name in names:
+              r=requests.post(api,headers=h,json={"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},timeout=40,allow_redirects=False)
+              rec={"provider":name,"http":r.status_code}
+              try:
+                  if 300<=r.status_code<400 and r.headers.get("location"):
+                      data=requests.get(r.headers["location"],timeout=180).content
+                  elif r.ok:
+                      data=None
+                      if "json" in r.headers.get("content-type",""):
+                          try:
+                              o=r.json()
+                              u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                          except Exception:
+                              u=None
+                          if u: data=requests.get(u,timeout=180).content
+                      if data is None: data=r.content
+                  else:
+                      rec["error"]=r.text[:1600]; got.append(rec); print(json.dumps(rec),flush=True); continue
+                  p=out/Path(name).name
+                  p.write_bytes(data)
+                  rec.update({"file":p.name,"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest()})
+              except Exception as e:
+                  rec["error"]=repr(e)
+              got.append(rec); print(json.dumps(rec),flush=True)
+          (out/"direct-index.json").write_text(json.dumps({"provider_ref":f"{user}/{slug}/v1","files":got},indent=2))
+          if not any(x.get("file","").endswith(".wav") for x in got):
+              # result.json is still a valid terminal diagnosis; fail only after preserving it.
               raise SystemExit(3)
           PY
       - name: Upload evidence
