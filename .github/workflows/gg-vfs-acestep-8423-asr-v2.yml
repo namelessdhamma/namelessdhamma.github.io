@@ -1,0 +1,69 @@
+name: GG VFS ACE 8423 Russian ASR v2
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-acestep-8423-asr-v2.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  asr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Fetch accepted ACE 8423
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p in out
+          gh api -H "Accept: application/vnd.github+json"             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/11332849523/zip" > /tmp/ace.zip
+          unzip -q /tmp/ace.zip -d in
+          test -s in/GG-VFS-F01_ACE-Step15_RU_8423_1.wav
+          echo "a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2  in/GG-VFS-F01_ACE-Step15_RU_8423_1.wav" | sha256sum -c -
+
+      - name: Strong Russian ASR
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'faster-whisper==1.2.0' 'scipy>=1.11'
+          python - <<'PY'
+          import json, wave, numpy as np
+          from scipy.signal import resample_poly
+          from faster_whisper import WhisperModel
+          wav="in/GG-VFS-F01_ACE-Step15_RU_8423_1.wav"
+          with wave.open(wav,"rb") as wf:
+              sr=wf.getframerate(); ch=wf.getnchannels(); sw=wf.getsampwidth()
+              if sw != 2: raise RuntimeError(f"expected PCM16, got {sw}")
+              raw=wf.readframes(wf.getnframes())
+          pcm=np.frombuffer(raw,dtype="<i2").astype(np.float32).reshape(-1,ch).mean(axis=1)/32768.0
+          if sr==48000:
+              audio=resample_poly(pcm,1,3).astype(np.float32)
+          elif sr==16000:
+              audio=pcm
+          else:
+              raise RuntimeError(f"unexpected sr={sr}")
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          segments,info=model.transcribe(
+              audio,language="ru",beam_size=5,word_timestamps=True,
+              temperature=0.0,condition_on_previous_text=False,vad_filter=False
+          )
+          segs=[]; words=[]
+          for s in segments:
+              segs.append({"start":s.start,"end":s.end,"text":s.text,"avg_logprob":getattr(s,"avg_logprob",None)})
+              for w in (s.words or []):
+                  words.append({"start":w.start,"end":w.end,"word":w.word,"probability":w.probability})
+          out={"language":info.language,"language_probability":info.language_probability,
+               "expected":"Я говорила не с ним, а с тем, кто долго стоял у окна и ждал.",
+               "segments":segs,"words":words}
+          open("out/asr.json","w").write(json.dumps(out,ensure_ascii=False,indent=2))
+          open("out/transcript.txt","w").write(" ".join(x["text"].strip() for x in segs)+"\n")
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-ace-8423-russian-asr-v2
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
