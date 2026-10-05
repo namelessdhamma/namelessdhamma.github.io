@@ -868,7 +868,7 @@ async function ltxKaggleLegacyFixedSubmit(args={}){
     provider_ref:preflight.username+'/'+KAGGLE_LTX_KERNEL+'/'+version,
     route:'kaggle_ltx13b_legacy_fixed_kernel_manual',
     kernel_slug:KAGGLE_LTX_KERNEL,
-    machine_shape_requested:'NvidiaTeslaT4',
+    machine_shape_requested:requestedShape,
     cost_policy:'FREE_ONLY',
     gpu_quota:preflight.gpu,
     seed
@@ -977,6 +977,9 @@ async function ltxKaggle2bSubmit(args={},opts={}){
     };
   }
   const preflight=await kaggleLtxPreflight();
+  const requestedShape=direct && ['NvidiaTeslaT4','NvidiaTeslaP100'].includes(String(args.machine_shape||''))
+    ? String(args.machine_shape)
+    : 'NvidiaTeslaT4';
 
   const workerUrl=direct
     ? 'https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/45fac08b04f7f22ff4a0a2f80305f6b4ed3ef548/railway/nd-omniroute/kaggle_ltx2b_diffusers_worker.py'
@@ -1037,7 +1040,7 @@ async function ltxKaggle2bSubmit(args={},opts={}){
       enableTpu:false,
       enableInternet:true,
       kernelExecutionType:'SaveAndRunAll',
-      machineShape:'NvidiaTeslaT4',
+      machineShape:requestedShape,
       sessionTimeoutSeconds:3600
     });
   }catch(e){
@@ -3009,7 +3012,8 @@ const TOOLS=[
         height:{type:'integer',default:288},
         seed:{type:'integer',default:42},
         randomize_seed:{type:'boolean',default:false},
-        idempotency_key:{type:'string'}
+        idempotency_key:{type:'string'},
+        machine_shape:{type:'string',enum:['NvidiaTeslaT4','NvidiaTeslaP100'],default:'NvidiaTeslaT4'}
       },
       required:['start_image_url','end_image_url'],
       additionalProperties:false
