@@ -104,6 +104,47 @@ jobs:
               print('ND_LTX_2S_DURATION_CONTRACT=PASS',path,frames,duration)
           PY
 
+      - name: Validate explicit terminal retry safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import {submit} from './vercel/nd-kaggle-ltx-reserve/lib/ltx-core.js';
+          const ok=o=>new Response(JSON.stringify(o),{status:200,headers:{'content-type':'application/json'}});
+          let kernels=[],saveCalls=0,providerStatus=1,nextVersion=1;
+          globalThis.fetch=async (url,opts={})=>{
+            const u=String(url), body=opts.body?JSON.parse(String(opts.body)):{};
+            if(u.includes('/security.OAuthService/IntrospectToken')) return ok({active:true,username:'testuser'});
+            if(u.includes('/kernels.KernelsApiService/ListKernels')){
+              const search=String(body.search||'').toLowerCase();
+              return ok({kernels:kernels.filter(k=>String(k.slug).toLowerCase().includes(search))});
+            }
+            if(u.includes('/kernels.KernelsApiService/GetAcceleratorQuotaStatistics'))
+              return ok({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:'108000s'}});
+            if(u.includes('/kernels.KernelsApiService/GetKernelSessionStatus'))
+              return ok({status:providerStatus});
+            if(u.includes('/kernels.KernelsApiService/SaveKernel')){
+              saveCalls++;
+              const slug=String(body.slug).split('/').pop();
+              const version=nextVersion++;
+              kernels=[{slug,ref:'testuser/'+slug,author:'testuser',currentVersionNumber:version}];
+              return ok({versionNumber:version});
+            }
+            throw new Error('unexpected mocked fetch '+u);
+          };
+          const cfg={token:'test-token',username:'testuser',inputToken:'',railwayBase:'https://example.invalid'};
+          const args={start_image_url:'https://example.org/a.jpg',end_image_url:'https://example.org/b.jpg',prompt:'storm',duration_seconds:2,width:512,height:288,seed:42,idempotency_key:'terminal-retry-test'};
+          const first=await submit(args,cfg);
+          if(first.state!=='SUBMITTED'||saveCalls!==1) throw new Error('initial submit failed');
+          providerStatus=4;
+          const blocked=await submit(args,cfg);
+          if(blocked.state!=='CANCELLED'||blocked.reused_existing!==true||saveCalls!==1) throw new Error('ordinary repeat was not blocked');
+          const retried=await submit({...args,retry_terminal:true},cfg);
+          if(retried.state!=='SUBMITTED'||saveCalls!==2) throw new Error('explicit terminal retry did not create exactly one version');
+          if(retried.effect_id!==first.effect_id||retried.request_id===first.request_id) throw new Error('terminal retry identity/version contract failed');
+          console.log('ND_LTX_TERMINAL_RETRY=PASS',first.request_id,'->',retried.request_id);
+          NODE
+
       - name: Validate Railway v2 control candidate
         shell: bash
         run: |
