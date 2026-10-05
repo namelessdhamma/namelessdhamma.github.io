@@ -1,5 +1,4 @@
 {
-  "op": "result",
-  "nonce": "a8-r01-stable28-shotA-result-20261005-go",
-  "request_id": "k2b-rc454b6d32c07-50f1-v1"
+  "op": "health",
+  "nonce": "blue-sea-hq-adaptive-preflight-20261005"
 }
