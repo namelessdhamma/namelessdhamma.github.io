@@ -11,6 +11,8 @@ const OUTER_PORT = Number(process.env.PORT || 20128);
 const INNER_PORT = Number(process.env.ND_OMNIROUTE_INNER_PORT || 18080);
 const WAN_MCP_TOKEN = String(process.env.ND_WAN_MCP_PATH_TOKEN || '').trim();
 const WAN_MCP_PATH = '/wan-mcp/' + WAN_MCP_TOKEN;
+const LTX_RECOVERY_TOKEN = String(process.env.ND_LTX_RECOVERY_PATH_TOKEN || '').trim();
+const LTX_RECOVERY_PATH = '/ltx-recovery/' + LTX_RECOVERY_TOKEN;
 const LTX_MCP_TOKEN = String(process.env.ND_LTX_MCP_PATH_TOKEN || '').trim();
 const LTX_MCP_PATH = '/ltx-mcp/' + LTX_MCP_TOKEN;
 const LTX_INPUT_TOKEN = String(process.env.ND_LTX_INPUT_TOKEN || '').trim();
@@ -3009,6 +3011,10 @@ const server = http.createServer(async (req,res) => {
   }
   if (WAN_MCP_TOKEN && req.url === WAN_MCP_PATH + '/ltx') {
     const handled = await ltxMcpHandler(req,res);
+    if (handled !== false) return;
+  }
+  if (LTX_RECOVERY_TOKEN && req.url === LTX_RECOVERY_PATH) {
+    const handled = await wanMcpHandler(req,res);
     if (handled !== false) return;
   }
   if (WAN_MCP_TOKEN && req.url === WAN_MCP_PATH) {
