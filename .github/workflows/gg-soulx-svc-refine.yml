@@ -1,0 +1,127 @@
+name: GG SoulX SVC identity refinement
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-soulx-svc-refine.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  refine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Recover accepted OpenUtau source
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: source
+      - name: Prepare short pure-vocal test
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$(find source -type f -name '*.wav' -print -quit)"
+          test -n "$src"
+          python -m pip install soundfile numpy
+          python - "$src" <<'PY'
+          import sys, soundfile as sf
+          y,sr=sf.read(sys.argv[1])
+          if getattr(y,"ndim",1)>1: y=y.mean(axis=1)
+          y=y[:int(sr*5.8)]
+          sf.write("soulx-source.wav",y,sr)
+          print("SOURCE",len(y)/sr,sr)
+          PY
+      - name: SoulX-Singer SVC neural rerender
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade gradio_client
+          mkdir -p soulx
+          python - <<'PY'
+          import json,os,shutil
+          from pathlib import Path
+          from gradio_client import Client, handle_file
+          c=Client("Soul-AILab/SoulX-Singer",verbose=False)
+          src=handle_file("soulx-source.wav")
+          print("SOULX_PREPROCESS_BEGIN")
+          pre=c.predict(src,src,False,False,api_name="/_run_svc_preprocess")
+          print("SOULX_PREPROCESS_DONE",repr(pre)[:1000])
+          print("SOULX_CONVERT_BEGIN")
+          out=c.predict(False,False,0,8,1.0,True,42,api_name="/_run_svc_convert")
+          print("SOULX_CONVERT_RETURN",repr(out)[:1500])
+          p=None
+          if isinstance(out,str): p=out
+          elif isinstance(out,dict): p=out.get("path") or out.get("url")
+          elif hasattr(out,"path"): p=out.path
+          if not p or not os.path.exists(p):
+              raise SystemExit("SoulX returned no local audio path")
+          dst=Path("soulx/SoulX_Identity_8step.wav")
+          shutil.copy2(p,dst)
+          Path("soulx/manifest.json").write_text(json.dumps({
+              "space":"Soul-AILab/SoulX-Singer",
+              "mode":"SVC identity refinement",
+              "n_step":8,"cfg":1.0,"fp16":True,"seed":42,
+              "output":str(dst),"size":dst.stat().st_size
+          },indent=2))
+          PY
+      - name: Independent QC against source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install faster-whisper librosa==0.10.2.post1 soundfile numpy scipy
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          import numpy as np, soundfile as sf, librosa
+          from scipy.signal import correlate
+          from faster_whisper import WhisperModel
+          src=Path("soulx-source.wav"); out=Path("soulx/SoulX_Identity_8step.wav")
+          target="я говорил не с ним"
+          def norm(x):
+              x=x.lower().replace("ё","е"); x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          rows={}
+          for label,p in [("source",src),("soulx",out)]:
+              segs,_=model.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs); words=[w for s in segs for w in (s.words or [])]
+              text=norm(" ".join(s.text for s in segs))
+              y,sr=sf.read(p)
+              if y.ndim>1:y=y.mean(axis=1)
+              f0,_,_=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),sr=sr,frame_length=2048,hop_length=256)
+              idx=np.where(np.isfinite(f0))[0]
+              span=motion=0.; gross=1.
+              if len(idx)>4:
+                  vals=f0[idx]; cents=1200*np.log2(vals/np.median(vals))
+                  span=float(np.percentile(cents,95)-np.percentile(cents,5))
+                  d=1200*np.log2(vals[1:]/vals[:-1]); d=d[np.diff(idx)==1]
+                  if len(d):
+                      gross=float(np.mean(np.abs(d)>350))
+                      local=d[np.abs(d)<100]; motion=float(np.mean(np.abs(local))) if len(local) else 0.
+              S=np.abs(librosa.stft(y,n_fft=4096,hop_length=256))
+              freqs=librosa.fft_frequencies(sr=sr,n_fft=4096); P=S*S+1e-12
+              active=np.where(np.sum(P,axis=0)>np.max(np.sum(P,axis=0))*0.01)[0]
+              upper=freqs>=8000
+              ur=float(np.median(np.sum(P[upper][:,active],axis=0)/(np.sum(P[:,active],axis=0)+1e-12))) if len(active) else 0.
+              flat=float(np.median(librosa.feature.spectral_flatness(S=S)[0][active])) if len(active) else 0.
+              rows[label]={"text":text,"exact":text==target,
+                  "mean_word":float(np.mean([w.probability for w in words])) if words else 0.,
+                  "duration":len(y)/sr,"pitch_span_cents":span,"local_motion_cents":motion,
+                  "gross_jump_rate":gross,"upper_8k_ratio":ur,"spectral_flatness":flat}
+          Path("soulx/qc.json").write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+          print(json.dumps(rows,ensure_ascii=False,indent=2))
+          if not rows["soulx"]["exact"] or rows["soulx"]["gross_jump_rate"]>=0.03:
+              raise SystemExit("SoulX candidate failed diction/pitch gate")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-soulx-svc-identity-refinement
+          path: soulx/
+          retention-days: 3
+          if-no-files-found: warn
