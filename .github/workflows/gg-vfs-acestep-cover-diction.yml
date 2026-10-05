@@ -1,0 +1,196 @@
+name: GG VFS ACE8423 Cover diction qualification
+
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-acestep-cover-diction.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Submit exact Cover effect and retrieve outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          cat >/tmp/submit.py <<'PY'
+          import hashlib,json,os,re,time
+          from pathlib import Path
+          import requests
+          token=os.environ["KAGGLE_API_TOKEN"].strip(); expected_user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          sha=os.environ["GITHUB_SHA"]; out=Path("work"); api="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-cover-diction/1.0"}
+          def rpc(service,method,body=None,timeout=40):
+              r=requests.post(f"{api}/{service}/{method}",headers=H,json=body or {},timeout=timeout)
+              if not r.ok: raise RuntimeError(f"{method} HTTP {r.status_code}: {r.text[:1400]}")
+              return r.json() if r.text.strip() else {}
+          def sec(v):
+              if isinstance(v,(int,float)):return float(v)
+              if isinstance(v,str):
+                  m=re.match(r"^(-?\d+(?:\.\d+)?)s$",v);return float(m.group(1)) if m else float(v or 0)
+              if isinstance(v,dict):return float(v.get("seconds",0))+float(v.get("nanos",0))/1e9
+              return 0.0
+          ident=rpc("security.OAuthService","IntrospectToken",{"token":token});user=str(ident.get("username") or "")
+          if not ident.get("active") or not user: raise RuntimeError("Kaggle token inactive")
+          if expected_user and user!=expected_user: raise RuntimeError("Kaggle username mismatch")
+          q=rpc("kernels.KernelsApiService","GetAcceleratorQuotaStatistics",{});g=q.get("gpuQuota") or q.get("gpu_quota") or {}
+          remaining=max(0,sec(g.get("totalTimeAllowed",0))-sec(g.get("timeUsed",0)))
+          if remaining<15*60: raise RuntimeError("FREE_ONLY_BLOCKED")
+          tag=hashlib.sha256((sha+"|ACE8423-COVER-DICTION-001").encode()).hexdigest()[:16]
+          requested=f"gg-vfs-ace8423-cover-{tag}"
+          worker_url=f"https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/{sha}/railway/nd-omniroute/kaggle_acestep_cover_worker.py"
+          script="\n".join([
+            "import sys,urllib.request","from pathlib import Path",f"u='{worker_url}'",
+            "p=Path('/kaggle/working/kaggle_acestep_cover_worker.py')",
+            "p.write_bytes(urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'nd-vfs-cover/1.0'}),timeout=120).read())",
+            "sys.argv=['kaggle_acestep_cover_worker.py']",
+            "exec(compile(p.read_text(encoding='utf-8'),str(p),'exec'),{'__name__':'__main__'})",
+          ])
+          listed=rpc("kernels.KernelsApiService","ListKernels",{"user":user,"search":tag,"pageSize":50})
+          exact=[k for k in (listed.get("kernels") or []) if tag in str(k.get("slug","")) or tag in str(k.get("ref",""))]
+          if exact:
+              k=exact[0];actual=str(k.get("slug") or str(k.get("ref") or "").split("/")[-1]).strip();version=int(k.get("currentVersionNumber") or 1);reused=True
+          else:
+              save=rpc("kernels.KernelsApiService","SaveKernel",{
+                "slug":f"{user}/{requested}","newTitle":requested,"text":script,"language":"python","kernelType":"script",
+                "datasetDataSources":[],"kernelDataSources":[],"competitionDataSources":[],"categoryIds":[],"modelDataSources":[],
+                "isPrivate":True,"enableGpu":True,"enableTpu":False,"enableInternet":True,
+                "kernelExecutionType":"SaveAndRunAll","machineShape":"NvidiaTeslaT4","sessionTimeoutSeconds":3300})
+              version=int(save.get("versionNumber") or save.get("version_number") or 1);time.sleep(2)
+              listed=rpc("kernels.KernelsApiService","ListKernels",{"user":user,"search":tag,"pageSize":50})
+              exact=[k for k in (listed.get("kernels") or []) if tag in str(k.get("slug","")) or tag in str(k.get("ref",""))]
+              if exact:
+                  k=exact[0];actual=str(k.get("slug") or str(k.get("ref") or "").split("/")[-1]).strip()
+              else: actual=requested
+              reused=False
+          if not actual or actual.lower()=="none": raise RuntimeError("actual Kaggle slug unresolved")
+          handle={"provider_ref":f"{user}/{actual}/v{version}","tag":tag,"reused":reused,"remaining_gpu_h":round(remaining/3600,3)}
+          (out/"submit.json").write_text(json.dumps(handle,indent=2));print(json.dumps(handle,indent=2),flush=True)
+          def dl(path):
+              r=requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,
+                json={"ownerSlug":user,"kernelSlug":actual,"filePath":path,"versionNumber":version},timeout=40,allow_redirects=False)
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  g=requests.get(r.headers["location"],timeout=180);return g.content if g.ok and g.content else None
+              if r.ok and r.content:
+                  if "json" in r.headers.get("content-type",""):
+                      try:
+                          o=r.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                      except Exception:u=None
+                      if u:
+                          g=requests.get(u,timeout=180);return g.content if g.ok and g.content else None
+                  return r.content
+              return None
+          prefix="gg-vfs-cover-output/";deadline=time.time()+38*60;result=None
+          while time.time()<deadline:
+              b=dl(prefix+"result.json")
+              if b:
+                  try:
+                      x=json.loads(b.decode("utf-8"))
+                      if isinstance(x,dict) and "ok" in x:result=x;(out/"result.json").write_bytes(b);break
+                  except Exception:pass
+              time.sleep(30)
+          if result is None: raise RuntimeError("Cover terminal result unavailable")
+          names=["REPRODUCTION_RECIPE.md","child.log","BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_COVER_1p0.wav","GG-VFS-F01_ACE8423_COVER_0p8.wav"]
+          got=[]
+          for name in names:
+              b=dl(prefix+name)
+              if not b:
+                  if result.get("ok"):raise RuntimeError("missing successful output "+name)
+                  continue
+              p=out/name;p.write_bytes(b);got.append({"file":name,"bytes":len(b),"sha256":hashlib.sha256(b).hexdigest()})
+          (out/"download-index.json").write_text(json.dumps({"handle":handle,"result":result,"files":got},ensure_ascii=False,indent=2))
+          if not result.get("ok"): raise RuntimeError("Cover provider failed: "+json.dumps(result,ensure_ascii=False))
+          PY
+          python /tmp/submit.py
+
+      - name: Strong Russian ASR and structural qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'faster-whisper==1.2.0' 'scipy>=1.11'
+          python - <<'PY'
+          import json,re,wave
+          from pathlib import Path
+          import numpy as np
+          from scipy.signal import resample_poly,correlate,correlation_lags
+          from faster_whisper import WhisperModel
+          root=Path("work")
+          names=["BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_COVER_1p0.wav","GG-VFS-F01_ACE8423_COVER_0p8.wav"]
+          expected="я говорила не с ним а с тем кто долго стоял у окна и ждал".split()
+          def read(path):
+              with wave.open(str(path),"rb") as w:
+                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth();n=w.getnframes()
+                  if sw!=2:raise RuntimeError("PCM16 required")
+                  x=np.frombuffer(w.readframes(n),dtype="<i2").astype(np.float32).reshape(-1,ch)/32768.0
+              return sr,x
+          def norm(t):return re.sub(r"[^а-яё\s]"," ",t.lower()).replace("ё","е").split()
+          def ed(a,b):
+              d=list(range(len(b)+1))
+              for i,x in enumerate(a,1):
+                  nd=[i]+[0]*len(b)
+                  for j,y in enumerate(b,1):nd[j]=min(nd[j-1]+1,d[j]+1,d[j-1]+(x!=y))
+                  d=nd
+              return d[-1]
+          m=WhisperModel("small",device="cpu",compute_type="int8");rep={"expected_words":expected,"items":[]};wavs={}
+          for name in names:
+              sr,x=read(root/name);wavs[name]=(sr,x);mono=x.mean(1);a=resample_poly(mono,1,3).astype(np.float32) if sr==48000 else resample_poly(mono,16000,sr).astype(np.float32)
+              segs,info=m.transcribe(a,language="ru",beam_size=5,word_timestamps=True,temperature=0.0,condition_on_previous_text=False,vad_filter=False)
+              ss=[];ww=[]
+              for s in segs:
+                  ss.append({"start":s.start,"end":s.end,"text":s.text,"avg_logprob":getattr(s,"avg_logprob",None)})
+                  for w in (s.words or []):ww.append({"start":w.start,"end":w.end,"word":w.word,"probability":w.probability})
+              txt=" ".join(s["text"].strip() for s in ss);nw=norm(txt);dist=ed(expected,nw)
+              rep["items"].append({"file":name,"transcript":txt,"normalized_words":nw,"word_edit_distance":dist,"word_error_ratio":dist/len(expected),"contains_ne":"не" in nw,"segments":ss,"words":ww,"language_probability":info.language_probability})
+          bsr,b=wavs[names[0]]
+          for item,name in zip(rep["items"][1:],names[1:]):
+              sr,c=wavs[name];n=min(len(b),len(c));bm=b[:n].mean(1);cm=c[:n].mean(1);hop=960
+              def env(x):
+                  z=x[:(len(x)//hop)*hop].reshape(-1,hop);return np.sqrt(np.mean(z*z,axis=1)+1e-12)
+              e1,e2=env(bm),env(cm);mm=min(len(e1),len(e2));e1=e1[:mm];e2=e2[:mm]
+              co=correlate(e2-e2.mean(),e1-e1.mean(),mode="full");lags=correlation_lags(mm,mm,mode="full");near=np.abs(lags)<=25
+              item["structural"]={"duration":len(c)/sr,"rms_envelope_correlation":float(np.corrcoef(e1,e2)[0,1]),"envelope_best_lag_ms":float(lags[near][np.argmax(co[near])]*hop/bsr*1000)}
+          base=rep["items"][0];cands=rep["items"][1:]
+          good=[x for x in cands if x["word_edit_distance"]<base["word_edit_distance"] and x["contains_ne"]]
+          rep["classification"]="CONTENT_IMPROVEMENT_CANDIDATE" if good else "NO_VERIFIED_CONTENT_COMPLETENESS_GAIN"
+          rep["best_by_asr"]=min(cands,key=lambda x:x["word_edit_distance"])["file"]
+          rep["auditory_gates"]=["lexical_stress","same_singer_identity","GG_voice_from_silence","naturalness","no_background_buzz"]
+          (root/"qualification.json").write_text(json.dumps(rep,ensure_ascii=False,indent=2));print(json.dumps(rep,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Build A-B-C
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import wave
+          from pathlib import Path
+          import numpy as np
+          root=Path("work");names=["BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_COVER_1p0.wav","GG-VFS-F01_ACE8423_COVER_0p8.wav"]
+          xs=[];sr0=ch0=None
+          for i,n in enumerate(names):
+              with wave.open(str(root/n),"rb") as w:
+                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth();x=np.frombuffer(w.readframes(w.getnframes()),dtype="<i2").reshape(-1,ch)
+              if sw!=2:raise RuntimeError("PCM16 required")
+              if sr0 is None:sr0,ch0=sr,ch
+              xs.append(x)
+              if i<len(names)-1:xs.append(np.zeros((sr0,ch0),dtype=np.int16))
+          y=np.concatenate(xs);p=root/"GG_VFS_AUDITION_8423_vs_COVER1p0_vs_COVER0p8.wav"
+          with wave.open(str(p),"wb") as w:w.setnchannels(ch0);w.setsampwidth(2);w.setframerate(sr0);w.writeframes(y.astype("<i2").tobytes())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-ace8423-cover-diction-qualified
+          path: work/
+          retention-days: 30
+          if-no-files-found: error
