@@ -21,18 +21,21 @@ jobs:
           python - <<'PY'
           import json,os,requests
           tok=os.environ["KAGGLE_API_TOKEN"]; user=os.environ["KAGGLE_USERNAME_SLUG"]; slug="gg-vfs-ace-2216c6d8342585e8"
-          H={"Authorization":"Bearer "+tok,"Accept":"application/json","Content-Type":"application/json"}
-          def call(url,body):
-              r=requests.post(url,headers=H,json=body,timeout=30,allow_redirects=False)
+          def pack(r):
               try:b=r.json()
-              except:b=r.text[:3000]
+              except:b=r.text[:6000]
               return {"status":r.status_code,"headers":{"location":r.headers.get("location"),"content-type":r.headers.get("content-type")},"body":b}
-          intro=call("https://api.kaggle.com/v1/security.OAuthService/IntrospectToken",{"token":tok})
-          probes={}
-          for fp in ["gg-vfs-ace-output/result.json","gg-vfs-ace-output/GG-VFS-F01_ACE-Step15_RU_8423_1.wav","result.json"]:
-              probes[fp]=call("https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput",{"ownerSlug":user,"kernelSlug":slug,"filePath":fp,"versionNumber":1})
-          open("result-probe/probe.json","w").write(json.dumps({"introspect":intro,"downloads":probes},default=str,indent=2))
-          print(json.dumps({"introspect":intro,"downloads":probes},default=str,indent=2))
+          H={"Authorization":"Bearer "+tok,"Accept":"application/json","Content-Type":"application/json"}
+          r=requests.post("https://api.kaggle.com/v1/security.OAuthService/IntrospectToken",headers=H,json={"token":tok},timeout=30)
+          result={"introspect":pack(r),"legacy":{}}
+          for mode,auth in [("bearer",None),("basic",(user,tok))]:
+              hdr={"Authorization":"Bearer "+tok} if mode=="bearer" else {}
+              for endpoint in ["status","output"]:
+                  url="https://www.kaggle.com/api/v1/kernels/"+endpoint
+                  rr=requests.get(url,headers=hdr,auth=auth,params={"userName":user,"kernelSlug":slug},timeout=30,allow_redirects=False)
+                  result["legacy"][mode+"_"+endpoint]=pack(rr)
+          open("result-probe/probe.json","w").write(json.dumps(result,ensure_ascii=False,indent=2,default=str))
+          print(json.dumps(result,ensure_ascii=False,indent=2,default=str))
           PY
       - uses: actions/upload-artifact@v4
         with:
