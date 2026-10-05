@@ -1,0 +1,47 @@
+name: GG VFS publish exact accepted ACE8423 source
+
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths:
+      - ".github/workflows/gg-vfs-publish-accepted-8423.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/gg-openutau-mcp-20261004
+          fetch-depth: 1
+      - name: Recover exact accepted ACE8423 from immutable Actions artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/ace8423
+          mkdir -p /tmp/ace8423 gg-vfs-assets/accepted
+          gh api -H "Accept: application/vnd.github+json"             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/11332849523/zip" > /tmp/ace8423.zip
+          unzip -q /tmp/ace8423.zip -d /tmp/ace8423
+          src=/tmp/ace8423/GG-VFS-F01_ACE-Step15_RU_8423_1.wav
+          test -s "$src"
+          echo "a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2  $src" | sha256sum -c -
+          cp "$src" gg-vfs-assets/accepted/GG-VFS-F01_ACE-Step15_RU_8423_1.wav
+          cat > gg-vfs-assets/accepted/GG-VFS-F01_ACE-Step15_RU_8423_1.sha256 <<'EOF'
+          a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2  GG-VFS-F01_ACE-Step15_RU_8423_1.wav
+          EOF
+          git config user.name "ND Automation Agent"
+          git config user.email "namelessdhamma@gmail.com"
+          git add gg-vfs-assets/accepted/GG-VFS-F01_ACE-Step15_RU_8423_1.wav gg-vfs-assets/accepted/GG-VFS-F01_ACE-Step15_RU_8423_1.sha256
+          if git diff --cached --quiet; then
+            echo "Exact accepted source already published."
+          else
+            git commit -m "asset: freeze exact accepted ACE8423 vocal source"
+            git push origin HEAD:experiment/gg-openutau-mcp-20261004
+          fi
