@@ -463,18 +463,35 @@ def main() -> None:
 
     sys.path.insert(0, str(ROOT))
     os.chdir(ROOT)
+    import resource
+    def import_stage(name: str) -> None:
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        print(f"ND_LTX2B_IMPORT_STAGE={name} maxrss_kb={rss}", flush=True)
+
     print("ND_LTX2B_STAGE=direct_import_begin", flush=True)
+    import_stage("mmgp_begin")
     from mmgp import offload, profile_type
+    import_stage("mmgp_done")
     from shared.utils import files_locator as fl
+    import_stage("files_locator_done")
     fl.set_checkpoints_paths([str(CK)])
+    import_stage("checkpoint_paths_done")
     from models.ltx_video.models.autoencoders.causal_video_autoencoder import CausalVideoAutoencoder
+    import_stage("causal_video_autoencoder_done")
     from models.ltx_video.models.transformers.symmetric_patchifier import SymmetricPatchifier
+    import_stage("symmetric_patchifier_done")
     from models.ltx_video.models.transformers.transformer3d import Transformer3DModel
+    import_stage("transformer3d_done")
     from models.ltx_video.pipelines.pipeline_ltx_video import ConditioningItem, LTXVideoPipeline
+    import_stage("pipeline_ltx_video_done")
     from models.ltx_video.schedulers.rf import RectifiedFlowScheduler
+    import_stage("rf_scheduler_done")
     from models.ltx_video.utils.skip_layer_strategy import SkipLayerStrategy
+    import_stage("skip_layer_strategy_done")
     from transformers import T5Tokenizer
+    import_stage("t5_tokenizer_done")
     from shared.attention import attention_config_shared_state
+    import_stage("shared_attention_done")
     print("ND_LTX2B_STAGE=direct_import_done", flush=True)
 
     print("ND_LTX2B_STAGE=direct_assemble", flush=True)
