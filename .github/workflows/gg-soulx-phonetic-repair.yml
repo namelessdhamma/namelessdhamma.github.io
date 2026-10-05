@@ -1,0 +1,172 @@
+name: GG SoulX phonetic repair
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-soulx-phonetic-repair.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  repair-seg2:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Recover Human-B reference
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-human-singer-vocoder-ab
+          run-id: 37194439702
+          github-token: ${{ github.token }}
+          path: prompt-pack
+      - name: Recover long target
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: target-pack
+      - name: Prepare second phrase
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install soundfile numpy
+          python - <<'PY'
+          from pathlib import Path
+          import soundfile as sf
+          prompts=sorted(Path("prompt-pack").rglob("*B*STOCK*.wav"))
+          prompt=prompts[0] if prompts else sorted(Path("prompt-pack").rglob("*.wav"))[-1]
+          target=next(Path("target-pack").rglob("*.wav"))
+          yp,srp=sf.read(prompt)
+          if getattr(yp,"ndim",1)>1: yp=yp.mean(axis=1)
+          sf.write("prompt-human-b.wav",yp,srp)
+          y,sr=sf.read(target)
+          if getattr(y,"ndim",1)>1: y=y.mean(axis=1)
+          split=int(round(4.63*sr))
+          sf.write("target-seg2.wav",y[split:],sr)
+          print("SEG2_SECONDS",len(y[split:])/sr)
+          PY
+      - name: SoulX softer conversion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade gradio_client
+          mkdir -p repair
+          python - <<'PY'
+          import os,shutil
+          from pathlib import Path
+          from gradio_client import Client,handle_file
+          c=Client("Soul-AILab/SoulX-Singer",verbose=False)
+          c.predict(handle_file("prompt-human-b.wav"),handle_file("target-seg2.wav"),False,False,api_name="/_run_svc_preprocess")
+          out=c.predict(False,False,0,8,0.55,True,314,api_name="/_run_svc_convert")
+          p=out if isinstance(out,str) else (out.get("path") if isinstance(out,dict) else getattr(out,"path",None))
+          if not p or not os.path.exists(p):
+              raise RuntimeError(f"No SoulX output: {out!r}")
+          shutil.copy2(p,"repair/Repair_seg2.wav")
+          print("OUTPUT_BYTES",os.path.getsize(p))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-soulx-repair-seg2
+          path: repair/
+          retention-days: 3
+          if-no-files-found: warn
+
+  assemble-qc:
+    needs: repair-seg2
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Recover accepted SoulX segment 1
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-soulx-vocal-northstar
+          run-id: 37247752164
+          github-token: ${{ github.token }}
+          path: prior
+      - name: Recover repaired segment 2
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-soulx-repair-seg2
+          path: repair
+      - name: Recover original target
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: target-pack
+      - name: Assemble and gate exact Russian content
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install soundfile numpy librosa==0.10.2.post1 faster-whisper
+          mkdir -p final
+          python - <<'PY'
+          from pathlib import Path
+          import json,re
+          import numpy as np,soundfile as sf,librosa
+          from faster_whisper import WhisperModel
+          p1=next(Path("prior").rglob("Natural_seg1.wav"))
+          p2=next(Path("repair").rglob("Repair_seg2.wav"))
+          target=next(Path("target-pack").rglob("*.wav"))
+          y1,sr1=sf.read(p1); y2,sr2=sf.read(p2)
+          if y1.ndim>1:y1=y1.mean(axis=1)
+          if y2.ndim>1:y2=y2.mean(axis=1)
+          if sr1!=sr2: raise RuntimeError("sample-rate mismatch")
+          full=np.concatenate([y1,y2])
+          out=Path("final/SoulX_NorthStar_Candidate.wav")
+          sf.write(out,full,sr1)
+          yt,srt=sf.read(target)
+          if yt.ndim>1:yt=yt.mean(axis=1)
+          if srt!=sr1: yt=librosa.resample(yt,orig_sr=srt,target_sr=sr1)
+          sf.write("final/AB_OpenUtau_then_SoulX.wav",np.concatenate([yt,np.zeros(int(sr1*.8)),full]),sr1)
+
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          def norm(x):
+              x=x.lower().replace("ё","е"); x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+          def get(p):
+              segs,_=model.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs); words=[w for s in segs for w in (s.words or [])]
+              return norm(" ".join(s.text for s in segs)), float(np.mean([w.probability for w in words])) if words else 0.0
+          tt,tc=get(target); st,sc=get(out)
+
+          def metrics(p):
+              y,sr=sf.read(p)
+              if y.ndim>1:y=y.mean(axis=1)
+              f0,_,_=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),sr=sr,frame_length=2048,hop_length=256)
+              idx=np.where(np.isfinite(f0))[0]; span=motion=0.;jump=1.
+              if len(idx)>5:
+                  vals=f0[idx]; cents=1200*np.log2(vals/np.median(vals))
+                  span=float(np.percentile(cents,95)-np.percentile(cents,5))
+                  d=1200*np.log2(vals[1:]/vals[:-1]); d=d[np.diff(idx)==1]
+                  if len(d):
+                      jump=float(np.mean(np.abs(d)>350))
+                      loc=d[np.abs(d)<100]; motion=float(np.mean(np.abs(loc))) if len(loc) else 0.
+              rms=librosa.feature.rms(y=y,frame_length=2048,hop_length=256)[0]
+              active=rms>np.max(rms)*.01
+              db=librosa.amplitude_to_db(rms,ref=np.max)
+              dyn=float(np.percentile(db[active],90)-np.percentile(db[active],10)) if np.any(active) else 0.
+              return {"duration":len(y)/sr,"pitch_span_cents":span,"local_motion_cents":motion,"gross_jump_rate":jump,"loudness_span_db":dyn}
+          report={"target":{"text":tt,"mean_word":tc,**metrics(target)},"soulx":{"text":st,"mean_word":sc,**metrics(out)},"exact_match":st==tt}
+          Path("final/qc.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          if st!=tt or report["soulx"]["gross_jump_rate"]>=.025:
+              raise SystemExit("Repair still fails exact content/pitch gate")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-soulx-northstar-candidate
+          path: final/
+          retention-days: 3
+          if-no-files-found: warn
