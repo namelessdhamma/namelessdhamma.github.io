@@ -30,7 +30,7 @@ jobs:
 
           token=os.environ["KAGGLE_API_TOKEN"].strip()
           user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
-          slug="gg-vfs-ace8423-repaint-28c84d9bfd4c23e6"
+          slug="gg-vfs-ace8423-repaint-6e1ad7e93603370a"
           version=1
           api="https://api.kaggle.com/v1"
           H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-repaint-reconcile/1.1"}
@@ -38,7 +38,7 @@ jobs:
           expected=[
               "gg-vfs-ace-repaint-output/result.json",
               "gg-vfs-ace-repaint-output/REPRODUCTION_RECIPE.md",
-              "gg-vfs-ace-repaint-output/BASELINE_8423_REPLAY.wav",
+              "gg-vfs-ace-repaint-output/BASELINE_8423_EXACT.wav",
               "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p2.wav",
               "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p4.wav",
           ]
