@@ -221,15 +221,16 @@ def main() -> None:
         return
 
     print("ND_LTX_STAGE=clean_child_runtime_ready", flush=True)
+    print("ND_LTX_STAGE=import_torch_begin", flush=True)
+    import torch
+    print(f"ND_LTX_STAGE=import_torch_done version={torch.__version__}", flush=True)
+    import torch.nn as nn
+    print("ND_LTX_STAGE=import_torch_nn_done", flush=True)
     print("ND_LTX_STAGE=import_imageio_begin", flush=True)
     import imageio.v2 as imageio
     print("ND_LTX_STAGE=import_imageio_done", flush=True)
     import numpy as np
     print("ND_LTX_STAGE=import_numpy_done", flush=True)
-    import torch
-    print(f"ND_LTX_STAGE=import_torch_done version={torch.__version__}", flush=True)
-    import torch.nn as nn
-    print("ND_LTX_STAGE=import_torch_nn_done", flush=True)
     from PIL import Image
     print("ND_LTX_STAGE=import_pillow_done", flush=True)
     print("ND_LTX_STAGE=import_diffusers_begin", flush=True)
