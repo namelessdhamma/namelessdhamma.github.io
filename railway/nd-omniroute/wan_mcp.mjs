@@ -2034,6 +2034,25 @@ async function ltxKaggleAbandonQueued(args={}){
   };
 }
 
+async function ltxKaggleRecentKernelMetadata(){
+  const username=String(KAGGLE_USERNAME_SLUG||'').trim();
+  if(!username) throw new Error('KAGGLE_USERNAME_SLUG is not configured');
+  const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
+  const kernels=Array.isArray(listed?.kernels)?listed.kernels:[];
+  const recent=kernels.map(k=>({
+    ref:k?.ref||null,
+    title:k?.title||null,
+    slug:String(k?.slug||k?.ref||'').replace(/^.*\//,''),
+    current_version_number:Number(k?.currentVersionNumber??k?.current_version_number??0),
+    machine_shape:k?.machineShape??k?.machine_shape??null,
+    last_run_time:k?.lastRunTime??k?.last_run_time??null,
+    is_private:k?.isPrivate??k?.is_private??null
+  })).filter(k=>/^nd-ltx/i.test(k.slug))
+    .sort((a,b)=>String(b.last_run_time||'').localeCompare(String(a.last_run_time||'')))
+    .slice(0,60);
+  return {ok:true,owner:username,kernel_count:kernels.length,ltx_kernel_count:recent.length,recent};
+}
+
 async function ltxKaggleDiagnoseSessions(){
   const {username}=await kaggleLtxIdentity();
   const listed=await kaggleRpc('kernels.KernelsApiService','ListKernels',{user:username,pageSize:100});
@@ -2922,6 +2941,11 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{},additionalProperties:false}
   },
   {
+    name:'wan_kaggle_recent_kernels',
+    description:'Low-cost read-only reconciliation helper. Performs one Kaggle ListKernels read and returns recent ND LTX kernel metadata without per-kernel status calls.',
+    inputSchema:{type:'object',properties:{},additionalProperties:false}
+  },
+  {
     name:'wan_get_capabilities',
     description:'Return the complete Gradio API schema for any public Hugging Face Space. No capability allowlist is applied.',
     inputSchema:{type:'object',properties:{space_id:{type:'string',default:DEFAULT_SPACE}},additionalProperties:false}
@@ -3167,6 +3191,7 @@ export function createWanMcpHandler(){
         else if(name==='wan_ltx13b_adaptive_status') result=await ltxKaggleBatchStatus(args);
         else if(name==='wan_ltx13b_adaptive_result') result=await ltxKaggleBatchResult(args);
         else if(name==='wan_kaggle_diagnose_sessions') result=await ltxKaggleDiagnoseSessions();
+        else if(name==='wan_kaggle_recent_kernels') result=await ltxKaggleRecentKernelMetadata();
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
