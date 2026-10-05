@@ -2917,6 +2917,11 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
   },
   {
+    name:'wan_kaggle_diagnose_sessions',
+    description:'Read-only reconciliation helper. Lists recent ND LTX Kaggle kernels and their provider states so an unknown interrupted effect can be recovered without resubmission.',
+    inputSchema:{type:'object',properties:{},additionalProperties:false}
+  },
+  {
     name:'wan_get_capabilities',
     description:'Return the complete Gradio API schema for any public Hugging Face Space. No capability allowlist is applied.',
     inputSchema:{type:'object',properties:{space_id:{type:'string',default:DEFAULT_SPACE}},additionalProperties:false}
@@ -3161,6 +3166,7 @@ export function createWanMcpHandler(){
         });
         else if(name==='wan_ltx13b_adaptive_status') result=await ltxKaggleBatchStatus(args);
         else if(name==='wan_ltx13b_adaptive_result') result=await ltxKaggleBatchResult(args);
+        else if(name==='wan_kaggle_diagnose_sessions') result=await ltxKaggleDiagnoseSessions();
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
