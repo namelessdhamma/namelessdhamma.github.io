@@ -68,6 +68,7 @@ jobs:
               "lyrics":"[Verse]\nЯ говорила не с ним, а с тем, кто долго стоял у окна и ждал.",
               "duration":15,
               "seed":8423,
+              "source_url":"https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/b0525d1/gg-vfs-assets/accepted/GG-VFS-F01_ACE-Step15_RU_8423_1.wav",
               "expected_sha256":"a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2"
             },
             "repaint":{
@@ -91,7 +92,7 @@ jobs:
               "sys.argv=['kaggle_acestep_repaint_worker.py','/kaggle/working/gg-vfs-ace-repaint-request.json']",
               "exec(compile(w.read_text(encoding='utf-8'),str(w),'exec'),{'__name__':'__main__'})",
           ])
-          token16=hashlib.sha256((sha+"|ace8423-repaint-0-6.9|0.2|0.4").encode()).hexdigest()[:16]
+          token16=hashlib.sha256((sha+"|ace8423-exact-source-repaint-0-6.9|0.2|0.4").encode()).hexdigest()[:16]
           requested_slug=f"gg-vfs-ace8423-repaint-{token16}"
           title=f"GG VFS ACE8423 Repaint {token16}"
 
@@ -110,18 +111,9 @@ jobs:
               raise RuntimeError("SaveKernel rejected: "+json.dumps(save)[:1800])
           version=int(save.get("versionNumber") or save.get("version_number") or 1)
 
-          # Kaggle may normalize slug from title. Resolve exact ref by token/title.
-          actual=None
-          for _ in range(6):
-              listed=rpc("kernels.KernelsApiService","ListKernels",{"user":user,"search":token16,"pageSize":50})
-              for k in listed.get("kernels",[]) or []:
-                  if token16 in str(k.get("ref","")) or token16 in str(k.get("title","")):
-                      actual=k; break
-              if actual: break
-              time.sleep(2)
-          if not actual: raise RuntimeError("submitted kernel not discoverable")
-          ref=str(actual.get("ref") or "")
-          slug=ref.split("/")[-1]
+          # This title slug is deterministic; preserve the effect handle immediately.
+          # If readback later disagrees, reconcile by ListKernels before any resubmit.
+          slug=requested_slug
           handle={"state":"SUBMITTED","provider_ref":f"{user}/{slug}/v{version}","requested_slug":requested_slug,"actual_slug":slug,"workflow_sha":sha,"quota":quota,"request":request}
           (out/"submit.json").write_text(json.dumps(handle,ensure_ascii=False,indent=2))
           print(json.dumps(handle,ensure_ascii=False,indent=2),flush=True)
@@ -130,7 +122,7 @@ jobs:
           expected=[
               "gg-vfs-ace-repaint-output/result.json",
               "gg-vfs-ace-repaint-output/REPRODUCTION_RECIPE.md",
-              "gg-vfs-ace-repaint-output/BASELINE_8423_REPLAY.wav",
+              "gg-vfs-ace-repaint-output/BASELINE_8423_EXACT.wav",
               "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p2.wav",
               "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p4.wav"
           ]
