@@ -67,9 +67,7 @@ def _run(cmd: list[str], timeout: int) -> None:
     if rc != 0:
         raise RuntimeError("command failed: " + repr(cmd))
 
-def _install_and_restart(request_path: str) -> bool:
-    if os.environ.get("ND_LTX2B_DIFF_RUNTIME_READY") == "1":
-        return False
+def _install_runtime() -> None:
     print("ND_LTX2B_DIFF_STAGE=install_dependencies", flush=True)
     _run(
         [
@@ -88,17 +86,6 @@ def _install_and_restart(request_path: str) -> bool:
         900,
     )
     print("ND_LTX2B_DIFF_STAGE=dependencies_ready", flush=True)
-    env = dict(os.environ)
-    env["ND_LTX2B_DIFF_RUNTIME_READY"] = "1"
-    worker_path = Path("/kaggle/working/kaggle_ltx2b_diffusers_worker.py")
-    if not worker_path.exists():
-        worker_path = Path(sys.argv[0]).resolve()
-    print("ND_LTX2B_DIFF_STAGE=clean_child_begin", flush=True)
-    child = subprocess.run([sys.executable, str(worker_path), request_path], env=env)
-    print("ND_LTX2B_DIFF_STAGE=clean_child_done rc=" + str(child.returncode), flush=True)
-    if child.returncode != 0:
-        raise RuntimeError("clean child failed rc=" + str(child.returncode))
-    return True
 
 def _download(url: str, path: Path) -> None:
     if not str(url).startswith(("http://", "https://")):
@@ -162,12 +149,10 @@ def main() -> None:
         )
         os.environ["ND_LTX2B_DIFF_INPUTS_READY"] = "1"
 
-    if _install_and_restart(request_path):
-        return
-
-    print("ND_LTX2B_DIFF_STAGE=clean_child_runtime_ready", flush=True)
-
+    _install_runtime()
+    print("ND_LTX2B_DIFF_STAGE=import_torch_begin", flush=True)
     import torch
+    print("ND_LTX2B_DIFF_STAGE=import_torch_done version=" + str(torch.__version__), flush=True)
     from PIL import Image, ImageOps
     from diffusers import GGUFQuantizationConfig, LTXVideoTransformer3DModel
     from diffusers.pipelines.ltx.pipeline_ltx_condition import (
