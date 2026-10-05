@@ -44,13 +44,17 @@ jobs:
 
           python - <<'PY'
           from pathlib import Path
-          import soundfile as sf, hashlib
+          import wave, hashlib
           ab=next(Path("historical").rglob("AB_OpenUtau_then_SoulX.wav"))
           old=next(Path("historical").rglob("SoulX_NorthStar_Candidate.wav"))
-          y,sr=sf.read(ab)
-          if y.ndim>1:y=y.mean(axis=1)
-          n=round(13.464791666666667*sr)
-          sf.write("work/input/FROZEN_RUSSIAN_SOURCE.wav",y[:n],sr,subtype="PCM_16")
+          with wave.open(str(ab),"rb") as w:
+              params=w.getparams()
+              assert params.nchannels==1 and params.sampwidth==2 and params.framerate==24000
+              n=round(13.464791666666667*params.framerate)
+              frames=w.readframes(n)
+          with wave.open("work/input/FROZEN_RUSSIAN_SOURCE.wav","wb") as o:
+              o.setparams(params)
+              o.writeframes(frames)
           Path("work/input/SoulX_NorthStar_Candidate.wav").write_bytes(old.read_bytes())
           def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
           assert sha("work/input/FROZEN_RUSSIAN_SOURCE.wav")=="5f50a4383dbc3925adbffb689d4c17f4078083c07b63a3bdfb4630ef1d9f3520",sha("work/input/FROZEN_RUSSIAN_SOURCE.wav")
