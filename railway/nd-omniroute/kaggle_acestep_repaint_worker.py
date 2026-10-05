@@ -49,7 +49,7 @@ try:
 
     child=ROOT/"gg_vfs_ace_repaint_infer.py"
     child.write_text(r'''from __future__ import annotations
-import hashlib,json,os,sys,time,shutil
+import hashlib,json,os,sys,time,shutil,urllib.request
 from pathlib import Path
 import torch
 repo=Path(sys.argv[1]); out=Path(sys.argv[2]); req=json.loads(Path(sys.argv[3]).read_text())
@@ -97,28 +97,18 @@ lstatus,lok=llm.initialize(
 print(lstatus,flush=True)
 if not lok: raise RuntimeError("LM init failed: "+lstatus)
 
-# 1) Exact replay of accepted source seed. This keeps source transport out of Kaggle
-# and simultaneously tests reproducibility before editing.
+# 1) Recover the exact user-accepted 8423 WAV. Never regenerate the source.
 base=req["baseline"]
-params=GenerationParams(
-    task_type="text2music",caption=base["caption"],lyrics=base["lyrics"],
-    instrumental=False,vocal_language="ru",duration=float(base["duration"]),
-    inference_steps=8,seed=int(base["seed"]),guidance_scale=1.0,use_adg=False,
-    shift=3.0,infer_method="ode",thinking=True,lm_temperature=0.80,
-    lm_cfg_scale=2.0,lm_top_k=0,lm_top_p=0.90,
-    use_cot_metas=False,use_cot_caption=False,use_cot_lyrics=False,
-    use_cot_language=False,use_constrained_decoding=True,
-)
-cfg=GenerationConfig(batch_size=1,allow_lm_batch=False,use_random_seed=False,seeds=[int(base["seed"])],lm_batch_chunk_size=1,audio_format="wav")
-bres=generate_music(dit,llm,params,cfg,save_dir=str(out/"baseline-replay"))
-if not bres.success: raise RuntimeError("baseline replay failed: "+str(bres.error))
-bsrc=Path(bres.audios[0]["path"])
-baseline=out/"BASELINE_8423_REPLAY.wav"; shutil.copy2(bsrc,baseline)
-baseline_sha=sha(baseline)
+source_url=base["source_url"]
 expected=base["expected_sha256"]
-print("BASELINE_REPLAY_SHA",baseline_sha,"MATCH",baseline_sha==expected,flush=True)
+baseline=out/"BASELINE_8423_EXACT.wav"
+request=urllib.request.Request(source_url,headers={"User-Agent":"nd-vfs-exact-source/1.0"})
+with urllib.request.urlopen(request,timeout=180) as r:
+    baseline.write_bytes(r.read())
+baseline_sha=sha(baseline)
+print("BASELINE_EXACT_SHA",baseline_sha,"MATCH",baseline_sha==expected,flush=True)
 if baseline_sha != expected:
-    raise RuntimeError(f"accepted 8423 baseline replay drift: expected {expected}, got {baseline_sha}")
+    raise RuntimeError(f"accepted 8423 exact-source hash mismatch: expected {expected}, got {baseline_sha}")
 
 # 2) Native Repaint candidates. Only repaint strength changes between variants.
 rp=req["repaint"]
@@ -150,9 +140,10 @@ receipt={
     "engine":"ACE-Step 1.5","engine_commit":"ca1e85fe9430179831e6bc6be790c332190a3866",
     "model":"acestep-v15-turbo","lm_model":"acestep-5Hz-lm-0.6B",
     "runtime_precision":"DiT FP32 + official CPU offload on T4",
-    "baseline_replay_sha256":baseline_sha,"baseline_expected_sha256":expected,
+    "source_url":source_url,
+    "baseline_exact_sha256":baseline_sha,"baseline_expected_sha256":expected,
     "baseline_bit_identical":baseline_sha==expected,
-    "task_type":"repaint","source":"accepted seed8423 replay",
+    "task_type":"repaint","source":"exact accepted seed8423 WAV",
     "repaint_start":rp["start"],"repaint_end":rp["end"],"repaint_mode":"balanced",
     "target_lyrics":rp["lyrics"],"target_caption":rp["caption"],
     "seed":rp["seed"],"records":records,
@@ -167,10 +158,11 @@ Engine: ACE-Step 1.5 @ {receipt['engine_commit']}
 Model: acestep-v15-turbo
 LM: acestep-5Hz-lm-0.6B
 Runtime: Kaggle T4, DiT FP32 + CPU offload
-Source generation: exact seed {base['seed']} text2music replay
+Source: exact accepted ACE8423 WAV
+Source URL: {source_url}
 Expected source SHA: {expected}
 Observed source SHA: {baseline_sha}
-Source bit-identical: {baseline_sha==expected}
+Source exact: {baseline_sha==expected}
 
 Repaint interval: {rp['start']}–{rp['end']} s
 Mode: balanced
@@ -191,7 +183,17 @@ print(json.dumps(receipt,ensure_ascii=False,indent=2),flush=True)
 ''',encoding="utf-8")
 
     env=os.environ.copy(); env["HF_HOME"]=str(ROOT/"hf-cache")
-    run(["uv","run","python",str(child),str(REPO),str(OUT),str(REQ)],cwd=REPO,timeout=3300)
+    cmd=["uv","run","python",str(child),str(REPO),str(OUT),str(REQ)]
+    print("+"," ".join(cmd),flush=True)
+    with (OUT/"child.log").open("w",encoding="utf-8") as log:
+        proc=subprocess.Popen(cmd,cwd=REPO,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            print(line,end="",flush=True)
+            log.write(line); log.flush()
+        code=proc.wait(timeout=3300)
+    if code != 0:
+        raise RuntimeError(f"repaint child exited {code}; see child.log")
 except Exception as exc:
     fail("worker",exc); raise
 finally:
