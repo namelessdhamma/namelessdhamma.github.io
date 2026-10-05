@@ -34,6 +34,12 @@ jobs:
           if not exact:raise RuntimeError("effect not found")
           k=exact[0];slug=str(k.get("slug") or str(k.get("ref") or "").split("/")[-1]).strip();version=int(k.get("currentVersionNumber") or 1)
           h={"kernel":k,"provider_ref":f"{user}/{slug}/v{version}"};(out/"handle.json").write_text(json.dumps(h,default=str,indent=2));print(json.dumps(h,default=str,indent=2))
+          try:
+              status=rpc("GetKernelSessionStatus",{"userName":user,"kernelSlug":slug,"versionLabel":f"v{version}"})
+              (out/"status.json").write_text(json.dumps(status,default=str,indent=2))
+              print("STATUS",json.dumps(status,default=str))
+          except Exception as e:
+              print("STATUS_READ_FAILED",repr(e))
           def dl(path):
               r=requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,
                   json={"ownerSlug":user,"kernelSlug":slug,"filePath":path,"versionNumber":version},timeout=40,allow_redirects=False)
@@ -61,3 +67,5 @@ jobs:
           path: out/
           retention-days: 7
           if-no-files-found: error
+
+# inspect-status-v3
