@@ -180,7 +180,15 @@ async function status(args={}){
   return withLtxControlDeadline('ltx.primary.status',ltxControlTimeout('status'),async ctx=>{
     const ref=requestRef(args.request_id),username=await identity(ctx),resolved=await resolveKernel(username,ref,ctx),state=stateOf(resolved.st?.status);
     let diagnostics=null;
-    if(state==='FAILED'||state==='CANCELLED'){try{const out=await rpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:resolved.slug,pageSize:100},ctx);diagnostics={files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],log_tail:String(out?.log||'').slice(-12000)};}catch(e){diagnostics={error:errorText(e)};}}
+    if(state==='FAILED'||state==='CANCELLED'||args.include_diagnostics===true){
+      try{
+        const out=await rpc('kernels.KernelsApiService','ListKernelSessionOutput',{userName:username,kernelSlug:resolved.slug,pageSize:100},ctx);
+        diagnostics={
+          files:Array.isArray(out?.files)?out.files.map(x=>({name:x?.fileName||x?.name||x?.path||null,size:x?.fileSize??x?.size??null})).filter(x=>x.name):[],
+          log_tail:String(out?.log||'').slice(-16000)
+        };
+      }catch(e){diagnostics={error:errorText(e)};}
+    }
     return {ok:true,request_id:ref.request_id,state,provider_status:resolved.st?.status??null,failure_message:resolved.st?.failureMessage||resolved.st?.failure_message||null,provider_ref:username+'/'+resolved.slug+'/'+ref.version,diagnostics,nonblocking:true,control_observed_at:new Date().toISOString(),next_check_after_seconds:state==='QUEUED'?30:(state==='RUNNING'?45:null)};
   });
 }
@@ -216,7 +224,7 @@ const TOOLS=[
   {name:'ltx_shot',description:'SIMPLE FREE_ONLY Blue Sea/ND shot tool. First call: provide start_image_url + end_image_url (prompt optional) to submit a proven stable ~2 s LTX shot. Later call: provide request_id; it returns status, or the ready video reference automatically when complete.',inputSchema:{type:'object',properties:{request_id:{type:'string'},start_image_url:{type:'string'},end_image_url:{type:'string'},prompt:{type:'string'},negative_prompt:{type:'string'},duration_seconds:{type:'number',default:2,minimum:1,maximum:6},seed:{type:'integer',default:42},idempotency_key:{type:'string'}},oneOf:[{required:['request_id'],not:{anyOf:[{required:['start_image_url']},{required:['end_image_url']}]}},{required:['start_image_url','end_image_url'],not:{required:['request_id']}}],additionalProperties:false}},
   {name:'ltx_generate_keyframes',description:'ADVANCED DURABLE_ASYNC FREE_ONLY submit. Returns control with request/effect identity; never waits for inference.',inputSchema:{type:'object',properties:{start_image_url:{type:'string'},end_image_url:{type:'string'},prompt:{type:'string'},negative_prompt:{type:'string'},duration_seconds:{type:'number',default:2,minimum:1,maximum:6},width:{type:'integer',default:512},height:{type:'integer',default:288},seed:{type:'integer',default:42},idempotency_key:{type:'string'},retry_terminal:{type:'boolean',default:false}},required:['start_image_url','end_image_url'],additionalProperties:false}},
   {name:'ltx_keyframe_reconcile',description:'Reconcile an ambiguous submit by stable effect identity. Never resubmits.',inputSchema:{type:'object',properties:{effect_id:{type:'string'},effect_token:{type:'string'}},anyOf:[{required:['effect_id']},{required:['effect_token']}],additionalProperties:false}},
-  {name:'ltx_keyframe_status',description:'One bounded status read under a shared end-to-end control deadline.',inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}},
+  {name:'ltx_keyframe_status',description:'One bounded status read under a shared end-to-end control deadline. Set include_diagnostics=true only for advanced live/terminal log inspection.',inputSchema:{type:'object',properties:{request_id:{type:'string'},include_diagnostics:{type:'boolean',default:false}},required:['request_id'],additionalProperties:false}},
   {name:'ltx_keyframe_result',description:'One bounded provider-reference result read. Persistence is separate.',inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}}
 ];
 
