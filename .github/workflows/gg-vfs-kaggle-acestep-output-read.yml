@@ -31,28 +31,34 @@ jobs:
           def post(path,body,redir=True):
               r=requests.post(api+"/"+path,headers=h,json=body,timeout=40,allow_redirects=redir)
               return r
-          # Bounded same-effect output watch. Never resubmit inference.
-          import time
-          obj={}; files=[]; r=None
-          for attempt in range(15):
-              r=post("kernels.KernelsApiService/ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100})
-              (out/"list-response.txt").write_text(f"HTTP {r.status_code}\n"+r.text)
+          # Paginate every output file of this exact existing effect. Never resubmit.
+          files=[]; page_token=None; page=0; logs=[]
+          while True:
+              body={"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100}
+              if page_token: body["pageToken"]=page_token
+              r=post("kernels.KernelsApiService/ListKernelSessionOutput",body)
               if not r.ok:
                   print("LIST_HTTP",r.status_code,r.text[:2000],flush=True)
                   raise SystemExit(2)
               obj=r.json() if r.text.strip() else {}
-              (out/"provider-output.json").write_text(json.dumps(obj,default=str,indent=2))
-              files=obj.get("files",[]) or []
-              print("OUTPUT_ATTEMPT",attempt+1,"FILES",len(files),flush=True)
-              if files: break
-              time.sleep(30)
-
+              page+=1
+              (out/f"provider-output-page-{page}.json").write_text(json.dumps(obj,default=str,indent=2))
+              batch=obj.get("files",[]) or []
+              files.extend(batch)
+              if obj.get("log"): logs.append(str(obj.get("log")))
+              page_token=obj.get("nextPageToken") or obj.get("next_page_token")
+              print("PAGE",page,"FILES",len(batch),"NEXT",bool(page_token),flush=True)
+              if not page_token: break
+              if page>=50: raise RuntimeError("pagination safety cap exceeded")
+          if logs: (out/"provider-log.txt").write_text("\n".join(logs))
           names=[]
           for x in files:
               n=x.get("fileName") or x.get("name") or x.get("path")
               if n:names.append(str(n))
-          print("FILES",json.dumps(names),flush=True)
+          print("TOTAL_FILES",len(names),flush=True)
           wanted=[n for n in names if n.endswith(".wav") or n.endswith("result.json") or n.endswith("REPRODUCTION_RECIPE.md")]
+          (out/"wanted.json").write_text(json.dumps(wanted,indent=2,ensure_ascii=False))
+          print("WANTED",json.dumps(wanted),flush=True)
           got=[]
           for name in wanted:
               rr=post("kernels.KernelsApiService/DownloadKernelOutput",{"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},redir=False)
