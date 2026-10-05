@@ -1,0 +1,23 @@
+name: GG HF auth availability
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-hf-auth-check.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secret presence without disclosure
+        env:
+          HF_TOKEN_A: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN_B: ${{ secrets.HUGGINGFACE_TOKEN }}
+          HF_TOKEN_C: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+        shell: bash
+        run: |
+          set +x
+          [ -n "$HF_TOKEN_A" ] && echo "HF_TOKEN_PRESENT=1" || echo "HF_TOKEN_PRESENT=0"
+          [ -n "$HF_TOKEN_B" ] && echo "HUGGINGFACE_TOKEN_PRESENT=1" || echo "HUGGINGFACE_TOKEN_PRESENT=0"
+          [ -n "$HF_TOKEN_C" ] && echo "HUGGING_FACE_HUB_TOKEN_PRESENT=1" || echo "HUGGING_FACE_HUB_TOKEN_PRESENT=0"
