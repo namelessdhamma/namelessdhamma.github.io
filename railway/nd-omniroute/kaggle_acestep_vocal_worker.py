@@ -81,10 +81,19 @@ dit=AceStepHandler()
 status,ok=dit.initialize_service(
     project_root=str(repo),config_path="acestep-v15-turbo",device="cuda",
     use_flash_attention=False,compile_model=False,
-    offload_to_cpu=True,offload_dit_to_cpu=False,quantization=None,
+    offload_to_cpu=True,offload_dit_to_cpu=True,quantization=None,
 )
 print(status,flush=True)
 if not ok: raise RuntimeError("DiT init failed: "+status)
+
+# T4 is pre-Ampere. ACE-Step's own NaN diagnostic recommends float32 when
+# float16 overflows. Preserve the official engine/weights and change only
+# runtime precision; CPU-offload keeps the FP32 DiT within the T4 envelope.
+dit.dtype=torch.float32
+dit.model=dit.model.to("cpu").to(torch.float32)
+if getattr(dit,"silence_latent",None) is not None:
+    dit.silence_latent=dit.silence_latent.to("cpu").to(torch.float32)
+print("DIT_RUNTIME_DTYPE",dit.dtype,"OFFLOAD_DIT",dit.offload_dit_to_cpu,flush=True)
 
 llm=LLMHandler()
 lstatus,lok=llm.initialize(
@@ -159,6 +168,7 @@ receipt={
  "guide_vocal":False,
  "svc":False,
  "performance_timing_owner":"ACE-Step generative model",
+ "runtime_precision":"DiT FP32 on pre-Ampere T4; official CPU offload",
  "records":records,
  "artistic_gate":"USER_AUDITORY_REQUIRED",
  "qualification_focus":["background synthetic buzz","natural vowel-duration variation","Russian diction","consonant-vowel transitions","female identity/timbre"],
@@ -204,7 +214,7 @@ Language: ru
 Task: text2music
 Duration: {req['duration']} s
 Seeds: {req['seeds']}
-DiT: 8 steps, shift=3.0, ODE, turbo CFG effectively 1.0
+DiT: FP32, 8 steps, shift=3.0, ODE, turbo CFG effectively 1.0; CPU-offloaded on T4
 Output: WAV
 
 Caption:
