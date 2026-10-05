@@ -1,0 +1,42 @@
+name: GG VFS ACE-Step Kaggle direct result probe
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-kaggle-acestep-result-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p result-probe
+          python - <<'PY'
+          import json,os,requests
+          tok=os.environ["KAGGLE_API_TOKEN"]; user=os.environ["KAGGLE_USERNAME_SLUG"]; slug="gg-vfs-ace-2216c6d8342585e8"
+          H={"Authorization":"Bearer "+tok,"Accept":"application/json","Content-Type":"application/json"}
+          def call(url,body):
+              r=requests.post(url,headers=H,json=body,timeout=30,allow_redirects=False)
+              try:b=r.json()
+              except:b=r.text[:3000]
+              return {"status":r.status_code,"headers":{"location":r.headers.get("location"),"content-type":r.headers.get("content-type")},"body":b}
+          intro=call("https://api.kaggle.com/v1/security.OAuthService/IntrospectToken",{"token":tok})
+          probes={}
+          for fp in ["gg-vfs-ace-output/result.json","gg-vfs-ace-output/GG-VFS-F01_ACE-Step15_RU_8423_1.wav","result.json"]:
+              probes[fp]=call("https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput",{"ownerSlug":user,"kernelSlug":slug,"filePath":fp,"versionNumber":1})
+          open("result-probe/probe.json","w").write(json.dumps({"introspect":intro,"downloads":probes},default=str,indent=2))
+          print(json.dumps({"introspect":intro,"downloads":probes},default=str,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-ace-step15-result-probe
+          path: result-probe/
+          retention-days: 1
+          if-no-files-found: error
