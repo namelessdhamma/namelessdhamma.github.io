@@ -20,6 +20,8 @@ jobs:
 
       - name: Install Remotion
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
           mkdir -p /tmp/a8-r03/src /tmp/a8-r03/out
           cd /tmp/a8-r03
           npm init -y >/dev/null
