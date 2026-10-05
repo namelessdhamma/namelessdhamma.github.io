@@ -42,18 +42,42 @@ DEFAULT_NEGATIVE = (
 
 def _run(cmd: list[str], timeout: int) -> str:
     env = {**os.environ, "PIP_NO_CACHE_DIR": "1"}
-    p = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=timeout,
-        env=env,
+    started = time.time()
+    print("ND_LTX_CMD_START=" + repr(cmd), flush=True)
+    p = subprocess.Popen(cmd, env=env)
+    next_heartbeat = started + 20.0
+    while True:
+        rc = p.poll()
+        if rc is not None:
+            break
+        now = time.time()
+        if now - started >= timeout:
+            try:
+                p.kill()
+            finally:
+                p.wait()
+            raise TimeoutError("command timed out: " + repr(cmd))
+        if now >= next_heartbeat:
+            print(
+                "ND_LTX_CMD_HEARTBEAT elapsed_s="
+                + str(int(now - started))
+                + " cmd="
+                + repr(cmd[:4]),
+                flush=True,
+            )
+            next_heartbeat = now + 20.0
+        time.sleep(2.0)
+    print(
+        "ND_LTX_CMD_DONE rc="
+        + str(rc)
+        + " elapsed_s="
+        + str(round(time.time() - started, 3)),
+        flush=True,
     )
-    if p.returncode != 0:
-        print("ND_LTX_CMD_FAIL " + repr(cmd) + "\n" + p.stdout[-10000:])
+    if rc != 0:
+        print("ND_LTX_CMD_FAIL " + repr(cmd), flush=True)
         raise RuntimeError("command failed: " + repr(cmd))
-    return p.stdout
+    return ""
 
 
 def _install() -> None:
