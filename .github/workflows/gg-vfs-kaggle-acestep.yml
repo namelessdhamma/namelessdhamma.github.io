@@ -1,0 +1,190 @@
+name: GG VFS ACE-Step Kaggle qualification
+
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths:
+      - "railway/nd-omniroute/kaggle_acestep_vocal_worker.py"
+      - ".github/workflows/gg-vfs-kaggle-acestep.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Submit and boundedly reconcile ACE-Step Kaggle run
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ace-result
+          cat > /tmp/run_kaggle_ace.py <<'PY'
+          import base64, hashlib, json, os, re, sys, time
+          from pathlib import Path
+          import requests
+
+          TOKEN=os.environ["KAGGLE_API_TOKEN"].strip()
+          EXPECTED_USER=os.environ.get("KAGGLE_USERNAME_SLUG","").strip()
+          SHA=os.environ["GITHUB_SHA"]
+          RUN_ID=os.environ["GITHUB_RUN_ID"]
+          OUT=Path("ace-result")
+          API="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+TOKEN,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-gg-vfs-acestep/1.0"}
+
+          def rpc(service,method,body=None,timeout=30):
+              r=requests.post(f"{API}/{service}/{method}",headers=H,json=body or {},timeout=timeout)
+              if not r.ok:
+                  raise RuntimeError(f"Kaggle {method} HTTP {r.status_code}: {r.text[:1800]}")
+              return r.json() if r.text.strip() else {}
+
+          def sec(v):
+              if isinstance(v,(int,float)): return float(v)
+              if isinstance(v,str):
+                  m=re.match(r"^(-?\d+(?:\.\d+)?)s$",v)
+                  return float(m.group(1)) if m else float(v or 0)
+              if isinstance(v,dict): return float(v.get("seconds",0))+float(v.get("nanos",0))/1e9
+              return 0.0
+
+          ident=rpc("security.OAuthService","IntrospectToken",{"token":TOKEN})
+          if not ident.get("active") or not ident.get("username"):
+              raise RuntimeError("Kaggle token inactive")
+          user=str(ident["username"])
+          if EXPECTED_USER and user != EXPECTED_USER:
+              raise RuntimeError("Kaggle username mismatch")
+
+          quota=rpc("kernels.KernelsApiService","GetAcceleratorQuotaStatistics",{})
+          g=quota.get("gpuQuota") or quota.get("gpu_quota") or {}
+          used=sec(g.get("timeUsed",g.get("time_used",0)))
+          total=sec(g.get("totalTimeAllowed",g.get("total_time_allowed",0)))
+          remaining=max(0,total-used)
+          qrec={"used_hours":round(used/3600,3),"total_hours":round(total/3600,3),"remaining_hours":round(remaining/3600,3),"refresh_at":quota.get("quotaRefreshTime") or quota.get("quota_refresh_time")}
+          if total<=0 or remaining<15*60:
+              (OUT/"submit.json").write_text(json.dumps({"state":"FREE_ONLY_BLOCKED","gpu_quota":qrec},indent=2))
+              raise RuntimeError("FREE_ONLY_BLOCKED: insufficient Kaggle GPU quota")
+
+          # One immutable quality probe: generative singing owns timing. No SVC/guide.
+          request={
+            "caption":"solo female a cappella vocal, warm young adult low-mezzo contralto, intimate and naturally resonant, clear native Russian diction, realistic human singing, expressive legato, varied natural vowel durations, subtle breaths, organic consonant-vowel transitions, dry close studio vocal, no instruments, no harmony, no choir, no reverb, no synthetic buzzing",
+            "lyrics":"[Verse]\nЯ говорила не с ним, а с тем, кто долго стоял у окна и ждал.",
+            "duration":15,
+            "seeds":[8423,8424],
+          }
+          req64=base64.b64encode(json.dumps(request,ensure_ascii=False).encode()).decode()
+          worker_url=f"https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/{SHA}/railway/nd-omniroute/kaggle_acestep_vocal_worker.py"
+          script="\n".join([
+            "import base64,json,sys,urllib.request",
+            "from pathlib import Path",
+            f"Path('/kaggle/working/gg-vfs-ace-request.json').write_bytes(base64.b64decode('{req64}'))",
+            f"u='{worker_url}'",
+            "w=Path('/kaggle/working/kaggle_acestep_vocal_worker.py')",
+            "w.write_bytes(urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'nd-gg-vfs-acestep/1.0'}),timeout=120).read())",
+            "sys.argv=['kaggle_acestep_vocal_worker.py','/kaggle/working/gg-vfs-ace-request.json']",
+            "exec(compile(w.read_text(encoding='utf-8'),str(w),'exec'),{'__name__':'__main__'})",
+          ])
+
+          token=hashlib.sha256((SHA+"|ace-step-ru-v1|8423|8424").encode()).hexdigest()[:16]
+          slug=f"gg-vfs-ace-{token}"
+          # Reuse exact existing kernel when a workflow retry observes it.
+          listed=rpc("kernels.KernelsApiService","ListKernels",{"user":user,"search":slug,"pageSize":50})
+          exact=[]
+          for k in listed.get("kernels",[]) or []:
+              s=str(k.get("slug","")).split("/")[-1].lower()
+              ref=str(k.get("ref","")).lower()
+              if s==slug.lower() or ref==f"{user}/{slug}".lower(): exact.append(k)
+          if len(exact)>1: raise RuntimeError("Kaggle idempotency conflict")
+          if exact:
+              version=int(exact[0].get("currentVersionNumber") or exact[0].get("current_version_number") or 0)
+              if not version: raise RuntimeError("existing Kaggle kernel has no version")
+              reused=True
+          else:
+              save=rpc("kernels.KernelsApiService","SaveKernel",{
+                "slug":f"{user}/{slug}",
+                "newTitle":f"GG VFS ACE-Step RU {token}",
+                "text":script,
+                "language":"python","kernelType":"script",
+                "datasetDataSources":[],"kernelDataSources":[],"competitionDataSources":[],
+                "categoryIds":[],"modelDataSources":[],
+                "isPrivate":True,"enableGpu":True,"enableTpu":False,"enableInternet":True,
+                "kernelExecutionType":"SaveAndRunAll","machineShape":"NvidiaTeslaT4",
+                "sessionTimeoutSeconds":3300,
+              },timeout=40)
+              bad=save.get("invalidKernelSources") or save.get("invalid_kernel_sources") or []
+              if save.get("error") or bad: raise RuntimeError("SaveKernel rejected: "+json.dumps({"error":save.get("error"),"invalid":bad}))
+              version=int(save.get("versionNumber") or save.get("version_number") or 0)
+              if not version: raise RuntimeError("SaveKernel returned no version")
+              reused=False
+
+          handle={"state":"SUBMITTED","user":user,"kernel_slug":slug,"version":version,"provider_ref":f"{user}/{slug}/v{version}","workflow_sha":SHA,"reused_existing":reused,"gpu_quota":qrec,"request":request}
+          (OUT/"submit.json").write_text(json.dumps(handle,ensure_ascii=False,indent=2))
+
+          state="QUEUED"; last=None
+          # Bounded wait: provider owns the job; hard ceiling leaves durable handle.
+          deadline=time.time()+38*60
+          while time.time()<deadline:
+              st=rpc("kernels.KernelsApiService","GetKernelSessionStatus",{"userName":user,"kernelSlug":slug,"versionLabel":f"v{version}"})
+              raw=st.get("status"); s=str(raw).upper()
+              if s=="2" or "COMPLETE" in s: state="COMPLETED"
+              elif s=="3" or "ERROR" in s or "FAIL" in s: state="FAILED"
+              elif s in ("4","5") or "CANCEL" in s: state="CANCELLED"
+              elif s=="1" or "RUN" in s: state="RUNNING"
+              else: state="QUEUED"
+              last=st
+              (OUT/"status.json").write_text(json.dumps({"state":state,"provider_status":raw,"observed_at":time.time(),"provider_ref":handle["provider_ref"]},default=str,indent=2))
+              print("KAGGLE_STATE",state,raw,flush=True)
+              if state in ("COMPLETED","FAILED","CANCELLED"): break
+              time.sleep(30)
+
+          if state!="COMPLETED":
+              try:
+                  o=rpc("kernels.KernelsApiService","ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":f"v{version}","pageSize":100})
+                  (OUT/"terminal.json").write_text(json.dumps({"state":state,"failure":(last or {}).get("failureMessage") or (last or {}).get("failure_message"),"files":o.get("files",[]),"log_tail":str(o.get("log",""))[-16000:]},default=str,indent=2))
+              finally:
+                  raise RuntimeError(f"Kaggle ACE-Step ended/nonterminal: {state}")
+
+          listing=rpc("kernels.KernelsApiService","ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":f"v{version}","pageSize":100},timeout=30)
+          (OUT/"kaggle-output.json").write_text(json.dumps(listing,default=str,indent=2))
+          files=listing.get("files",[]) or []
+          names=[]
+          for x in files:
+              n=x.get("fileName") or x.get("name") or x.get("path")
+              if n: names.append(str(n))
+          wanted=[n for n in names if n.endswith(".wav") or n.endswith("result.json") or n.endswith("REPRODUCTION_RECIPE.md")]
+          if not wanted:
+              raise RuntimeError("Kaggle completed but no ACE-Step deliverables found. Files="+repr(names[:100]))
+
+          def download(name):
+              rr=requests.post(f"{API}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,json={"ownerSlug":user,"kernelSlug":slug,"filePath":name,"versionNumber":version},timeout=30,allow_redirects=False)
+              if 300<=rr.status_code<400 and rr.headers.get("location"):
+                  data=requests.get(rr.headers["location"],timeout=120).content
+              else:
+                  if not rr.ok: raise RuntimeError(f"download {name} HTTP {rr.status_code}: {rr.text[:1000]}")
+                  ct=rr.headers.get("content-type","")
+                  if "json" in ct:
+                      obj=rr.json(); u=obj.get("url") or obj.get("redirectUrl") or obj.get("redirect_url") or obj.get("downloadUrl") or obj.get("download_url")
+                      if not u: raise RuntimeError("no download URL for "+name)
+                      data=requests.get(u,timeout=120).content
+                  else: data=rr.content
+              dst=OUT/Path(name).name; dst.write_bytes(data)
+              return {"provider_name":name,"local":dst.name,"size":len(data),"sha256":hashlib.sha256(data).hexdigest()}
+
+          downloaded=[download(n) for n in wanted]
+          final={"state":"READY","provider_ref":handle["provider_ref"],"downloads":downloaded,"gpu_quota_at_submit":qrec}
+          (OUT/"result-index.json").write_text(json.dumps(final,indent=2))
+          print(json.dumps(final,indent=2),flush=True)
+          PY
+          python /tmp/run_kaggle_ace.py
+
+      - name: Upload qualified ACE-Step artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-ace-step15-russian-probe
+          path: ace-result/
+          retention-days: 30
+          if-no-files-found: error
