@@ -3100,6 +3100,11 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{},additionalProperties:false}
   },
   {
+    name:'wan_ltx2b_latest_load_probe',
+    description:'Read-only inspection of the latest qualified ND LTX2B load-probe kernel, including saved output files and receipt.',
+    inputSchema:{type:'object',properties:{},additionalProperties:false}
+  },
+  {
     name:'wan_kaggle_accel_probe_submit',
     description:'Submit a minimal FREE_ONLY Kaggle GPU runtime probe with no model load or package installation. Returns a durable request_id immediately.',
     inputSchema:{type:'object',properties:{machine_shape:{type:'string',enum:['NvidiaTeslaT4','NvidiaTeslaP100'],default:'NvidiaTeslaP100'}},additionalProperties:false}
@@ -3367,6 +3372,7 @@ export function createWanMcpHandler(){
         else if(name==='wan_kaggle_diagnose_sessions') result=await ltxKaggleDiagnoseSessions();
         else if(name==='wan_kaggle_recent_kernels') result=await ltxKaggleRecentKernelMetadata();
         else if(name==='wan_kaggle_ltx_cache_inventory') result=await ltxKaggleCacheInventory();
+        else if(name==='wan_ltx2b_latest_load_probe') result=await ltxKaggle2bLatestProbe();
         else if(name==='wan_kaggle_accel_probe_submit') result=await ltxKaggleAccelProbeSubmit(args);
         else if(name==='wan_kaggle_accel_probe_status') result=await ltxKaggleAccelProbeStatus(args);
         else if(name==='wan_kaggle_init_probe_submit') result=await ltxKaggleInitProbeSubmit();
