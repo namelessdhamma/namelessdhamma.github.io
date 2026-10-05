@@ -1,0 +1,186 @@
+name: GG SoulX vocal North Star
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-soulx-vocal-northstar.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  northstar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Recover Human-B timbre reference
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-human-singer-vocoder-ab
+          run-id: 37194439702
+          github-token: ${{ github.token }}
+          path: prompt-pack
+      - name: Recover long guide vocal
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-mimosa-dark-long-human-vocal-final
+          run-id: 37199773797
+          github-token: ${{ github.token }}
+          path: target-pack
+      - name: Prepare reference and phrase segments
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install soundfile numpy librosa==0.10.2.post1
+          echo "PROMPT FILES"; find prompt-pack -type f -maxdepth 4 -print
+          echo "TARGET FILES"; find target-pack -type f -maxdepth 4 -print
+          prompt="$(find prompt-pack -type f -iname '*B*STOCK*.wav' -print -quit)"
+          if [ -z "$prompt" ]; then prompt="$(find prompt-pack -type f -name '*.wav' | sort | tail -n 1)"; fi
+          target="$(find target-pack -type f -name '*.wav' -print -quit)"
+          test -n "$prompt" && test -n "$target"
+          python - "$prompt" "$target" <<'PY'
+          import sys,json
+          import numpy as np, soundfile as sf, librosa
+          from pathlib import Path
+          prompt,target=sys.argv[1:3]
+          yp,srp=sf.read(prompt)
+          if yp.ndim>1: yp=yp.mean(axis=1)
+          sf.write("prompt-human-b.wav",yp,srp)
+
+          y,sr=sf.read(target)
+          if y.ndim>1: y=y.mean(axis=1)
+          # Find the quietest 180 ms point near the intended clause boundary.
+          lo=int(4.0*sr); hi=min(len(y),int(8.5*sr)); w=max(1,int(.18*sr))
+          best=(1e9,(lo+hi)//2)
+          for c in range(lo+w//2,hi-w//2,max(1,int(.02*sr))):
+              rms=float(np.sqrt(np.mean(y[c-w//2:c+w//2]**2)+1e-12))
+              if rms<best[0]: best=(rms,c)
+          split=best[1]
+          sf.write("target-full.wav",y,sr)
+          sf.write("target-seg1.wav",y[:split],sr)
+          sf.write("target-seg2.wav",y[split:],sr)
+          Path("split.json").write_text(json.dumps({
+            "prompt":prompt,"target":target,"sr":sr,
+            "full_sec":len(y)/sr,"split_sec":split/sr,
+            "seg1_sec":split/sr,"seg2_sec":(len(y)-split)/sr,
+            "split_rms":best[0]
+          },indent=2))
+          print(Path("split.json").read_text())
+          PY
+      - name: SoulX phrase-wise neural rerender
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade gradio_client soundfile numpy
+          mkdir -p northstar
+          python - <<'PY'
+          import json,os,shutil
+          from pathlib import Path
+          import numpy as np, soundfile as sf
+          from gradio_client import Client, handle_file
+
+          prompt="prompt-human-b.wav"
+          configs=[
+            ("Natural",12,0.8,142),
+            ("Balanced",16,1.0,142),
+          ]
+          c=Client("Soul-AILab/SoulX-Singer",verbose=False)
+          manifest={"space":"Soul-AILab/SoulX-Singer","mode":"SVC","configs":[]}
+          for label,steps,cfg,seed in configs:
+              pieces=[]
+              rec={"label":label,"steps":steps,"cfg":cfg,"seed":seed,"segments":[]}
+              for si,target in enumerate(["target-seg1.wav","target-seg2.wav"],1):
+                  print("PREPROCESS",label,si)
+                  c.predict(handle_file(prompt),handle_file(target),False,False,api_name="/_run_svc_preprocess")
+                  print("CONVERT",label,si,steps,cfg)
+                  out=c.predict(False,False,0,steps,cfg,True,seed+si,api_name="/_run_svc_convert")
+                  p=out if isinstance(out,str) else (out.get("path") if isinstance(out,dict) else getattr(out,"path",None))
+                  if not p or not os.path.exists(p):
+                      raise RuntimeError(f"SoulX returned no file for {label} segment {si}: {out!r}")
+                  dst=Path("northstar")/f"{label}_seg{si}.wav"
+                  shutil.copy2(p,dst)
+                  pieces.append(dst)
+                  rec["segments"].append({"segment":si,"path":str(dst),"size":dst.stat().st_size})
+              # concatenate on the natural quiet clause boundary
+              ys=[]; sr0=None
+              for p in pieces:
+                  y,sr=sf.read(p)
+                  if y.ndim>1:y=y.mean(axis=1)
+                  if sr0 is None:sr0=sr
+                  if sr!=sr0: raise RuntimeError("sample-rate mismatch")
+                  ys.append(y)
+              full=np.concatenate(ys)
+              fullpath=Path("northstar")/f"SoulX_{label}_Full.wav"
+              sf.write(fullpath,full,sr0)
+              rec["full"]=str(fullpath); rec["duration"]=len(full)/sr0
+              manifest["configs"].append(rec)
+          Path("northstar/manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
+          print(Path("northstar/manifest.json").read_text())
+          PY
+      - name: Independent full-phrase QC
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install faster-whisper librosa==0.10.2.post1 soundfile numpy scipy
+          python - <<'PY'
+          import json,re
+          from pathlib import Path
+          import numpy as np,soundfile as sf,librosa
+          from faster_whisper import WhisperModel
+
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          def norm(x):
+              x=x.lower().replace("ё","е"); x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+          def asr(p):
+              segs,_=model.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs); words=[w for s in segs for w in (s.words or [])]
+              return norm(" ".join(s.text for s in segs)), float(np.mean([w.probability for w in words])) if words else 0.
+          target=Path("target-full.wav")
+          target_text,target_conf=asr(target)
+
+          def metrics(p):
+              y,sr=sf.read(p)
+              if y.ndim>1:y=y.mean(axis=1)
+              f0,_,_=librosa.pyin(y,fmin=librosa.note_to_hz("C2"),fmax=librosa.note_to_hz("C6"),sr=sr,frame_length=2048,hop_length=256)
+              idx=np.where(np.isfinite(f0))[0]; span=motion=0.; jump=1.
+              if len(idx)>5:
+                  vals=f0[idx]; cents=1200*np.log2(vals/np.median(vals))
+                  span=float(np.percentile(cents,95)-np.percentile(cents,5))
+                  d=1200*np.log2(vals[1:]/vals[:-1]); d=d[np.diff(idx)==1]
+                  if len(d):
+                      jump=float(np.mean(np.abs(d)>350))
+                      loc=d[np.abs(d)<100]; motion=float(np.mean(np.abs(loc))) if len(loc) else 0.
+              S=np.abs(librosa.stft(y,n_fft=4096,hop_length=256)); P=S*S+1e-12
+              freqs=librosa.fft_frequencies(sr=sr,n_fft=4096)
+              active=np.where(np.sum(P,axis=0)>np.max(np.sum(P,axis=0))*0.01)[0]
+              upper=freqs>=8000
+              ur=float(np.median(np.sum(P[upper][:,active],axis=0)/(np.sum(P[:,active],axis=0)+1e-12))) if len(active) else 0.
+              flat=float(np.median(librosa.feature.spectral_flatness(S=S)[0][active])) if len(active) else 0.
+              return {"duration":len(y)/sr,"pitch_span_cents":span,"local_motion_cents":motion,
+                      "gross_jump_rate":jump,"upper_8k_ratio":ur,"spectral_flatness":flat}
+
+          rows={"target":{"text":target_text,"mean_word":target_conf,**metrics(target)}}
+          passed=[]
+          for p in sorted(Path("northstar").glob("SoulX_*_Full.wav")):
+              text,conf=asr(p); m=metrics(p)
+              exact=text==target_text
+              ok=exact and m["gross_jump_rate"]<0.025 and 450<=m["pitch_span_cents"]<=850
+              row={"file":p.name,"text":text,"mean_word":conf,"matches_source_asr":exact,"pass":ok,**m}
+              rows[p.stem]=row
+              if ok: passed.append(p.name)
+          Path("northstar/qc.json").write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+          print(json.dumps(rows,ensure_ascii=False,indent=2))
+          if not passed:
+              raise SystemExit("No SoulX full candidate passed source-content + pitch gate")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-soulx-vocal-northstar
+          path: |
+            northstar/
+            split.json
+          retention-days: 3
+          if-no-files-found: warn
