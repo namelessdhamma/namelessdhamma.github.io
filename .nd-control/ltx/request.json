@@ -1,15 +1,15 @@
 {
   "op": "submit",
-  "nonce": "a8-r01-e002-blue-sea-duel-20261005",
+  "nonce": "a8-r01-repair-import-probe-20261005-1",
   "args": {
-    "start_image_url": "drive:1E7-sudthCN5KnHpHOJRV_a6TVr7MR1f9",
-    "end_image_url": "drive:1DeX44ecaXSIR3eVTZahiVvbY375TD05H",
-    "prompt": "Horizontal 16:9 cinematic live-action pirate duel on the same rain-soaked deck. Preserve the exact dark-haired swordsman on the left and red-haired opponent on the right from the first and last anchors. Over 2.5 seconds the dark-haired fighter drives a continuous forward attack: weight shifts through hips and feet, weapon arm advances with a believable blade trajectory, the red-haired fighter reacts defensively with coordinated hands, torso and footwork, and the action lands naturally on the supplied final frame. Preserve faces, costumes, weapons, deck geography and camera side. Rain, spray, wet hair, coats, cloth, reflections, rigging and background deck activity all move continuously with the storm and ship motion. Real articulated body and environmental motion throughout; restrained camera inertia only.",
-    "negative_prompt": "slideshow, crossfade, dissolve, frozen fighters, parallax-only, pan-only, zoom-only, static background, frozen rain, identity swap, face morph, duplicate people, extra limbs, malformed hands, disappearing weapon, rubber sword, warped blade, teleportation, sudden cut, extra ship, text, watermark, UI",
-    "duration_seconds": 2.5,
-    "width": 768,
-    "height": 432,
-    "seed": 80502,
-    "idempotency_key": "A8-R01-E002-BLUE_SEA_DUEL_TEST_V1"
+    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/382ecc95-cb75-4b41-b39c-47a7d53c10d1.jpg",
+    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/84110699-a0f7-4529-815f-a954a274541c.jpg",
+    "prompt": "BLUE_SEA_DUEL_TEST_V1 repair probe. Preserve the exact dark-haired swordsman on the left and red-haired opponent on the right. Animate one continuous two-second sword-fight movement from the supplied first frame toward the supplied last frame with coordinated feet, hips, torso, arms, hands and blades. Preserve identities, costumes, wet pirate deck, camera side and endpoint composition. Rain, wet hair, cloth, spray and reflections move continuously. No cut.",
+    "negative_prompt": "slideshow, hard cuts, crossfade, dissolve, frozen fighters, pan-only, zoom-only, identity swap, duplicate people, extra limbs, malformed hands, disappearing weapon, warped blade, text, watermark, UI",
+    "duration_seconds": 2,
+    "width": 512,
+    "height": 288,
+    "seed": 80601,
+    "idempotency_key": "A8-R01-REPAIR-IMPORT-PROBE-20261005-1"
   }
 }
