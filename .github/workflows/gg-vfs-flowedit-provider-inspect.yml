@@ -25,4 +25,14 @@ jobs:
           print("HTTP",r.status_code)
           print(r.text[:20000])
           if not r.ok: raise SystemExit(2)
+          slug="gg-vfs-ace8423-flowedit-8855c06cd61ed77a"
+          for p in ["gg-vfs-flowedit-output/result.json","gg-vfs-flowedit-output/child.log","gg-vfs-flowedit-output/GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav"]:
+              rr=requests.post("https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput",headers=h,
+                json={"ownerSlug":u,"kernelSlug":slug,"filePath":p,"versionNumber":1},timeout=30,allow_redirects=False)
+              print("DOWNLOAD",p,"HTTP",rr.status_code,"LOCATION",bool(rr.headers.get("location")))
+              if rr.status_code==200:
+                  if "json" in rr.headers.get("content-type",""):
+                      print(rr.text[:4000])
+                  else:
+                      print("BYTES",len(rr.content))
           PY
