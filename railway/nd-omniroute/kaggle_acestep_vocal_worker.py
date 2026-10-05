@@ -164,6 +164,37 @@ receipt={
  "qualification_focus":["background synthetic buzz","natural vowel-duration variation","Russian diction","consonant-vowel transitions","female identity/timbre"],
 }
 (out/"result.json").write_text(json.dumps(receipt,ensure_ascii=False,indent=2,default=str))
+
+# Optional one-shot callback used only to escape provider-output transport limits.
+# Webhook receiver gets the candidate WAV plus compact reproduction metadata.
+callback_url=req.get("callback_url")
+if callback_url:
+    import requests
+    primary=Path(records[0]["file"]) if records else None
+    if primary and not primary.is_absolute():
+        primary=out/primary.name if (out/primary.name).exists() else Path(primary)
+    if primary and primary.exists():
+        payload={
+            "engine":"ACE-Step 1.5",
+            "engine_commit":receipt["engine_commit"],
+            "seed":records[0]["seed"],
+            "sha256":records[0]["sha256"],
+            "lyrics":req["lyrics"],
+            "caption":req["caption"],
+            "manual_phoneme_durations":False,
+            "guide_vocal":False,
+            "svc":False,
+        }
+        with primary.open("rb") as fh:
+            rr=requests.post(
+                callback_url,
+                data={"metadata":json.dumps(payload,ensure_ascii=False)},
+                files={"audio":(primary.name,fh,"audio/wav")},
+                timeout=180,
+            )
+        print("CALLBACK_STATUS",rr.status_code,flush=True)
+        if rr.status_code >= 300:
+            raise RuntimeError(f"callback upload failed HTTP {rr.status_code}: {rr.text[:500]}")
 (out/"REPRODUCTION_RECIPE.md").write_text(f"""# GG-VFS-F01 ACE-Step 1.5 Russian a-cappella probe
 
 Engine: official ACE-Step 1.5 at commit {receipt['engine_commit']}
