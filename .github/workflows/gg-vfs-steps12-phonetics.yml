@@ -1,0 +1,83 @@
+name: GG VFS Steps12 strong phonetic qualification
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-steps12-phonetics.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  phonetics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - name: Recover qualified Steps12 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-vfs-f01-sveta-steps12-qualified
+          run-id: 37268377916
+          github-token: ${{ github.token }}
+          path: in
+      - name: Install exact ASR route
+        run: python -m pip install -q faster-whisper==1.2.0 soundfile numpy
+      - name: Qualify Russian content with faster-whisper small
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python - <<'PY'
+          from pathlib import Path
+          import soundfile as sf, numpy as np, json, re, hashlib
+          from faster_whisper import WhisperModel
+          root=Path("in")
+          def find(n):
+              xs=list(root.rglob(n)); assert len(xs)==1,(n,xs); return xs[0]
+          s1,sr1=sf.read(find("source_seg1.wav"))
+          s2,sr2=sf.read(find("source_seg2.wav"))
+          assert sr1==sr2
+          source=Path("out/FROZEN_RUSSIAN_SOURCE_REBUILT.wav")
+          sf.write(source,np.concatenate([s1,s2]),sr1,subtype="PCM_16")
+          files={
+            "source":source,
+            "steps8_control":find("Sveta_steps8_control.wav"),
+            "steps12_candidate":find("GG-VFS-F01_Sveta_Steps12_003.wav"),
+          }
+          target="я говорил не с ним а с тем кто долго стоял у окна и ждал"
+          def norm(x):
+              x=x.lower().replace("ё","е")
+              x=re.sub(r"[^а-я\s]"," ",x)
+              return re.sub(r"\s+"," ",x).strip()
+          m=WhisperModel("small",device="cpu",compute_type="int8")
+          res={}
+          for label,p in files.items():
+              segs,_=m.transcribe(str(p),language="ru",beam_size=5,word_timestamps=True,
+                  temperature=0.0,condition_on_previous_text=False)
+              segs=list(segs); words=[w for s in segs for w in (s.words or [])]
+              txt=norm(" ".join(s.text for s in segs))
+              res[label]={
+                "text":txt,
+                "exact_target":txt==target,
+                "mean_word_probability":float(np.mean([w.probability for w in words])) if words else 0.0,
+                "words":[{"word":norm(w.word),"start":w.start,"end":w.end,"p":float(w.probability)} for w in words],
+                "sha256":hashlib.sha256(Path(p).read_bytes()).hexdigest(),
+              }
+          verdict={
+            "model":"faster-whisper small",
+            "settings":{"language":"ru","beam_size":5,"temperature":0.0,"condition_on_previous_text":False},
+            "target":target,
+            "results":res,
+            "content_preservation_supported":res["steps12_candidate"]["exact_target"] and res["source"]["exact_target"],
+            "russian_phonetics_pass":"NOT_GRANTED_BY_ASR_ALONE",
+            "note":"ASR exactness can support content preservation but cannot certify natural consonant/vowel articulation or artistic diction."
+          }
+          Path("out/strong_phonetic_qualification.json").write_text(json.dumps(verdict,ensure_ascii=False,indent=2)+"\n")
+          print(json.dumps(verdict,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-f01-steps12-strong-phonetics
+          path: out/strong_phonetic_qualification.json
+          retention-days: 30
