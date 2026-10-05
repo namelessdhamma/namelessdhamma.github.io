@@ -220,7 +220,20 @@ async function preflight(cfg,username,ctx){
 
 async function prepareInput(value,cfg,label,ctx){
   const ref=String(value||"").trim();
-  if(/^https?:\/\//i.test(ref)) return {url:ref,fingerprint:sha256(ref),size_bytes:null};
+  if(/^https?:\/\//i.test(ref)){
+    const railwayBase=String(cfg.railwayBase||DEFAULT_RAILWAY_BASE).replace(/\/+$/,"");
+    const trustedPrefix=railwayBase+"/ltx-input/";
+    if(ref.startsWith(trustedPrefix)){
+      const res=await fetchCtx(ref,{},ctx);
+      if(!res.ok) throw err(label+" trusted input read failed HTTP "+res.status,res.status,"PROVIDER_HTTP_ERROR");
+      const ct=String(res.headers.get("content-type")||"");
+      if(!ct.startsWith("image/")) throw err(label+" trusted input is not an image");
+      const bytes=await readBoundedBytes(res,ctx,Number(cfg.inputMaxBytes)||DEFAULT_INPUT_LIMIT_BYTES,label+" trusted input");
+      if(bytes.length<=0) throw err(label+" trusted input is empty");
+      return {url:ref,fingerprint:sha256(bytes),size_bytes:bytes.length,transport:"trusted_railway_input"};
+    }
+    return {url:ref,fingerprint:sha256(ref),size_bytes:null};
+  }
   const m=ref.match(/^drive:([A-Za-z0-9_-]{10,200})$/i);
   if(!m) throw err("image ref must be http(s) URL or drive:<fileId>");
   if(!cfg.inputToken) throw err("ND_LTX_INPUT_TOKEN is not configured for drive input");
@@ -334,6 +347,7 @@ export function health(cfg=configFromEnv()){
     mode:"nonblocking",
     cost_policy:"FREE_ONLY",
     runtime_profile:"DURABLE_ASYNC",
+    trusted_input_bridge:true,
     control_contract:{
       submit_timeout_ms:opTimeout(cfg,"submit"),
       status_timeout_ms:opTimeout(cfg,"status"),
