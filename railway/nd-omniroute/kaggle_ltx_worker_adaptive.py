@@ -174,10 +174,34 @@ def main() -> None:
     _materialize_image(request, "start", start_path)
     _materialize_image(request, "end", end_path)
 
-    print("ND_LTX_STAGE=install_dependencies", flush=True)
-    _install()
-    print("ND_LTX_STAGE=dependencies_ready", flush=True)
+    if os.environ.get("ND_LTX_ADAPTIVE_RUNTIME_READY") != "1":
+        print("ND_LTX_STAGE=install_dependencies", flush=True)
+        _install()
+        print("ND_LTX_STAGE=dependencies_ready", flush=True)
+        env = dict(os.environ)
+        env["ND_LTX_ADAPTIVE_RUNTIME_READY"] = "1"
+        worker_path = Path("/kaggle/working/kaggle_ltx_worker.py")
+        if not worker_path.exists():
+            worker_path = Path(sys.argv[0]).resolve()
+        print(
+            "ND_LTX_STAGE=clean_child_begin worker=" + str(worker_path),
+            flush=True,
+        )
+        child = subprocess.run(
+            [sys.executable, str(worker_path), sys.argv[1]],
+            env=env,
+        )
+        print(
+            "ND_LTX_STAGE=clean_child_done rc=" + str(child.returncode),
+            flush=True,
+        )
+        if child.returncode != 0:
+            raise RuntimeError(
+                "adaptive clean child failed rc=" + str(child.returncode)
+            )
+        return
 
+    print("ND_LTX_STAGE=clean_child_runtime_ready", flush=True)
     print("ND_LTX_STAGE=import_imageio_begin", flush=True)
     import imageio.v2 as imageio
     print("ND_LTX_STAGE=import_imageio_done", flush=True)
