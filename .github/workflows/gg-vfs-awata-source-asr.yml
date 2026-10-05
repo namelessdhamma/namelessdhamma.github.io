@@ -1,0 +1,90 @@
+name: GG VFS Awata source strong Russian ASR for HQ-SVC
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-awata-source-asr.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Fetch exact Awata source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p in out
+          gh api -H "Accept: application/vnd.github+json"             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/11351104909/zip" > /tmp/awata.zip
+          unzip -q /tmp/awata.zip -d in
+          ls -l in
+          test -s in/vstrecha_female_mature_REAL_SINGING.wav
+          test -s in/vstrecha_female_soft_REAL_SINGING.wav
+          test -s in/vstrecha_female_dark_REAL_SINGING.wav
+      - name: Strong Russian ASR on all three source colors
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'faster-whisper==1.2.0' 'scipy>=1.11'
+          python - <<'PY'
+          import json,re,wave
+          from pathlib import Path
+          import numpy as np
+          from scipy.signal import resample_poly
+          from faster_whisper import WhisperModel
+
+          root=Path("in"); out=Path("out")
+          files=[
+            ("mature",root/"vstrecha_female_mature_REAL_SINGING.wav"),
+            ("soft",root/"vstrecha_female_soft_REAL_SINGING.wav"),
+            ("dark",root/"vstrecha_female_dark_REAL_SINGING.wav"),
+          ]
+          expected=["я","говорил","не","с","ним"]
+          def norm(t):
+              return re.sub(r"[^а-яё\s]"," ",t.lower()).replace("ё","е").split()
+          def ed(a,b):
+              d=list(range(len(b)+1))
+              for i,x in enumerate(a,1):
+                  nd=[i]+[0]*len(b)
+                  for j,y in enumerate(b,1):
+                      nd[j]=min(nd[j-1]+1,d[j]+1,d[j-1]+(x!=y))
+                  d=nd
+              return d[-1]
+          def audio(path):
+              with wave.open(str(path),"rb") as w:
+                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth()
+                  if sw!=2: raise RuntimeError("PCM16 required")
+                  x=np.frombuffer(w.readframes(w.getnframes()),dtype="<i2").astype(np.float32).reshape(-1,ch).mean(1)/32768.0
+              return resample_poly(x,16000,sr).astype(np.float32)
+          m=WhisperModel("small",device="cpu",compute_type="int8")
+          rows=[]
+          for label,p in files:
+              segs,info=m.transcribe(audio(p),language="ru",beam_size=5,word_timestamps=True,
+                                     temperature=0.0,condition_on_previous_text=False,vad_filter=False)
+              ss=[];ww=[]
+              for s in segs:
+                  ss.append({"start":s.start,"end":s.end,"text":s.text,"avg_logprob":getattr(s,"avg_logprob",None)})
+                  for w in (s.words or []):
+                      ww.append({"start":w.start,"end":w.end,"word":w.word,"probability":w.probability})
+              txt=" ".join(s["text"].strip() for s in ss); nw=norm(txt);dist=ed(expected,nw)
+              rows.append({"label":label,"file":p.name,"transcript":txt,"words":nw,
+                           "edit_distance":dist,"contains_ne":"не" in nw,
+                           "segments":ss,"word_timestamps":ww,
+                           "language_probability":info.language_probability})
+          rows=sorted(rows,key=lambda x:(-int(x["contains_ne"]),x["edit_distance"],{"mature":0,"dark":1,"soft":2}[x["label"]]))
+          q={"expected":expected,"rows":rows,"best":rows[0]["label"],
+             "source_gate":"PASS" if rows[0]["contains_ne"] and rows[0]["edit_distance"]<=2 else "FAIL"}
+          (out/"awata-source-asr.json").write_text(json.dumps(q,ensure_ascii=False,indent=2))
+          print(json.dumps(q,ensure_ascii=False,indent=2))
+          if q["source_gate"]!="PASS":
+              raise SystemExit(3)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-awata-source-asr
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
