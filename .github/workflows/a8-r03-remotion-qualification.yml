@@ -1,0 +1,150 @@
+name: A8 R03 Remotion Qualification
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r03-remotion-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Remotion
+        run: |
+          mkdir -p /tmp/a8-r03/src /tmp/a8-r03/out
+          cd /tmp/a8-r03
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund remotion @remotion/cli react react-dom
+
+      - name: Write isolated BLUE_SEA_DUEL_TEST_V1 Remotion composition
+        run: |
+          cat > /tmp/a8-r03/src/index.tsx <<'EOF'
+          import React from 'react';
+          import {AbsoluteFill, Composition, interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
+          import {registerRoot} from 'remotion';
+
+          const keyframes=[0,9,18,27,36,45,54,63,71];
+          const interp=(frame:number, values:number[])=>interpolate(frame,keyframes,values,{extrapolateLeft:'clamp',extrapolateRight:'clamp'});
+
+          const Fighter=({side,frame}:{side:'left'|'right';frame:number})=>{
+            const left=side==='left';
+            const x=left
+              ? interp(frame,[176,190,214,248,282,305,324,337,346])
+              : interp(frame,[590,582,570,552,535,522,511,501,493]);
+            const y=left
+              ? interp(frame,[354,352,349,347,349,352,354,356,355])
+              : interp(frame,[354,353,352,350,349,351,353,354,355]);
+            const lean=left
+              ? interp(frame,[-8,-5,1,8,13,7,2,-3,-5])
+              : interp(frame,[7,8,6,2,-4,-8,-5,0,4]);
+            const sword=left
+              ? interp(frame,[-18,-8,4,16,31,18,5,-8,-15])
+              : interp(frame,[202,194,187,177,163,170,181,191,197]);
+            const frontLeg=left
+              ? interp(frame,[22,28,35,45,55,48,42,35,31])
+              : interp(frame,[-20,-24,-30,-36,-43,-40,-34,-28,-24]);
+            const rearLeg=left
+              ? interp(frame,[-24,-26,-29,-32,-35,-33,-29,-26,-23])
+              : interp(frame,[23,26,30,34,36,34,31,27,24]);
+            const attackArm=left
+              ? interp(frame,[-30,-24,-15,-4,10,4,-8,-18,-25])
+              : interp(frame,[30,26,20,12,2,-4,4,14,24]);
+            const guardArm=left
+              ? interp(frame,[34,30,25,20,15,18,23,28,31])
+              : interp(frame,[-34,-30,-25,-18,-12,-16,-22,-28,-31]);
+            const hair=left?'#121212':'#9b2f24';
+            const coat=left?'#16191f':'#2a1518';
+            const trim=left?'#8e929b':'#8c603f';
+            const dir=left?1:-1;
+            const rad=(d:number)=>d*Math.PI/180;
+            const joint=(ox:number,oy:number,len:number,ang:number)=>[ox+Math.cos(rad(ang))*len,oy+Math.sin(rad(ang))*len];
+            const shX=0, shY=-58;
+            const elbow=joint(shX,shY,46,left?attackArm:180-attackArm);
+            const hand=joint(elbow[0],elbow[1],42,left?attackArm+5:175-attackArm);
+            const elbow2=joint(shX,shY+8,40,left?guardArm:180-guardArm);
+            const hand2=joint(elbow2[0],elbow2[1],36,left?guardArm+6:174-guardArm);
+            const swordLen=116;
+            const tip=[hand[0]+Math.cos(rad(sword))*swordLen,hand[1]+Math.sin(rad(sword))*swordLen];
+            return <g transform={"translate("+x+" "+y+") rotate("+lean+")"}>
+              <line x1={-18} y1={0} x2={-18+Math.cos(rad(92+frontLeg))*78} y2={Math.sin(rad(92+frontLeg))*78} stroke="#171719" strokeWidth="18" strokeLinecap="round"/>
+              <line x1={18} y1={0} x2={18+Math.cos(rad(88+rearLeg))*78} y2={Math.sin(rad(88+rearLeg))*78} stroke="#171719" strokeWidth="18" strokeLinecap="round"/>
+              <path d="M -31 -8 L -42 -92 Q 0 -119 42 -92 L 31 -8 Z" fill={coat} stroke={trim} strokeWidth="4"/>
+              <circle cx="0" cy="-125" r="27" fill="#b98b72" stroke="#201915" strokeWidth="3"/>
+              <path d={left?"M -25 -132 Q -5 -163 26 -142 Q 7 -149 -17 -128":"M -27 -139 Q 5 -168 31 -134 Q 10 -145 -22 -126"} fill={hair}/>
+              {!left && <path d="M -9 -111 Q 4 -94 15 -111 Q 4 -100 -9 -111" fill="#8a2a20"/>}
+              <line x1={shX} y1={shY} x2={elbow[0]} y2={elbow[1]} stroke={coat} strokeWidth="17" strokeLinecap="round"/>
+              <line x1={elbow[0]} y1={elbow[1]} x2={hand[0]} y2={hand[1]} stroke="#b98b72" strokeWidth="13" strokeLinecap="round"/>
+              <line x1={shX} y1={shY+8} x2={elbow2[0]} y2={elbow2[1]} stroke={coat} strokeWidth="15" strokeLinecap="round"/>
+              <line x1={elbow2[0]} y1={elbow2[1]} x2={hand2[0]} y2={hand2[1]} stroke="#b98b72" strokeWidth="11" strokeLinecap="round"/>
+              <line x1={hand[0]} y1={hand[1]} x2={tip[0]} y2={tip[1]} stroke="#d7dde5" strokeWidth="5" strokeLinecap="round"/>
+              <line x1={hand[0]-8*dir} y1={hand[1]-10} x2={hand[0]+8*dir} y2={hand[1]+10} stroke="#9d784f" strokeWidth="6"/>
+            </g>;
+          };
+
+          const Duel=()=>{
+            const frame=useCurrentFrame();
+            const {durationInFrames}=useVideoConfig();
+            const virtualFrame=durationInFrames<=1?0:(frame/(durationInFrames-1))*71;
+            const flash=Math.max(0,1-Math.abs(virtualFrame-36)/3);
+            return <AbsoluteFill style={{background:'linear-gradient(#08111c,#142436 58%,#211815 59%,#120f0d)',overflow:'hidden'}}>
+              <svg viewBox="0 0 768 432" width="100%" height="100%">
+                <rect x="0" y="260" width="768" height="172" fill="#2b211c"/>
+                {Array.from({length:14}).map((_,i)=><line key={'deck'+i} x1={0} y1={278+i*12} x2={768} y2={288+i*10} stroke="#6d5142" strokeWidth="2" opacity="0.55"/>)}
+                <line x1="92" y1="20" x2="120" y2="286" stroke="#2b211d" strokeWidth="12"/>
+                <line x1="675" y1="10" x2="640" y2="286" stroke="#2b211d" strokeWidth="11"/>
+                {Array.from({length:26}).map((_,i)=>{
+                  const x=(i*37+13)%790-10;
+                  const y=((i*53 + virtualFrame*18)%520)-70;
+                  return <line key={'rain'+i} x1={x} y1={y} x2={x-11} y2={y+34} stroke="#b7d1e4" strokeWidth="2" opacity="0.55"/>;
+                })}
+                <Fighter side="left" frame={virtualFrame}/>
+                <Fighter side="right" frame={virtualFrame}/>
+                <circle cx="410" cy="242" r={14+flash*18} fill="#fff3c7" opacity={flash*0.75}/>
+                <ellipse cx="385" cy="402" rx={250} ry={18} fill="#9fc4da" opacity="0.08"/>
+              </svg>
+            </AbsoluteFill>;
+          };
+
+          const Root=()=> <>
+            <Composition id="Duel3s" component={Duel} durationInFrames={72} fps={24} width={768} height={432}/>
+            <Composition id="Duel2p5s" component={Duel} durationInFrames={60} fps={24} width={768} height={432}/>
+          </>;
+
+          registerRoot(Root);
+          EOF
+
+      - name: Render canonical, parameter variant, and clean repro
+        run: |
+          cd /tmp/a8-r03
+          npx remotion render src/index.tsx Duel3s out/canonical.mp4 --codec=h264 --concurrency=2
+          npx remotion render src/index.tsx Duel2p5s out/variant-2p5s.mp4 --codec=h264 --concurrency=2
+          rm -rf node_modules/.cache/remotion 2>/dev/null || true
+          npx remotion render src/index.tsx Duel3s out/canonical-repro.mp4 --codec=h264 --concurrency=2
+
+      - name: Verify output and write receipt
+        run: |
+          cd /tmp/a8-r03
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json out/canonical.mp4 > out/canonical.ffprobe.json
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json out/variant-2p5s.mp4 > out/variant.ffprobe.json
+          ffmpeg -v error -i out/canonical.mp4 -f framemd5 out/canonical.framemd5
+          ffmpeg -v error -i out/canonical-repro.mp4 -f framemd5 out/canonical-repro.framemd5
+          sha256sum out/canonical.mp4 out/canonical-repro.mp4 out/variant-2p5s.mp4 > out/sha256.txt
+          cmp out/canonical.framemd5 out/canonical-repro.framemd5
+          cd /tmp/a8-r03
+          node -e "const p=require('./node_modules/remotion/package.json'); const c=require('./node_modules/@remotion/cli/package.json'); console.log(JSON.stringify({remotion:p.version,cli:c.version,node:process.version,frame_reproduction:'byte-identical decoded frames'},null,2))" > out/runtime.json
+
+      - name: Upload qualification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r03-remotion-qualification
+          path: /tmp/a8-r03/out
+          retention-days: 7
