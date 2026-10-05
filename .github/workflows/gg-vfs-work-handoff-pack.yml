@@ -1,0 +1,252 @@
+name: GG VFS Work handoff pack
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-work-handoff-pack.yml"]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Recover verified SoulX A/B artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-soulx-northstar-candidate
+          run-id: 37248278728
+          github-token: ${{ github.token }}
+          path: soulx
+
+      - name: Fetch rights-clean identity references and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p handoff/identity handoff/baseline handoff/provenance
+
+          curl -fL --retry 4 --retry-all-errors \
+            -o handoff/identity/Sveta_neutral_reference.wav \
+            "https://huggingface.co/datasets/langswap/dialogs-ru-emotional-conversations/resolve/main/wavs/masha_sveta_part10_2109.wav?download=true"
+          curl -fL --retry 4 --retry-all-errors \
+            -o handoff/identity/Masha_neutral_reference.wav \
+            "https://huggingface.co/datasets/langswap/dialogs-ru-emotional-conversations/resolve/main/wavs/masha_dima_part1_26.wav?download=true"
+          curl -fL --retry 4 --retry-all-errors \
+            -o handoff/provenance/DIALOGS_LICENSE.md \
+            "https://huggingface.co/datasets/langswap/dialogs-ru-emotional-conversations/raw/main/LICENSE.md"
+          curl -fL --retry 4 --retry-all-errors \
+            -o handoff/provenance/DIALOGS_README.md \
+            "https://huggingface.co/datasets/langswap/dialogs-ru-emotional-conversations/raw/main/README.md"
+
+          cp "$(find soulx -name SoulX_NorthStar_Candidate.wav -print -quit)" handoff/baseline/SoulX_NorthStar_Candidate.wav
+          cp "$(find soulx -name AB_OpenUtau_then_SoulX.wav -print -quit)" handoff/baseline/AB_OpenUtau_then_SoulX.wav
+          cp "$(find soulx -name qc.json -print -quit)" handoff/baseline/qc.json
+
+          curl -fL --retry 4 --retry-all-errors \
+            -o handoff/provenance/source_openutau_workflow.yml \
+            "https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/44f71fa1314118493b153fd0cd12647741cdd0a3/.github/workflows/gg-openutau-mimosa-long-human-vocal-final.yml"
+          curl -fL --retry 4 --retry-all-errors \
+            -o handoff/provenance/soulx_initial_workflow.yml \
+            "https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/2996c20e29aa093bc3748701907c53801684533a/.github/workflows/gg-soulx-vocal-northstar.yml"
+          curl -fL --retry 4 --retry-all-errors \
+            -o handoff/provenance/soulx_repair_workflow.yml \
+            "https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/ea3c07443c39c264cf107b8daea7128a00f287b3/.github/workflows/gg-soulx-phonetic-repair.yml"
+
+      - name: Freeze exact source and write manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json, wave, hashlib, shutil
+
+          root=Path("handoff")
+          qc=json.loads((root/"baseline/qc.json").read_text(encoding="utf-8"))
+          src_dur=float(qc["target"]["duration"])
+          ab=root/"baseline/AB_OpenUtau_then_SoulX.wav"
+          with wave.open(str(ab),"rb") as w:
+              params=w.getparams()
+              n=int(round(src_dur*w.getframerate()))
+              frames=w.readframes(n)
+          with wave.open(str(root/"baseline/FROZEN_RUSSIAN_SOURCE.wav"),"wb") as o:
+              o.setparams(params)
+              o.writeframes(frames)
+
+          refs = {
+            "Sveta_neutral_reference.wav":{
+              "dataset":"langswap/dialogs-ru-emotional-conversations",
+              "dataset_path":"wavs/masha_sveta_part10_2109.wav",
+              "speaker_id":"S","speaker":"Sveta","sex":"female","emotion":"neutral",
+              "text":"Да, начинаю готовить подарки и украшения за несколько месяцев. Это помогает создать праздничное настроение.",
+              "declared_duration_s":6.065270833333333,
+              "license":"OpenRAIL",
+              "role":"PRIMARY_IDENTITY_PROBE"
+            },
+            "Masha_neutral_reference.wav":{
+              "dataset":"langswap/dialogs-ru-emotional-conversations",
+              "dataset_path":"wavs/masha_dima_part1_26.wav",
+              "speaker_id":"M","speaker":"Masha","sex":"female","emotion":"neutral",
+              "text":"Экспозиция посвящена современному искусству. Много интерактивных инсталляций и необычных арт-объектов.",
+              "declared_duration_s":6.15,
+              "license":"OpenRAIL",
+              "role":"SECONDARY_IDENTITY_CONTROL"
+            }
+          }
+
+          def wavmeta(p):
+              with wave.open(str(p),"rb") as w:
+                  return {
+                    "channels":w.getnchannels(),"sample_rate":w.getframerate(),
+                    "sample_width":w.getsampwidth(),"frames":w.getnframes(),
+                    "duration_s":w.getnframes()/w.getframerate()
+                  }
+          for fn,v in refs.items():
+              p=root/"identity"/fn
+              v["observed"]=wavmeta(p)
+              if v["observed"]["channels"] != 1:
+                  raise SystemExit(f"{fn}: expected mono")
+              if not 4.5 <= v["observed"]["duration_s"] <= 7.0:
+                  raise SystemExit(f"{fn}: duration outside frozen identity range")
+              v["sha256"]=hashlib.sha256(p.read_bytes()).hexdigest()
+
+          baseline={}
+          for fn in ["FROZEN_RUSSIAN_SOURCE.wav","SoulX_NorthStar_Candidate.wav","AB_OpenUtau_then_SoulX.wav","qc.json"]:
+              p=root/"baseline"/fn
+              baseline[fn]={"sha256":hashlib.sha256(p.read_bytes()).hexdigest(),"bytes":p.stat().st_size}
+              if fn.endswith(".wav"): baseline[fn]["observed"]=wavmeta(p)
+
+          manifest={
+            "status":"PRE_WORK_CLOSED_READY_FOR_EXECUTION",
+            "north_star_complete":False,
+            "project":{"navigator":"NAM-614","notebooklm":"7893c482-e3b9-42a1-8f87-28696eb6bf65"},
+            "mission":"GG-VFS-F01: beautiful stable editable Russian female singing instrument from silence",
+            "frozen_phrase":"я говорил не с ним а с тем кто долго стоял у окна и ждал",
+            "frozen_baseline":baseline,
+            "identity_references":refs,
+            "provenance":{
+              "source_openutau":{
+                "run":37199773797,
+                "commit":"44f71fa1314118493b153fd0cd12647741cdd0a3",
+                "workflow":".github/workflows/gg-openutau-mimosa-long-human-vocal-final.yml",
+                "route":"official_ru_phonemizer+openutau_timing+native_dspitch",
+                "speaker_hint":"Dark","l_offset_ticks":55,"render_steps":64,
+                "manual_frame_f0":False,"manual_phoneme_durations":False,
+                "note":"technical source/control only; Mimosa is NOT production identity"
+              },
+              "soulx_initial":{
+                "run":37247752164,
+                "commit":"2996c20e29aa093bc3748701907c53801684533a",
+                "Natural":{"steps":12,"cfg":0.8,"base_seed":142,"segment_seeds":[143,144]},
+                "Balanced":{"steps":16,"cfg":1.0,"base_seed":142,"segment_seeds":[143,144]},
+                "note":"run failed overall but preserved accepted Natural_seg1 used by final repair"
+              },
+              "soulx_final_repair":{
+                "run":37248278728,
+                "commit":"ea3c07443c39c264cf107b8daea7128a00f287b3",
+                "segment2":{"steps":8,"cfg":0.55,"seed":314,"pitch_shift":0},
+                "assembly":"accepted Natural_seg1 + repaired segment2"
+              }
+            },
+            "verified_baseline_qc":{
+              "source_asr":qc["target"]["text"],
+              "soulx_asr":qc["soulx"]["text"],
+              "exact_match":qc["exact_match"],
+              "source_pitch_span_cents":qc["target"]["pitch_span_cents"],
+              "soulx_pitch_span_cents":qc["soulx"]["pitch_span_cents"],
+              "source_local_motion_cents":qc["target"]["local_motion_cents"],
+              "soulx_local_motion_cents":qc["soulx"]["local_motion_cents"],
+              "source_gross_jump_rate":qc["target"]["gross_jump_rate"],
+              "soulx_gross_jump_rate":qc["soulx"]["gross_jump_rate"]
+            },
+            "regression_windows_s":[
+              [0.757,0.832],[2.315,2.411],[4.149,4.299],[5.483,5.547],
+              [6.645,6.688],[6.912,6.955],[9.515,9.867],[9.920,9.963]
+            ],
+            "work_start_action":"Run Sveta_neutral_reference.wav as identity prompt against FROZEN_RUSSIAN_SOURCE.wav through the already-qualified SoulX SVC route. Preserve source. Compare Masha only if useful.",
+            "work_scope_only":[
+              "identity/timbre selection that changes final artistic result",
+              "renderer/acoustic parameter tuning that changes final result",
+              "Russian diction and coarticulation repair",
+              "low-register stability qualification and repair",
+              "deterministic performance humanization",
+              "NEUTRAL/SEMANTIC/CLIMAX continuity",
+              "user auditory acceptance"
+            ],
+            "do_not_repeat":[
+              "broad model search","broad voicebank search","identity-reference fetching",
+              "baseline reconstruction","Awata requalification","SaMoye/HQ-SVC/FreeSVC/YingMusic production qualification"
+            ],
+            "rights_state":{
+              "identity_refs":"OpenRAIL / written actor consent per dataset documentation; candidate identity inputs are rights-clean under project standard",
+              "soulx_code_weights":"Apache-2.0",
+              "soulx_training_data_provenance":"FINAL PRODUCTION RIGHTS_PASS NOT YET GRANTED: 42k-h corpus lacks per-recording commercial-rights ledger in published material",
+              "current_mimosa_identity":"REJECTED_FOR_PRODUCTION"
+            },
+            "acceptance_gates":[
+              "RIGHTS_PASS","SCORE_EDITABILITY_PASS","RUSSIAN_PHONETICS_PASS",
+              "LOW_F0_STABILITY_PASS","BOUNDARY_NATURALNESS_PASS","MELODY_TIMING_PASS",
+              "STABLE_IDENTITY_PASS","NEUTRAL_SEMANTIC_CLIMAX_CONTINUITY_PASS",
+              "GG_VOICE_FROM_SILENCE_ARTISTIC_PASS","USER_AUDITORY_ACCEPTANCE"
+            ]
+          }
+          (root/"MANIFEST.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding="utf-8")
+
+          lines=[
+            "# GG-VFS-F01 Work handoff pack",
+            "",
+            "This pack closes non-quality-bearing preparation. Work starts from execution, not discovery.",
+            "",
+            "## First action",
+            manifest["work_start_action"],
+            "",
+            "## Frozen rule",
+            "Do not alter FROZEN_RUSSIAN_SOURCE.wav during identity A/B. Change one quality-bearing variable at a time.",
+            "",
+            "## Rights",
+            "Identity references: Dialogs/OpenRAIL. SoulX final production RIGHTS_PASS remains fail-closed pending project provenance standard.",
+            "",
+            "## Work owns",
+            ", ".join(manifest["work_scope_only"]),
+            "",
+            "## Work does not own",
+            ", ".join(manifest["do_not_repeat"])
+          ]
+          (root/"README.md").write_text("\n".join(lines),encoding="utf-8")
+
+          hashes=[]
+          for p in sorted(root.rglob("*")):
+              if p.is_file():
+                  hashes.append(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.relative_to(root)}")
+          (root/"SHA256SUMS.txt").write_text("\n".join(hashes)+"\n",encoding="utf-8")
+          PY
+
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          m=json.loads(Path("handoff/MANIFEST.json").read_text())
+          assert m["status"]=="PRE_WORK_CLOSED_READY_FOR_EXECUTION"
+          assert m["verified_baseline_qc"]["exact_match"] is True
+          print(json.dumps({
+            "status":m["status"],
+            "sveta":m["identity_references"]["Sveta_neutral_reference.wav"]["observed"],
+            "masha":m["identity_references"]["Masha_neutral_reference.wav"]["observed"],
+            "source":m["frozen_baseline"]["FROZEN_RUSSIAN_SOURCE.wav"]["observed"],
+            "first_action":m["work_start_action"]
+          },ensure_ascii=False,indent=2))
+          PY
+
+          (cd handoff && zip -qr ../GG_VFS_F01_WORK_HANDOFF_PACK.zip .)
+          sha256sum GG_VFS_F01_WORK_HANDOFF_PACK.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-f01-work-handoff-pack
+          path: GG_VFS_F01_WORK_HANDOFF_PACK.zip
+          retention-days: 30
+          if-no-files-found: error
