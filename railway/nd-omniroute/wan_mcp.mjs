@@ -2858,6 +2858,35 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
   },
   {
+    name:'wan_ltx23_generate',
+    description:'Generation-recovery surface for the existing FREE_ONLY Kaggle LTX 2.3 22B Wan2GP P100 route. Submit only; returns durable request_id.',
+    inputSchema:{
+      type:'object',
+      properties:{
+        start_image_url:{type:'string'},
+        end_image_url:{type:'string'},
+        prompt:{type:'string'},
+        duration_seconds:{type:'number',default:2,minimum:1,maximum:6},
+        width:{type:'integer',default:512,minimum:256,maximum:768},
+        height:{type:'integer',default:288,minimum:256,maximum:480},
+        seed:{type:'integer',default:42},
+        randomize_seed:{type:'boolean',default:false}
+      },
+      required:['start_image_url','end_image_url'],
+      additionalProperties:false
+    }
+  },
+  {
+    name:'wan_ltx23_status',
+    description:'One bounded status read for a FREE_ONLY Kaggle LTX 2.3 Wan2GP request.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
+    name:'wan_ltx23_result',
+    description:'One bounded result read for a completed FREE_ONLY Kaggle LTX 2.3 Wan2GP request; persists completed MP4 to Drive.',
+    inputSchema:{type:'object',properties:{request_id:{type:'string'}},required:['request_id'],additionalProperties:false}
+  },
+  {
     name:'wan_get_capabilities',
     description:'Return the complete Gradio API schema for any public Hugging Face Space. No capability allowlist is applied.',
     inputSchema:{type:'object',properties:{space_id:{type:'string',default:DEFAULT_SPACE}},additionalProperties:false}
@@ -3083,6 +3112,9 @@ export function createWanMcpHandler(){
         else if(name==='wan_ltx2b_wrapper_generate') result=await ltxKaggle2bSubmit(args,{direct:false});
         else if(name==='wan_ltx2b_wrapper_status') result=await ltxKaggle2bStatus(args);
         else if(name==='wan_ltx2b_wrapper_result') result=await ltxKaggle2bResult({...args,persist_to_drive:false});
+        else if(name==='wan_ltx23_generate') result=await ltxKaggleWan2gpSubmit(args);
+        else if(name==='wan_ltx23_status') result=await ltxKaggleStatus(args);
+        else if(name==='wan_ltx23_result') result=await ltxKaggleResult(args);
         else if(name==='wan_get_capabilities') result=await capabilities(String(args.space_id||DEFAULT_SPACE));
         else if(name==='wan_generate_video') result=await generateVideo(args);
         else if(name==='wan_call_space_raw') result=await rawCall(args);
