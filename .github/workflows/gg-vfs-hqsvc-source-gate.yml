@@ -1,0 +1,261 @@
+name: GG VFS HQ-SVC Russian source gate
+
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-hqsvc-source-gate.yml"]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Recover verified mature Awata source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work
+          gh api -H "Accept: application/vnd.github+json"             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/11351104909/zip" > /tmp/awata.zip
+          unzip -q /tmp/awata.zip -d /tmp/awata
+          cp /tmp/awata/vstrecha_female_mature_REAL_SINGING.wav work/AWATA_MATURE_SOURCE.wav
+          echo "e09d5a5330793d8cebf715ea45701f14d4db69841bc527213c20139dcd133a08  work/AWATA_MATURE_SOURCE.wav" | sha256sum -c -
+
+      - name: Submit exact HQ-SVC provider effect and retrieve result
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat >/tmp/hq.py <<'PY'
+          import base64,hashlib,json,os,re,time
+          from pathlib import Path
+          import requests
+
+          token=os.environ["KAGGLE_API_TOKEN"].strip()
+          user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          sha=os.environ["GITHUB_SHA"]
+          out=Path("work")
+          api="https://api.kaggle.com/v1"
+          H={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-hqsvc/1.0"}
+
+          def rpc(service,method,body=None,timeout=45):
+              r=requests.post(f"{api}/{service}/{method}",headers=H,json=body or {},timeout=timeout)
+              if not r.ok: raise RuntimeError(f"{method} HTTP {r.status_code}: {r.text[:1400]}")
+              return r.json() if r.text.strip() else {}
+
+          def sec(v):
+              if isinstance(v,(int,float)): return float(v)
+              if isinstance(v,str):
+                  m=re.match(r"^(-?\d+(?:\.\d+)?)s$",v)
+                  return float(m.group(1)) if m else float(v or 0)
+              if isinstance(v,dict): return float(v.get("seconds",0))+float(v.get("nanos",0))/1e9
+              return 0.0
+
+          ident=rpc("security.OAuthService","IntrospectToken",{"token":token})
+          if not ident.get("active") or str(ident.get("username") or "")!=user:
+              raise RuntimeError("Kaggle auth mismatch")
+          quota=rpc("kernels.KernelsApiService","GetAcceleratorQuotaStatistics",{})
+          g=quota.get("gpuQuota") or quota.get("gpu_quota") or {}
+          remaining=max(0.0,sec(g.get("totalTimeAllowed",0))-sec(g.get("timeUsed",0)))
+          if remaining<25*60:
+              (out/"submit.json").write_text(json.dumps({"state":"FREE_ONLY_BLOCKED","remaining_hours":remaining/3600},indent=2))
+              raise RuntimeError("FREE_ONLY_BLOCKED")
+
+          src=out/"AWATA_MATURE_SOURCE.wav"
+          src64=base64.b64encode(src.read_bytes()).decode()
+          semantic="HQSVC-AWATA-MATURE-TO-ACE8423-GATE-001"
+          tag=hashlib.sha256(semantic.encode()).hexdigest()[:16]
+          requested=f"gg-vfs-hqsvc-{tag}"
+          worker_url=f"https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/{sha}/railway/nd-omniroute/kaggle_hqsvc_source_gate.py"
+          script="\n".join([
+              "import base64,sys,urllib.request",
+              "from pathlib import Path",
+              f"Path('/kaggle/working/awata_mature_source.wav').write_bytes(base64.b64decode('{src64}'))",
+              f"u='{worker_url}'",
+              "p=Path('/kaggle/working/kaggle_hqsvc_source_gate.py')",
+              "p.write_bytes(urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'nd-vfs-hqsvc/1.0'}),timeout=120).read())",
+              "sys.argv=['kaggle_hqsvc_source_gate.py']",
+              "exec(compile(p.read_text(encoding='utf-8'),str(p),'exec'),{'__name__':'__main__'})",
+          ])
+
+          listed=rpc("kernels.KernelsApiService","ListKernels",{"user":user,"search":tag,"pageSize":50})
+          exact=[k for k in (listed.get("kernels") or []) if tag in str(k.get("slug","")) or tag in str(k.get("ref",""))]
+          if exact:
+              k=exact[0];slug=str(k.get("slug") or str(k.get("ref") or "").split("/")[-1]).strip()
+              version=int(k.get("currentVersionNumber") or k.get("current_version_number") or 1);reused=True
+          else:
+              save=rpc("kernels.KernelsApiService","SaveKernel",{
+                  "slug":f"{user}/{requested}","newTitle":requested,
+                  "text":script,"language":"python","kernelType":"script",
+                  "datasetDataSources":[],"kernelDataSources":[],"competitionDataSources":[],
+                  "categoryIds":[],"modelDataSources":[],"isPrivate":True,
+                  "enableGpu":True,"enableTpu":False,"enableInternet":True,
+                  "kernelExecutionType":"SaveAndRunAll","machineShape":"NvidiaTeslaT4",
+                  "sessionTimeoutSeconds":3400,
+              },timeout=60)
+              version=int(save.get("versionNumber") or save.get("version_number") or 1)
+              time.sleep(3)
+              listed=rpc("kernels.KernelsApiService","ListKernels",{"user":user,"search":tag,"pageSize":50})
+              exact=[k for k in (listed.get("kernels") or []) if tag in str(k.get("slug","")) or tag in str(k.get("ref",""))]
+              if exact:
+                  k=exact[0];slug=str(k.get("slug") or str(k.get("ref") or "").split("/")[-1]).strip()
+              else: slug=requested
+              reused=False
+          if not slug or slug.lower()=="none": raise RuntimeError("unresolved Kaggle slug")
+          handle={"provider_ref":f"{user}/{slug}/v{version}","semantic":semantic,"tag":tag,"reused":reused,"remaining_hours":round(remaining/3600,3)}
+          (out/"submit.json").write_text(json.dumps(handle,indent=2));print(json.dumps(handle,indent=2),flush=True)
+
+          def dl(path):
+              r=requests.post(f"{api}/kernels.KernelsApiService/DownloadKernelOutput",headers=H,
+                    json={"ownerSlug":user,"kernelSlug":slug,"filePath":path,"versionNumber":version},
+                    timeout=45,allow_redirects=False)
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  g=requests.get(r.headers["location"],timeout=180); return g.content if g.ok and g.content else None
+              if r.ok and r.content:
+                  if "json" in r.headers.get("content-type",""):
+                      try:
+                          o=r.json();u=o.get("url") or o.get("redirectUrl") or o.get("redirect_url") or o.get("downloadUrl") or o.get("download_url")
+                      except Exception:u=None
+                      if u:
+                          g=requests.get(u,timeout=180);return g.content if g.ok and g.content else None
+                  return r.content
+              return None
+
+          prefix="gg-vfs-hqsvc-output/"
+          deadline=time.time()+46*60
+          result=None
+          while time.time()<deadline:
+              b=dl(prefix+"result.json")
+              if b:
+                  try:
+                      x=json.loads(b.decode("utf-8"))
+                      if isinstance(x,dict) and "ok" in x:
+                          result=x;(out/"result.json").write_bytes(b);break
+                  except Exception:pass
+              time.sleep(30)
+          if result is None: raise RuntimeError("HQ-SVC terminal result unavailable")
+          for name in ["child.log","REPRODUCTION_RECIPE.md","GG-VFS-F01_HQSVC_AWATA_MATURE_to_ACE8423.wav"]:
+              b=dl(prefix+name)
+              if b:(out/name).write_bytes(b)
+          if not result.get("ok"):
+              raise RuntimeError("HQ-SVC provider failed: "+json.dumps(result,ensure_ascii=False))
+          if not (out/"GG-VFS-F01_HQSVC_AWATA_MATURE_to_ACE8423.wav").exists():
+              raise RuntimeError("HQ-SVC output WAV missing")
+          PY
+          python /tmp/hq.py
+
+      - name: Strong Russian content and F0 qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'faster-whisper==1.2.0' 'scipy>=1.11' 'librosa==0.11.0'
+          python - <<'PY'
+          import json,re,wave
+          from pathlib import Path
+          import numpy as np
+          import librosa
+          from scipy.signal import resample_poly
+          from faster_whisper import WhisperModel
+
+          root=Path("work")
+          pairs=[
+            ("source",root/"AWATA_MATURE_SOURCE.wav"),
+            ("hqsvc",root/"GG-VFS-F01_HQSVC_AWATA_MATURE_to_ACE8423.wav"),
+          ]
+          expected=["я","говорил","не","с","ним"]
+
+          def read(path):
+              y,sr=librosa.load(path,sr=None,mono=True)
+              return y.astype(np.float32),sr
+          def norm(t):
+              return re.sub(r"[^а-яё\s]"," ",t.lower()).replace("ё","е").split()
+          def ed(a,b):
+              d=list(range(len(b)+1))
+              for i,x in enumerate(a,1):
+                  nd=[i]+[0]*len(b)
+                  for j,y in enumerate(b,1):
+                      nd[j]=min(nd[j-1]+1,d[j]+1,d[j-1]+(x!=y))
+                  d=nd
+              return d[-1]
+          def asr_array(y,sr):
+              a=resample_poly(y,16000,sr).astype(np.float32)
+              return a
+          m=WhisperModel("small",device="cpu",compute_type="int8")
+          rows=[];waves={}
+          for label,p in pairs:
+              y,sr=read(p);waves[label]=(y,sr)
+              segs,info=m.transcribe(asr_array(y,sr),language="ru",beam_size=5,word_timestamps=True,
+                                     temperature=0.0,condition_on_previous_text=False,vad_filter=False)
+              ss=[];ww=[]
+              for s in segs:
+                  ss.append({"start":s.start,"end":s.end,"text":s.text,"avg_logprob":getattr(s,"avg_logprob",None)})
+                  for w in (s.words or []):
+                      ww.append({"start":w.start,"end":w.end,"word":w.word,"probability":w.probability})
+              txt=" ".join(x["text"].strip() for x in ss);nw=norm(txt)
+              rows.append({"label":label,"transcript":txt,"words":nw,"edit_distance":ed(expected,nw),
+                           "contains_ne":"не" in nw,"segments":ss,"word_timestamps":ww,
+                           "language_probability":info.language_probability})
+
+          # Melody preservation proxy using pYIN on same time grid.
+          ys,srs=waves["source"];yo,sro=waves["hqsvc"]
+          f1,_,_=librosa.pyin(ys,fmin=60,fmax=900,sr=srs,frame_length=2048,hop_length=256)
+          f2,_,_=librosa.pyin(yo,fmin=60,fmax=900,sr=sro,frame_length=2048,hop_length=256)
+          # compare normalized time positions because duration may differ by a few frames
+          n=min(len(f1),len(f2))
+          f1=f1[:n];f2=f2[:n];mask=np.isfinite(f1)&np.isfinite(f2)&(f1>0)&(f2>0)
+          cents=1200*np.log2(f2[mask]/f1[mask]) if mask.any() else np.array([])
+          melody={
+              "matched_voiced_frames":int(mask.sum()),
+              "median_abs_cents":float(np.median(np.abs(cents))) if len(cents) else None,
+              "p95_abs_cents":float(np.percentile(np.abs(cents),95)) if len(cents) else None,
+              "f0_log_correlation":float(np.corrcoef(np.log(f1[mask]),np.log(f2[mask]))[0,1]) if mask.sum()>5 else None,
+          }
+          source,cand=rows
+          gate=(cand["contains_ne"] and cand["edit_distance"]<=source["edit_distance"]+1 and
+                melody["f0_log_correlation"] is not None and melody["f0_log_correlation"]>=0.85)
+          q={"expected":expected,"rows":rows,"melody":melody,
+             "classification":"HQSVC_CONTENT_MELODY_PASS_USER_IDENTITY_PENDING" if gate else "HQSVC_GATE_FAIL",
+             "auditory_gates":["same_8423_identity","naturalness","background_buzz","GG_voice_from_silence"]}
+          (root/"qualification.json").write_text(json.dumps(q,ensure_ascii=False,indent=2))
+          print(json.dumps(q,ensure_ascii=False,indent=2))
+          if not gate: raise SystemExit(4)
+          PY
+
+      - name: Build source-to-converted A-B
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import numpy as np,soundfile as sf
+          from scipy.signal import resample_poly
+          from pathlib import Path
+          root=Path("work")
+          a,sra=sf.read(root/"AWATA_MATURE_SOURCE.wav",always_2d=True,dtype="float32")
+          b,srb=sf.read(root/"GG-VFS-F01_HQSVC_AWATA_MATURE_to_ACE8423.wav",always_2d=True,dtype="float32")
+          sr=44100
+          if sra!=sr:a=resample_poly(a,sr,sra,axis=0)
+          if srb!=sr:b=resample_poly(b,sr,srb,axis=0)
+          def stereo(x):
+              return np.repeat(x,2,axis=1) if x.shape[1]==1 else x[:,:2]
+          a=stereo(a);b=stereo(b)
+          silence=np.zeros((sr,2),dtype=np.float32)
+          y=np.vstack([a,silence,b])
+          sf.write(root/"GG_VFS_AUDITION_AWATA_SOURCE_then_HQSVC_8423_ID.wav",y,sr,subtype="PCM_16")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-hqsvc-awata-to-8423-qualified
+          path: work/
+          retention-days: 30
+          if-no-files-found: error
