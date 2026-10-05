@@ -54,6 +54,7 @@ from acestep.llm_inference import LLMHandler
 from acestep.inference import GenerationParams,GenerationConfig,generate_music
 from acestep.api.model_download import ensure_model_downloaded
 from acestep.gpu_config import get_gpu_config,set_global_gpu_config
+from huggingface_hub import snapshot_download
 ACE_COMMIT="ca1e85fe9430179831e6bc6be790c332190a3866"
 SOURCE_SHA=os.environ["SOURCE_SHA"];CAPTION=os.environ["CAPTION"];LYRICS=os.environ["LYRICS"];SEED=int(os.environ["SEED"])
 def sha(p):
@@ -65,8 +66,35 @@ def sha(p):
 set_global_gpu_config(get_gpu_config())
 print("CUDA",torch.cuda.is_available(),torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,flush=True)
 ck=repo/"checkpoints";ck.mkdir(exist_ok=True);os.environ["ACESTEP_DOWNLOAD_SOURCE"]="huggingface"
-for name in ["acestep-v15-sft","vae","acestep-5Hz-lm-0.6B"]:
+
+# Minimal disk footprint for Kaggle T4:
+# - SFT DiT from its dedicated repo
+# - 0.6B LM from its dedicated repo
+# - ONLY VAE + Qwen text encoder from the unified repo.
+# Do not invoke ensure_model_downloaded("vae") here because the pinned upstream
+# helper downloads the ENTIRE unified bundle (turbo + 1.7B LM + shared parts),
+# which exhausts Kaggle disk before inference.
+for name in ["acestep-v15-sft","acestep-5Hz-lm-0.6B"]:
  print("ENSURE_MODEL",name,flush=True);ensure_model_downloaded(name,str(ck))
+
+shared_needed=[ck/"vae",ck/"Qwen3-Embedding-0.6B"]
+if not all(p.exists() and any(p.iterdir()) for p in shared_needed):
+ print("DOWNLOAD_SHARED_MINIMAL vae + Qwen3-Embedding-0.6B",flush=True)
+ snapshot_download(
+   repo_id="ACE-Step/Ace-Step1.5",
+   local_dir=str(ck),
+   allow_patterns=["vae/*","Qwen3-Embedding-0.6B/*"],
+ )
+for p in shared_needed:
+ if not p.exists() or not any(p.iterdir()):
+  raise RuntimeError(f"required shared model missing after minimal download: {p}")
+
+# Reclaim package/download caches before 50-step FP32 inference.
+import shutil as _shutil
+for cache in [Path.home()/".cache"/"uv",Path.home()/".cache"/"pip"]:
+ if cache.exists():
+  _shutil.rmtree(cache,ignore_errors=True)
+print("MINIMAL_MODEL_LAYOUT_READY",flush=True)
 
 dit=AceStepHandler()
 status,ok=dit.initialize_service(project_root=str(repo),config_path="acestep-v15-sft",device="cuda",
@@ -93,7 +121,7 @@ p=Path(res.audios[0]["path"]);dst=out/"GG-VFS-F01_ACE8423_SFT_CFG7_COVER090.wav"
 rec={"ok":True,"engine":"ACE-Step 1.5","engine_commit":ACE_COMMIT,"model":"acestep-v15-sft","lm_model":"acestep-5Hz-lm-0.6B",
 "source_sha256":SOURCE_SHA,"candidate_sha256":sha(dst),"seed":SEED,"task_type":"cover","audio_cover_strength":0.90,"cover_noise_strength":0.20,
 "inference_steps":50,"guidance_scale":7.0,"shift":1.0,"target_lyrics":LYRICS,"caption":CAPTION,
-"runtime_precision":"DiT FP32 + official CPU offload on T4","manual_phoneme_durations":False,"manual_vowel_durations":False,
+"runtime_precision":"DiT FP32 + official CPU offload on T4; minimal shared-model download","manual_phoneme_durations":False,"manual_vowel_durations":False,
 "wall_seconds":round(time.time()-t,3)}
 (out/"result.json").write_text(json.dumps(rec,ensure_ascii=False,indent=2))
 (out/"REPRODUCTION_RECIPE.md").write_text(f"""# GG-VFS-F01 ACE8423 SFT CFG7 Cover090
