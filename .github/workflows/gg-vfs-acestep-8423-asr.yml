@@ -1,0 +1,65 @@
+name: GG VFS ACE-Step 8423 Russian ASR qualification
+
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-acestep-8423-asr.yml"]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  asr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Fetch accepted ACE 8423 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p in out
+          gh api -H "Accept: application/vnd.github+json"             "/repos/${GITHUB_REPOSITORY}/actions/artifacts/11332849523/zip" > /tmp/ace.zip
+          unzip -q /tmp/ace.zip -d in
+          test -s in/GG-VFS-F01_ACE-Step15_RU_8423_1.wav
+          sha256sum in/GG-VFS-F01_ACE-Step15_RU_8423_1.wav | tee out/source.sha256
+          grep -q '^a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2 ' out/source.sha256
+
+      - name: Transcribe with stronger Russian ASR
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'faster-whisper==1.2.0'
+          python - <<'PY'
+          import json
+          from faster_whisper import WhisperModel
+          wav="in/GG-VFS-F01_ACE-Step15_RU_8423_1.wav"
+          model=WhisperModel("small",device="cpu",compute_type="int8")
+          segments, info=model.transcribe(
+              wav,language="ru",beam_size=5,word_timestamps=True,
+              temperature=0.0,condition_on_previous_text=False,
+              vad_filter=False,
+          )
+          segs=[]; words=[]
+          for s in segments:
+              rec={"start":s.start,"end":s.end,"text":s.text,"avg_logprob":getattr(s,"avg_logprob",None)}
+              segs.append(rec)
+              for w in (s.words or []):
+                  words.append({"start":w.start,"end":w.end,"word":w.word,"probability":w.probability})
+          out={
+              "language":info.language,"language_probability":info.language_probability,
+              "expected":"Я говорила не с ним, а с тем, кто долго стоял у окна и ждал.",
+              "segments":segs,"words":words
+          }
+          open("out/asr.json","w").write(json.dumps(out,ensure_ascii=False,indent=2))
+          open("out/transcript.txt","w").write(" ".join(s["text"].strip() for s in segs)+"\n")
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-ace-8423-russian-asr
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
