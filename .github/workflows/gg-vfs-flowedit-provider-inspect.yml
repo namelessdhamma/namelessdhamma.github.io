@@ -1,0 +1,28 @@
+name: GG VFS FlowEdit provider inspect
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-flowedit-provider-inspect.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,requests
+          t=os.environ["KAGGLE_API_TOKEN"].strip();u=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          h={"Authorization":"Bearer "+t,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-flowedit-inspect/1.0"}
+          body={"user":u,"search":"8855c06cd61ed77a","pageSize":50}
+          r=requests.post("https://api.kaggle.com/v1/kernels.KernelsApiService/ListKernels",headers=h,json=body,timeout=30)
+          print("HTTP",r.status_code)
+          print(r.text[:20000])
+          if not r.ok: raise SystemExit(2)
+          PY
