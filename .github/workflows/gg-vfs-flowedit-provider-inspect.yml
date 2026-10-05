@@ -1,4 +1,4 @@
-name: GG VFS FlowEdit salvage qualification
+name: GG VFS FlowEdit result diagnosis
 on:
   push:
     branches: ["experiment/gg-openutau-mcp-20261004"]
@@ -6,158 +6,28 @@ on:
 permissions:
   contents: read
 jobs:
-  qualify:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     env:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
     steps:
-      - name: Read exact existing FlowEdit effect
-        shell: bash
+      - shell: bash
         run: |
           set -euo pipefail
-          mkdir -p work
           python - <<'PY'
-          import hashlib,json,os,requests
-          from pathlib import Path
+          import json,os,requests
           t=os.environ["KAGGLE_API_TOKEN"].strip();u=os.environ["KAGGLE_USERNAME_SLUG"].strip()
-          slug="gg-vfs-ace8423-flowedit-8855c06cd61ed77a";version=1
-          h={"Authorization":"Bearer "+t,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-flowedit-salvage/1.0"}
+          slug="gg-vfs-ace8423-flowedit-8855c06cd61ed77a"
+          h={"Authorization":"Bearer "+t,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-flowedit-diagnose/1.0"}
           api="https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput"
-          required=[
-            "gg-vfs-flowedit-output/result.json",
-            "gg-vfs-flowedit-output/GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav",
-          ]
-          optional=[
-            "gg-vfs-flowedit-output/REPRODUCTION_RECIPE.md",
-            "gg-vfs-flowedit-output/child.log",
-          ]
-          out=Path("work"); idx=[]
-          for name in required+optional:
-              r=requests.post(api,headers=h,json={"ownerSlug":u,"kernelSlug":slug,"filePath":name,"versionNumber":version},timeout=40,allow_redirects=False)
-              rec={"provider":name,"http":r.status_code}
-              if not (300<=r.status_code<400 and r.headers.get("location")):
-                  if name in required: raise RuntimeError(f"{name}: HTTP {r.status_code} {r.text[:1000]}")
-                  idx.append(rec); continue
-              g=requests.get(r.headers["location"],timeout=180)
-              if not g.ok:
-                  if name in required: raise RuntimeError(f"{name}: signed download {g.status_code}")
-                  rec["signed_http"]=g.status_code;idx.append(rec);continue
-              p=out/Path(name).name;p.write_bytes(g.content)
-              rec.update({"file":p.name,"bytes":len(g.content),"sha256":hashlib.sha256(g.content).hexdigest()})
-              idx.append(rec)
-          result=json.loads((out/"result.json").read_text())
-          if not result.get("ok"): raise RuntimeError("provider effect failed: "+json.dumps(result,ensure_ascii=False))
-          # Canonical accepted baseline is immutable in GitHub; provider need not duplicate it.
-          src_url="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/b0525d1/gg-vfs-assets/accepted/GG-VFS-F01_ACE-Step15_RU_8423_1.wav"
-          g=requests.get(src_url,headers={"User-Agent":"nd-vfs-flowedit-salvage/1.0"},timeout=120)
-          if not g.ok: raise RuntimeError(f"baseline raw fetch HTTP {g.status_code}")
-          bp=out/"BASELINE_8423_EXACT.wav";bp.write_bytes(g.content)
-          bsha=hashlib.sha256(g.content).hexdigest()
-          if bsha!="a9052e4b08086a41f97b1c3ff4d2ee5072a56129b8fa6d7ed3260a992fbc5be2":
-              raise RuntimeError("baseline SHA mismatch")
-          idx.append({"provider":"canonical_git_baseline","file":bp.name,"bytes":len(g.content),"sha256":bsha})
-          (out/"download-index.json").write_text(json.dumps({"provider_ref":f"{u}/{slug}/v1","files":idx},indent=2))
-          print(json.dumps(result,ensure_ascii=False,indent=2))
+          for p in ["gg-vfs-flowedit-output/result.json","gg-vfs-flowedit-output/child.log"]:
+              r=requests.post(api,headers=h,json={"ownerSlug":u,"kernelSlug":slug,"filePath":p,"versionNumber":1},timeout=40,allow_redirects=False)
+              print("PATH",p,"HTTP",r.status_code)
+              if 300<=r.status_code<400 and r.headers.get("location"):
+                  g=requests.get(r.headers["location"],timeout=180)
+                  print("SIGNED",g.status_code,"BYTES",len(g.content))
+                  if g.ok:
+                      print(g.text[-16000:])
           PY
-
-      - name: Strong Russian ASR and structural qualification
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install -q 'faster-whisper==1.2.0' 'scipy>=1.11'
-          python - <<'PY'
-          import json,math,re,wave
-          from pathlib import Path
-          import numpy as np
-          from scipy.signal import resample_poly, correlate, correlation_lags
-          from faster_whisper import WhisperModel
-
-          root=Path("work")
-          names=["BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav"]
-          expected="я говорила не с ним а с тем кто долго стоял у окна и ждал".split()
-
-          def read(path):
-              with wave.open(str(path),"rb") as w:
-                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth();n=w.getnframes()
-                  if sw!=2:raise RuntimeError("PCM16 required")
-                  x=np.frombuffer(w.readframes(n),dtype="<i2").astype(np.float32).reshape(-1,ch)/32768.0
-              return sr,x
-          def norm_words(text):
-              return re.sub(r"[^а-яё\s]"," ",text.lower()).replace("ё","е").split()
-          def ed(a,b):
-              d=list(range(len(b)+1))
-              for i,x in enumerate(a,1):
-                  nd=[i]+[0]*len(b)
-                  for j,y in enumerate(b,1): nd[j]=min(nd[j-1]+1,d[j]+1,d[j-1]+(x!=y))
-                  d=nd
-              return d[-1]
-
-          model=WhisperModel("small",device="cpu",compute_type="int8")
-          report={"expected_words":expected,"items":[]}
-          audio={}
-          for name in names:
-              sr,x=read(root/name);audio[name]=(sr,x)
-              mono=x.mean(axis=1)
-              a=resample_poly(mono,1,3).astype(np.float32) if sr==48000 else resample_poly(mono,16000,sr).astype(np.float32)
-              segs,info=model.transcribe(a,language="ru",beam_size=5,word_timestamps=True,temperature=0.0,condition_on_previous_text=False,vad_filter=False)
-              ss=[];ww=[]
-              for s in segs:
-                  ss.append({"start":s.start,"end":s.end,"text":s.text,"avg_logprob":getattr(s,"avg_logprob",None)})
-                  for w in (s.words or []): ww.append({"start":w.start,"end":w.end,"word":w.word,"probability":w.probability})
-              txt=" ".join(s["text"].strip() for s in ss); nw=norm_words(txt); dist=ed(expected,nw)
-              report["items"].append({"file":name,"transcript":txt,"normalized_words":nw,
-                "word_edit_distance":dist,"word_error_ratio":dist/len(expected),"contains_ne":"не" in nw,
-                "segments":ss,"words":ww,"language_probability":info.language_probability})
-
-          bsr,b=audio[names[0]];csr,c=audio[names[1]]
-          st={"format_match":(bsr,b.shape[1])==(csr,c.shape[1]),"baseline_duration":len(b)/bsr,"candidate_duration":len(c)/csr}
-          if bsr==csr:
-              n=min(len(b),len(c));bm=b[:n].mean(axis=1);cm=c[:n].mean(axis=1);hop=960
-              def env(x):
-                  m=len(x)//hop;z=x[:m*hop].reshape(m,hop)
-                  return np.sqrt(np.mean(z*z,axis=1)+1e-12)
-              e1,e2=env(bm),env(cm);m=min(len(e1),len(e2));e1=e1[:m];e2=e2[:m]
-              st["rms_envelope_correlation"]=float(np.corrcoef(e1,e2)[0,1])
-              co=correlate(e2-e2.mean(),e1-e1.mean(),mode="full");lags=correlation_lags(m,m,mode="full")
-              near=np.abs(lags)<=25;lag=lags[near][np.argmax(co[near])]
-              st["envelope_best_lag_ms"]=float(lag*hop/bsr*1000)
-          report["structural"]=st
-          base,cand=report["items"]
-          report["classification"]="CONTENT_IMPROVEMENT_CANDIDATE" if cand["word_edit_distance"]<base["word_edit_distance"] and cand["contains_ne"] else "NO_VERIFIED_CONTENT_COMPLETENESS_GAIN"
-          report["auditory_gates"]=["lexical_stress","GG_voice_from_silence","same_singer_identity","naturalness","no_background_buzz"]
-          (root/"qualification.json").write_text(json.dumps(report,ensure_ascii=False,indent=2))
-          print(json.dumps(report,ensure_ascii=False,indent=2))
-          PY
-
-      - name: Build A-B
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import wave
-          from pathlib import Path
-          import numpy as np
-          root=Path("work"); names=["BASELINE_8423_EXACT.wav","GG-VFS-F01_ACE8423_FLOWEDIT_GG_001.wav"]
-          chunks=[];sr0=ch0=None
-          for i,n in enumerate(names):
-              with wave.open(str(root/n),"rb") as w:
-                  sr=w.getframerate();ch=w.getnchannels();sw=w.getsampwidth();x=np.frombuffer(w.readframes(w.getnframes()),dtype="<i2").reshape(-1,ch)
-              if sw!=2:raise RuntimeError("PCM16")
-              if sr0 is None:sr0,ch0=sr,ch
-              if (sr,ch)!=(sr0,ch0):raise RuntimeError("format mismatch")
-              chunks.append(x)
-              if i==0:chunks.append(np.zeros((sr0,ch0),dtype=np.int16))
-          y=np.concatenate(chunks)
-          p=root/"GG_VFS_AUDITION_ACE8423_BASE_vs_FLOWEDIT_GG001.wav"
-          with wave.open(str(p),"wb") as w:
-              w.setnchannels(ch0);w.setsampwidth(2);w.setframerate(sr0);w.writeframes(y.astype("<i2").tobytes())
-          PY
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gg-vfs-ace8423-flowedit-gg-salvaged-qualified
-          path: work/
-          retention-days: 30
-          if-no-files-found: error
