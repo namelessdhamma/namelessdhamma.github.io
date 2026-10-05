@@ -145,7 +145,7 @@ jobs:
             }else if(op==='reconcile'){
               out={route_control:'github_actions',...(await reconcile({effect_id:request.effect_id,effect_token:request.effect_token},cfg))};
             }else if(op==='status'){
-              out={route_control:'github_actions',...(await status({request_id:request.request_id},cfg))};
+              out={route_control:'github_actions',...(await status({request_id:request.request_id,include_diagnostics:request.include_diagnostics===true},cfg))};
             }else if(op==='result'){
               out={route_control:'github_actions',...(await result({request_id:request.request_id},cfg))};
             }else{
