@@ -360,8 +360,9 @@ export async function submit(args={},cfg=configFromEnv()){
       startInput,endInput,prompt,negativePrompt,duration,width,height,seed,
       idempotencyKey:args.idempotency_key
     });
-    const found=await existing(cfg,username,effect.kernel_slug,ctx,args.retry_failed===true?Number(args.retry_version||0):0);
-    if(found && !(args.retry_failed === true && found.state === "FAILED")){
+    const retryTerminal=args.retry_terminal===true||args.retry_failed===true;
+    const found=await existing(cfg,username,effect.kernel_slug,ctx,retryTerminal?Number(args.retry_version||0):0);
+    if(found && !(retryTerminal && (found.state === "FAILED" || found.state === "CANCELLED"))){
       return {
         ok:true,state:found.state,reused_existing:true,
         request_id:"k2b-"+effect.token+"-v"+found.version,
