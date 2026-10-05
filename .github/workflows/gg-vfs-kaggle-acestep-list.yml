@@ -1,0 +1,42 @@
+name: GG VFS ACE-Step list metadata
+on:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-kaggle-acestep-list.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: List exact notebook metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          python - <<'PY'
+          import json,os,requests
+          from pathlib import Path
+          token=os.environ["KAGGLE_API_TOKEN"].strip(); user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
+          h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-list/1.0"}
+          url="https://api.kaggle.com/v1/kernels.KernelsApiService/ListKernels"
+          r=requests.post(url,headers=h,json={"user":user,"search":"gg-vfs-ace-2216c6d8342585e8","pageSize":50},timeout=30)
+          Path("out/http.txt").write_text(f"HTTP {r.status_code}\n"+r.text)
+          print("HTTP",r.status_code,flush=True)
+          print(r.text[:10000],flush=True)
+          if not r.ok: raise SystemExit(2)
+          obj=r.json()
+          Path("out/list.json").write_text(json.dumps(obj,indent=2,default=str))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-vfs-ace-step15-list-metadata
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
