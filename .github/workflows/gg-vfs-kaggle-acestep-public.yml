@@ -1,0 +1,69 @@
+name: GG VFS ACE-Step public Kaggle probe
+on:
+  workflow_dispatch:
+  push:
+    branches: ["experiment/gg-openutau-mcp-20261004"]
+    paths: [".github/workflows/gg-vfs-kaggle-acestep-public.yml"]
+permissions:
+  contents: read
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+    steps:
+      - name: Submit public credential-free ACE-Step probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public-probe
+          python - <<'PY'
+          import base64,hashlib,json,os,requests
+          from pathlib import Path
+          tok=os.environ["KAGGLE_API_TOKEN"]; user=os.environ["KAGGLE_USERNAME_SLUG"]; sha=os.environ["GITHUB_SHA"]
+          H={"Authorization":"Bearer "+tok,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-gg-vfs-ace-public/1.0"}
+          def rpc(method,body):
+              r=requests.post(f"https://api.kaggle.com/v1/kernels.KernelsApiService/{method}",headers=H,json=body,timeout=40)
+              if not r.ok:raise RuntimeError(f"{method} {r.status_code}: {r.text[:1600]}")
+              return r.json()
+          request={
+            "caption":"solo female a cappella vocal, warm young adult low-mezzo contralto, intimate and naturally resonant, clear native Russian diction, realistic human singing, expressive legato, varied natural vowel durations, subtle breaths, organic consonant-vowel transitions, dry close studio vocal, no instruments, no harmony, no choir, no reverb, no synthetic buzzing",
+            "lyrics":"[Verse]\nЯ говорила не с ним, а с тем, кто долго стоял у окна и ждал.",
+            "duration":15,"seeds":[8425]
+          }
+          req64=base64.b64encode(json.dumps(request,ensure_ascii=False).encode()).decode()
+          worker=f"https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/{sha}/railway/nd-omniroute/kaggle_acestep_vocal_worker.py"
+          script="\n".join([
+            "import base64,sys,urllib.request",
+            "from pathlib import Path",
+            f"Path('/kaggle/working/gg-vfs-ace-request.json').write_bytes(base64.b64decode('{req64}'))",
+            f"u='{worker}'",
+            "w=Path('/kaggle/working/kaggle_acestep_vocal_worker.py')",
+            "w.write_bytes(urllib.request.urlopen(urllib.request.Request(u,headers={'User-Agent':'nd-gg-vfs-ace-public/1.0'}),timeout=120).read())",
+            "sys.argv=['kaggle_acestep_vocal_worker.py','/kaggle/working/gg-vfs-ace-request.json']",
+            "exec(compile(w.read_text(encoding='utf-8'),str(w),'exec'),{'__name__':'__main__'})",
+          ])
+          effect=hashlib.sha256((sha+"|ace-public|8425").encode()).hexdigest()[:12]
+          slug=f"gg-vfs-ace-public-{effect}"
+          save=rpc("SaveKernel",{
+            "slug":f"{user}/{slug}","newTitle":f"GG VFS ACE Step RU Public {effect}",
+            "text":script,"language":"python","kernelType":"script",
+            "datasetDataSources":[],"kernelDataSources":[],"competitionDataSources":[],
+            "categoryIds":[],"modelDataSources":[],
+            "isPrivate":False,"enableGpu":True,"enableTpu":False,"enableInternet":True,
+            "kernelExecutionType":"SaveAndRunAll","machineShape":"NvidiaTeslaT4","sessionTimeoutSeconds":3300
+          })
+          version=int(save.get("versionNumber") or save.get("version_number") or 0)
+          if not version:raise RuntimeError("No version: "+json.dumps(save))
+          receipt={"state":"SUBMITTED_PUBLIC","owner":user,"slug":slug,"version":version,"public_url":f"https://www.kaggle.com/code/{user}/{slug}","request":request,"source_sha":sha}
+          Path("public-probe/submit.json").write_text(json.dumps(receipt,ensure_ascii=False,indent=2))
+          print(json.dumps(receipt,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-vfs-ace-public-submit
+          path: public-probe/
+          retention-days: 7
+          if-no-files-found: error
