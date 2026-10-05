@@ -46,7 +46,7 @@ jobs:
           remaining=max(0,sec(g.get("totalTimeAllowed",0))-sec(g.get("timeUsed",0)))
           if remaining<20*60:
               (out/"submit.json").write_text(json.dumps({"state":"FREE_ONLY_BLOCKED","remaining_hours":remaining/3600},indent=2));raise RuntimeError("FREE_ONLY_BLOCKED")
-          tag=hashlib.sha256(b"ACE8423-SFT-CFG7-COVER090-002-MINIMAL-DISK").hexdigest()[:16]
+          tag=hashlib.sha256(b"ACE8423-SFT-CFG7-COVER090-003-EXACT-SFT-PRECHECK").hexdigest()[:16]
           requested=f"gg-vfs-ace8423-sft-{tag}"
           worker_url=f"https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/{sha}/railway/nd-omniroute/kaggle_acestep_sft_lyrics_worker.py"
           script="\n".join(["import sys,urllib.request","from pathlib import Path",f"u='{worker_url}'",
@@ -179,4 +179,4 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-# runtime-fix: minimal-disk-v2
+# runtime-fix: exact-sft-precheck-v3
