@@ -14,7 +14,7 @@ jobs:
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
     steps:
-      - name: Inspect partial repaint checkpoints
+      - name: Inspect exact-source repaint checkpoints
         shell: bash
         run: |
           set -euo pipefail
@@ -23,12 +23,13 @@ jobs:
           import hashlib,json,os,requests
           from pathlib import Path
           token=os.environ["KAGGLE_API_TOKEN"].strip(); user=os.environ["KAGGLE_USERNAME_SLUG"].strip()
-          h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-partial/1.0"}
+          h={"Authorization":"Bearer "+token,"Accept":"application/json","Content-Type":"application/json","User-Agent":"nd-vfs-partial/1.1"}
           api="https://api.kaggle.com/v1"
-          slug="gg-vfs-ace8423-repaint-28c84d9bfd4c23e6"; version=1
+          slug="gg-vfs-ace8423-repaint-6e1ad7e93603370a"; version=1
           paths=[
             "gg-vfs-ace-repaint-output/result.json",
-            "gg-vfs-ace-repaint-output/BASELINE_8423_REPLAY.wav",
+            "gg-vfs-ace-repaint-output/child.log",
+            "gg-vfs-ace-repaint-output/BASELINE_8423_EXACT.wav",
             "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p2.wav",
             "gg-vfs-ace-repaint-output/GG-VFS-F01_ACE8423_REPAINT_0p4.wav",
             "gg-vfs-ace-repaint-output/REPRODUCTION_RECIPE.md",
@@ -48,11 +49,17 @@ jobs:
                   (Path("out")/Path(name).name).write_bytes(r.content)
               recs.append(rec); print(json.dumps(rec),flush=True)
           Path("out/checkpoints.json").write_text(json.dumps(recs,indent=2))
+          if (Path("out")/"child.log").exists():
+              print("CHILD_LOG_TAIL",flush=True)
+              print((Path("out")/"child.log").read_text(errors="replace")[-12000:],flush=True)
+          if (Path("out")/"result.json").exists():
+              print("RESULT",flush=True)
+              print((Path("out")/"result.json").read_text(errors="replace"),flush=True)
           PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gg-vfs-ace8423-repaint-partial-checkpoints
+          name: gg-vfs-ace8423-exact-repaint-checkpoints
           path: out/
           retention-days: 30
           if-no-files-found: error
