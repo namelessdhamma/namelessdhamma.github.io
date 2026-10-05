@@ -31,15 +31,22 @@ jobs:
           def post(path,body,redir=True):
               r=requests.post(api+"/"+path,headers=h,json=body,timeout=40,allow_redirects=redir)
               return r
-          # Read list once. Do not poll and do not resubmit.
-          r=post("kernels.KernelsApiService/ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100})
-          (out/"list-response.txt").write_text(f"HTTP {r.status_code}\n"+r.text)
-          if not r.ok:
-              print("LIST_HTTP",r.status_code,r.text[:2000],flush=True)
-              raise SystemExit(2)
-          obj=r.json() if r.text.strip() else {}
-          (out/"provider-output.json").write_text(json.dumps(obj,default=str,indent=2))
-          files=obj.get("files",[]) or []
+          # Bounded same-effect output watch. Never resubmit inference.
+          import time
+          obj={}; files=[]; r=None
+          for attempt in range(15):
+              r=post("kernels.KernelsApiService/ListKernelSessionOutput",{"userName":user,"kernelSlug":slug,"versionLabel":"v1","pageSize":100})
+              (out/"list-response.txt").write_text(f"HTTP {r.status_code}\n"+r.text)
+              if not r.ok:
+                  print("LIST_HTTP",r.status_code,r.text[:2000],flush=True)
+                  raise SystemExit(2)
+              obj=r.json() if r.text.strip() else {}
+              (out/"provider-output.json").write_text(json.dumps(obj,default=str,indent=2))
+              files=obj.get("files",[]) or []
+              print("OUTPUT_ATTEMPT",attempt+1,"FILES",len(files),flush=True)
+              if files: break
+              time.sleep(30)
+
           names=[]
           for x in files:
               n=x.get("fileName") or x.get("name") or x.get("path")
