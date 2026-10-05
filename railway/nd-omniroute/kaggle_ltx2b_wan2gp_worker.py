@@ -59,7 +59,7 @@ def align32(v: int) -> int:
 
 def frame_count(seconds: float) -> int:
     raw = max(0.6, min(6.0, float(seconds))) * FPS
-    k = max(2, round((raw - 1) / 8))
+    k = max(2, math.ceil((raw - 1) / 8))
     return min(121, 8 * k + 1)
 
 
