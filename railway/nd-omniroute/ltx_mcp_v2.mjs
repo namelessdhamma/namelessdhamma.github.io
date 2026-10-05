@@ -114,8 +114,16 @@ async function existing(username,kernelSlug,ctx){
   const exact=kernels.filter(k=>{const slug=String(k?.slug||'').replace(/^.*\//,'').toLowerCase(),ref=String(k?.ref||'').toLowerCase(),author=String(k?.author||'').toLowerCase();return ref===owner+'/'+target||(slug===target&&(!author||author===owner||author==='savva savchenko'));});
   if(exact.length===0)return null;
   if(exact.length>1)throw new Error('Kaggle idempotency conflict: multiple exact kernels');
-  const version=Number(exact[0]?.currentVersionNumber??exact[0]?.current_version_number??0);
-  if(!version)throw new Error('Kaggle idempotency conflict: existing kernel has no version');
+  let version=Number(exact[0]?.currentVersionNumber??exact[0]?.current_version_number??0);
+  if(!version){
+    try{
+      const detail=await rpc('kernels.KernelsApiService','GetKernel',{userName:username,kernelSlug},ctx);
+      version=Number(detail?.metadata?.currentVersionNumber??detail?.metadata?.current_version_number??detail?.currentVersionNumber??detail?.current_version_number??0);
+    }catch(e){
+      if(Number(e?.status||0)!==404)throw e;
+    }
+  }
+  if(!version)return null;
   const st=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug,versionLabel:'v'+version},ctx);
   return {version,state:stateOf(st?.status),provider_status:st?.status??null};
 }
