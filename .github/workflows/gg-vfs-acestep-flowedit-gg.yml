@@ -95,7 +95,13 @@ jobs:
               time.sleep(2)
               listed=rpc("kernels.KernelsApiService","ListKernels",{"user":user,"search":tag,"pageSize":50})
               exact=[k for k in (listed.get("kernels") or []) if tag in str(k.get("slug","")) or tag in str(k.get("ref",""))]
-              actual_slug=str(exact[0].get("slug") if exact else requested_slug).split("/")[-1]
+              if exact:
+                  k=exact[0]
+                  actual_slug=str(k.get("slug") or str(k.get("ref") or "").split("/")[-1]).strip()
+              else:
+                  actual_slug=requested_slug
+              if not actual_slug or actual_slug.lower()=="none":
+                  raise RuntimeError("Kaggle effect created but actual slug unresolved")
               reused=False
 
           handle={"state":"SUBMITTED","user":user,"kernel_slug":actual_slug,"version":version,
@@ -255,4 +261,4 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-# trigger: resume-2026-10-05
+# trigger: flowedit-offload-fix-2026-10-05
