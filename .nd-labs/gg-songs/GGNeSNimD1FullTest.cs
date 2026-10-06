@@ -655,11 +655,10 @@ namespace OpenUtau.Test.Core.DiffSinger {
                         && string.Equals(p.phoneme, phone, StringComparison.OrdinalIgnoreCase));
                     if (pp != null) pp.Parent!.GetPhonemeOverride(pp.index).offset = offset;
                 }
+                // Proven D1v5 brl4 repair only. brl2 uses the already accepted
+                // D1v4 flattened melody and is otherwise frozen.
                 ShiftPhone("былого", "ru/v", -60);
                 ShiftPhone("неизменным", "ru/z", -60);
-                ShiftPhone("незабвенным", "ru/z", -50);
-                ShiftPhone("незабвенным", "ru/v", -50);
-                ShiftPhone("незримый", "ru/z", -45);
                 project.Validate(new ValidateOptions {
                     SkipTiming = true,
                     Part = part,
