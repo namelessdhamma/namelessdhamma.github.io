@@ -6,7 +6,16 @@ SCORE_PATH=pathlib.Path(sys.argv[1])
 ROOT=pathlib.Path(sys.argv[2] if len(sys.argv)>2 else "/tmp/gg-d1-full")
 score=json.loads(SCORE_PATH.read_text())
 BPM=score["bpm"]; TPB=score["ticks_per_beat"]; BAR=TPB*4; SR=48000; BARS=score["bars"]
-DURATION=BARS*4*60/BPM+4.0
+TEMPO_MAP=sorted(score.get("tempo_map") or [{"bar":0,"bpm":BPM}], key=lambda x:int(x["bar"]))
+if int(TEMPO_MAP[0]["bar"]) != 0:
+    TEMPO_MAP.insert(0,{"bar":0,"bpm":BPM})
+def bpm_for_bar(bar):
+    cur=float(TEMPO_MAP[0]["bpm"])
+    for p in TEMPO_MAP:
+        if int(p["bar"])<=bar: cur=float(p["bpm"])
+        else: break
+    return cur
+DURATION=sum(4*60.0/bpm_for_bar(b) for b in range(BARS))+4.0
 ROOT.mkdir(parents=True,exist_ok=True)
 SF=pathlib.Path("/usr/share/sounds/sf2/FluidR3_GM.sf2")
 
@@ -47,7 +56,11 @@ def save(name,program,events,channel=0):
     mid=MidiFile(ticks_per_beat=TPB)
     meta=MidiTrack(); mid.tracks.append(meta)
     meta.append(MetaMessage("track_name",name=name,time=0))
-    meta.append(MetaMessage("set_tempo",tempo=bpm2tempo(BPM),time=0))
+    last_tempo_tick=0
+    for idx,p in enumerate(TEMPO_MAP):
+        tick=int(p["bar"])*BAR
+        meta.append(MetaMessage("set_tempo",tempo=bpm2tempo(float(p["bpm"])),time=tick-last_tempo_tick))
+        last_tempo_tick=tick
     meta.append(MetaMessage("time_signature",numerator=4,denominator=4,time=0))
     tr=MidiTrack(); mid.tracks.append(tr)
     if program is not None: tr.append(Message("program_change",program=program,channel=channel,time=0))
@@ -116,21 +129,55 @@ def near_stress(t,window=90):
 
 stems={}
 
-# Drums: coherent groove, accents derived from the exact vocal stress map.
+# Drums: GG D1R5 — section-specific groove, explicit accents and breathing space.
 ev=[]
 for b in range(BARS):
     st=b*BAR
     vocal_bar=any(a < st+BAR and z > st for a,z in active_intervals)
     chorus=b in CHORUS_BARS
-    for i in range(8):
+    bridge=b in BRIDGE_BARS
+    final=b in FINAL_BARS
+    coda=b in CODA_BARS
+    intro=b in INTRO_BARS
+    transition=in_section(b,"transition")
+    # Hats carry different identities instead of one metronomic grid.
+    if intro or coda:
+        hat_steps=(0,4)
+        hat_base=34
+    elif bridge:
+        hat_steps=(0,3,6)
+        hat_base=38
+    elif chorus or final:
+        hat_steps=tuple(range(8))
+        hat_base=43
+    elif b in DEV_BARS:
+        hat_steps=tuple(range(8))
+        hat_base=46
+    else:
+        hat_steps=(0,2,3,6)
+        hat_base=39
+    for i in hat_steps:
         t=st+i*(TPB//2)
-        v=40+(9 if i in (0,3,6) else 0)+(4 if chorus else 0)
-        add(ev,t,42,70,v,9)
-    for beat in [0,2]:
-        add(ev,st+beat*TPB,36,120,72+(8 if chorus else 0),9)
-    for beat in [1,3]:
-        add(ev,st+beat*TPB,38,120,74+(10 if chorus else 0),9)
-    # Phrase answers start only after the actual sung tail in a response bar.
+        accent=10 if i in (0,3,6) else 0
+        add(ev,t,42,70,hat_base+accent,9)
+    # Kick/snare pattern changes by section.
+    kicks=(0,2) if not (chorus or final) else (0,1.5,2,3.5)
+    if bridge: kicks=(0,2.5)
+    if coda: kicks=(0,)
+    for beat in kicks:
+        add(ev,st+int(beat*TPB),36,120,72+(10 if chorus or final else 0),9)
+    snares=(1,3)
+    if bridge: snares=(2,)
+    if coda: snares=(2,)
+    for beat in snares:
+        add(ev,st+int(beat*TPB),38,120,74+(12 if chorus or final else 0),9)
+    # Clear transition/final accents and tom punctuation.
+    if b in {27,39,43,55,67,79,95,107,113,119}:
+        add(ev,st+3*TPB,49,180,86,9)
+        add(ev,st+3*TPB+TPB//2,50,150,92,9)
+    if transition and b%2==1:
+        add(ev,st+3*TPB,45,180,68,9)
+    # Phrase answers only after the vocal tail.
     if not vocal_bar or b in response_bars:
         overlaps=[z for a,z in active_intervals if a < st+BAR and z > st]
         vocal_end=max(overlaps) if overlaps else st
@@ -138,26 +185,24 @@ for b in range(BARS):
         fill_end=st+BAR-120
         available=fill_end-fill_start
         if available >= 360:
-            notes=[45,47,48,47]
+            notes=[45,47,48,50]
             step=max(90,available//len(notes))
             for j,n in enumerate(notes):
-                add(ev,fill_start+j*step,n,min(115,step-20),62+5*j,9)
-
-    # 16-bar drum-led development: same 3+3+2 identity, now openly narrated by toms.
+                add(ev,fill_start+j*step,n,min(125,step-20),60+7*j,9)
     if b in DEV_BARS:
         phase=(b-min(DEV_BARS))%4
         toms=[45,47,48,50] if phase<2 else [50,48,47,45]
         for j,n in enumerate(toms):
-            add(ev,st+j*(TPB//2),n,150,70+4*j,9)
+            add(ev,st+j*(TPB//2),n,150,72+4*j,9)
         for off in (0,3*(TPB//2),6*(TPB//2)):
-            add(ev,st+off,36,120,82,9)
-# exact lyric-stress support and subtle frame-drum/tambourine signal
+            add(ev,st+off,36,120,84,9)
 for t in stress_ticks:
-    add(ev,t,54,80,48,9)
-    if (t//BAR)%3==2 or (t//BAR) in CHORUS_BARS: add(ev,t,45,110,42,9)
+    add(ev,t,54,80,54,9)
+    if (t//BAR)%3==2 or (t//BAR) in CHORUS_BARS or (t//BAR) in FINAL_BARS:
+        add(ev,t,45,110,48,9)
 stems["drums"]=save("drums",None,ev,9)
 
-# Bass: chord roots/fifths plus small rhythmic emphasis near stressed lyric anchors.
+# Bass:# Bass: chord roots/fifths plus small rhythmic emphasis near stressed lyric anchors.
 ev=[]
 for b,ch in enumerate(chords):
     st=b*BAR; r=roots[ch]; vocal_bar=any(a < st+BAR and z > st for a,z in active_intervals)
@@ -177,12 +222,35 @@ for t in stress_ticks:
     add(ev,t,r+12,150,68)
 stems["bass"]=save("bass",33,ev)
 
+# Dedicated low-mid GG riff: remains audible under voice without occupying the vocal formant band.
+ev=[]
+for b,ch in enumerate(chords):
+    st=b*BAR; r=roots[ch]+12
+    vocal_bar=any(a < st+BAR and z > st for a,z in active_intervals)
+    if b in CHORUS_BARS or b in FINAL_BARS:
+        offs=(0,360,720,1080,1440,1680); ints=(0,7,12,7,3,7); vel=67
+    elif b in BRIDGE_BARS:
+        offs=(0,960,1440); ints=(0,7,3); vel=55
+    elif b in DEV_BARS:
+        offs=tuple(i*(TPB//2) for i in range(8)); ints=(0,7,12,7,3,7,12,7); vel=72
+    elif b in CODA_BARS or b in OUTRO_BARS:
+        offs=(0,960); ints=(0,7); vel=42
+    else:
+        offs=(0,720,1440); ints=(0,7,3); vel=58
+    for i,off in enumerate(offs):
+        # At vocal entrance leave a small pocket, then let the riff answer inside the bar.
+        if vocal_bar and off < 240: continue
+        n=r+ints[i%len(ints)]
+        while n>62: n-=12
+        add(ev,st+off,n,230 if b not in BRIDGE_BARS else 430,vel)
+stems["riff"]=save("riff",29,ev)
+
 # Guitar left: harmonic body. Long voicings under voice, rhythmic rock answers in gaps.
 ev=[]
 for b,ch in enumerate(chords):
     st=b*BAR; ns=voiced_chord(ch,b); vocal_bar=any(a < st+BAR and z > st for a,z in active_intervals)
     if vocal_bar:
-        base_vel=36 if b not in CHORUS_BARS else 42
+        base_vel=42 if b not in CHORUS_BARS else 48
         for off in (0,960):
             for j,n in enumerate(ns):
                 add(ev,st+off,n,760,base_vel+(8 if j==len(ns)-1 else 0))
@@ -201,9 +269,9 @@ for b,ch in enumerate(chords):
     seq=[0,min(1,len(ns)-1),min(2,len(ns)-1),min(1,len(ns)-1),0,min(2,len(ns)-1)]
     offs=[0,360,720,1080,1440,1680]
     for i,(off,idx) in enumerate(zip(offs,seq)):
-        if in_vocal(st+off) and i in (2,4): continue
+        if in_vocal(st+off) and i in (4,): continue
         note=ns[idx]
-        vel=38 if in_vocal(st+off) else (56 if b in DEV_BARS else 48)
+        vel=44 if in_vocal(st+off) else (58 if b in DEV_BARS else 50)
         add(ev,st+off,note,230,vel)
 stems["guitar_right"]=save("guitar_right",27,ev)
 
@@ -280,8 +348,9 @@ combined.save(ROOT/"NE_S_NIM_D1_FULL_arrangement.mid")
 filters={
 "drums":"highpass=f=35,acompressor=threshold=-18dB:ratio=3.0:attack=5:release=90,equalizer=f=80:t=q:w=1:g=2,equalizer=f=5200:t=q:w=1:g=2,volume=0.88",
 "bass":"highpass=f=28,lowpass=f=4200,acompressor=threshold=-20dB:ratio=3.4:attack=10:release=120,volume=0.78",
-"guitar_left":"highpass=f=90,lowpass=f=9500,equalizer=f=1800:t=q:w=1.2:g=-4,equalizer=f=2800:t=q:w=1.0:g=-3,volume=0.48",
-"guitar_right":"highpass=f=110,lowpass=f=10500,equalizer=f=1700:t=q:w=1.2:g=-4,aecho=0.9:0.75:75:0.05,volume=0.42",
+"riff":"highpass=f=85,lowpass=f=6200,equalizer=f=1900:t=q:w=1.0:g=-5,equalizer=f=3200:t=q:w=1.2:g=-2,acompressor=threshold=-20dB:ratio=1.5:attack=8:release=90,volume=0.78",
+"guitar_left":"highpass=f=90,lowpass=f=9500,equalizer=f=1900:t=q:w=1.2:g=-3,equalizer=f=3000:t=q:w=1.0:g=-2,volume=0.56",
+"guitar_right":"highpass=f=110,lowpass=f=10500,equalizer=f=1900:t=q:w=1.2:g=-3,aecho=0.9:0.75:75:0.05,volume=0.50",
 "acoustic":"highpass=f=110,lowpass=f=11000,equalizer=f=2200:t=q:w=1:g=-3,volume=0.32",
 "organ":"highpass=f=120,lowpass=f=7600,equalizer=f=1800:t=q:w=1:g=-5,volume=0.25",
 "strings":"highpass=f=160,lowpass=f=9000,equalizer=f=2300:t=q:w=1:g=-4,volume=0.23",
@@ -303,12 +372,12 @@ inputs=[]
 for p in sorted(proc.glob("*.wav")): inputs += ["-i",str(p)]
 n=len(list(proc.glob("*.wav")))
 subprocess.run(["ffmpeg","-y","-v","error",*inputs,"-filter_complex",
-                f"amix=inputs={n}:duration=longest:normalize=0,acompressor=threshold=-12dB:ratio=2.0:attack=12:release=160,alimiter=limit=0.90[out]",
+                f"amix=inputs={n}:duration=longest:normalize=0,acompressor=threshold=-9dB:ratio=1.35:attack=18:release=180,alimiter=limit=0.92[out]",
                 "-map","[out]","-ar",str(SR),"-c:a","pcm_s24le",str(ROOT/"instrumental.wav")],check=True)
 subprocess.run(["ffmpeg","-y","-v","error","-i",str(ROOT/"instrumental.wav"),
                 "-codec:a","libmp3lame","-b:a","320k",str(ROOT/"instrumental.mp3")],check=True)
 
-diag={"duration_target":DURATION,"stress_ticks":stress_ticks,
+diag={"duration_target":DURATION,"tempo_map":TEMPO_MAP,"stress_ticks":stress_ticks,
       "active_intervals":active_intervals,
       "phrases":[{"id":p["id"],"start":p["bar"]*BAR+p["offset"],"end":p["end"],"slot_end":p["slot_end"]} for p in phrases],
       "stems":list(stems)}
