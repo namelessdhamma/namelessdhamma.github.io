@@ -1,6 +1,5 @@
 {
-  "op": "status",
-  "nonce": "a8-r01-quality-768-param-status-8-20261006",
-  "request_id": "k2b-r580e338bd2b8-4dd7-v1",
-  "include_diagnostics": true
+  "op": "result",
+  "nonce": "a8-r01-quality-768-param-result-20261006-1",
+  "request_id": "k2b-r580e338bd2b8-4dd7-v1"
 }
