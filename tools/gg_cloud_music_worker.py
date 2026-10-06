@@ -3,6 +3,8 @@ import argparse, json, mimetypes, os, pathlib, shutil, subprocess, sys, tarfile,
 from xml.etree import ElementTree as ET
 
 RELAY="https://gg-cloud-music-studio.onrender.com"
+APPLIO_REPO="https://github.com/IAHispano/Applio.git"
+APPLIO_COMMIT="324f4d89c3e0e8dc0e555a3d53784e3282c16e09"
 VOICEBANK_CATALOG={
     "awata-weak-v3":{
         "kind":"zip",
@@ -467,6 +469,199 @@ def vocal_render(payload, job, job_id, token, work):
     for i,w in enumerate(wavs): upload_artifact(job_id,f"vocal-{i+1}.wav",w,token,"audio/wav")
     return {"engine":"diffsinger-utau","version":"0.3.8","character_normalized":normalized_character,"voice_id":voice_id,"voicebank":vb.name,"language":lang,"speaker":payload.get("speaker"),"gender":payload.get("gender"),"wav_count":len(wavs),"ezv":ezv,"dependency_log_tail":install_log[-2000:],"log_tail":render_log}
 
+
+def ensure_applio_runtime(work):
+    """Install/cache a pinned CPU Applio runtime for headless RVC inference."""
+    cache=pathlib.Path(os.environ.get("GG_APPLIO_CACHE_DIR") or (work/"applio-cache")).resolve()
+    root=cache/"src"; venv=cache/"venv"; ready=cache/("READY-"+APPLIO_COMMIT)
+    cache.mkdir(parents=True,exist_ok=True)
+    if ready.exists() and (root/"core.py").exists() and (venv/"bin/python").exists():
+        return root,venv/"bin/python",{"cached":True,"commit":APPLIO_COMMIT}
+    if root.exists(): shutil.rmtree(root)
+    cp=subprocess.run(["git","clone","--filter=blob:none","--no-checkout",APPLIO_REPO,str(root)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=300)
+    if cp.returncode: raise RuntimeError("Applio clone failed:\n"+cp.stdout[-10000:])
+    cp=subprocess.run(["git","-C",str(root),"checkout","--detach",APPLIO_COMMIT],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=120)
+    if cp.returncode: raise RuntimeError("Applio checkout failed:\n"+cp.stdout[-10000:])
+    uv=shutil.which("uv")
+    if not uv:
+        cp=subprocess.run([sys.executable,"-m","pip","install","--disable-pip-version-check","--quiet","uv"],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=300)
+        if cp.returncode: raise RuntimeError("uv install failed:\n"+cp.stdout[-10000:])
+        uv=shutil.which("uv")
+    if not uv: raise RuntimeError("uv executable unavailable after install")
+    if venv.exists(): shutil.rmtree(venv)
+    cp=subprocess.run([uv,"venv",str(venv),"--python","3.12"],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=600)
+    if cp.returncode: raise RuntimeError("Applio venv creation failed:\n"+cp.stdout[-12000:])
+    vpy=venv/"bin/python"
+    cp=subprocess.run([uv,"pip","install","--python",str(vpy),"torch==2.11.0","torchaudio==2.11.0","--index-url","https://download.pytorch.org/whl/cpu"],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=1200)
+    if cp.returncode: raise RuntimeError("Applio CPU torch install failed:\n"+cp.stdout[-12000:])
+    req=(root/"requirements.txt").read_text()
+    filtered=[]
+    for line in req.splitlines():
+        s=line.strip().lower()
+        if s.startswith("torch==") or s.startswith("torchaudio==") or s.startswith("onnxruntime-gpu=="):
+            continue
+        filtered.append(line)
+    filtered.append("onnxruntime>=1.22,<2")
+    req_cpu=cache/"requirements-cpu.txt"; req_cpu.write_text("\n".join(filtered)+"\n")
+    cp=subprocess.run([uv,"pip","install","--python",str(vpy),"-r",str(req_cpu)],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=1800)
+    if cp.returncode: raise RuntimeError("Applio dependency install failed:\n"+cp.stdout[-16000:])
+    prereq="""from rvc.lib.tools.prerequisites_download import prequisites_download_pipeline\nprequisites_download_pipeline(False, True, False)\n"""
+    cp=subprocess.run([str(vpy),"-c",prereq],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=900)
+    if cp.returncode: raise RuntimeError("Applio inference prerequisite download failed:\n"+cp.stdout[-16000:])
+    ready.write_text(APPLIO_COMMIT+"\n")
+    return root,vpy,{"cached":False,"commit":APPLIO_COMMIT,"setup_log_tail":cp.stdout[-3000:]}
+
+def _asset_to_file(job, job_id, token, work, name, dest_name=None, required=True):
+    names={a["name"] for a in job.get("assets",[])}
+    if not name or name not in names:
+        if required: raise RuntimeError("required job asset missing: "+str(name))
+        return None
+    p=work/(dest_name or pathlib.Path(name).name)
+    p.parent.mkdir(parents=True,exist_ok=True)
+    p.write_bytes(get_asset(job_id,name,token))
+    return p
+
+def _ffprobe_duration(path):
+    q=subprocess.run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(path)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    if q.returncode: raise RuntimeError("ffprobe failed:\n"+q.stdout[-4000:])
+    return float(q.stdout.strip())
+
+def _bounded_float(payload,key,default,lo,hi):
+    v=float(payload.get(key,default))
+    if not lo <= v <= hi: raise RuntimeError(f"{key} must be in [{lo}, {hi}]")
+    return v
+
+def vocal_mutate(payload, job, job_id, token, work):
+    """Headless Applio/RVC mutation layer for whole-vocal or bounded segment repair."""
+    root,vpy,runtime=ensure_applio_runtime(work)
+    if payload.get("setup_only"):
+        cp=subprocess.run([str(vpy),"core.py","--help"],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=120)
+        if cp.returncode: raise RuntimeError("Applio CLI probe failed:\n"+cp.stdout[-10000:])
+        return {"engine":"applio-rvc","mode":"setup_only","version_commit":APPLIO_COMMIT,"runtime":runtime,"cli_help_tail":cp.stdout[-5000:]}
+
+    source_name=str(payload.get("source_asset") or "")
+    model_name=str(payload.get("model_asset") or "")
+    index_name=str(payload.get("index_asset") or "")
+    source=_asset_to_file(job,job_id,token,work,source_name,"source.wav")
+    model=_asset_to_file(job,job_id,token,work,model_name,"target.pth")
+    index=_asset_to_file(job,job_id,token,work,index_name,"target.index",required=False) if index_name else None
+
+    duration=_ffprobe_duration(source)
+    start=payload.get("start_seconds"); end=payload.get("end_seconds")
+    if (start is None) != (end is None): raise RuntimeError("start_seconds and end_seconds must be supplied together")
+    region=None; infer_source=source
+    if start is not None:
+        start=float(start); end=float(end)
+        if start < 0 or end <= start or end > duration+0.05: raise RuntimeError("invalid mutation region")
+        context=_bounded_float(payload,"context_seconds",0.20,0.0,1.5)
+        rs=max(0.0,start-context); re=min(duration,end+context)
+        region={"requested_start":start,"requested_end":end,"render_start":rs,"render_end":re,"context_seconds":context}
+        infer_source=work/"source-region.wav"
+        cp=subprocess.run(["ffmpeg","-y","-v","error","-ss",f"{rs:.6f}","-to",f"{re:.6f}","-i",str(source),"-ac","1",str(infer_source)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+        if cp.returncode or not infer_source.exists(): raise RuntimeError("region extraction failed:\n"+cp.stdout[-6000:])
+
+    cfg={
+        "pitch":int(payload.get("pitch",0)),
+        "index_rate":_bounded_float(payload,"index_rate",0.75,0.0,1.0),
+        "volume_envelope":_bounded_float(payload,"volume_envelope",1.0,0.0,1.0),
+        "protect":_bounded_float(payload,"protect",0.5,0.0,0.5),
+        "f0_method":str(payload.get("f0_method","rmvpe")),
+        "split_audio":bool(payload.get("split_audio",False)),
+        "f0_autotune":bool(payload.get("f0_autotune",False)),
+        "f0_autotune_strength":_bounded_float(payload,"f0_autotune_strength",1.0,0.0,1.0),
+        "proposed_pitch":bool(payload.get("proposed_pitch",False)),
+        "proposed_pitch_threshold":_bounded_float(payload,"proposed_pitch_threshold",155.0,50.0,600.0),
+        "clean_audio":bool(payload.get("clean_audio",False)),
+        "clean_strength":_bounded_float(payload,"clean_strength",0.5,0.0,1.0),
+        "formant_shifting":bool(payload.get("formant_shifting",False)),
+        "formant_qfrency":_bounded_float(payload,"formant_qfrency",1.0,0.25,4.0),
+        "formant_timbre":_bounded_float(payload,"formant_timbre",1.0,0.25,4.0),
+        "post_process":bool(payload.get("post_process",False)),
+        "reverb":bool(payload.get("reverb",False)),
+        "pitch_shift":bool(payload.get("pitch_shift",False)),
+        "limiter":bool(payload.get("limiter",False)),
+        "gain":bool(payload.get("gain",False)),
+        "distortion":bool(payload.get("distortion",False)),
+        "chorus":bool(payload.get("chorus",False)),
+        "bitcrush":bool(payload.get("bitcrush",False)),
+        "clipping":bool(payload.get("clipping",False)),
+        "compressor":bool(payload.get("compressor",False)),
+        "delay":bool(payload.get("delay",False)),
+        "reverb_room_size":_bounded_float(payload,"reverb_room_size",0.5,0.0,1.0),
+        "reverb_damping":_bounded_float(payload,"reverb_damping",0.5,0.0,1.0),
+        "reverb_wet_gain":_bounded_float(payload,"reverb_wet_gain",0.33,0.0,1.0),
+        "reverb_dry_gain":_bounded_float(payload,"reverb_dry_gain",0.4,0.0,1.0),
+        "reverb_width":_bounded_float(payload,"reverb_width",1.0,0.0,1.0),
+        "reverb_freeze_mode":_bounded_float(payload,"reverb_freeze_mode",0.0,0.0,1.0),
+        "pitch_shift_semitones":_bounded_float(payload,"pitch_shift_semitones",0.0,-24.0,24.0),
+        "limiter_threshold":_bounded_float(payload,"limiter_threshold",-6.0,-30.0,0.0),
+        "limiter_release_time":_bounded_float(payload,"limiter_release_time",50.0,1.0,1000.0),
+        "gain_db":_bounded_float(payload,"gain_db",0.0,-24.0,24.0),
+        "distortion_gain":_bounded_float(payload,"distortion_gain",25.0,0.0,60.0),
+        "chorus_rate":_bounded_float(payload,"chorus_rate",1.0,0.01,20.0),
+        "chorus_depth":_bounded_float(payload,"chorus_depth",0.25,0.0,1.0),
+        "chorus_center_delay":_bounded_float(payload,"chorus_center_delay",7.0,0.1,100.0),
+        "chorus_feedback":_bounded_float(payload,"chorus_feedback",0.0,-1.0,1.0),
+        "chorus_mix":_bounded_float(payload,"chorus_mix",0.5,0.0,1.0),
+        "bitcrush_bit_depth":int(payload.get("bitcrush_bit_depth",8)),
+        "clipping_threshold":_bounded_float(payload,"clipping_threshold",-6.0,-30.0,0.0),
+        "compressor_threshold":_bounded_float(payload,"compressor_threshold",0.0,-60.0,0.0),
+        "compressor_ratio":_bounded_float(payload,"compressor_ratio",1.0,1.0,20.0),
+        "compressor_attack":_bounded_float(payload,"compressor_attack",1.0,0.1,500.0),
+        "compressor_release":_bounded_float(payload,"compressor_release",100.0,1.0,5000.0),
+        "delay_seconds":_bounded_float(payload,"delay_seconds",0.5,0.0,5.0),
+        "delay_feedback":_bounded_float(payload,"delay_feedback",0.0,0.0,0.99),
+        "delay_mix":_bounded_float(payload,"delay_mix",0.5,0.0,1.0),
+        "sid":int(payload.get("sid",0))
+    }
+    if cfg["pitch"] < -24 or cfg["pitch"] > 24: raise RuntimeError("pitch must be in [-24, 24]")
+    if cfg["f0_method"] not in {"rmvpe","fcpe","crepe","crepe-tiny","hybrid"}: raise RuntimeError("unsupported f0_method")
+    if cfg["bitcrush_bit_depth"] < 1 or cfg["bitcrush_bit_depth"] > 24: raise RuntimeError("bitcrush_bit_depth must be in [1, 24]")
+
+    cfg_path=work/"applio-config.json"; cfg_path.write_text(json.dumps(cfg))
+    converted=work/"mutated-region.wav"
+    runner=work/"run_applio_mutate.py"
+    runner.write_text("""import json, os, sys
+root, source, output, model, index, cfg_path = sys.argv[1:7]
+os.chdir(root); sys.path.insert(0, root)
+from core import run_infer_script
+cfg=json.load(open(cfg_path))
+run_infer_script(input_path=source, output_path=output, pth_path=model, index_path=index if index != "-" else "", export_format="WAV", embedder_model="contentvec", **cfg)
+""")
+    cp=subprocess.run([str(vpy),str(runner),str(root),str(infer_source),str(converted),str(model),str(index) if index else "-",str(cfg_path)],
+                      cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=900)
+    if cp.returncode or not converted.exists() or converted.stat().st_size==0:
+        raise RuntimeError("Applio vocal mutation failed (rc=%s):\n%s"%(cp.returncode,cp.stdout[-16000:]))
+
+    artifacts=[]
+    upload_artifact(job_id,"mutated-region.wav",converted,token,"audio/wav"); artifacts.append("mutated-region.wav")
+    full=converted
+    if region:
+        rs=region["render_start"]; re=region["render_end"]
+        prefix=work/"prefix.wav"; suffix=work/"suffix.wav"
+        subprocess.run(["ffmpeg","-y","-v","error","-i",str(source),"-t",f"{rs:.6f}",str(prefix)],check=True)
+        subprocess.run(["ffmpeg","-y","-v","error","-ss",f"{re:.6f}","-i",str(source),str(suffix)],check=True)
+        fade=min(_bounded_float(payload,"crossfade_seconds",0.035,0.0,0.25), max(0.0,(re-rs)/4))
+        full=work/"mutated-full.wav"
+        if rs <= 0.0001 and re >= duration-0.0001:
+            shutil.copy2(converted,full)
+        elif rs <= 0.0001:
+            cmd=["ffmpeg","-y","-v","error","-i",str(converted),"-i",str(suffix),"-filter_complex",f"[0:a][1:a]acrossfade=d={fade}:c1=tri:c2=tri[out]","-map","[out]",str(full)]
+            subprocess.run(cmd,check=True)
+        elif re >= duration-0.0001:
+            cmd=["ffmpeg","-y","-v","error","-i",str(prefix),"-i",str(converted),"-filter_complex",f"[0:a][1:a]acrossfade=d={fade}:c1=tri:c2=tri[out]","-map","[out]",str(full)]
+            subprocess.run(cmd,check=True)
+        else:
+            cmd=["ffmpeg","-y","-v","error","-i",str(prefix),"-i",str(converted),"-i",str(suffix),"-filter_complex",f"[0:a][1:a]acrossfade=d={fade}:c1=tri:c2=tri[p];[p][2:a]acrossfade=d={fade}:c1=tri:c2=tri[out]","-map","[out]",str(full)]
+            subprocess.run(cmd,check=True)
+        if not full.exists() or full.stat().st_size==0: raise RuntimeError("mutated full vocal assembly failed")
+        upload_artifact(job_id,"mutated-full.wav",full,token,"audio/wav"); artifacts.append("mutated-full.wav")
+
+    return {"engine":"applio-rvc","version_commit":APPLIO_COMMIT,"mode":"segment" if region else "full","runtime":runtime,
+            "source_seconds":duration,"output_seconds":_ffprobe_duration(full),"region":region,"controls":cfg,
+            "model_asset":model_name,"index_asset":index_name or None,"artifacts":artifacts,"log_tail":cp.stdout[-6000:]}
+
+
 def gm_palette_render(payload, job, job_id, token, work):
     subprocess.run([sys.executable,"-m","pip","install","-q","mido"],check=True)
     import mido
@@ -529,6 +724,7 @@ def main():
         elif op=="project_render": result=project_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="vocal_render": result=vocal_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="song_render": result=song_render(payload,job,a.job_id,a.oidc_token,work)
+        elif op=="vocal_mutate": result=vocal_mutate(payload,job,a.job_id,a.oidc_token,work)
         elif op=="gm_palette_render": result=gm_palette_render(payload,job,a.job_id,a.oidc_token,work)
         else: raise RuntimeError(f"unsupported operation: {op}")
         print("GG_WORKER_RESULT="+json.dumps(result,ensure_ascii=False,sort_keys=True),flush=True)
