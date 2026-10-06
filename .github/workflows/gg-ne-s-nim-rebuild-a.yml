@@ -1,0 +1,223 @@
+name: GG Ne S Nim Rebuild A
+
+on:
+  push:
+    branches:
+      - experiment/gg-ne-s-nim-rebuild-20261006
+    paths:
+      - '.github/workflows/gg-ne-s-nim-rebuild-a.yml'
+      - '.nd-labs/gg-songs/GGNeSNimRebuildATest.cs'
+      - 'tools/gg_ne_s_nim_rebuild_a_arrange.py'
+      - 'docs/gg/songs/ne-s-nim-clean-lyrics.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  arrangement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install arrangement runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fluidsynth fluid-soundfont-gm
+          python -m pip install -q mido numpy soundfile
+      - name: Render rebuilt arrangement
+        run: |
+          mkdir -p arrangement
+          python tools/gg_ne_s_nim_rebuild_a_arrange.py "$GITHUB_WORKSPACE/arrangement"
+      - name: Instrumental master and QC
+        shell: bash
+        run: |
+          inputs=()
+          for f in arrangement/processed/*.wav; do inputs+=( -i "$f" ); done
+          n="$(ls arrangement/processed/*.wav | wc -l)"
+          ffmpeg -y -v error "${inputs[@]}"             -filter_complex "amix=inputs=$n:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.0:attack=12:release=180,alimiter=limit=0.95,loudnorm=I=-14:LRA=12:TP=-1.0[out]"             -map "[out]" -ar 48000 -c:a pcm_s24le arrangement/NE_S_NIM_REBUILD_A_INSTRUMENTAL.wav
+          ffmpeg -y -v error -i arrangement/NE_S_NIM_REBUILD_A_INSTRUMENTAL.wav -codec:a libmp3lame -b:a 320k arrangement/NE_S_NIM_REBUILD_A_INSTRUMENTAL.mp3
+          python - <<'PY'
+          import soundfile as sf,numpy as np,json,pathlib
+          p=pathlib.Path('arrangement/NE_S_NIM_REBUILD_A_INSTRUMENTAL.wav')
+          y,sr=sf.read(p); d=len(y)/sr; peak=float(np.max(np.abs(y)))
+          q={'duration':d,'sample_rate':sr,'peak':peak,'stems':len(list(pathlib.Path('arrangement/processed').glob('*.wav')))}
+          assert 242 < d < 252, q
+          assert peak < 0.999, q
+          assert q['stems']==10, q
+          pathlib.Path('arrangement/qc.json').write_text(json.dumps(q,indent=2))
+          print(json.dumps(q,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-ne-s-nim-rebuild-a-arrangement
+          path: arrangement/
+          retention-days: 7
+
+  vocal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore Applio runtime
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
+      - name: Restore Awata RVC
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-${{ runner.os }}
+      - name: Install vocal runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git unzip ffmpeg build-essential libsndfile1 libportaudio2 patchelf libicu-dev
+          python -m pip install -q pyyaml numpy scipy soundfile librosa==0.10.2.post1
+      - name: Prepare OpenUtau and Awata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGNeSNimRebuildATest.cs" />\n  </ItemGroup>\n'
+          if 'GGNeSNimRebuildATest.cs' not in x:
+              x=x.replace('</Project>',item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          mkdir -p /tmp/openutau/OpenUtau.Test/Core/DiffSinger
+          cp .nd-labs/gg-songs/GGNeSNimRebuildATest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGNeSNimRebuildATest.cs
+          curl -fL --retry 3 -o /tmp/awata.zip https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          mkdir -p /tmp/awata
+          unzip -q /tmp/awata.zip -d /tmp/awata
+          bank="$(find /tmp/awata -type f -name dsconfig.yaml -printf '%h\n' | head -n1)"
+          test -n "$bank"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Awata Weak\nauthor=hhskt\nvoice=Awata Weak\n' > "$bank/character.txt"
+          fi
+          echo "AWATA_BANK=$bank" >> "$GITHUB_ENV"
+      - name: Install EZV
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib,urllib.request,zipfile,yaml,shutil,os
+          bank=pathlib.Path(os.environ['AWATA_BANK']); dst=bank/'dsvocoder'
+          if not (dst/'vocoder.yaml').exists():
+              arc=pathlib.Path('/tmp/ezv.oudep')
+              arc.write_bytes(urllib.request.urlopen('https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep',timeout=300).read())
+              dst.mkdir(exist_ok=True)
+              with zipfile.ZipFile(arc) as z:
+                  names={n.replace('\\','/'):n for n in z.namelist()}
+                  cfg=next(n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml')
+                  data=z.read(names[cfg]); model=yaml.safe_load(data)['model']
+                  m=next(n for n in names if n.split('/')[-1]==model)
+                  (dst/'vocoder.yaml').write_bytes(data)
+                  with z.open(names[m]) as inf,(dst/model).open('wb') as out:
+                      shutil.copyfileobj(inf,out,1024*1024)
+          PY
+      - name: Render clean-text guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/openutau
+          dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+          mkdir -p "$GITHUB_WORKSPACE/vocal"
+          OPENUTAU_TEST_SINGERS="$AWATA_BANK"           GG_VFS_OUT="$GITHUB_WORKSPACE/vocal"           GG_VFS_TAG="NE_S_NIM_REBUILD_A_GUIDE"           GG_VFS_SPEAKER_HINT="Mature"           GG_VFS_VARIANT="rebuild_a"           GG_VFS_STEPS="64"           dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderNeSNimRebuildA
+          guide="$(find "$GITHUB_WORKSPACE/vocal" -name '*OPENUTAU_RU_QC.wav' -print -quit)"
+          test -s "$guide"
+          cp "$guide" "$GITHUB_WORKSPACE/vocal/00_GUIDE_REBUILD_A.wav"
+      - name: Render D North Star
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,runpy,subprocess
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_rebuild_a')
+          work=pathlib.Path('/tmp/applio-rebuild-a'); work.mkdir(exist_ok=True)
+          root,vpy,rt=ns['ensure_applio_runtime'](work)
+          model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
+          guide=pathlib.Path('vocal/00_GUIDE_REBUILD_A.wav').resolve()
+          out=pathlib.Path('vocal/D_REBUILD_A_FCPE_IDX050.wav').resolve()
+          code="import os,sys; root,source,out,model,index=sys.argv[1:6]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,volume_envelope=1.0,protect=0.5,f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
+          p=subprocess.run([str(vpy),'-c',code,str(root),str(guide),str(out),str(model),str(index)],
+                           cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=2700)
+          print(p.stdout[-12000:])
+          if p.returncode or not out.exists() or out.stat().st_size==0:
+              raise SystemExit('D rebuild A failed')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-ne-s-nim-rebuild-a-vocal
+          path: vocal/
+          retention-days: 7
+
+  master:
+    needs: [arrangement, vocal]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gg-ne-s-nim-rebuild-a-arrangement
+          path: arrangement
+      - uses: actions/download-artifact@v4
+        with:
+          name: gg-ne-s-nim-rebuild-a-vocal
+          path: vocal
+      - name: Mix rebuilt song
+        shell: bash
+        run: |
+          mkdir -p master
+          ffmpeg -y -v error -i vocal/D_REBUILD_A_FCPE_IDX050.wav             -af "highpass=f=80,acompressor=threshold=-18dB:ratio=2.2:attack=14:release=150,aecho=0.88:0.72:80|160:0.06|0.025,aresample=48000,volume=1.08"             master/D_REBUILD_A_MIX.wav
+          inputs=()
+          for f in arrangement/processed/*.wav; do inputs+=( -i "$f" ); done
+          inputs+=( -i master/D_REBUILD_A_MIX.wav )
+          n="$(ls arrangement/processed/*.wav | wc -l)"; total=$((n+1))
+          ffmpeg -y -v error "${inputs[@]}"             -filter_complex "amix=inputs=$total:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.1:attack=14:release=190,alimiter=limit=0.95,loudnorm=I=-14:LRA=11:TP=-1.0[out]"             -map "[out]" -ar 48000 -c:a pcm_s24le master/NE_S_NIM_REBUILD_A.wav
+          ffmpeg -y -v error -i master/NE_S_NIM_REBUILD_A.wav -codec:a libmp3lame -b:a 320k master/NE_S_NIM_REBUILD_A.mp3
+      - name: QC
+        run: |
+          python - <<'PY'
+          import subprocess,json,pathlib
+          p=pathlib.Path('master/NE_S_NIM_REBUILD_A.wav')
+          d=float(json.loads(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','json',str(p)],text=True))['format']['duration'])
+          assert 242 < d < 252,d
+          q={'version':'REBUILD_A','duration':d,'lyrics':'clean Russian','timbre':'D FCPE idx 0.50','bars':110}
+          pathlib.Path('master/qc.json').write_text(json.dumps(q,ensure_ascii=False,indent=2))
+          print(json.dumps(q,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-ne-s-nim-rebuild-a-master
+          path: master/
+          retention-days: 7
