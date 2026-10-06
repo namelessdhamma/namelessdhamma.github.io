@@ -1,6 +1,5 @@
 {
-  "op": "status",
-  "nonce": "a8-r01-story-f05-f09-status-4-20261006",
-  "request_id": "k2b-r1ca525c2d4d8-074c-v1",
-  "include_diagnostics": true
+  "op": "result",
+  "nonce": "a8-r01-story-f05-f09-result-20261006",
+  "request_id": "k2b-r1ca525c2d4d8-074c-v1"
 }
