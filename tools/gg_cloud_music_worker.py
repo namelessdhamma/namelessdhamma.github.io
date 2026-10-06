@@ -618,7 +618,7 @@ def vocal_mutate(payload, job, job_id, token, work):
         "sid":int(payload.get("sid",0))
     }
     if cfg["pitch"] < -24 or cfg["pitch"] > 24: raise RuntimeError("pitch must be in [-24, 24]")
-    if cfg["f0_method"] not in {"rmvpe","fcpe","crepe","crepe-tiny","hybrid"}: raise RuntimeError("unsupported f0_method")
+    if cfg["f0_method"] not in {"rmvpe","fcpe","crepe","crepe-tiny","hybrid[crepe+rmvpe]","hybrid[crepe+fcpe]","hybrid[rmvpe+fcpe]","hybrid[crepe+rmvpe+fcpe]"}: raise RuntimeError("unsupported f0_method")
     if cfg["bitcrush_bit_depth"] < 1 or cfg["bitcrush_bit_depth"] > 24: raise RuntimeError("bitcrush_bit_depth must be in [1, 24]")
 
     cfg_path=work/"applio-config.json"; cfg_path.write_text(json.dumps(cfg))
