@@ -32,13 +32,13 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .gg-applio-cache
-          key: gg-applio-cpu-v2-\${{ runner.os }}-324f4d89
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
 
       - name: Restore Awata RVC
         uses: actions/cache/restore@v4
         with:
           path: .gg-rvc-model-cache
-          key: gg-rvc-awata-v1.2-\${{ runner.os }}
+          key: gg-rvc-awata-v1.2-${{ runner.os }}
 
       - name: Install studio runtime
         shell: bash
@@ -122,8 +122,8 @@ jobs:
       - name: Render North Star C and D vocals with Applio
         shell: bash
         env:
-          GG_APPLIO_CACHE_DIR: \${{ github.workspace }}/.gg-applio-cache
-          GG_RVC_MODEL_CACHE_DIR: \${{ github.workspace }}/.gg-rvc-model-cache
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -163,16 +163,16 @@ run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=ind
           for v in C_FCPE_IDX030 D_FCPE_IDX050; do
             ffmpeg -y -v error -i "song/vocal/$v.wav" \
               -af "highpass=f=80,acompressor=threshold=-17dB:ratio=2.4:attack=12:release=140,aecho=0.88:0.72:75|150:0.07|0.03,aresample=48000,volume=1.05" \
-              "song/vocal/\${v}_MIX.wav"
+              "song/vocal/${v}_MIX.wav"
             inputs=()
             for f in song/processed/*.wav; do inputs+=( -i "$f" ); done
-            inputs+=( -i "song/vocal/\${v}_MIX.wav" )
+            inputs+=( -i "song/vocal/${v}_MIX.wav" )
             n="$(ls song/processed/*.wav | wc -l)"
             total=$((n+1))
-            ffmpeg -y -v error "\${inputs[@]}" \
+            ffmpeg -y -v error "${inputs[@]}" \
               -filter_complex "amix=inputs=$total:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.2:attack=12:release=180,alimiter=limit=0.95,loudnorm=I=-14:LRA=10:TP=-1.0[out]" \
-              -map "[out]" -ar 48000 -c:a pcm_s24le "song/masters/NE_S_NIM_\${v}.wav"
-            ffmpeg -y -v error -i "song/masters/NE_S_NIM_\${v}.wav" -codec:a libmp3lame -b:a 320k "song/masters/NE_S_NIM_\${v}.mp3"
+              -map "[out]" -ar 48000 -c:a pcm_s24le "song/masters/NE_S_NIM_${v}.wav"
+            ffmpeg -y -v error -i "song/masters/NE_S_NIM_${v}.wav" -codec:a libmp3lame -b:a 320k "song/masters/NE_S_NIM_${v}.mp3"
           done
 
       - name: QC and manifest
