@@ -434,12 +434,16 @@ jobs:
 
       - name: Bind imported scene-cache paths
         run: |
+          set -euo pipefail
           PROJ=/tmp/a8-r02c-v5/src/repo/godot_project
           cd "$PROJ"
-          BODY_SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' vitruvian_body.glb.import | head -n1)
-          HEAD_SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' vitruvian_head.glb.import | head -n1)
-          HAIR_SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' hairtool_cards.glb.import | head -n1)
-          test -n "$BODY_SCN" && test -n "$HEAD_SCN" && test -n "$HAIR_SCN"
+          BODY_FILE=$(find "$PROJ/.godot/imported" -maxdepth 1 -type f -name 'vitruvian_body.glb-*.scn' | head -n1)
+          HEAD_FILE=$(find "$PROJ/.godot/imported" -maxdepth 1 -type f -name 'vitruvian_head.glb-*.scn' | head -n1)
+          HAIR_FILE=$(find "$PROJ/.godot/imported" -maxdepth 1 -type f -name 'hairtool_cards.glb-*.scn' | head -n1)
+          test -s "$BODY_FILE" && test -s "$HEAD_FILE" && test -s "$HAIR_FILE"
+          BODY_SCN="res://${BODY_FILE#$PROJ/}"
+          HEAD_SCN="res://${HEAD_FILE#$PROJ/}"
+          HAIR_SCN="res://${HAIR_FILE#$PROJ/}"
           echo "BODY_SCN=$BODY_SCN"
           echo "HEAD_SCN=$HEAD_SCN"
           echo "HAIR_SCN=$HAIR_SCN"
