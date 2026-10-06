@@ -131,6 +131,14 @@ jobs:
           test -s "$g"
           cp "$g" "$GITHUB_WORKSPACE/guide/BRIDGE_GUIDE.wav"
 
+      - name: Dump target phonemes
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="$(find guide -name '*manifest.txt' -print -quit)"
+          test -s "$manifest"
+          grep -E 'lyric:(который|общим|незабвенным|былого|осталось|неизменным)' "$manifest" || true
+
       - name: Phrase ASR
         shell: bash
         run: |
@@ -181,5 +189,6 @@ jobs:
           path: |
             guide/BRIDGE_GUIDE.wav
             guide/qa.json
+            guide/*manifest.txt
           retention-days: 7
           if-no-files-found: warn
