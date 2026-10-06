@@ -1,6 +1,15 @@
 {
-  "op": "status",
-  "nonce": "a8-r01-qualitymax-1024-status-3-20261006",
-  "request_id": "k2b-rce671a5d992e-6ed0-v1",
-  "include_diagnostics": true
+  "op": "submit",
+  "nonce": "a8-r01-story-f05-f09-768-1s-20261006-v1",
+  "args": {
+    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e0ee7086-9c40-40aa-a9ee-102f7ddee612.jpg",
+    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/84110699-a0f7-4529-815f-a954a274541c.jpg",
+    "prompt": "Second half of one continuous cinematic sword-fight shot on a storm-soaked pirate deck, from canonical F05 exactly toward canonical F09. Preserve the exact two adult pirate identities, costumes, wet-hair structure, faces, body proportions, blades, ship geometry, lantern lighting and realistic game-cinematic/film-still rendering of the supplied anchors. Continue the dark-haired swordsman's forward attack from the canonical midpoint while the red-haired opponent completes the defensive reaction into the canonical final composition. Arms, legs, hips, hands and blade trajectories evolve continuously and physically. Rain, spray, wet cloth, hair and background crew move independently. Begin naturally from the supplied F05 composition and land naturally on F09. No cut, no camera discontinuity.",
+    "negative_prompt": "cartoon, anime, illustration, painting, painterly, stylized, plastic, waxy, toy-like, blurry, soft focus, low detail, smeared texture, over-smoothed skin, face morph, identity drift, distorted anatomy, extra limbs, duplicate subjects, fused hands, bent sword, jitter, sudden cut, text, watermark",
+    "duration_seconds": 1,
+    "width": 768,
+    "height": 432,
+    "seed": 44,
+    "idempotency_key": "a8-r01-story-f05-f09-768-1s-20261006-v1"
+  }
 }
