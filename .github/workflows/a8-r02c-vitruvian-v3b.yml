@@ -44,7 +44,7 @@ jobs:
           s=p.read_text()
           s=s.replace('window/size/viewport_width=1280','window/size/viewport_width=768')
           s=s.replace('window/size/viewport_height=1280','window/size/viewport_height=768')
-           s=s.replace('scaling_3d/scale=2.0','scaling_3d/scale=1.0')
+          s=s.replace('scaling_3d/scale=2.0','scaling_3d/scale=1.0')
           g=Path('/tmp/a8-r02c-v3b/src/repo/godot_project/scenes/vitruvian_cinematic.gd')
           gs=g.read_text()
           gs=gs.replace('var _t: float = 0.0','var _t: float = 24.5')
