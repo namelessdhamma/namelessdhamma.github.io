@@ -472,6 +472,11 @@ def main() -> None:
     TMP.mkdir(parents=True, exist_ok=True)
     start_path = TMP / "start.png"
     end_path = TMP / "end.png"
+    mid_path = TMP / "mid.png"
+    has_mid = bool(request.get("mid_image_url") or request.get("mid_image_base64"))
+    mid_frame_number = int(request.get("mid_frame_number") if request.get("mid_frame_number") is not None else frames // 2)
+    if has_mid and not (0 < mid_frame_number < frames - 1):
+        raise ValueError("mid_frame_number must be between first and last frame")
 
     model, te, cfg = prepare_runtime()
 
@@ -481,6 +486,10 @@ def main() -> None:
     print("ND_LTX2B_STAGE=materialize_end_begin", flush=True)
     materialize_image(request, "end", end_path)
     print(f"ND_LTX2B_STAGE=materialize_end_done bytes={end_path.stat().st_size}", flush=True)
+    if has_mid:
+        print("ND_LTX2B_STAGE=materialize_mid_begin", flush=True)
+        materialize_image(request, "mid", mid_path)
+        print(f"ND_LTX2B_STAGE=materialize_mid_done frame={mid_frame_number} bytes={mid_path.stat().st_size}", flush=True)
 
     print("ND_LTX2B_STAGE=import_torch_begin", flush=True)
     import torch
@@ -613,10 +622,14 @@ def main() -> None:
 
     start_media = start_t.unsqueeze(0).unsqueeze(2)
     end_media = end_t.unsqueeze(0).unsqueeze(2)
-    conditioning_items = [
-        ConditioningItem(start_media, 0, 1.0, False),
-        ConditioningItem(end_media, frames - 1, 1.0, False),
-    ]
+    conditioning_items = [ConditioningItem(start_media, 0, 1.0, False)]
+    if has_mid:
+        mid_img = Image.open(mid_path).convert("RGB")
+        mid_t = pil_to_tensor(mid_img, width, height)
+        mid_media = mid_t.unsqueeze(0).unsqueeze(2)
+        conditioning_items.append(ConditioningItem(mid_media, mid_frame_number, 1.0, False))
+        print(f"ND_LTX2B_CONDITIONING=three_anchor_0_{mid_frame_number}_{frames-1}", flush=True)
+    conditioning_items.append(ConditioningItem(end_media, frames - 1, 1.0, False))
 
     import yaml
     pipeline_config = yaml.safe_load(Path(cfg).read_text(encoding="utf-8"))
@@ -776,6 +789,7 @@ def main() -> None:
         "wangp_commit": WANGP_COMMIT,
         "profile": "VerylowRAM_LowVRAM_DIRECT",
         "quality_mode": quality_mode,
+        "conditioning_frames": [0, mid_frame_number, frames - 1] if has_mid else [0, frames - 1],
         "multiscale_downscale_factor": 0.6666666 if quality_mode == "multiscale" else None,
         "spatial_upscaler": "ltxv_0.9.7_spatial_upscaler.safetensors" if quality_mode == "multiscale" else None,
         "width": width,
