@@ -1,0 +1,264 @@
+name: A8 R02C MPFB Blue Sea Duel V8
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-mpfb-blue-sea-duel-v8.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mpfb-duel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip xz-utils libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-r02c-v8/{bin,src,assets,godot,out}
+
+      - name: Fetch Blender and Godot
+        run: |
+          curl -L --fail --retry 3 https://download.blender.org/release/Blender4.5/blender-4.5.9-linux-x64.tar.xz -o /tmp/a8-r02c-v8/blender.tar.xz
+          tar -xJf /tmp/a8-r02c-v8/blender.tar.xz -C /tmp/a8-r02c-v8/bin
+          BLENDER=$(find /tmp/a8-r02c-v8/bin -type f -name blender | head -n1)
+          "$BLENDER" --background --version | head -n3
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v8/godot.zip https://downloads.sourceforge.net/project/godot-engine.mirror/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v8/godot.zip -d /tmp/a8-r02c-v8/bin
+          chmod +x /tmp/a8-r02c-v8/bin/Godot_v4.7.2-stable_linux.x86_64
+
+      - name: Fetch generator and CC0 MakeHuman system assets
+        run: |
+          curl -L --fail --retry 3 https://raw.githubusercontent.com/kunalkushwaha/vsim/3f97faf85e46d2f9a122b0a8b8d3ccc0af598f91/scripts/blender/make-human.py -o /tmp/a8-r02c-v8/src/make-human.py
+          curl -L --fail --retry 3 https://files.makehumancommunity.org/plugins/mpfb2-latest.zip -o /tmp/a8-r02c-v8/assets/mpfb2.zip
+          curl -L --fail --retry 3 https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip -o /tmp/a8-r02c-v8/assets/system-assets.zip
+          unzip -q /tmp/a8-r02c-v8/assets/system-assets.zip -d /tmp/a8-r02c-v8/assets/system
+          find /tmp/a8-r02c-v8/assets/system -type f -iname '*young*caucasian*male*.mhmat' | grep -v female | sort | head -n4
+          find /tmp/a8-r02c-v8/assets/system -type f -path '*/hair/*' -name 'short*.mhclo' | sort | head -n10
+
+      - name: Generate Silas and red-pirate identity proxies
+        run: |
+          set -euo pipefail
+          BLENDER=$(find /tmp/a8-r02c-v8/bin -type f -name blender | head -n1)
+          SKIN1=$(find /tmp/a8-r02c-v8/assets/system -type f -path '*/skins/young_caucasian_male2/*' -name '*.mhmat' | head -n1)
+          SKIN2=$(find /tmp/a8-r02c-v8/assets/system -type f -path '*/skins/young_caucasian_male/*' -name '*.mhmat' | head -n1)
+          HAIR1=$(find /tmp/a8-r02c-v8/assets/system -type f -path '*/hair/short03/*' -name '*.mhclo' | head -n1)
+          HAIR2=$(find /tmp/a8-r02c-v8/assets/system -type f -path '*/hair/short04/*' -name '*.mhclo' | head -n1 || true)
+          if [ -z "$HAIR2" ]; then HAIR2=$(find /tmp/a8-r02c-v8/assets/system -type f -path '*/hair/short01/*' -name '*.mhclo' | head -n1 || true); fi
+          CLOTH1=$(find /tmp/a8-r02c-v8/assets/system -type f -path '*/clothes/male_worksuit01/*' -name '*.mhclo' | head -n1)
+          CLOTH2=$(find /tmp/a8-r02c-v8/assets/system -type f -path '*/clothes/male_elegantsuit01/*' -name '*.mhclo' | head -n1)
+          test -n "$SKIN1" && test -n "$SKIN2" && test -n "$HAIR1"
+          A1=(/tmp/a8-r02c-v8/assets/mpfb2.zip /tmp/a8-r02c-v8/godot/silas.glb "$SKIN1")
+          [ -n "$CLOTH1" ] && A1+=("$CLOTH1")
+          A1+=("$HAIR1" gender=1.0 age=0.38 muscle=0.46 weight=0.40 height=0.62 proportions=0.58 caucasian=1.0 tex=1024)
+          "$BLENDER" --background --python /tmp/a8-r02c-v8/src/make-human.py -- "${A1[@]}"
+          A2=(/tmp/a8-r02c-v8/assets/mpfb2.zip /tmp/a8-r02c-v8/godot/redpirate.glb "$SKIN2")
+          [ -n "$CLOTH2" ] && A2+=("$CLOTH2")
+          [ -n "$HAIR2" ] && A2+=("$HAIR2")
+          A2+=(gender=1.0 age=0.48 muscle=0.33 weight=0.56 height=0.54 proportions=0.46 caucasian=1.0 tex=1024)
+          "$BLENDER" --background --python /tmp/a8-r02c-v8/src/make-human.py -- "${A2[@]}"
+          ls -lh /tmp/a8-r02c-v8/godot/*.glb
+
+      - name: Write Godot Blue Sea duel scene
+        run: |
+          cat > /tmp/a8-r02c-v8/godot/project.godot <<'EOF'
+          [application]
+          config/name="A8 R02C MPFB Blue Sea Duel V8"
+          run/main_scene="res://main.tscn"
+          [display]
+          window/size/viewport_width=960
+          window/size/viewport_height=540
+          [rendering]
+          renderer/rendering_method="forward_plus"
+          renderer/rendering_method.mobile="forward_plus"
+          EOF
+          cat > /tmp/a8-r02c-v8/godot/main.tscn <<'EOF'
+          [gd_scene load_steps=2 format=3]
+          [ext_resource type="Script" path="res://main.gd" id="1"]
+          [node name="MPFBBlueSeaDuelV8" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+          cat > /tmp/a8-r02c-v8/godot/main.gd <<'EOF'
+          extends Node3D
+          const SHOT:=2.25
+          const SILAS_SCENE:="res://silas.glb"
+          const RED_SCENE:="res://redpirate.glb"
+          var silas:Dictionary={}
+          var red:Dictionary={}
+          var camera:Camera3D
+          var rain:Array[Node3D]=[]
+          var elapsed:=0.0
+
+          func _ready()->void:
+              _env();_deck();_ship();_lights()
+              silas=_make_char(SILAS_SCENE,"Silas",Vector3(-1.20,0,0),Color(0.10,0.13,0.18),Color(0.12,0.08,0.045),true)
+              red=_make_char(RED_SCENE,"RedPirate",Vector3(1.12,0,-0.03),Color(0.24,0.055,0.025),Color(0.75,0.08,0.02),false)
+              _camera();_rain();_pose(0.0)
+
+          func _process(delta:float)->void:
+              elapsed+=delta
+              var t:=clampf(elapsed/SHOT,0,1)
+              _pose(t);_rain_step(delta)
+              camera.position=Vector3(0.04+sin(t*PI)*0.045,1.62+sin(t*PI)*0.025,4.45-t*0.17)
+              camera.look_at(Vector3(0.04,1.14,0),Vector3.UP)
+
+          func _find(n:Node,klass:String)->Node:
+              if n.get_class()==klass:return n
+              for c in n.get_children():
+                  var r:=_find(c,klass)
+                  if r:return r
+              return null
+
+          func _collect(n:Node,out:Array[MeshInstance3D])->void:
+              if n is MeshInstance3D:out.append(n)
+              for c in n.get_children():_collect(c,out)
+
+          func _tint_materials(root:Node,cloth:Color,hair:Color)->void:
+              var meshes:Array[MeshInstance3D]=[];_collect(root,meshes)
+              for mi in meshes:
+                  for i in range(mi.mesh.get_surface_count()):
+                      var src:=mi.get_active_material(i)
+                      if src is StandardMaterial3D:
+                          var m:=src.duplicate() as StandardMaterial3D
+                          var key:=(String(mi.name)+" "+String(src.resource_name)).to_lower()
+                          if key.contains("hair") or key.contains("short"):
+                              m.albedo_color=hair
+                              m.roughness=minf(m.roughness+0.12,1.0)
+                          elif key.contains("work") or key.contains("suit") or key.contains("cloth"):
+                              m.albedo_color=m.albedo_color*cloth
+                              m.roughness=maxf(m.roughness,0.68)
+                          mi.set_surface_override_material(i,m)
+
+          func _make_char(path:String,name:String,pos:Vector3,cloth:Color,hair:Color,attacker:bool)->Dictionary:
+              var root:=Node3D.new();root.name=name;root.position=pos;root.rotation_degrees.y=-68.0 if attacker else 68.0;add_child(root)
+              var model:Node=(load(path) as PackedScene).instantiate();root.add_child(model)
+              _tint_materials(model,cloth,hair)
+              var skel:=_find(model,"Skeleton3D") as Skeleton3D
+              var ap:=_find(model,"AnimationPlayer") as AnimationPlayer
+              if ap and ap.has_animation("idle"):ap.play("idle");ap.seek(0,true);ap.pause()
+              var arm:=skel.find_bone("upperarm_r");var fore:=skel.find_bone("lowerarm_r")
+              var larm:=skel.find_bone("upperarm_l");var lfore:=skel.find_bone("lowerarm_l")
+              var spine:=skel.find_bone("spine_02");var thigh:=skel.find_bone("thigh_r");var calf:=skel.find_bone("calf_r")
+              var ba:=BoneAttachment3D.new();skel.add_child(ba);ba.bone_idx=skel.find_bone("hand_r")
+              var sw:=Node3D.new();sw.rotation_degrees=Vector3(0,0,8 if attacker else -8);ba.add_child(sw)
+              _box(sw,Vector3(0.035,1.38,0.025),Vector3(0,-0.70,0),_mat(Color(0.50,0.60,0.72),0.09,0.94))
+              _box(sw,Vector3(0.30,0.035,0.055),Vector3(0,-0.015,0),_mat(Color(0.26,0.13,0.05),0.32,0.25))
+              return {
+                  "root":root,"skel":skel,"ap":ap,"arm":arm,"fore":fore,"larm":larm,"lfore":lfore,"spine":spine,"thigh":thigh,"calf":calf,
+                  "arm0":skel.get_bone_pose_rotation(arm),"fore0":skel.get_bone_pose_rotation(fore),
+                  "larm0":skel.get_bone_pose_rotation(larm),"lfore0":skel.get_bone_pose_rotation(lfore),
+                  "spine0":skel.get_bone_pose_rotation(spine),"thigh0":skel.get_bone_pose_rotation(thigh),"calf0":skel.get_bone_pose_rotation(calf)
+              }
+
+          func _sample(a:Array,t:float)->float:
+              var q:=clampf(t,0,1)*float(a.size()-1);var i:=mini(int(floor(q)),a.size()-2);return lerpf(float(a[i]),float(a[i+1]),q-float(i))
+
+          func _pose(t:float)->void:
+              _drive(silas,t,true,_sample([-1.20,-1.12,-1.00,-0.85,-0.68,-0.53,-0.42,-0.34,-0.30],t))
+              _drive(red,t,false,_sample([1.12,1.09,1.04,0.96,0.87,0.78,0.70,0.65,0.61],t))
+
+          func _drive(ch:Dictionary,t:float,attacker:bool,x:float)->void:
+              var r:=ch["root"] as Node3D;var s:=ch["skel"] as Skeleton3D
+              r.position.x=x;r.position.z=sin(t*PI)*(0.11 if attacker else -0.055)
+              r.rotation_degrees.y=lerpf(-68,-60,t) if attacker else lerpf(68,77,t)
+              var aa:=_sample([-0.10,-0.22,-0.38,-0.58,-0.80,-1.00,-1.12,-1.18,-1.22],t) if attacker else _sample([0.20,0.28,0.39,0.52,0.64,0.72,0.77,0.80,0.82],t)
+              var fa:=_sample([-0.25,-0.20,-0.14,-0.07,0.0,0.06,0.10,0.12,0.14],t) if attacker else _sample([0.15,0.22,0.30,0.38,0.45,0.50,0.54,0.56,0.58],t)
+              var la:=_sample([0.18,0.14,0.09,0.03,-0.04,-0.09,-0.12,-0.14,-0.15],t) if attacker else _sample([-0.08,-0.03,0.04,0.12,0.20,0.26,0.30,0.32,0.34],t)
+              var sp:=_sample([0.02,0.01,-0.01,-0.04,-0.08,-0.11,-0.13,-0.14,-0.15],t) if attacker else _sample([-0.02,0.0,0.02,0.05,0.08,0.10,0.11,0.12,0.13],t)
+              s.set_bone_pose_rotation(int(ch["arm"]),(ch["arm0"] as Quaternion)*Quaternion(Vector3(0,0,1),aa))
+              s.set_bone_pose_rotation(int(ch["fore"]),(ch["fore0"] as Quaternion)*Quaternion(Vector3(0,0,1),fa))
+              s.set_bone_pose_rotation(int(ch["larm"]),(ch["larm0"] as Quaternion)*Quaternion(Vector3(0,0,1),la))
+              s.set_bone_pose_rotation(int(ch["lfore"]),(ch["lfore0"] as Quaternion)*Quaternion(Vector3(0,0,1),-la*0.7))
+              s.set_bone_pose_rotation(int(ch["spine"]),(ch["spine0"] as Quaternion)*Quaternion(Vector3(1,0,0),sp))
+              var leg:=_sample([0.0,0.05,0.11,0.18,0.26,0.32,0.35,0.37,0.38],t) if attacker else _sample([0.0,-0.03,-0.07,-0.11,-0.15,-0.18,-0.20,-0.21,-0.22],t)
+              s.set_bone_pose_rotation(int(ch["thigh"]),(ch["thigh0"] as Quaternion)*Quaternion(Vector3(1,0,0),leg))
+              s.set_bone_pose_rotation(int(ch["calf"]),(ch["calf0"] as Quaternion)*Quaternion(Vector3(1,0,0),-leg*0.7))
+
+          func _env()->void:
+              var sm:=ProceduralSkyMaterial.new();sm.sky_top_color=Color(0.004,0.010,0.022);sm.sky_horizon_color=Color(0.025,0.045,0.072);sm.ground_horizon_color=Color(0.01,0.015,0.022);sm.ground_bottom_color=Color(0.003,0.005,0.008);sm.energy_multiplier=0.33
+              var sky:=Sky.new();sky.sky_material=sm
+              var e:=Environment.new();e.background_mode=Environment.BG_SKY;e.sky=sky;e.ambient_light_source=Environment.AMBIENT_SOURCE_SKY;e.ambient_light_energy=0.15;e.reflected_light_source=Environment.REFLECTION_SOURCE_SKY;e.tonemap_mode=Environment.TONE_MAPPER_AGX;e.tonemap_exposure=0.96;e.ssao_enabled=true;e.ssao_intensity=1.4;e.ssil_enabled=true;e.ssr_enabled=true;e.glow_enabled=true;e.glow_intensity=0.38;e.fog_enabled=true;e.fog_density=0.010;e.fog_light_color=Color(0.065,0.10,0.16)
+              var we:=WorldEnvironment.new();we.environment=e;add_child(we)
+
+          func _deck()->void:
+              var wet:=_mat(Color(0.045,0.024,0.014),0.17,0.10);var seam:=_mat(Color(0.005,0.007,0.010),0.72,0)
+              for i in range(22):
+                  var x=-5.25+float(i)*0.5;_box(self,Vector3(0.46,0.12,6),Vector3(x,-0.11,0),wet);_box(self,Vector3(0.018,0.124,6.02),Vector3(x+0.24,-0.104,0),seam)
+
+          func _ship()->void:
+              var wood:=_mat(Color(0.026,0.014,0.010),0.34,0.03)
+              for x in [-5.0,-3.3,-1.6,0.0,1.6,3.3,5.0]:_cyl(self,0.06,1.3,Vector3(x,0.60,-2.75),wood)
+              _box(self,Vector3(10.4,0.12,0.12),Vector3(0,1.13,-2.75),wood);_cyl(self,0.20,6.8,Vector3(-3.8,3.35,-1.5),wood)
+
+          func _lights()->void:
+              var m:=DirectionalLight3D.new();m.light_color=Color(0.40,0.60,0.95);m.light_energy=1.25;m.rotation_degrees=Vector3(-58,-25,0);m.shadow_enabled=true;add_child(m)
+              _omni(Vector3(-2.6,1.9,0.8),Color(1.0,0.27,0.065),3.6);_omni(Vector3(2.8,1.75,-0.5),Color(1.0,0.16,0.04),2.8)
+
+          func _omni(p:Vector3,c:Color,e:float)->void:
+              var l:=OmniLight3D.new();l.position=p;l.light_color=c;l.light_energy=e;l.omni_range=5.8;l.shadow_enabled=true;add_child(l)
+
+          func _camera()->void:
+              camera=Camera3D.new();camera.fov=48;camera.near=0.03;camera.far=80;camera.position=Vector3(0.04,1.62,4.45);camera.current=true;add_child(camera);camera.look_at(Vector3(0.04,1.14,0),Vector3.UP);get_viewport().msaa_3d=Viewport.MSAA_4X
+
+          func _rain()->void:
+              var rng:=RandomNumberGenerator.new();rng.seed=420048;var mat:=_mat(Color(0.34,0.54,0.78),0.10,0.10)
+              for i in range(100):
+                  var d:=_box(self,Vector3(0.009,rng.randf_range(0.15,0.38),0.009),Vector3(rng.randf_range(-5.5,5.5),rng.randf_range(0.2,6.5),rng.randf_range(-2.8,2.8)),mat);d.rotation_degrees.z=-13;d.set_meta("speed",rng.randf_range(8,13));rain.append(d)
+
+          func _rain_step(delta:float)->void:
+              for d in rain:
+                  var p=d.position;p.y-=float(d.get_meta("speed"))*delta;p.x-=1.25*delta
+                  if p.y<0:p.y+=6.5;p.x+=0.8
+                  d.position=p
+
+          func _mat(c:Color,r:float,m:float)->StandardMaterial3D:
+              var x:=StandardMaterial3D.new();x.albedo_color=c;x.roughness=r;x.metallic=m;return x
+          func _box(parent:Node,size:Vector3,pos:Vector3,mat:Material)->MeshInstance3D:
+              var n:=MeshInstance3D.new();var q:=BoxMesh.new();q.size=size;n.mesh=q;n.position=pos;n.material_override=mat;parent.add_child(n);return n
+          func _cyl(parent:Node,rad:float,h:float,pos:Vector3,mat:Material)->MeshInstance3D:
+              var n:=MeshInstance3D.new();var q:=CylinderMesh.new();q.top_radius=rad;q.bottom_radius=rad;q.height=h;n.mesh=q;n.position=pos;n.material_override=mat;parent.add_child(n);return n
+          EOF
+
+      - name: Import generated GLBs
+        run: |
+          GODOT=/tmp/a8-r02c-v8/bin/Godot_v4.7.2-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v8/godot
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          "$GODOT" --headless --editor --path "$PROJ" --quit-after 10
+          SILAS_SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' "$PROJ/silas.glb.import" | head -n1)
+          RED_SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' "$PROJ/redpirate.glb.import" | head -n1)
+          test -n "$SILAS_SCN" && test -n "$RED_SCN"
+          sed -i "s|res://silas.glb|$SILAS_SCN|g; s|res://redpirate.glb|$RED_SCN|g" "$PROJ/main.gd"
+
+      - name: Render MPFB Blue Sea duel
+        run: |
+          set -o pipefail
+          GODOT=/tmp/a8-r02c-v8/bin/Godot_v4.7.2-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v8/godot
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          cd "$PROJ"
+          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v8/out/mpfb-duel.avi --fixed-fps 24 --quit-after 54 main.tscn 2>&1 | tee /tmp/a8-r02c-v8/out/godot.log
+          if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-r02c-v8/out/godot.log; then exit 1; fi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v8/out/mpfb-duel.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v8/out/mpfb-duel.mp4
+          rm -f /tmp/a8-r02c-v8/out/mpfb-duel.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v8/out/mpfb-duel.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v8/out/F01.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v8/out/mpfb-duel.mp4 -vf "select='eq(n,26)'" -vframes 1 /tmp/a8-r02c-v8/out/F05.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v8/out/mpfb-duel.mp4 -vf "select='eq(n,53)'" -vframes 1 /tmp/a8-r02c-v8/out/F09.png
+
+      - name: Verify V8
+        run: |
+          cd /tmp/a8-r02c-v8/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json mpfb-duel.mp4 > ffprobe.json
+          ffmpeg -v error -i mpfb-duel.mp4 -f framemd5 frames.framemd5
+          sha256sum mpfb-duel.mp4 F01.png F05.png F09.png > sha256.txt
+          printf '{"route":"R02C","recipe":"MPFB_BLUE_SEA_DUEL_V8","identity":"two separately generated MakeHuman males","generator":"MPFB2 via vsim script 3f97faf85e46d2f9a122b0a8b8d3ccc0af598f91","assets":"MakeHuman system assets CC0","godot":"4.7.2","renderer":"forward_plus","resolution":"960x540","fps":24,"frames":54,"duration_s":2.25,"goal":"identity + nine-waypoint duel action + Blue Sea environment"}\n' > receipt.json
+
+      - name: Upload V8
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-mpfb-blue-sea-duel-v8
+          path: /tmp/a8-r02c-v8/out
+          retention-days: 7
