@@ -1,0 +1,62 @@
+name: GG Ne S Nim Arrangement Qualification
+
+on:
+  push:
+    branches:
+      - experiment/gg-ne-s-nim-song-20261006
+    paths:
+      - '.github/workflows/gg-ne-s-nim-arrangement.yml'
+      - 'tools/gg_ne_s_nim_arrange.py'
+  workflow_dispatch:
+
+jobs:
+  arrangement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install audio runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fluidsynth fluid-soundfont-gm
+          python -m pip install -q mido numpy soundfile
+      - name: Render stems
+        run: |
+          mkdir -p song
+          python tools/gg_ne_s_nim_arrange.py "$GITHUB_WORKSPACE/song"
+      - name: Build instrumental master
+        shell: bash
+        run: |
+          inputs=()
+          for f in song/processed/*.wav; do inputs+=( -i "$f" ); done
+          n="$(ls song/processed/*.wav | wc -l)"
+          ffmpeg -y -v error "${inputs[@]}" \
+            -filter_complex "amix=inputs=$n:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.1:attack=12:release=180,alimiter=limit=0.95,loudnorm=I=-14:LRA=12:TP=-1.0[out]" \
+            -map "[out]" -ar 48000 -c:a pcm_s24le song/NE_S_NIM_INSTRUMENTAL.wav
+          ffmpeg -y -v error -i song/NE_S_NIM_INSTRUMENTAL.wav -codec:a libmp3lame -b:a 320k song/NE_S_NIM_INSTRUMENTAL.mp3
+      - name: QC
+        run: |
+          python - <<'PY'
+          import soundfile as sf, numpy as np, json, pathlib
+          p=pathlib.Path('song/NE_S_NIM_INSTRUMENTAL.wav')
+          y,sr=sf.read(p)
+          d=len(y)/sr; peak=float(np.max(np.abs(y))); rms=float(np.sqrt(np.mean(y*y)))
+          q={'duration':d,'sample_rate':sr,'peak':peak,'rms':rms,'stems':len(list(pathlib.Path('song/processed').glob('*.wav')))}
+          print(json.dumps(q,indent=2))
+          assert d>190 and peak<0.999 and q['stems']==10
+          pathlib.Path('song/arrangement-qc.json').write_text(json.dumps(q,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-ne-s-nim-arrangement
+          path: |
+            song/NE_S_NIM_INSTRUMENTAL.wav
+            song/NE_S_NIM_INSTRUMENTAL.mp3
+            song/NE_S_NIM_arrangement.mid
+            song/processed/
+            song/arrangement-manifest.json
+            song/arrangement-qc.json
+          retention-days: 7
