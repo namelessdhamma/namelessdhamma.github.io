@@ -432,13 +432,32 @@ jobs:
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           "$GODOT" --headless --editor --path "$PROJ" --quit-after 8
 
+      - name: Bind imported scene-cache paths
+        run: |
+          PROJ=/tmp/a8-r02c-v5/src/repo/godot_project
+          cd "$PROJ"
+          BODY_SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' vitruvian_body.glb.import | head -n1)
+          HEAD_SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' vitruvian_head.glb.import | head -n1)
+          HAIR_SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' hairtool_cards.glb.import | head -n1)
+          test -n "$BODY_SCN" && test -n "$HEAD_SCN" && test -n "$HAIR_SCN"
+          echo "BODY_SCN=$BODY_SCN"
+          echo "HEAD_SCN=$HEAD_SCN"
+          echo "HAIR_SCN=$HAIR_SCN"
+          sed -i "s|res://vitruvian_body.glb|$BODY_SCN|g; s|res://vitruvian_head.glb|$HEAD_SCN|g; s|res://hairtool_cards.glb|$HAIR_SCN|g" scenes/blue_sea_dual_v5.gd
+          grep -E 'const (BODY|HEAD|HAIR)_GLB' scenes/blue_sea_dual_v5.gd
+
       - name: Render Blue Sea dual-human shot
         run: |
+          set -o pipefail
           GODOT=/tmp/a8-r02c-v5/bin/Godot_v4.6-stable_linux.x86_64
           PROJ=/tmp/a8-r02c-v5/src/repo/godot_project
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           cd "$PROJ"
-          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v5/out/blue-sea-duel-v5.avi --fixed-fps 24 --quit-after 54 scenes/blue_sea_dual_v5.tscn
+          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v5/out/blue-sea-duel-v5.avi --fixed-fps 24 --quit-after 54 scenes/blue_sea_dual_v5.tscn 2>&1 | tee /tmp/a8-r02c-v5/out/godot.log
+          if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-r02c-v5/out/godot.log; then
+            echo "Godot runtime emitted errors; rejecting render."
+            exit 1
+          fi
           ffmpeg -y -v error -i /tmp/a8-r02c-v5/out/blue-sea-duel-v5.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v5/out/blue-sea-duel-v5.mp4
           rm -f /tmp/a8-r02c-v5/out/blue-sea-duel-v5.avi
           ffmpeg -y -v error -i /tmp/a8-r02c-v5/out/blue-sea-duel-v5.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v5/out/F01.png
