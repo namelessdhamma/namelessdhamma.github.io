@@ -112,10 +112,20 @@ for b in range(BARS):
         add(ev,st+beat*TPB,36,120,72+(8 if chorus else 0),9)
     for beat in [1,3]:
         add(ev,st+beat*TPB,38,120,74+(10 if chorus else 0),9)
-    # fast bright answer, but never a constant fill under words
+    # Fast bright answer begins only after the actual vocal end in this bar.
+    # A response bar may still contain the tail of a long phrase, so fixed beat-3
+    # fills are forbidden when they would overlap sung material.
     if not vocal_bar or b in response_bars:
-        for j,n in enumerate([45,47,48,47]):
-            add(ev,st+2*TPB+j*(TPB//2),n,115,62+5*j,9)
+        overlaps=[z for a,z in active_intervals if a < st+BAR and z > st]
+        vocal_end=max(overlaps) if overlaps else st
+        fill_start=max(st+2*TPB, vocal_end+120)
+        fill_end=st+BAR-120
+        available=fill_end-fill_start
+        if available >= 360:
+            notes=[45,47,48,47]
+            step=max(90, available//len(notes))
+            for j,n in enumerate(notes):
+                add(ev,fill_start+j*step,n,min(115,step-20),62+5*j,9)
 # exact lyric-stress support and subtle frame-drum/tambourine signal
 for t in stress_ticks:
     add(ev,t,54,80,48,9)
