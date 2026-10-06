@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install -q faster-whisper==1.1.1 jiwer==3.0.4 soundfile
+          python -m pip install -q faster-whisper==1.1.1 jiwer==3.0.4 soundfile requests
 
       - name: Verify 9-bar score
         shell: bash
