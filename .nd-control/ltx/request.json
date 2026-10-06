@@ -1,6 +1,5 @@
 {
-  "op": "status",
-  "nonce": "a8-r01-direct-1216x704-status-7-20261006",
-  "request_id": "k2b-ra292185cfc9b-fd89-v1",
-  "include_diagnostics": true
+  "op": "result",
+  "nonce": "a8-r01-direct-1216x704-result-20261006",
+  "request_id": "k2b-ra292185cfc9b-fd89-v1"
 }
