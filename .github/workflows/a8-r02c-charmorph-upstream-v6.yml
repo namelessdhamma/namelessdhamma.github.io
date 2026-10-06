@@ -86,7 +86,7 @@ jobs:
               report["base_object"]=char_obj.name
               report["base_vertices"]=len(char_obj.data.vertices)
 
-              r2=bpy.ops.charmorph.import(filepath=PRESET)
+              r2=getattr(bpy.ops.charmorph,"import")(filepath=PRESET)
               report["apply_preset"]=list(r2)
               if "FINISHED" not in r2:
                   raise RuntimeError("preset import failed")
