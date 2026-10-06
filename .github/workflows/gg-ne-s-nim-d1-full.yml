@@ -257,7 +257,7 @@ jobs:
           ffmpeg -y -v error \
             -i song/arrangement/instrumental.wav \
             -i song/vocal/D_D1_MIX.wav \
-            -filter_complex "[0:a]volume=1.00[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-7dB:ratio=1.20:attack=28:release=230,alimiter=limit=0.96,loudnorm=I=-15.8:LRA=12:TP=-1.0[out]" \
+            -filter_complex "[0:a]volume=1.06[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-7dB:ratio=1.20:attack=28:release=230,alimiter=limit=0.96,loudnorm=I=-15.8:LRA=12:TP=-1.0[out]" \
             -map "[out]" -ar 48000 -c:a pcm_s24le song/master/NEZRIMY_GOST_D1R5.wav
           ffmpeg -y -v error -i song/master/NEZRIMY_GOST_D1R5.wav \
             -codec:a libmp3lame -b:a 320k song/master/NEZRIMY_GOST_D1R5.mp3
@@ -392,7 +392,7 @@ jobs:
             'asr_guide':gd,
             'asr_d':dd,
             'failures':failures,
-            'gate_version':'D1R5B'
+            'gate_version':'D1R5D'
           }
           pathlib.Path('song/qualification.json').write_text(
               json.dumps(result,ensure_ascii=False,indent=2))
