@@ -1790,7 +1790,7 @@
           "stress": 1,
           "pitches": [
             64,
-            65,
+            64,
             64
           ],
           "durations": [
@@ -1804,7 +1804,7 @@
           "text": "общим",
           "stress": 0,
           "pitches": [
-            65,
+            64,
             64
           ],
           "durations": [
@@ -1840,9 +1840,9 @@
           "stress": 2,
           "pitches": [
             64,
+            64,
             65,
-            69,
-            67
+            64
           ],
           "durations": [
             240,
@@ -1938,7 +1938,7 @@
           "stress": 1,
           "pitches": [
             64,
-            67,
+            65,
             64
           ],
           "durations": [
@@ -1964,7 +1964,7 @@
           "stress": 1,
           "pitches": [
             64,
-            67,
+            65,
             64
           ],
           "durations": [
@@ -1980,8 +1980,8 @@
           "pitches": [
             64,
             64,
-            69,
-            68
+            65,
+            64
           ],
           "durations": [
             240,
@@ -2548,7 +2548,7 @@
     "voice_leading_repair": "new phrases only: nearest chord-tone correction <=3 semitones; accepted C3R1 gene and chorus untouched",
     "final_symbolic_repair": "finl3 одна resolves 64→67; removes unearned 7-semitone leap and lands on bar-104 G support"
   },
-  "production_revision": "D1R5B",
+  "production_revision": "D1R5C",
   "tempo_map": [
     {
       "bar": 0,
@@ -2642,6 +2642,11 @@
       "память",
       "одна",
       "увидел"
-    ]
+    ],
+    "accepted_bridge_projection": {
+      "source_branch": "compute/gg-ne-s-nim-d1v4-bridge-guide-20261006",
+      "brl2": "flattened intra-word melody, prior guide CER 0.0645 PASS",
+      "brl4": "flattened intra-word melody + V60Z60 phone offsets, prior isolated guide CER 0.133 PASS"
+    }
   }
 }
