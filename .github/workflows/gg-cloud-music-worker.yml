@@ -15,7 +15,7 @@ permissions:
 jobs:
   execute:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     container:
       image: debian:sid
     steps:
@@ -25,13 +25,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Restore Applio inference cache
+        uses: actions/cache@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v1-${{ runner.os }}-324f4d89
       - name: Install free cloud studio runtime
         shell: bash
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y --no-install-recommends ardour curl ca-certificates jq python3 python3-pip xvfb dbus-x11 ffmpeg fluidsynth tar gzip unzip xauth git xdotool x11-utils patchelf
+          apt-get install -y --no-install-recommends ardour curl ca-certificates jq python3 python3-pip xvfb dbus-x11 ffmpeg fluidsynth tar gzip unzip xauth git xdotool x11-utils patchelf build-essential libsndfile1 libportaudio2
           for p in lsp-plugins-lv2 x42-plugins dragonfly-reverb surge-xt sfizz avldrums.lv2 calf-plugins fluid-soundfont-gm megatools; do
             if apt-cache show "$p" >/dev/null 2>&1; then apt-get install -y --no-install-recommends "$p" || true; fi
           done
@@ -56,6 +61,7 @@ jobs:
         env:
           MARKER: ${{ steps.marker.outputs.marker }}
           GG_EVIDENCE_DIR: ${{ github.workspace }}/gg-worker-evidence
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
