@@ -1,9 +1,9 @@
 {
   "bootstrap": {
-    "operation": "song_render",
+    "operation": "vocal_mutate",
     "payload": {
-      "vocal_marker_path": "gg-cloud-jobs/selftest-vocal-awata-20261003-1201.json"
+      "setup_only": true
     }
   },
-  "retry_nonce": "2026-10-04T02:17:00Z"
+  "retry_nonce": "2026-10-06T01:04:00Z"
 }
