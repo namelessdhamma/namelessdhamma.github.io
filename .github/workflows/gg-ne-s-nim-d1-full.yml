@@ -10,6 +10,8 @@ on:
       - '.nd-labs/gg-songs/GGNeSNimD1FullTest.cs'
       - 'tools/gg_ne_s_nim_d1_full_arrange.py'
       - 'tools/gg_audio_qa.py'
+      - 'tools/gg_d1r5_phrase_repair.py'
+      - 'tools/gg_d1r5_vfs_envelope.py'
   workflow_dispatch:
 
 permissions:
@@ -208,15 +210,29 @@ jobs:
               raise SystemExit('Applio D1 full failed')
           PY
 
-      - name: Build diction-preserving D1R5 vocal blend
+      - name: Phrase-local diction repair search
+        shell: bash
+        run: |
+          set +e
+          python tools/gg_d1r5_phrase_repair.py \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            --guide song/vocal/00_GUIDE_D1.wav \
+            --raw-d song/vocal/D_D1_RAW.wav \
+            --out song/vocal/D_D1_REPAIRED.wav \
+            --report song/diction-repair.json \
+            --threshold 0.20
+          echo "phrase_repair_exit=$?" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Render Voice-from-Silence envelope on D vocal
         shell: bash
         run: |
           set -euo pipefail
-          ffmpeg -y -v error \
-            -i song/vocal/D_D1_RAW.wav \
-            -i song/vocal/00_GUIDE_D1.wav \
-            -filter_complex "[0:a]aresample=48000,volume=0.97[d];[1:a]aresample=48000,volume=0.16[g];[d][g]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.98[out]" \
-            -map "[out]" -ar 48000 -c:a pcm_s24le song/vocal/D_D1_FCPE_IDX050.wav
+          python tools/gg_d1r5_vfs_envelope.py \
+            --input song/vocal/D_D1_REPAIRED.wav \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            --output song/vocal/D_D1_FCPE_IDX050.wav \
+            --report song/vfs-envelope.json
 
       - name: Mix qualification cut
         shell: bash
@@ -224,12 +240,12 @@ jobs:
           set -euo pipefail
           mkdir -p song/master
           ffmpeg -y -v error -i song/vocal/D_D1_FCPE_IDX050.wav \
-            -af "highpass=f=75,equalizer=f=2600:t=q:w=1:g=0.8,acompressor=threshold=-12dB:ratio=1.35:attack=22:release=190,aresample=48000,volume=0.96" \
+            -af "highpass=f=75,equalizer=f=2600:t=q:w=1:g=0.6,acompressor=threshold=-10dB:ratio=1.25:attack=26:release=210,aresample=48000,volume=0.92" \
             song/vocal/D_D1_MIX.wav
           ffmpeg -y -v error \
             -i song/arrangement/instrumental.wav \
             -i song/vocal/D_D1_MIX.wav \
-            -filter_complex "[0:a]volume=1.08[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-8dB:ratio=1.25:attack=25:release=220,alimiter=limit=0.96,loudnorm=I=-15.8:LRA=12:TP=-1.0[out]" \
+            -filter_complex "[0:a]volume=1.00[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-7dB:ratio=1.20:attack=28:release=230,alimiter=limit=0.96,loudnorm=I=-15.8:LRA=12:TP=-1.0[out]" \
             -map "[out]" -ar 48000 -c:a pcm_s24le song/master/NEZRIMY_GOST_D1R5.wav
           ffmpeg -y -v error -i song/master/NEZRIMY_GOST_D1R5.wav \
             -codec:a libmp3lame -b:a 320k song/master/NEZRIMY_GOST_D1R5.mp3
@@ -351,11 +367,11 @@ jobs:
 
           if gd['wer']>0.30: failures.append('guide_asr_wer')
           if gd['cer']>0.15: failures.append('guide_asr_cer')
-          if gd['max_phrase_cer']>0.25: failures.append('guide_phrase_intelligibility')
+          if gd['max_phrase_cer']>0.20: failures.append('guide_phrase_intelligibility')
           if dd['wer']>0.32: failures.append('d_asr_wer')
           if dd['cer']>0.20: failures.append('d_asr_cer')
-          if dd['max_phrase_cer']>0.30: failures.append('d_phrase_intelligibility')
-          if sum(1 for x in dd['phrases'] if x['cer']>0.20)>3: failures.append('d_too_many_damaged_phrases')
+          if dd['max_phrase_cer']>0.20: failures.append('d_phrase_intelligibility')
+          if any(x['cer']>0.20 for x in dd['phrases']): failures.append('d_phrase_over_strict_limit')
 
           result={
             'status':'PASS' if not failures else 'REJECT',
@@ -363,7 +379,7 @@ jobs:
             'asr_guide':gd,
             'asr_d':dd,
             'failures':failures,
-            'gate_version':'D1R5'
+            'gate_version':'D1R5B'
           }
           pathlib.Path('song/qualification.json').write_text(
               json.dumps(result,ensure_ascii=False,indent=2))
@@ -379,7 +395,10 @@ jobs:
             song/master/
             song/vocal/00_GUIDE_D1.wav
             song/vocal/D_D1_FCPE_IDX050.wav
+            song/vocal/D_D1_REPAIRED.wav
             song/vocal/D_D1_RAW.wav
+            song/diction-repair.json
+            song/vfs-envelope.json
             song/arrangement/instrumental.mp3
             song/arrangement/processed/riff.wav
             song/arrangement/composition-map.json
