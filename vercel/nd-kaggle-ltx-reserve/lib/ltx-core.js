@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 const DEFAULT_RAILWAY_BASE="https://nd-external-intelligence-production.up.railway.app";
-const QUALIFIED_WORKER_COMMIT="d241c84f27da3f1c29559e6fd19c9eccc27a6810";
+const QUALIFIED_WORKER_COMMIT="44187166b8c903e44cfd95f08365d7d274a5a5ec";
 const WORKER_URL="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/"+QUALIFIED_WORKER_COMMIT+"/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py";
 
 function err(message,status=0,code=""){
