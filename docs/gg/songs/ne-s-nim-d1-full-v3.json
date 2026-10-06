@@ -2548,15 +2548,15 @@
     "voice_leading_repair": "new phrases only: nearest chord-tone correction <=3 semitones; accepted C3R1 gene and chorus untouched",
     "final_symbolic_repair": "finl3 одна resolves 64→67; removes unearned 7-semitone leap and lands on bar-104 G support"
   },
-  "production_revision": "D1R5",
+  "production_revision": "D1R5B",
   "tempo_map": [
     {
       "bar": 0,
-      "bpm": 104
+      "bpm": 106
     },
     {
       "bar": 4,
-      "bpm": 106
+      "bpm": 108
     },
     {
       "bar": 28,
@@ -2564,23 +2564,23 @@
     },
     {
       "bar": 40,
-      "bpm": 102
+      "bpm": 106
     },
     {
       "bar": 44,
-      "bpm": 107
+      "bpm": 108
     },
     {
       "bar": 56,
-      "bpm": 112
+      "bpm": 110
     },
     {
       "bar": 68,
-      "bpm": 104
+      "bpm": 106
     },
     {
       "bar": 80,
-      "bpm": 114
+      "bpm": 112
     },
     {
       "bar": 96,
@@ -2588,11 +2588,11 @@
     },
     {
       "bar": 108,
-      "bpm": 100
+      "bpm": 103
     },
     {
       "bar": 114,
-      "bpm": 96
+      "bpm": 100
     }
   ],
   "d1r5": {
