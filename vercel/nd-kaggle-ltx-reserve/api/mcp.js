@@ -75,7 +75,8 @@ export default async function handler(req,res){
     try{
       const name=String(msg.params?.name||""), a=msg.params?.arguments||{};
       let out;
-      if(name==="ltx_shot") out=await simpleShot(a);\n      else if(name==="ltx_generate_keyframes") out=await submit(a);
+      if(name==="ltx_shot") out=await simpleShot(a);
+      else if(name==="ltx_generate_keyframes") out=await submit(a);
       else if(name==="ltx_keyframe_reconcile") out=await reconcile(a);
       else if(name==="ltx_keyframe_status") out=await status(a);
       else if(name==="ltx_keyframe_result") out=await result(a);
