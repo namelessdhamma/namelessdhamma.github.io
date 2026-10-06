@@ -26,7 +26,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Restore Applio inference cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .gg-applio-cache
           key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
