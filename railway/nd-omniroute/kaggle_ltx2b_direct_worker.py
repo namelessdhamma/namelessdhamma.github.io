@@ -457,8 +457,8 @@ def main() -> None:
 
     width = align32(int(request.get("width") or 512))
     height = align32(int(request.get("height") or 288))
-    if width * height > 768 * 448:
-        scale = math.sqrt((768 * 448) / float(width * height))
+    if width * height > 1024 * 576:
+        scale = math.sqrt((1024 * 576) / float(width * height))
         width = align32(max(256, int(width * scale)))
         height = align32(max(256, int(height * scale)))
     frames = frame_count(float(request.get("duration_seconds") or 2.0))
@@ -675,7 +675,7 @@ def main() -> None:
     arr = (arr * 255).astype(np.uint8)
     out_frames = [Image.fromarray(arr[i]) for i in range(arr.shape[0])]
     result_mp4 = WORK / "result.mp4"
-    imageio.mimsave(str(result_mp4), [np.asarray(f) for f in out_frames], fps=FPS, codec="libx264", quality=7)
+    imageio.mimsave(str(result_mp4), [np.asarray(f) for f in out_frames], fps=FPS, codec="libx264", quality=9)
 
     endpoint = {
         "first_to_start_mae": mae(out_frames[0], start_img, (width, height)),
