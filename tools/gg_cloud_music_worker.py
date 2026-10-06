@@ -5,6 +5,15 @@ from xml.etree import ElementTree as ET
 RELAY="https://gg-cloud-music-studio.onrender.com"
 APPLIO_REPO="https://github.com/IAHispano/Applio.git"
 APPLIO_COMMIT="324f4d89c3e0e8dc0e555a3d53784e3282c16e09"
+RVC_MODEL_CATALOG={
+    "awata-weak-rvc-v1.2":{
+        "kind":"zip",
+        "url":"https://github.com/hhskt/Awata_Weak/releases/download/rvc_v1.2/Awata_Weak_Rvc_v1.2.zip",
+        "variants":["Original","Soft","Cute","Whisper"],
+        "default_variant":"Original",
+        "terms":"Awata Weak official RVC v1.2; project README permits commercial voicebank use"
+    }
+}
 VOICEBANK_CATALOG={
     "awata-weak-v3":{
         "kind":"zip",
@@ -534,6 +543,36 @@ def _bounded_float(payload,key,default,lo,hi):
     if not lo <= v <= hi: raise RuntimeError(f"{key} must be in [{lo}, {hi}]")
     return v
 
+
+def install_rvc_model(model_id, variant, work):
+    spec=RVC_MODEL_CATALOG.get(str(model_id or ""))
+    if not spec:
+        raise RuntimeError("unknown RVC model_id: "+str(model_id))
+    allowed=spec.get("variants") or []
+    chosen=str(variant or spec.get("default_variant") or "")
+    if chosen not in allowed:
+        raise RuntimeError("unsupported RVC model variant: "+chosen+"; allowed="+",".join(allowed))
+    cache=pathlib.Path(os.environ.get("GG_RVC_MODEL_CACHE_DIR") or (work/"rvc-model-cache")).resolve()
+    root=cache/str(model_id)
+    model=root/f"Awata_Weak_{chosen}.pth"
+    index=root/f"Awata_Weak_{chosen}.index"
+    if model.exists() and index.exists():
+        return model,index,{"cached":True,"model_id":model_id,"variant":chosen,"terms":spec.get("terms")}
+    root.mkdir(parents=True,exist_ok=True)
+    arc=root/"model.zip"
+    if not arc.exists():
+        with urllib.request.urlopen(spec["url"],timeout=900) as r, arc.open("wb") as out:
+            shutil.copyfileobj(r,out,1024*1024)
+    with zipfile.ZipFile(arc) as z:
+        z.extractall(root)
+    matches=list(root.rglob(f"Awata_Weak_{chosen}.pth"))
+    idxs=list(root.rglob(f"Awata_Weak_{chosen}.index"))
+    if not matches or not idxs:
+        raise RuntimeError("qualified RVC archive missing requested variant: "+chosen)
+    model=matches[0]; index=idxs[0]
+    return model,index,{"cached":False,"model_id":model_id,"variant":chosen,"terms":spec.get("terms")}
+
+
 def vocal_mutate(payload, job, job_id, token, work):
     """Headless Applio/RVC mutation layer for whole-vocal or bounded segment repair."""
     root,vpy,runtime=ensure_applio_runtime(work)
@@ -546,8 +585,15 @@ def vocal_mutate(payload, job, job_id, token, work):
     model_name=str(payload.get("model_asset") or "")
     index_name=str(payload.get("index_asset") or "")
     source=_asset_to_file(job,job_id,token,work,source_name,"source.wav")
-    model=_asset_to_file(job,job_id,token,work,model_name,"target.pth")
-    index=_asset_to_file(job,job_id,token,work,index_name,"target.index",required=False) if index_name else None
+    model_meta=None
+    model_id=str(payload.get("model_id") or "")
+    if model_id:
+        model,index,model_meta=install_rvc_model(model_id,payload.get("model_variant"),work)
+        model_name=model.name
+        index_name=index.name
+    else:
+        model=_asset_to_file(job,job_id,token,work,model_name,"target.pth")
+        index=_asset_to_file(job,job_id,token,work,index_name,"target.index",required=False) if index_name else None
 
     duration=_ffprobe_duration(source)
     start=payload.get("start_seconds"); end=payload.get("end_seconds")
@@ -662,7 +708,7 @@ run_infer_script(input_path=source, output_path=output, pth_path=model, index_pa
 
     return {"engine":"applio-rvc","version_commit":APPLIO_COMMIT,"mode":"segment" if region else "full","runtime":runtime,
             "source_seconds":duration,"output_seconds":_ffprobe_duration(full),"region":region,"controls":cfg,
-            "model_asset":model_name,"index_asset":index_name or None,"artifacts":artifacts,"log_tail":cp.stdout[-6000:]}
+            "model_asset":model_name,"index_asset":index_name or None,"model":model_meta,"artifacts":artifacts,"log_tail":cp.stdout[-6000:]}
 
 
 def gm_palette_render(payload, job, job_id, token, work):
