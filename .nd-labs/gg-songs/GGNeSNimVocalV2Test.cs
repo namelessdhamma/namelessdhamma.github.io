@@ -664,14 +664,31 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 Assert.NotNull(tsField);
                 long timestamp = (long)tsField!.GetValue(part)!;
                 var noteList = part.notes.ToList();
+                // Headless equivalent of OpenUtau's normal extender grouping:
+                // a lexical leading note plus following + / +~ notes must be sent
+                // to the phonemizer as one note group, not as independent lyrics.
+                var phonemizerGroups = new List<Phonemizer.Note[]>();
+                var phonemizerGroupIndexes = new List<int>();
+                for (int ni = 0; ni < noteList.Count; ni++) {
+                    var pn = noteList[ni].ToPhonemizerNote(track, part);
+                    bool extender = noteList[ni].lyric.StartsWith("+", StringComparison.Ordinal);
+                    if (extender && phonemizerGroups.Count > 0) {
+                        var expanded = phonemizerGroups[^1].ToList();
+                        expanded.Add(pn);
+                        phonemizerGroups[^1] = expanded.ToArray();
+                    } else {
+                        phonemizerGroups.Add(new[] { pn });
+                        phonemizerGroupIndexes.Add(ni);
+                    }
+                }
                 var request = new PhonemizerRequest {
                     singer = singer,
                     part = part,
                     timestamp = timestamp,
-                    noteIndexes = Enumerable.Range(0, noteList.Count).ToArray(),
-                    notes = noteList.Select(n => new[] { n.ToPhonemizerNote(track, part) }).ToArray(),
+                    noteIndexes = phonemizerGroupIndexes.ToArray(),
+                    notes = phonemizerGroups.ToArray(),
                     phonemizers = new[] { track.Phonemizer },
-                    notePhonemizerIndices = Enumerable.Repeat(0, noteList.Count).ToArray(),
+                    notePhonemizerIndices = Enumerable.Repeat(0, phonemizerGroups.Count).ToArray(),
                     timeAxis = project.timeAxis.Clone(),
                 };
                 var phonemize = typeof(PhonemizerRunner).GetMethod("Phonemize", BindingFlags.Static | BindingFlags.NonPublic);
