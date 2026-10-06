@@ -463,6 +463,9 @@ def main() -> None:
         height = align32(max(256, int(height * scale)))
     frames = frame_count(float(request.get("duration_seconds") or 2.0))
     seed = int(request.get("seed") or 42)
+    quality_mode = str(request.get("quality_mode") or "direct").strip().lower()
+    if quality_mode not in {"direct", "multiscale"}:
+        raise ValueError("quality_mode must be direct or multiscale")
     prompt = str(request.get("prompt") or "").strip() or "Smooth coherent motion from first keyframe to final keyframe, continuous camera, physically plausible movement, no cuts."
     negative = str(request.get("negative_prompt") or DEFAULT_NEGATIVE)
 
@@ -504,7 +507,8 @@ def main() -> None:
     import_stage("symmetric_patchifier_done")
     from models.ltx_video.models.transformers.transformer3d import Transformer3DModel
     import_stage("transformer3d_done")
-    from models.ltx_video.pipelines.pipeline_ltx_video import ConditioningItem, LTXVideoPipeline
+    from models.ltx_video.pipelines.pipeline_ltx_video import ConditioningItem, LTXVideoPipeline, LTXMultiScalePipeline
+    from models.ltx_video.models.autoencoders.latent_upsampler import LatentUpsampler
     import_stage("pipeline_ltx_video_done")
     from models.ltx_video.schedulers.rf import RectifiedFlowScheduler
     import_stage("rf_scheduler_done")
@@ -570,11 +574,27 @@ def main() -> None:
         allowed_inference_steps=None,
     )
 
+    latent_upsampler = None
+    generation_pipeline = base_pipeline
+    if quality_mode == "multiscale":
+        print("ND_LTX2B_STAGE=multiscale_assemble", flush=True)
+        latent_upsampler = LatentUpsampler.from_pretrained(
+            fl.locate_file("ltxv_0.9.7_spatial_upscaler.safetensors")
+        ).to("cpu").eval()
+        latent_upsampler.to(torch.bfloat16)
+        latent_upsampler._model_dtype = torch.bfloat16
+        generation_pipeline = LTXMultiScalePipeline(
+            base_pipeline, latent_upsampler=latent_upsampler
+        )
+        print("ND_LTX2B_MULTISCALE=downscale_0.6666666_upscaler_0.9.7", flush=True)
+
     pipe = {
         "transformer": transformer,
         "vae": vae,
         "text_encoder": text_encoder,
     }
+    if latent_upsampler is not None:
+        pipe["latent_upsampler"] = latent_upsampler
     print("ND_LTX2B_STAGE=profile", flush=True)
     offload_obj = offload.profile(
         pipe,
@@ -643,36 +663,87 @@ def main() -> None:
                 device="cuda",
                 text_encoder_max_tokens=256,
             )
-            images = base_pipeline(
-                height=height,
-                width=width,
-                num_frames=frames,
-                frame_rate=FPS,
-                prompt=None,
-                negative_prompt=None,
-                num_inference_steps=int(pipeline_config.get("num_inference_steps", 8)),
-                guidance_scale=float(pipeline_config.get("guidance_scale", 1.0)),
-                stg_scale=float(pipeline_config.get("stg_scale", 0.0)),
-                rescaling_scale=float(pipeline_config.get("rescaling_scale", 1.0)),
-                generator=torch.Generator(device="cuda").manual_seed(seed),
-                prompt_embeds=prompt_embeds,
-                prompt_attention_mask=prompt_attention_mask,
-                negative_prompt_embeds=negative_prompt_embeds,
-                negative_prompt_attention_mask=negative_prompt_attention_mask,
-                output_type="pt",
-                conditioning_items=conditioning_items,
-                decode_timestep=float(pipeline_config.get("decode_timestep", 0.05)),
-                decode_noise_scale=float(pipeline_config.get("decode_noise_scale", 0.025)),
-                stochastic_sampling=bool(pipeline_config.get("stochastic_sampling", True)),
-                image_cond_noise_scale=0.025,
-                skip_layer_strategy=skip_layer_strategy,
-                is_video=True,
-                vae_per_channel_normalize=True,
-                strength=1.0,
-                device="cuda",
-                ltxv_model=ltxv_state,
-            )
-            samples = images.sub(0.5).mul(2).squeeze(0)
+            if quality_mode == "direct":
+                images = base_pipeline(
+                    height=height,
+                    width=width,
+                    num_frames=frames,
+                    frame_rate=FPS,
+                    prompt=None,
+                    negative_prompt=None,
+                    num_inference_steps=int(pipeline_config.get("num_inference_steps", 8)),
+                    guidance_scale=float(pipeline_config.get("guidance_scale", 1.0)),
+                    stg_scale=float(pipeline_config.get("stg_scale", 0.0)),
+                    rescaling_scale=float(pipeline_config.get("rescaling_scale", 1.0)),
+                    generator=torch.Generator(device="cuda").manual_seed(seed),
+                    prompt_embeds=prompt_embeds,
+                    prompt_attention_mask=prompt_attention_mask,
+                    negative_prompt_embeds=negative_prompt_embeds,
+                    negative_prompt_attention_mask=negative_prompt_attention_mask,
+                    output_type="pt",
+                    conditioning_items=conditioning_items,
+                    decode_timestep=float(pipeline_config.get("decode_timestep", 0.05)),
+                    decode_noise_scale=float(pipeline_config.get("decode_noise_scale", 0.025)),
+                    stochastic_sampling=bool(pipeline_config.get("stochastic_sampling", True)),
+                    image_cond_noise_scale=0.025,
+                    skip_layer_strategy=skip_layer_strategy,
+                    is_video=True,
+                    vae_per_channel_normalize=True,
+                    strength=1.0,
+                    device="cuda",
+                    ltxv_model=ltxv_state,
+                )
+                samples = images.sub(0.5).mul(2).squeeze(0)
+            else:
+                # Native LTX multi-scale path. Parameters mirror the official
+                # 0.9.7/0.9.8 distilled multi-scale schedule while retaining
+                # the qualified 2B 0.9.6 transformer and 0.9.7 spatial upscaler.
+                multiscale_first_pass = {
+                    "timesteps": [1.0000, 0.9937, 0.9875, 0.9812, 0.9750, 0.9094, 0.7250],
+                    "guidance_scale": 1.0,
+                    "stg_scale": 0.0,
+                    "rescaling_scale": 1.0,
+                    "skip_block_list": [42],
+                }
+                multiscale_second_pass = {
+                    "timesteps": [0.9094, 0.7250, 0.4219],
+                    "guidance_scale": 1.0,
+                    "stg_scale": 0.0,
+                    "rescaling_scale": 1.0,
+                    "skip_block_list": [42],
+                }
+                images = generation_pipeline(
+                    downscale_factor=0.6666666,
+                    first_pass=multiscale_first_pass,
+                    second_pass=multiscale_second_pass,
+                    height=height,
+                    width=width,
+                    num_frames=frames,
+                    frame_rate=FPS,
+                    prompt=prompt,
+                    negative_prompt=negative,
+                    num_inference_steps1=8,
+                    num_inference_steps2=3,
+                    guidance_scale=1.0,
+                    stg_scale=0.0,
+                    rescaling_scale=1.0,
+                    generator=torch.Generator(device="cuda").manual_seed(seed),
+                    output_type="pt",
+                    conditioning_items=conditioning_items,
+                    decode_timestep=float(pipeline_config.get("decode_timestep", 0.05)),
+                    decode_noise_scale=float(pipeline_config.get("decode_noise_scale", 0.025)),
+                    stochastic_sampling=False,
+                    image_cond_noise_scale=0.025,
+                    skip_layer_strategy=skip_layer_strategy,
+                    is_video=True,
+                    vae_per_channel_normalize=True,
+                    strength=1.0,
+                    mixed_precision=False,
+                    VAE_tile_size=(4, 512),
+                    device="cuda",
+                    ltxv_model=ltxv_state,
+                )
+                samples = images.sub(0.5).mul(2).squeeze(0)
     heartbeat_stop.set()
     generation_seconds = time.time() - started
     if samples is None:
@@ -704,6 +775,9 @@ def main() -> None:
         "model_precision": "bf16",
         "wangp_commit": WANGP_COMMIT,
         "profile": "VerylowRAM_LowVRAM_DIRECT",
+        "quality_mode": quality_mode,
+        "multiscale_downscale_factor": 0.6666666 if quality_mode == "multiscale" else None,
+        "spatial_upscaler": "ltxv_0.9.7_spatial_upscaler.safetensors" if quality_mode == "multiscale" else None,
         "width": width,
         "height": height,
         "frames": len(out_frames),
