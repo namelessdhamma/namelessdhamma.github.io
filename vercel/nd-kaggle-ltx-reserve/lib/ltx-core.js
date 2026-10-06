@@ -453,7 +453,7 @@ export async function submit(args={},cfg=configFromEnv()){
     try{
       save=await rpc(cfg.token,"kernels.KernelsApiService","SaveKernel",{
         slug:username+"/"+providerSlug,
-        newTitle:"ND LTX2B "+effect.token+" attempt "+providerAttempt,
+        newTitle:"ND LTX2B "+effect.token+(providerAttempt>1?" attempt "+providerAttempt+" clean-v1":""),
         text:script,language:"python",kernelType:"script",
         datasetDataSources:[],kernelDataSources:cacheSources,competitionDataSources:[],
         categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,
