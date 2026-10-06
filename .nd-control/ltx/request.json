@@ -1,5 +1,18 @@
 {
-  "op": "result",
-  "nonce": "a8-r01-multiscale-1024-result-20261006",
-  "request_id": "k2b-r6811bec5c9f0-ff2e-v1"
+  "op": "submit",
+  "nonce": "a8-r01-direct-1024-f01-f05-f09-20261006-v1",
+  "args": {
+    "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/382ecc95-cb75-4b41-b39c-47a7d53c10d1.jpg",
+    "mid_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/e0ee7086-9c40-40aa-a9ee-102f7ddee612.jpg",
+    "mid_frame_number": 28,
+    "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/84110699-a0f7-4529-815f-a954a274541c.jpg",
+    "prompt": "One continuous ~2-second cinematic sword-fight shot on a storm-soaked pirate deck. Preserve the exact two adult pirate identities, costumes, wet-hair structure, faces, body proportions, blades, ship geometry, lantern lighting and realistic game-cinematic/film-still rendering of the supplied first and last keyframes. The dark-haired swordsman on the left drives a controlled forward attack while the red-haired opponent on the right reacts defensively; arms, legs, hands and blade trajectories evolve continuously and physically. Rain, spray, wet cloth, hair and background crew move independently. Preserve sharp micro-detail in skin, hair strands, wet fabric, leather, metal, wood and water droplets. No style drift, no cut, no camera discontinuity.",
+    "negative_prompt": "cartoon, anime, illustration, painting, painterly, stylized, plastic, waxy, toy-like, blurry, soft focus, low detail, smeared texture, over-smoothed skin, face morph, identity drift, distorted anatomy, extra limbs, duplicate subjects, fused hands, bent sword, jitter, sudden cut, text, watermark",
+    "duration_seconds": 2,
+    "width": 1024,
+    "height": 576,
+    "seed": 42,
+    "quality_mode": "direct",
+    "idempotency_key": "a8-r01-direct-1024-f01-f05-f09-20261006-v1"
+  }
 }
