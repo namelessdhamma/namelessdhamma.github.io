@@ -1,0 +1,202 @@
+name: GG Ne S Nim Full Song
+
+on:
+  push:
+    branches:
+      - experiment/gg-ne-s-nim-song-20261006
+    paths:
+      - '.github/workflows/gg-ne-s-nim-full-song.yml'
+      - '.nd-labs/gg-songs/GGNeSNimSongTest.cs'
+      - 'tools/gg_ne_s_nim_arrange.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore Applio runtime
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-\${{ runner.os }}-324f4d89
+
+      - name: Restore Awata RVC
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-\${{ runner.os }}
+
+      - name: Install studio runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git curl ca-certificates unzip ffmpeg fluidsynth fluid-soundfont-gm build-essential libsndfile1 libportaudio2 patchelf
+          python -m pip install -q mido numpy soundfile scipy librosa==0.10.2.post1 pyyaml
+
+      - name: Prepare OpenUtau and Awata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGNeSNimSongTest.cs" />\n  </ItemGroup>\n'
+          if 'GGNeSNimSongTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          mkdir -p /tmp/openutau/OpenUtau.Test/Core/DiffSinger
+          cp .nd-labs/gg-songs/GGNeSNimSongTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGNeSNimSongTest.cs
+
+          curl -fL --retry 3 -o /tmp/awata.zip https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          mkdir -p /tmp/awata
+          unzip -q /tmp/awata.zip -d /tmp/awata
+          bank="$(find /tmp/awata -type f -name dsconfig.yaml -printf '%h\n' | head -n1)"
+          test -n "$bank"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Awata Weak\nauthor=hhskt\nvoice=Awata Weak\n' > "$bank/character.txt"
+          fi
+          echo "AWATA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Install EZV for Awata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,urllib.request,zipfile,yaml,shutil,os
+          bank=pathlib.Path(os.environ['AWATA_BANK'])
+          dst=bank/'dsvocoder'
+          if not (dst/'vocoder.yaml').exists():
+              arc=pathlib.Path('/tmp/ezv.oudep')
+              arc.write_bytes(urllib.request.urlopen('https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep',timeout=300).read())
+              dst.mkdir(exist_ok=True)
+              with zipfile.ZipFile(arc) as z:
+                  names={n.replace('\\\\','/'):n for n in z.namelist()}
+                  cfg=next(n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml')
+                  data=z.read(names[cfg]); y=yaml.safe_load(data); model=y['model']
+                  m=next(n for n in names if n.split('/')[-1]==model)
+                  (dst/'vocoder.yaml').write_bytes(data)
+                  with z.open(names[m]) as inf,(dst/model).open('wb') as out:
+                      shutil.copyfileobj(inf,out,1024*1024)
+          PY
+
+      - name: Build and render guide vocal
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/openutau
+          dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+          mkdir -p "$GITHUB_WORKSPACE/song/vocal"
+          OPENUTAU_TEST_SINGERS="$AWATA_BANK" \
+          GG_VFS_OUT="$GITHUB_WORKSPACE/song/vocal" \
+          GG_VFS_TAG="NE_S_NIM_AWATA_GUIDE" \
+          GG_VFS_SPEAKER_HINT="Mature" \
+          GG_VFS_VARIANT="song" \
+          GG_VFS_STEPS="64" \
+          dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderNeSNimSong
+          guide="$(find "$GITHUB_WORKSPACE/song/vocal" -name '*OPENUTAU_RU_QC.wav' -print -quit)"
+          test -s "$guide"
+          cp "$guide" "$GITHUB_WORKSPACE/song/vocal/00_GUIDE.wav"
+
+      - name: Render North Star C and D vocals with Applio
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: \${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: \${{ github.workspace }}/.gg-rvc-model-cache
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,runpy,subprocess
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_ne_s_nim')
+          work=pathlib.Path('/tmp/applio-song'); work.mkdir(exist_ok=True)
+          root,vpy,rt=ns['ensure_applio_runtime'](work)
+          model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
+          guide=pathlib.Path('song/vocal/00_GUIDE.wav').resolve()
+          runner=pathlib.Path('/tmp/run_full_song_applio.py')
+          runner.write_text("""import os,sys
+root,source,out,model,index,rate=sys.argv[1:7]
+os.chdir(root);sys.path.insert(0,root)
+from core import run_infer_script
+run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=float(rate),volume_envelope=1.0,protect=0.5,f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)
+""")
+          for label,rate in [('C',0.30),('D',0.50)]:
+              out=pathlib.Path(f'song/vocal/{label}_FCPE_IDX{int(rate*100):03d}.wav').resolve()
+              p=subprocess.run([str(vpy),str(runner),str(root),str(guide),str(out),str(model),str(index),str(rate)],
+                               cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=2400)
+              print(p.stdout[-6000:])
+              if p.returncode or not out.exists() or out.stat().st_size==0:
+                  raise SystemExit('Applio '+label+' failed')
+          PY
+
+      - name: Render multistem rock arrangement
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/gg_ne_s_nim_arrange.py "$GITHUB_WORKSPACE/song"
+
+      - name: Mix C and D masters
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p song/masters
+          for v in C_FCPE_IDX030 D_FCPE_IDX050; do
+            ffmpeg -y -v error -i "song/vocal/$v.wav" \
+              -af "highpass=f=80,acompressor=threshold=-17dB:ratio=2.4:attack=12:release=140,aecho=0.88:0.72:75|150:0.07|0.03,aresample=48000,volume=1.05" \
+              "song/vocal/\${v}_MIX.wav"
+            inputs=()
+            for f in song/processed/*.wav; do inputs+=( -i "$f" ); done
+            inputs+=( -i "song/vocal/\${v}_MIX.wav" )
+            n="$(ls song/processed/*.wav | wc -l)"
+            total=$((n+1))
+            ffmpeg -y -v error "\${inputs[@]}" \
+              -filter_complex "amix=inputs=$total:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.2:attack=12:release=180,alimiter=limit=0.95,loudnorm=I=-14:LRA=10:TP=-1.0[out]" \
+              -map "[out]" -ar 48000 -c:a pcm_s24le "song/masters/NE_S_NIM_\${v}.wav"
+            ffmpeg -y -v error -i "song/masters/NE_S_NIM_\${v}.wav" -codec:a libmp3lame -b:a 320k "song/masters/NE_S_NIM_\${v}.mp3"
+          done
+
+      - name: QC and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,soundfile as sf,numpy as np,hashlib
+          out={}
+          for p in sorted(pathlib.Path('song/masters').glob('*.wav')):
+              y,sr=sf.read(p)
+              peak=float(np.max(np.abs(y))); rms=float(np.sqrt(np.mean(y*y)))
+              out[p.name]={'sr':sr,'duration':len(y)/sr,'peak':peak,'rms':rms,
+                           'sha256':hashlib.sha256(p.read_bytes()).hexdigest()}
+              if peak>=0.999: raise SystemExit('clipping '+p.name)
+              if len(y)/sr<180: raise SystemExit('master too short '+p.name)
+          pathlib.Path('song/qc.json').write_text(json.dumps(out,indent=2))
+          print(json.dumps(out,indent=2))
+          PY
+          cp docs/gg/songs/ne-s-nim-production-plan.md song/PRODUCTION_PLAN.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-ne-s-nim-full-song
+          path: song/
+          retention-days: 7
+          if-no-files-found: error
