@@ -10,6 +10,10 @@ function err(message,status=0,code=""){
   if(code) e.code=code;
   return e;
 }
+function isProviderVisibilityPending(e){
+  const msg=String(e?.message||e||"");
+  return Number(e?.status||0)===403&&/kernels\.get|PERMISSION_DENIED/i.test(msg);
+}
 
 function sha256(data){
   return crypto.createHash("sha256").update(data).digest("hex");
@@ -540,7 +544,12 @@ export async function status(args={},cfg=configFromEnv()){
   return withControlDeadline("ltx.status",opTimeout(cfg,"status"),async ctx=>{
     const ref=requestRef(args.request_id);
     const username=await identity(cfg,ctx);
-    const resolved=await resolveKernel(cfg,username,ref,ctx);
+    let resolved;
+    try{resolved=await resolveKernel(cfg,username,ref,ctx);}
+    catch(e){
+      if(isProviderVisibilityPending(e)) return {ok:true,request_id:ref.request_id,state:"PROVIDER_VISIBILITY_PENDING",provider_status:null,failure_message:null,provider_ref:username+"/"+ref.kernel_slug+"/"+ref.version,terminal_diagnostics:null,nonblocking:true,control_observed_at:new Date().toISOString(),next_check_after_seconds:60,safe_to_resubmit:false};
+      throw e;
+    }
     const state=stateOf(resolved.st?.status);
     let terminal_diagnostics=null;
     if(state==="FAILED"||state==="CANCELLED"||args.include_diagnostics===true){
@@ -576,7 +585,12 @@ export async function result(args={},cfg=configFromEnv()){
   return withControlDeadline("ltx.result",opTimeout(cfg,"result"),async ctx=>{
     const ref=requestRef(args.request_id);
     const username=await identity(cfg,ctx);
-    const resolved=await resolveKernel(cfg,username,ref,ctx);
+    let resolved;
+    try{resolved=await resolveKernel(cfg,username,ref,ctx);}
+    catch(e){
+      if(isProviderVisibilityPending(e)) return {ok:false,request_id:ref.request_id,state:"PROVIDER_VISIBILITY_PENDING",provider_status:null,failure_message:null,nonblocking:true,safe_to_resubmit:false};
+      throw e;
+    }
     const state=stateOf(resolved.st?.status);
     if(state!=="COMPLETED") return {
       ok:false,request_id:ref.request_id,state,
