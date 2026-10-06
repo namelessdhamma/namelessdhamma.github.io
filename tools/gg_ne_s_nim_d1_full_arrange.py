@@ -237,11 +237,19 @@ for b,ch in enumerate(chords):
         offs=(0,960); ints=(0,7); vel=42
     else:
         offs=(0,720,1440); ints=(0,7,3); vel=58
+    support=bar_vocal_targets.get(b)
+    if support is not None:
+        while support>60: support-=12
+        while support<48: support+=12
     for i,off in enumerate(offs):
-        # At vocal entrance leave a small pocket, then let the riff answer inside the bar.
+        # At vocal entrance leave a small pocket, then answer with the same
+        # pitch-class family as the sung line on alternating riff attacks.
         if vocal_bar and off < 240: continue
-        n=r+ints[i%len(ints)]
-        while n>62: n-=12
+        if vocal_bar and support is not None and i%2==1:
+            n=support
+        else:
+            n=r+ints[i%len(ints)]
+            while n>62: n-=12
         add(ev,st+off,n,230 if b not in BRIDGE_BARS else 430,vel)
 stems["riff"]=save("riff",29,ev)
 
