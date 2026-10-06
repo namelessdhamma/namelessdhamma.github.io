@@ -348,7 +348,7 @@ combined.save(ROOT/"NE_S_NIM_D1_FULL_arrangement.mid")
 filters={
 "drums":"highpass=f=35,acompressor=threshold=-18dB:ratio=3.0:attack=5:release=90,equalizer=f=80:t=q:w=1:g=2,equalizer=f=5200:t=q:w=1:g=2,volume=0.88",
 "bass":"highpass=f=28,lowpass=f=4200,acompressor=threshold=-20dB:ratio=3.4:attack=10:release=120,volume=0.78",
-"riff":"highpass=f=85,lowpass=f=6200,equalizer=f=1900:t=q:w=1.0:g=-5,equalizer=f=3200:t=q:w=1.2:g=-2,acompressor=threshold=-20dB:ratio=1.5:attack=8:release=90,volume=0.78",
+"riff":"highpass=f=85,lowpass=f=6200,equalizer=f=1900:t=q:w=1.0:g=-5,equalizer=f=3200:t=q:w=1.2:g=-2,acompressor=threshold=-20dB:ratio=1.5:attack=8:release=90,volume=24.0",
 "guitar_left":"highpass=f=90,lowpass=f=9500,equalizer=f=1900:t=q:w=1.2:g=-3,equalizer=f=3000:t=q:w=1.0:g=-2,volume=0.56",
 "guitar_right":"highpass=f=110,lowpass=f=10500,equalizer=f=1900:t=q:w=1.2:g=-3,aecho=0.9:0.75:75:0.05,volume=0.50",
 "acoustic":"highpass=f=110,lowpass=f=11000,equalizer=f=2200:t=q:w=1:g=-3,volume=0.32",
@@ -372,7 +372,7 @@ inputs=[]
 for p in sorted(proc.glob("*.wav")): inputs += ["-i",str(p)]
 n=len(list(proc.glob("*.wav")))
 subprocess.run(["ffmpeg","-y","-v","error",*inputs,"-filter_complex",
-                f"amix=inputs={n}:duration=longest:normalize=0,acompressor=threshold=-9dB:ratio=1.35:attack=18:release=180,alimiter=limit=0.92[out]",
+                f"amix=inputs={n}:duration=longest:normalize=0,acompressor=threshold=-7dB:ratio=1.25:attack=22:release=210,alimiter=limit=0.94[out]",
                 "-map","[out]","-ar",str(SR),"-c:a","pcm_s24le",str(ROOT/"instrumental.wav")],check=True)
 subprocess.run(["ffmpeg","-y","-v","error","-i",str(ROOT/"instrumental.wav"),
                 "-codec:a","libmp3lame","-b:a","320k",str(ROOT/"instrumental.mp3")],check=True)
