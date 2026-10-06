@@ -1,0 +1,111 @@
+name: GG Applio Awata A-B
+
+on:
+  push:
+    branches:
+      - experiment/gg-vocal-mutate-applio-20261006-worker
+    paths:
+      - '.github/workflows/gg-applio-awata-ab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore Applio runtime cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
+
+      - name: Restore or seed Awata RVC cache
+        uses: actions/cache@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-${{ runner.os }}
+
+      - name: Install runtime utilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates unzip ffmpeg python3 python3-pip git build-essential libsndfile1 libportaudio2
+
+      - name: Recover current North Star source artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gg-source
+          curl -fL --retry 3             -H "Authorization: Bearer $GH_TOKEN"             -H "Accept: application/vnd.github+json"             -o /tmp/gg-source.zip             https://api.github.com/repos/namelessdhamma/namelessdhamma.github.io/actions/artifacts/11320200372/zip
+          unzip -q /tmp/gg-source.zip -d /tmp/gg-source
+          test -s /tmp/gg-source/SoulX_NorthStar_Candidate.wav
+          cp /tmp/gg-source/SoulX_NorthStar_Candidate.wav /tmp/AB_SOURCE_SoulX_NorthStar_Candidate.wav
+          echo GG_AB_SOURCE=PASS
+
+      - name: Render conservative Applio A-B sweep
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gg-ab
+          python - <<'PY'
+          import json, pathlib, runpy, subprocess, shutil
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_applio_awata_ab')
+          work=pathlib.Path('/tmp/gg-ab-work'); work.mkdir(exist_ok=True)
+          root,vpy,runtime=ns['ensure_applio_runtime'](work)
+          model,index,model_meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
+          source=pathlib.Path('/tmp/AB_SOURCE_SoulX_NorthStar_Candidate.wav')
+          outdir=pathlib.Path('/tmp/gg-ab')
+          shutil.copy2(source,outdir/'00_SOURCE_SoulX_NorthStar_Candidate.wav')
+          variants=[
+              ('A_RMVPE_IDX030','rmvpe',0.30),
+              ('B_RMVPE_IDX050','rmvpe',0.50),
+              ('C_FCPE_IDX030','fcpe',0.30),
+              ('D_FCPE_IDX050','fcpe',0.50),
+          ]
+          manifest={'source':'SoulX_NorthStar_Candidate.wav','source_artifact_id':11320200372,'applio_commit':ns['APPLIO_COMMIT'],'model':model_meta,'variants':[]}
+          for name,f0,index_rate in variants:
+              out=outdir/(name+'.wav')
+              cmd=[str(vpy),'core.py','infer',
+                   '--input-path',str(source),
+                   '--output-path',str(out),
+                   '--pth-path',str(model),
+                   '--index-path',str(index),
+                   '--pitch','0',
+                   '--index-rate',str(index_rate),
+                   '--volume-envelope','1.0',
+                   '--protect','0.5',
+                   '--f0-method',f0,
+                   '--export-format','WAV',
+                   '--embedder-model','contentvec']
+              p=subprocess.run(cmd,cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=900)
+              print('AB_RENDER',name,'rc',p.returncode,p.stdout[-4000:])
+              if p.returncode or not out.exists() or out.stat().st_size==0:
+                  raise SystemExit('A/B render failed: '+name)
+              manifest['variants'].append({'name':name,'f0_method':f0,'index_rate':index_rate,'protect':0.5,'path':out.name,'bytes':out.stat().st_size})
+          (outdir/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2))
+          print('GG_APPLIO_AWATA_AB=PASS',json.dumps(manifest,ensure_ascii=False))
+          PY
+
+      - name: Preserve A-B audio
+        uses: actions/upload-artifact@v4
+        with:
+          name: gg-applio-awata-ab
+          path: /tmp/gg-ab/
+          retention-days: 7
