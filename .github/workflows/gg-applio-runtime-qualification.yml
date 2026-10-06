@@ -27,7 +27,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .gg-applio-cache
-          key: gg-applio-cpu-v1-${{ runner.os }}-324f4d89
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
       - name: Install system prerequisites
         shell: bash
         run: |
