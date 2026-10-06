@@ -1,16 +1,7 @@
 {
-  "op": "submit",
-  "nonce": "a8-kaggle-ltx-simple-f01-f05-same-effect-recovery-20261005-v2",
+  "op": "reconcile",
+  "nonce": "ltx-a2-provider-attempt-reconcile-20261006",
   "args": {
-    "start_image_url": "drive:1E7-sudthCN5KnHpHOJRV_a6TVr7MR1f9",
-    "end_image_url": "drive:1Dzm12hAxkk8NCW3bauOMRiQlE6mFZ09s",
-    "prompt": "Continuous cinematic pirate duel on a rain-soaked ship deck. Preserve both fighters, costumes, deck geography and the literal start/end composition. The dark-haired swordsman presses forward while the red-haired opponent defends. Coordinated body, foot, hand and blade motion; independently moving rain, hair, cloth, spray and reflections; no cut or slideshow.",
-    "duration_seconds": 2,
-    "width": 512,
-    "height": 288,
-    "seed": 80901,
-    "idempotency_key": "A8-KAGGLE-LTX-SIMPLE-SURFACE-F01-F05-20261005",
-    "retry_terminal": true,
-    "retry_version": 1
+    "effect_id": "ltx2b:0c32d9c224bf9bb4108e634d358c6dc362905b326afafb250fa3b2e80d80b3d7"
   }
 }
