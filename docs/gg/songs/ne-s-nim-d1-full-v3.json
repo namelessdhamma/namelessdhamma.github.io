@@ -2548,7 +2548,7 @@
     "voice_leading_repair": "new phrases only: nearest chord-tone correction <=3 semitones; accepted C3R1 gene and chorus untouched",
     "final_symbolic_repair": "finl3 одна resolves 64→67; removes unearned 7-semitone leap and lands on bar-104 G support"
   },
-  "production_revision": "D1R5C",
+  "production_revision": "D1R5D",
   "tempo_map": [
     {
       "bar": 0,
