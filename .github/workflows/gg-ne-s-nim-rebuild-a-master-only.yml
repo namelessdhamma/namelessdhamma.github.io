@@ -1,0 +1,67 @@
+name: GG Ne S Nim Rebuild A Master Only
+
+on:
+  push:
+    branches:
+      - experiment/gg-ne-s-nim-rebuild-20261006
+    paths:
+      - '.github/workflows/gg-ne-s-nim-rebuild-a-master-only.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  master:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - uses: actions/download-artifact@v4
+        with:
+          name: gg-ne-s-nim-rebuild-a-arrangement
+          run-id: 37414332821
+          github-token: ${{ github.token }}
+          path: arrangement
+      - uses: actions/download-artifact@v4
+        with:
+          name: gg-ne-s-nim-rebuild-a-vocal
+          run-id: 37414332821
+          github-token: ${{ github.token }}
+          path: vocal
+      - name: Mix rebuilt song
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p master
+          ffmpeg -y -v error -i vocal/D_REBUILD_A_FCPE_IDX050.wav             -af "highpass=f=80,acompressor=threshold=-18dB:ratio=2.2:attack=14:release=150,aecho=0.88:0.72:80|160:0.06|0.025,aresample=48000,volume=1.08"             master/D_REBUILD_A_MIX.wav
+          inputs=()
+          for f in arrangement/processed/*.wav; do inputs+=( -i "$f" ); done
+          inputs+=( -i master/D_REBUILD_A_MIX.wav )
+          n="$(ls arrangement/processed/*.wav | wc -l)"
+          total=$((n+1))
+          ffmpeg -y -v error "${inputs[@]}"             -filter_complex "amix=inputs=$total:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.1:attack=14:release=190,alimiter=limit=0.95,loudnorm=I=-14:LRA=11:TP=-1.0[out]"             -map "[out]" -ar 48000 -c:a pcm_s24le master/NE_S_NIM_REBUILD_A.wav
+          ffmpeg -y -v error -i master/NE_S_NIM_REBUILD_A.wav -codec:a libmp3lame -b:a 320k master/NE_S_NIM_REBUILD_A.mp3
+      - name: QC
+        run: |
+          python - <<'PY'
+          import subprocess,json,pathlib,hashlib
+          p=pathlib.Path('master/NE_S_NIM_REBUILD_A.wav')
+          d=float(json.loads(subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','json',str(p)],text=True))['format']['duration'])
+          assert 242 < d < 252,d
+          mp3=pathlib.Path('master/NE_S_NIM_REBUILD_A.mp3')
+          q={'version':'REBUILD_A','duration':d,'bars':110,'lyrics':'clean Russian',
+             'timbre':'D FCPE idx 0.50','sha256_mp3':hashlib.sha256(mp3.read_bytes()).hexdigest()}
+          pathlib.Path('master/qc.json').write_text(json.dumps(q,ensure_ascii=False,indent=2))
+          print(json.dumps(q,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-ne-s-nim-rebuild-a-master
+          path: master/
+          retention-days: 7
+          if-no-files-found: error
