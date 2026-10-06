@@ -285,6 +285,36 @@ async function existing(cfg,username,kernelSlug,ctx,fallbackVersion=0){
   const st=await rpc(cfg.token,"kernels.KernelsApiService","GetKernelSessionStatus",{userName:username,kernelSlug,versionLabel:"v"+version},ctx);
   return {version,state:stateOf(st?.status),provider_status:st?.status??null};
 }
+async function latestEffectAttempt(cfg,username,token,ctx){
+  const base=providerKernelSlug(token,1);
+  const listed=await rpc(cfg.token,"kernels.KernelsApiService","ListKernels",{user:username,search:base,pageSize:50},ctx);
+  const kernels=Array.isArray(listed?.kernels)?listed.kernels:[],owner=username.toLowerCase();
+  const attempts=[];
+  for(const k of kernels){
+    const slug=String(k?.slug||"").replace(/^.*\//,"");
+    const lower=slug.toLowerCase(),baseLower=base.toLowerCase();
+    let attempt=0;
+    if(lower===baseLower) attempt=1;
+    else if(lower.startsWith(baseLower+"-a")){
+      const suffix=lower.slice((baseLower+"-a").length);
+      const parsed=Number(suffix);
+      if(Number.isInteger(parsed)&&parsed>=2&&String(parsed)===suffix) attempt=parsed;
+    }
+    if(!attempt) continue;
+    const ref=String(k?.ref||"").toLowerCase();
+    const author=String(k?.author||"").toLowerCase();
+    if(ref&&ref!==owner+"/"+lower) continue;
+    if(author&&author!==owner&&author!=="savva savchenko") continue;
+    attempts.push({attempt,slug});
+  }
+  attempts.sort((a,b)=>b.attempt-a.attempt);
+  for(const a of attempts){
+    const found=await existing(cfg,username,a.slug,ctx);
+    if(found) return {...found,attempt:a.attempt,slug:a.slug};
+  }
+  const legacy=await existing(cfg,username,base,ctx);
+  return legacy?{...legacy,attempt:1,slug:base}:null;
+}
 
 function effectTokenFromId(effectId){
   const m=String(effectId||"").trim().match(/^ltx2b:([a-f0-9]{64})$/i);
@@ -294,21 +324,31 @@ function effectTokenFromId(effectId){
 
 
 
+function providerKernelSlug(token,attempt=1){
+  const n=Math.max(1,Number(attempt)||1);
+  return "nd-ltx2b-"+token+(n>1?"-a"+n:"");
+}
+function providerRequestId(token,attempt,version){
+  const n=Math.max(1,Number(attempt)||1);
+  return "k2b-"+token+(n>1?"-a"+n:"")+"-v"+Number(version);
+}
 function requestRef(requestId){
   const id=String(requestId||"").trim();
-  const m=id.match(/^k2b-(r[a-z0-9]+-[a-z0-9]+)-v(\d+)$/i);
+  let m=id.match(/^k2b-(r[a-z0-9]+-[a-z0-9]+)-a(\d+)-v(\d+)$/i);
+  if(m){
+    const attempt=Number(m[2]);
+    if(attempt<2) throw err("provider attempt suffix must be >=2");
+    return {request_id:id,effect_token:m[1],attempt,kernel_slug:providerKernelSlug(m[1],attempt),direct_kernel_slug:null,version:Number(m[3])};
+  }
+  m=id.match(/^k2b-(r[a-z0-9]+-[a-z0-9]+)-v(\d+)$/i);
   if(!m) throw err("valid k2b request_id required");
-  return {
-    request_id:id,
-    kernel_slug:"nd-ltx2b-"+m[1],
-    direct_kernel_slug:"nd-ltx2b-direct-"+m[1],
-    version:Number(m[2])
-  };
+  return {request_id:id,effect_token:m[1],attempt:1,kernel_slug:providerKernelSlug(m[1],1),direct_kernel_slug:"nd-ltx2b-direct-"+m[1],version:Number(m[2])};
 }
 
 async function resolveKernel(cfg,username,ref,ctx){
   let last=null;
-  for(const slug of [ref.kernel_slug,ref.direct_kernel_slug]){
+  const slugs=ref.attempt>1?[ref.kernel_slug]:[ref.kernel_slug,ref.direct_kernel_slug].filter(Boolean);
+  for(const slug of slugs){
     try{
       const st=await rpc(cfg.token,"kernels.KernelsApiService","GetKernelSessionStatus",{userName:username,kernelSlug:slug,versionLabel:"v"+ref.version},ctx);
       return {slug,st};
@@ -376,18 +416,20 @@ export async function submit(args={},cfg=configFromEnv()){
       idempotencyKey:args.idempotency_key
     });
     const retryTerminal=args.retry_terminal===true||args.retry_failed===true;
-    const found=await existing(cfg,username,effect.kernel_slug,ctx,retryTerminal?Number(args.retry_version||0):0);
+    const found=await latestEffectAttempt(cfg,username,effect.token,ctx);
     if(found && !(retryTerminal && (found.state === "FAILED" || found.state === "CANCELLED"))){
       return {
         ok:true,state:found.state,reused_existing:true,
-        request_id:"k2b-"+effect.token+"-v"+found.version,
-        effect_id:effect.effect_id,effect_token:effect.token,
-        provider_ref:username+"/"+effect.kernel_slug+"/"+found.version,
+        request_id:providerRequestId(effect.token,found.attempt,found.version),
+        effect_id:effect.effect_id,effect_token:effect.token,provider_attempt:found.attempt,
+        provider_ref:username+"/"+found.slug+"/"+found.version,
         provider_status:found.provider_status,
         route:"kaggle_ltx2b_direct_f2l",cost_policy:"FREE_ONLY",seed,
         nonblocking:true,caller_action:"CONTINUE_OTHER_USEFUL_WORK"
       };
     }
+    const providerAttempt=found&&retryTerminal&&(found.state==="FAILED"||found.state==="CANCELLED")?found.attempt+1:1;
+    const providerSlug=providerKernelSlug(effect.token,providerAttempt);
     const pf=await preflight(cfg,username,ctx);
     const request={
       start_image_url:startInput.url,end_image_url:endInput.url,
@@ -410,8 +452,8 @@ export async function submit(args={},cfg=configFromEnv()){
     let save;
     try{
       save=await rpc(cfg.token,"kernels.KernelsApiService","SaveKernel",{
-        slug:username+"/"+effect.kernel_slug,
-        newTitle:"ND LTX2B "+effect.token,
+        slug:username+"/"+providerSlug,
+        newTitle:"ND LTX2B "+effect.token+" attempt "+providerAttempt,
         text:script,language:"python",kernelType:"script",
         datasetDataSources:[],kernelDataSources:cacheSources,competitionDataSources:[],
         categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,
@@ -427,7 +469,7 @@ export async function submit(args={},cfg=configFromEnv()){
       }
       if(e?.code==="CONTROL_DEADLINE"||ctx.isDeadline()){
         return {ok:false,state:"SUBMIT_AMBIGUOUS",outcome_state:"OUTCOME_UNKNOWN",
-          effect_id:effect.effect_id,effect_token:effect.token,kernel_slug:effect.kernel_slug,
+          effect_id:effect.effect_id,effect_token:effect.token,kernel_slug:providerSlug,provider_attempt:providerAttempt,
           route:"kaggle_ltx2b_direct_f2l",cost_policy:"FREE_ONLY",retry_after_seconds:30,nonblocking:true,
           caller_action:"RECONCILE_SAME_EFFECT_LATER_DO_NOT_RESUBMIT",error:msg.slice(0,1200)};
       }
@@ -435,11 +477,11 @@ export async function submit(args={},cfg=configFromEnv()){
       if(!st||st===408||st===409||st>=500){
         try{
           if(ctx.remainingMs()>750){
-            const reconciled=await existing(cfg,username,effect.kernel_slug,ctx);
+            const reconciled=await existing(cfg,username,providerSlug,ctx);
             if(reconciled){
               return {ok:true,state:reconciled.state,reused_existing:true,
-                request_id:"k2b-"+effect.token+"-v"+reconciled.version,effect_id:effect.effect_id,effect_token:effect.token,
-                provider_ref:username+"/"+effect.kernel_slug+"/"+reconciled.version,
+                request_id:providerRequestId(effect.token,providerAttempt,reconciled.version),effect_id:effect.effect_id,effect_token:effect.token,provider_attempt:providerAttempt,
+                provider_ref:username+"/"+providerSlug+"/"+reconciled.version,
                 provider_status:reconciled.provider_status,route:"kaggle_ltx2b_direct_f2l",
                 cost_policy:"FREE_ONLY",gpu_quota:pf.gpu,seed,nonblocking:true,
                 caller_action:"CONTINUE_OTHER_USEFUL_WORK"};
@@ -447,7 +489,7 @@ export async function submit(args={},cfg=configFromEnv()){
           }
         }catch{}
         return {ok:false,state:"SUBMIT_AMBIGUOUS",outcome_state:"OUTCOME_UNKNOWN",
-          effect_id:effect.effect_id,effect_token:effect.token,kernel_slug:effect.kernel_slug,
+          effect_id:effect.effect_id,effect_token:effect.token,kernel_slug:providerSlug,provider_attempt:providerAttempt,
           route:"kaggle_ltx2b_direct_f2l",cost_policy:"FREE_ONLY",retry_after_seconds:30,nonblocking:true,
           caller_action:"RECONCILE_SAME_EFFECT_LATER_DO_NOT_RESUBMIT",error:msg.slice(0,1200)};
       }
@@ -459,8 +501,8 @@ export async function submit(args={},cfg=configFromEnv()){
     if(!version) throw err("Kaggle submit returned no version");
     return {
       ok:true,state:"SUBMITTED",reused_existing:false,
-      request_id:"k2b-"+effect.token+"-v"+version,effect_id:effect.effect_id,effect_token:effect.token,
-      provider_ref:username+"/"+effect.kernel_slug+"/"+version,
+      request_id:providerRequestId(effect.token,providerAttempt,version),effect_id:effect.effect_id,effect_token:effect.token,provider_attempt:providerAttempt,
+      provider_ref:username+"/"+providerSlug+"/"+version,
       route:"kaggle_ltx2b_direct_f2l",worker_mode:"DIRECT_LTX",
       cache_sources:cacheSources,machine_shape_requested:"NvidiaTeslaT4",
       cost_policy:"FREE_ONLY",gpu_quota:pf.gpu,seed,nonblocking:true,
@@ -474,21 +516,20 @@ export async function reconcile(args={},cfg=configFromEnv()){
     const token=String(args.effect_token||"").trim()||effectTokenFromId(args.effect_id);
     if(!/^r[a-f0-9]{12}-[a-f0-9]{4}$/i.test(token)) throw err("valid effect_token required");
     const username=await identity(cfg,ctx);
-    const kernelSlug="nd-ltx2b-"+token;
-    const found=await existing(cfg,username,kernelSlug,ctx);
+    const found=await latestEffectAttempt(cfg,username,token,ctx);
     if(!found){
       return {
         ok:false,state:"OUTCOME_UNKNOWN",outcome_state:"OUTCOME_UNKNOWN",
-        effect_id:String(args.effect_id||"")||null,effect_token:token,kernel_slug:kernelSlug,
+        effect_id:String(args.effect_id||"")||null,effect_token:token,kernel_slug:providerKernelSlug(token,1),
         safe_to_resubmit:false,retry_after_seconds:30,nonblocking:true,
         caller_action:"RECHECK_SAME_EFFECT_LATER_DO_NOT_RESUBMIT"
       };
     }
     return {
       ok:true,state:found.state,reused_existing:true,
-      request_id:"k2b-"+token+"-v"+found.version,
-      effect_id:String(args.effect_id||"")||null,effect_token:token,
-      provider_ref:username+"/"+kernelSlug+"/"+found.version,
+      request_id:providerRequestId(token,found.attempt,found.version),
+      effect_id:String(args.effect_id||"")||null,effect_token:token,provider_attempt:found.attempt,
+      provider_ref:username+"/"+found.slug+"/"+found.version,
       provider_status:found.provider_status,nonblocking:true,
       caller_action:"CONTINUE_SAME_EFFECT"
     };
