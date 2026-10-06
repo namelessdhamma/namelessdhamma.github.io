@@ -1,0 +1,70 @@
+name: GG Awata RVC Qualification
+
+on:
+  push:
+    branches:
+      - experiment/gg-vocal-mutate-applio-20261006-worker
+    paths:
+      - '.github/workflows/gg-awata-rvc-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-awata-rvc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore qualified Applio runtime
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
+      - name: Install archive tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates unzip python3
+      - name: Download and inspect official Awata RVC v1.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://github.com/hhskt/Awata_Weak/releases/download/rvc_v1.2/Awata_Weak_Rvc_v1.2.zip'
+          curl -fL --retry 3 --retry-delay 2 -o /tmp/awata-rvc.zip "$URL"
+          mkdir -p /tmp/awata-rvc
+          unzip -q /tmp/awata-rvc.zip -d /tmp/awata-rvc
+          find /tmp/awata-rvc -type f | sort | tee /tmp/awata-files.txt
+          PTH_COUNT="$(find /tmp/awata-rvc -type f -iname '*.pth' | wc -l)"
+          IDX_COUNT="$(find /tmp/awata-rvc -type f -iname '*.index' | wc -l)"
+          test "$PTH_COUNT" -ge 1
+          test "$IDX_COUNT" -ge 1
+          echo "GG_AWATA_RVC_ARCHIVE=PASS pth=$PTH_COUNT index=$IDX_COUNT"
+      - name: Validate each model with pinned Applio
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib, runpy, subprocess
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_awata_rvc_qualification')
+          root,vpy,meta=ns['ensure_applio_runtime'](pathlib.Path('/tmp/gg-applio-runtime'))
+          models=sorted(pathlib.Path('/tmp/awata-rvc').rglob('*.pth'))
+          indices=sorted(pathlib.Path('/tmp/awata-rvc').rglob('*.index'))
+          print('MODELS', [str(x) for x in models])
+          print('INDICES', [str(x) for x in indices])
+          for model in models:
+              p=subprocess.run([str(vpy),'core.py','model-information','--pth-path',str(model)],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=120)
+              print('MODEL_INFO',model.name,p.returncode,p.stdout[-5000:])
+              if p.returncode:
+                  raise SystemExit('Applio rejected '+str(model))
+          print('GG_AWATA_RVC_APPLIO_COMPAT=PASS', meta)
+          PY
