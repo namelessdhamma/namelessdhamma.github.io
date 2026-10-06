@@ -1,0 +1,2546 @@
+{
+  "version": "FULL_D6",
+  "title": "Не с ним — full-song shared score D6 complete literary text / clean preflight",
+  "bpm": 108,
+  "ticks_per_beat": 480,
+  "bars": 120,
+  "key": "A minor",
+  "target_text": "Мы встретились с тобой, как люди видятся во сне. Узнали лица, но не смели прикоснуться. Два голоса блуждали в тишине. Как две тропы, которым не сомкнуться. Вино нагрелось, память стёрлась в пыль. Как в книге, что давно не открывали. Смеялись мы, но каждый позабыл: Это — не тот, кого мы вспоминали. Я говорил не с ним. Я говорил с собой. А он в моих словах искал лишь голос свой. За стол подсел незримый третий гость. Тот, кем мы были прежде, до разлуки. Он знал наперечёт и смех, и злость. И не давал пожать друг другу руки. Я говорил не с ним. Я говорил с собой. А он в моих словах искал лишь голос свой. Взирали сквозь друг друга — в давний год. Который общим был и незабвенным. А прошлое смыкало тёмный грот. Былого, что осталось неизменным. Не память виновата: ведь она. Сумела нас свести в житейском круге. Ошибка этой встречи лишь одна. Смотрели в прошлое, а вовсе не друг в друга. Того, кто был напротив. Я так и не увидел.",
+  "chords": [
+    "Am",
+    "Fmaj7",
+    "C/E",
+    "E7",
+    "Am7",
+    "Am7",
+    "E7",
+    "C",
+    "G/B",
+    "E7",
+    "Dm",
+    "E7",
+    "E7",
+    "F",
+    "E7",
+    "E7",
+    "Fmaj7",
+    "E7",
+    "Am",
+    "E7",
+    "Am7",
+    "Am",
+    "Fmaj7",
+    "E7",
+    "E7",
+    "Fmaj7",
+    "Fmaj7",
+    "Am",
+    "F",
+    "Am7",
+    "G",
+    "Fmaj7",
+    "Dm",
+    "F",
+    "E7",
+    "Fmaj7",
+    "E7",
+    "Dm7",
+    "Esus4",
+    "Am",
+    "Am",
+    "F",
+    "E7",
+    "Am",
+    "E7",
+    "E7",
+    "E7",
+    "E7",
+    "E7",
+    "E7",
+    "Dm",
+    "E7",
+    "E7",
+    "Fmaj7",
+    "E7",
+    "Am",
+    "F",
+    "Am7",
+    "G",
+    "Fmaj7",
+    "Dm",
+    "F",
+    "E7",
+    "Fmaj7",
+    "E7",
+    "Dm7",
+    "Esus4",
+    "Am",
+    "Fmaj7",
+    "Fmaj7",
+    "Am7",
+    "Am7",
+    "F",
+    "F",
+    "C",
+    "Am7",
+    "Dm",
+    "F",
+    "Am7",
+    "F",
+    "Am",
+    "Am7",
+    "Fmaj7",
+    "E7",
+    "Dm",
+    "G",
+    "C",
+    "F",
+    "Dm",
+    "E7",
+    "Fmaj7",
+    "E7",
+    "Am",
+    "F",
+    "Dm",
+    "E7",
+    "E7",
+    "Am7",
+    "Am",
+    "Am7",
+    "Am7",
+    "Fmaj7",
+    "E7",
+    "Am",
+    "Am",
+    "Am7",
+    "E7",
+    "Am",
+    "E7",
+    "E7",
+    "Dm7",
+    "Dm7",
+    "Dm7",
+    "Am",
+    "Fmaj7",
+    "Fmaj7",
+    "Dm",
+    "Dm",
+    "Am",
+    "Am"
+  ],
+  "phrases": [
+    {
+      "id": "v1l1",
+      "bar": 4,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "мы",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "встретились",
+          "stress": 0,
+          "pitches": [
+            64,
+            64,
+            62
+          ],
+          "durations": [
+            240,
+            240,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "с",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "тобой",
+          "stress": 1,
+          "pitches": [
+            67,
+            69
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 240
+        },
+        {
+          "text": "как",
+          "stress": 0,
+          "pitches": [
+            67
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "люди",
+          "stress": 0,
+          "pitches": [
+            67,
+            65
+          ],
+          "durations": [
+            240,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "видятся",
+          "stress": 0,
+          "pitches": [
+            64,
+            64,
+            62
+          ],
+          "durations": [
+            240,
+            240,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "во",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "сне",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l2",
+      "bar": 7,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "узнали",
+          "stress": 1,
+          "pitches": [
+            64,
+            67,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "лица",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "но",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            59
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "смели",
+          "stress": 0,
+          "pitches": [
+            62,
+            59
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "прикоснуться",
+          "stress": 2,
+          "pitches": [
+            59,
+            59,
+            62,
+            64
+          ],
+          "durations": [
+            240,
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l3",
+      "bar": 10,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "два",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "голоса",
+          "stress": 2,
+          "pitches": [
+            62,
+            62,
+            65
+          ],
+          "durations": [
+            240,
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "блуждали",
+          "stress": 1,
+          "pitches": [
+            65,
+            64,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "тишине",
+          "stress": 2,
+          "pitches": [
+            64,
+            64,
+            68
+          ],
+          "durations": [
+            240,
+            240,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l4",
+      "bar": 13,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "как",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "две",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "тропы",
+          "stress": 1,
+          "pitches": [
+            65,
+            69
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "которым",
+          "stress": 1,
+          "pitches": [
+            65,
+            64,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "сомкнуться",
+          "stress": 1,
+          "pitches": [
+            62,
+            62,
+            68
+          ],
+          "durations": [
+            240,
+            240,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l5",
+      "bar": 16,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "вино",
+          "stress": 1,
+          "pitches": [
+            62,
+            65
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "нагрелось",
+          "stress": 1,
+          "pitches": [
+            65,
+            64,
+            62
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "память",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "стёрлась",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "пыль",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l6",
+      "bar": 19,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "как",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "книге",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "что",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "давно",
+          "stress": 1,
+          "pitches": [
+            62,
+            64
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "открывали",
+          "stress": 2,
+          "pitches": [
+            64,
+            64,
+            67,
+            64
+          ],
+          "durations": [
+            240,
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l7",
+      "bar": 22,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "смеялись",
+          "stress": 1,
+          "pitches": [
+            62,
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "мы",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "но",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "каждый",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "позабыл",
+          "stress": 2,
+          "pitches": [
+            62,
+            64,
+            68
+          ],
+          "durations": [
+            240,
+            240,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l8",
+      "bar": 25,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "это",
+          "stress": 0,
+          "pitches": [
+            65,
+            64
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "тот",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 240
+        },
+        {
+          "text": "кого",
+          "stress": 1,
+          "pitches": [
+            64,
+            65
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "мы",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "вспоминали",
+          "stress": 2,
+          "pitches": [
+            64,
+            64,
+            69,
+            64
+          ],
+          "durations": [
+            240,
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c1l1",
+      "bar": 28,
+      "offset": 240,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "я",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "говорил",
+          "stress": 2,
+          "pitches": [
+            65,
+            67,
+            69
+          ],
+          "durations": [
+            240,
+            240,
+            720
+          ],
+          "rest": 240
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            67
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "с",
+          "stress": 0,
+          "pitches": [
+            67
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "ним",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            1200
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c1l2",
+      "bar": 31,
+      "offset": 240,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "я",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "говорил",
+          "stress": 2,
+          "pitches": [
+            64,
+            65,
+            69
+          ],
+          "durations": [
+            240,
+            240,
+            720
+          ],
+          "rest": 240
+        },
+        {
+          "text": "с",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "собой",
+          "stress": 1,
+          "pitches": [
+            65,
+            69
+          ],
+          "durations": [
+            240,
+            1200
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c1l3",
+      "bar": 34,
+      "offset": 240,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "а",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "он",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "моих",
+          "stress": 1,
+          "pitches": [
+            64,
+            68
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 240
+        },
+        {
+          "text": "словах",
+          "stress": 1,
+          "pitches": [
+            65,
+            69
+          ],
+          "durations": [
+            240,
+            1200
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c1l4",
+      "bar": 37,
+      "offset": 240,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "искал",
+          "stress": 1,
+          "pitches": [
+            62,
+            65
+          ],
+          "durations": [
+            240,
+            720
+          ],
+          "rest": 0
+        },
+        {
+          "text": "лишь",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "голос",
+          "stress": 0,
+          "pitches": [
+            65,
+            64
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "свой",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            1440
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v2l1",
+      "bar": 44,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "за",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "стол",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "подсел",
+          "stress": 1,
+          "pitches": [
+            62,
+            64
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "незримый",
+          "stress": 1,
+          "pitches": [
+            64,
+            64,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "третий",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "гость",
+          "stress": 0,
+          "pitches": [
+            59
+          ],
+          "durations": [
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v2l2",
+      "bar": 47,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "тот",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "кем",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "мы",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "были",
+          "stress": 0,
+          "pitches": [
+            62,
+            64
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "прежде",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "до",
+          "stress": 0,
+          "pitches": [
+            59
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "разлуки",
+          "stress": 1,
+          "pitches": [
+            59,
+            62,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v2l3",
+      "bar": 50,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "он",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "знал",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "наперечёт",
+          "stress": 3,
+          "pitches": [
+            62,
+            62,
+            64,
+            65
+          ],
+          "durations": [
+            240,
+            240,
+            240,
+            720
+          ],
+          "rest": 240
+        },
+        {
+          "text": "и",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "смех",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "и",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "злость",
+          "stress": 0,
+          "pitches": [
+            59
+          ],
+          "durations": [
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v2l4",
+      "bar": 53,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "и",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "давал",
+          "stress": 1,
+          "pitches": [
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "пожать",
+          "stress": 1,
+          "pitches": [
+            62,
+            64
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "друг",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "другу",
+          "stress": 0,
+          "pitches": [
+            62,
+            59
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "руки",
+          "stress": 0,
+          "pitches": [
+            59,
+            57
+          ],
+          "durations": [
+            480,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c2l1",
+      "bar": 56,
+      "offset": 240,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "я",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "говорил",
+          "stress": 2,
+          "pitches": [
+            65,
+            67,
+            69
+          ],
+          "durations": [
+            240,
+            240,
+            720
+          ],
+          "rest": 240
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            67
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "с",
+          "stress": 0,
+          "pitches": [
+            67
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "ним",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            1200
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c2l2",
+      "bar": 59,
+      "offset": 240,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "я",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "говорил",
+          "stress": 2,
+          "pitches": [
+            64,
+            65,
+            69
+          ],
+          "durations": [
+            240,
+            240,
+            720
+          ],
+          "rest": 240
+        },
+        {
+          "text": "с",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "собой",
+          "stress": 1,
+          "pitches": [
+            65,
+            69
+          ],
+          "durations": [
+            240,
+            1200
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c2l3",
+      "bar": 62,
+      "offset": 240,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "а",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "он",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "моих",
+          "stress": 1,
+          "pitches": [
+            64,
+            68
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 240
+        },
+        {
+          "text": "словах",
+          "stress": 1,
+          "pitches": [
+            65,
+            69
+          ],
+          "durations": [
+            240,
+            1200
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c2l4",
+      "bar": 65,
+      "offset": 240,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "искал",
+          "stress": 1,
+          "pitches": [
+            62,
+            65
+          ],
+          "durations": [
+            240,
+            720
+          ],
+          "rest": 0
+        },
+        {
+          "text": "лишь",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "голос",
+          "stress": 0,
+          "pitches": [
+            65,
+            64
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "свой",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            1440
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "b1",
+      "bar": 68,
+      "offset": 240,
+      "section": "bridge",
+      "words": [
+        {
+          "text": "взирали",
+          "stress": 1,
+          "pitches": [
+            64,
+            69,
+            65
+          ],
+          "durations": [
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "сквозь",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "друг",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "друга",
+          "stress": 0,
+          "pitches": [
+            65,
+            64
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "давний",
+          "stress": 0,
+          "pitches": [
+            67,
+            65
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "год",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "bar": 71,
+      "offset": 240,
+      "section": "bridge",
+      "words": [
+        {
+          "text": "который",
+          "stress": 1,
+          "pitches": [
+            65,
+            67,
+            65
+          ],
+          "durations": [
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "общим",
+          "stress": 0,
+          "pitches": [
+            67,
+            65
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "был",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "и",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "незабвенным",
+          "stress": 2,
+          "pitches": [
+            67,
+            69,
+            72,
+            69
+          ],
+          "durations": [
+            240,
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "b3",
+      "bar": 74,
+      "offset": 240,
+      "section": "bridge",
+      "words": [
+        {
+          "text": "а",
+          "stress": 0,
+          "pitches": [
+            67
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "прошлое",
+          "stress": 0,
+          "pitches": [
+            67,
+            65,
+            64
+          ],
+          "durations": [
+            480,
+            240,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "смыкало",
+          "stress": 1,
+          "pitches": [
+            64,
+            67,
+            65
+          ],
+          "durations": [
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "тёмный",
+          "stress": 0,
+          "pitches": [
+            67,
+            65
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "грот",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "b4",
+      "bar": 77,
+      "offset": 240,
+      "section": "bridge",
+      "words": [
+        {
+          "text": "былого",
+          "stress": 1,
+          "pitches": [
+            65,
+            69,
+            65
+          ],
+          "durations": [
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "что",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "осталось",
+          "stress": 1,
+          "pitches": [
+            64,
+            67,
+            65
+          ],
+          "durations": [
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "неизменным",
+          "stress": 2,
+          "pitches": [
+            64,
+            65,
+            69,
+            68
+          ],
+          "durations": [
+            240,
+            240,
+            720,
+            480
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "f1",
+      "bar": 96,
+      "offset": 240,
+      "section": "final",
+      "words": [
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "память",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "виновата",
+          "stress": 2,
+          "pitches": [
+            62,
+            64,
+            67,
+            64
+          ],
+          "durations": [
+            240,
+            240,
+            720,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "ведь",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "она",
+          "stress": 1,
+          "pitches": [
+            64,
+            69
+          ],
+          "durations": [
+            240,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "f2",
+      "bar": 99,
+      "offset": 240,
+      "section": "final",
+      "words": [
+        {
+          "text": "сумела",
+          "stress": 1,
+          "pitches": [
+            64,
+            67,
+            64
+          ],
+          "durations": [
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "нас",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "свести",
+          "stress": 1,
+          "pitches": [
+            64,
+            67
+          ],
+          "durations": [
+            240,
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "житейском",
+          "stress": 1,
+          "pitches": [
+            64,
+            67,
+            65
+          ],
+          "durations": [
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "круге",
+          "stress": 0,
+          "pitches": [
+            65,
+            64
+          ],
+          "durations": [
+            480,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "f3",
+      "bar": 102,
+      "offset": 240,
+      "section": "final",
+      "words": [
+        {
+          "text": "ошибка",
+          "stress": 1,
+          "pitches": [
+            64,
+            62,
+            62
+          ],
+          "durations": [
+            480,
+            240,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "этой",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "встречи",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "лишь",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "одна",
+          "stress": 1,
+          "pitches": [
+            64,
+            69
+          ],
+          "durations": [
+            240,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "f4",
+      "bar": 105,
+      "offset": 240,
+      "section": "final",
+      "words": [
+        {
+          "text": "смотрели",
+          "stress": 1,
+          "pitches": [
+            64,
+            67,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "прошлое",
+          "stress": 0,
+          "pitches": [
+            64,
+            62,
+            62
+          ],
+          "durations": [
+            480,
+            240,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "а",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "вовсе",
+          "stress": 0,
+          "pitches": [
+            64,
+            62
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "друг",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "друга",
+          "stress": 0,
+          "pitches": [
+            64,
+            69
+          ],
+          "durations": [
+            240,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "co1",
+      "bar": 108,
+      "offset": 480,
+      "section": "coda",
+      "words": [
+        {
+          "text": "того",
+          "stress": 1,
+          "pitches": [
+            62,
+            64
+          ],
+          "durations": [
+            240,
+            720
+          ],
+          "rest": 240
+        },
+        {
+          "text": "кто",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "был",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "напротив",
+          "stress": 0,
+          "pitches": [
+            64,
+            62,
+            60
+          ],
+          "durations": [
+            720,
+            240,
+            720
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "co2",
+      "bar": 111,
+      "offset": 480,
+      "section": "coda",
+      "words": [
+        {
+          "text": "я",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "так",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "и",
+          "stress": 0,
+          "pitches": [
+            60
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            60
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "увидел",
+          "stress": 1,
+          "pitches": [
+            60,
+            62,
+            60
+          ],
+          "durations": [
+            240,
+            720,
+            960
+          ],
+          "rest": 0
+        }
+      ]
+    }
+  ],
+  "groove": {
+    "pulse_eighths": [
+      0,
+      3,
+      6
+    ],
+    "kick_beats": [
+      0,
+      2
+    ],
+    "snare_beats": [
+      1,
+      3
+    ],
+    "stress_tambourine": true,
+    "response_source": "phrase_last4_pitches",
+    "ensemble_voicing": "revoice_chords_to_include_dominant_vocal_pitch_class"
+  },
+  "notes": {
+    "design": "D6 completes all literary lines, fixes «ошибка» stress, quantizes all new Verse-I continuation word starts, re-harmonizes bars 16–27, and closes the final inserted bar to Am. C3/C3R1 gene remains authoritative.",
+    "parent_drive_c3": "1Hq339u_Bv391DIYbRK0oZ8uroisnp1YongsBJxH4shY",
+    "user_facing": false
+  },
+  "form": {
+    "intro": [
+      0,
+      3
+    ],
+    "verse1a": [
+      4,
+      15
+    ],
+    "verse1b": [
+      16,
+      27
+    ],
+    "chorus1": [
+      28,
+      39
+    ],
+    "transition": [
+      40,
+      43
+    ],
+    "verse2": [
+      44,
+      55
+    ],
+    "chorus2": [
+      56,
+      67
+    ],
+    "bridge": [
+      68,
+      79
+    ],
+    "instrumental": [
+      80,
+      95
+    ],
+    "final": [
+      96,
+      107
+    ],
+    "coda": [
+      108,
+      113
+    ],
+    "outro": [
+      114,
+      119
+    ]
+  }
+}
