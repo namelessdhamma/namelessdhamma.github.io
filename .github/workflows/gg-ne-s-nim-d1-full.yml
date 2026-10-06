@@ -259,6 +259,7 @@ jobs:
             --instrumental song/arrangement/instrumental.wav \
             --drums song/arrangement/processed/drums.wav \
             --riff song/arrangement/processed/riff.wav \
+            --master song/master/NEZRIMY_GOST_D1R5.wav \
             --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
             --bpm 108 \
             --out song/qa-audio.json
