@@ -51,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends git curl ca-certificates unzip ffmpeg fluidsynth fluid-soundfont-gm build-essential libsndfile1 libportaudio2 patchelf
+          apt-get install -y --no-install-recommends git curl ca-certificates unzip ffmpeg fluidsynth fluid-soundfont-gm build-essential libsndfile1 libportaudio2 patchelf libicu-dev
           python -m pip install -q mido numpy soundfile scipy librosa==0.10.2.post1 pyyaml
 
       - name: Prepare OpenUtau and Awata
