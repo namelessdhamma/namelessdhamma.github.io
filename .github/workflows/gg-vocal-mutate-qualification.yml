@@ -37,7 +37,9 @@ jobs:
               raise SystemExit('bounds guard failed')
           src=open('tools/gg_cloud_music_worker.py',encoding='utf-8').read()
           assert 'elif op=="vocal_mutate"' in src
-          assert 'weights_only=True' in src
+          assert 'APPLIO_COMMIT' in src
+          assert 'setup_only' in src
+          assert 'source_asset' in src and 'model_asset' in src
           print('GG_VOCAL_MUTATE_STATIC=PASS')
           PY
           grep -q 'GG_APPLIO_CACHE_DIR' .github/workflows/gg-cloud-music-worker.yml
