@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 const DEFAULT_RAILWAY_BASE="https://nd-external-intelligence-production.up.railway.app";
-const QUALIFIED_WORKER_COMMIT="0b499bd9d54fe7099cc9fca115f889965d3b313e";
+const QUALIFIED_WORKER_COMMIT="d241c84f27da3f1c29559e6fd19c9eccc27a6810";
 const WORKER_URL="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/"+QUALIFIED_WORKER_COMMIT+"/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py";
 
 function err(message,status=0,code=""){
@@ -253,7 +253,7 @@ async function prepareInput(value,cfg,label,ctx){
 
 
 
-function effectRef({startInput,endInput,prompt,negativePrompt,duration,width,height,seed,idempotencyKey,qualityMode}){
+function effectRef({startInput,endInput,midInput,midFrameNumber,prompt,negativePrompt,duration,width,height,seed,idempotencyKey,qualityMode}){
   const body={
     version:1,
     start_sha256:startInput.fingerprint,
@@ -268,6 +268,10 @@ function effectRef({startInput,endInput,prompt,negativePrompt,duration,width,hei
     idempotency_key:String(idempotencyKey||"")
   };
   if(String(qualityMode||"direct")!=="direct") body.quality_mode=String(qualityMode);
+  if(midInput){
+    body.mid_sha256=midInput.fingerprint;
+    body.mid_frame_number=Number(midFrameNumber);
+  }
   const canonical=JSON.stringify(body);
   const hash=sha256(canonical);
   const token="r"+hash.slice(0,12)+"-"+hash.slice(12,16);
@@ -411,6 +415,9 @@ export async function submit(args={},cfg=configFromEnv()){
       prepareInput(args.start_image_url,cfg,"start",ctx),
       prepareInput(args.end_image_url,cfg,"end",ctx)
     ]);
+    const midInput=args.mid_image_url?await prepareInput(args.mid_image_url,cfg,"mid",ctx):null;
+    const midFrameNumber=midInput?Number(args.mid_frame_number??28):null;
+    if(midInput&&(!Number.isInteger(midFrameNumber)||midFrameNumber<=0)) throw err("valid positive mid_frame_number required");
     const username=await identity(cfg,ctx);
     const seed=Number(args.seed??42);
     const prompt=String(args.prompt||"").trim();
@@ -420,7 +427,7 @@ export async function submit(args={},cfg=configFromEnv()){
     const qualityMode=String(args.quality_mode||"direct").trim().toLowerCase();
     if(!["direct","multiscale"].includes(qualityMode)) throw err("quality_mode must be direct or multiscale");
     const effect=effectRef({
-      startInput,endInput,prompt,negativePrompt,duration,width,height,seed,
+      startInput,endInput,midInput,midFrameNumber,prompt,negativePrompt,duration,width,height,seed,
       idempotencyKey:args.idempotency_key,qualityMode
     });
     const retryTerminal=args.retry_terminal===true||args.retry_failed===true;
@@ -444,6 +451,10 @@ export async function submit(args={},cfg=configFromEnv()){
       prompt,negative_prompt:negativePrompt,duration_seconds:duration,width,height,seed,
       quality_mode:qualityMode
     };
+    if(midInput){
+      request.mid_image_url=midInput.url;
+      request.mid_frame_number=midFrameNumber;
+    }
     const reqB64=Buffer.from(JSON.stringify(request),"utf8").toString("base64");
     const script=[
       "import base64,sys,urllib.request",
@@ -514,6 +525,7 @@ export async function submit(args={},cfg=configFromEnv()){
       provider_ref:username+"/"+providerSlug+"/"+version,
       route:"kaggle_ltx2b_direct_f2l",worker_mode:qualityMode==="multiscale"?"MULTISCALE_LTX":"DIRECT_LTX",
       quality_mode:qualityMode,
+      conditioning_frames:midInput?[0,midFrameNumber,"last"]:[0,"last"],
       cache_sources:cacheSources,machine_shape_requested:"NvidiaTeslaT4",
       cost_policy:"FREE_ONLY",gpu_quota:pf.gpu,seed,nonblocking:true,
       caller_action:"CONTINUE_OTHER_USEFUL_WORK"
