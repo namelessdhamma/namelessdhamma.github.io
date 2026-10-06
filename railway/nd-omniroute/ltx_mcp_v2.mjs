@@ -200,7 +200,7 @@ async function submit(args={}){
     if(Buffer.byteLength(script,'utf8')>=900000)throw new Error('Kaggle kernel source exceeds 900 KB');
     const cacheSources=providerAttempt>1?[]:[username+'/nd-ltx-2b-distilled-cache'];
     let save;
-    try{save=await rpc('kernels.KernelsApiService','SaveKernel',{slug:username+'/'+providerSlug,newTitle:'ND LTX2B '+effect.token+' attempt '+providerAttempt,text:script,language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:cacheSources,competitionDataSources:[],categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,kernelExecutionType:'SaveAndRunAll',machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:3600},ctx);}
+    try{save=await rpc('kernels.KernelsApiService','SaveKernel',{slug:username+'/'+providerSlug,newTitle:'ND LTX2B '+effect.token+(providerAttempt>1?' attempt '+providerAttempt+' clean-v1':''),text:script,language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:cacheSources,competitionDataSources:[],categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,kernelExecutionType:'SaveAndRunAll',machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:3600},ctx);}
     catch(e){
       const msg=String(e?.message||e);
       if(/429|RESOURCE_EXHAUSTED|maximum.*GPU|batch GPU session|capacity|quota/i.test(msg))return {ok:false,state:'CAPACITY_BLOCKED',effect_id:effect.effect_id,effect_token:effect.token,route:'kaggle_ltx2b_direct_f2l',cost_policy:'FREE_ONLY',retry_after_seconds:60,nonblocking:true,caller_action:'CONTINUE_OTHER_USEFUL_WORK_AND_RETRY_LATER',error:msg.slice(0,1200)};
