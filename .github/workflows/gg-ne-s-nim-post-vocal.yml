@@ -1,0 +1,146 @@
+name: GG Ne S Nim Post Vocal Masters
+
+on:
+  push:
+    branches:
+      - experiment/gg-ne-s-nim-song-20261006
+    paths:
+      - '.github/workflows/gg-ne-s-nim-post-vocal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  master:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: C
+            rate: '0.30'
+            suffix: C_FCPE_IDX030
+          - label: D
+            rate: '0.50'
+            suffix: D_FCPE_IDX050
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates ffmpeg unzip git build-essential libsndfile1 libportaudio2 patchelf
+          python3 --version || true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore Applio runtime
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
+
+      - name: Restore Awata RVC
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-${{ runner.os }}
+
+      - name: Recover preserved guide
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-ne-s-nim-guide-vocal
+          run-id: 37409292206
+          github-token: ${{ github.token }}
+          path: guide
+
+      - name: Recover qualified arrangement
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-ne-s-nim-arrangement
+          run-id: 37408343048
+          github-token: ${{ github.token }}
+          path: arrangement
+
+      - name: Render North Star ${{ matrix.label }}
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
+          RATE: ${{ matrix.rate }}
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,pathlib,runpy,subprocess
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_ne_s_nim_post')
+          work=pathlib.Path('/tmp/applio-post'); work.mkdir(exist_ok=True)
+          root,vpy,rt=ns['ensure_applio_runtime'](work)
+          model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
+          guide=next(pathlib.Path('guide').rglob('00_GUIDE.wav')).resolve()
+          outdir=pathlib.Path('out'); outdir.mkdir(exist_ok=True)
+          out=(outdir/(os.environ['SUFFIX']+'.wav')).resolve()
+          rate=os.environ['RATE']
+          code="import os,sys; root,source,out,model,index,rate=sys.argv[1:7]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=float(rate),volume_envelope=1.0,protect=0.5,f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
+          p=subprocess.run([str(vpy),'-c',code,str(root),str(guide),str(out),str(model),str(index),rate],
+                           cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=2400)
+          print(p.stdout[-12000:])
+          if p.returncode or not out.exists() or out.stat().st_size==0:
+              raise SystemExit('Applio render failed')
+          print('GG_POST_VOCAL_PASS',out,out.stat().st_size)
+          PY
+
+      - name: Build ${{ matrix.label }} master
+        shell: bash
+        env:
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/master
+          vocal="out/${SUFFIX}.wav"
+          ffmpeg -y -v error -i "$vocal" \
+            -af "highpass=f=80,acompressor=threshold=-17dB:ratio=2.4:attack=12:release=140,aecho=0.88:0.72:75|150:0.07|0.03,aresample=48000,volume=1.05" \
+            "out/${SUFFIX}_MIX.wav"
+          inputs=()
+          for f in arrangement/processed/*.wav; do inputs+=( -i "$f" ); done
+          inputs+=( -i "out/${SUFFIX}_MIX.wav" )
+          n="$(ls arrangement/processed/*.wav | wc -l)"
+          total=$((n+1))
+          ffmpeg -y -v error "${inputs[@]}" \
+            -filter_complex "amix=inputs=$total:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.2:attack=12:release=180,alimiter=limit=0.95,loudnorm=I=-14:LRA=10:TP=-1.0[out]" \
+            -map "[out]" -ar 48000 -c:a pcm_s24le "out/master/NE_S_NIM_${SUFFIX}.wav"
+          ffmpeg -y -v error -i "out/master/NE_S_NIM_${SUFFIX}.wav" -codec:a libmp3lame -b:a 320k "out/master/NE_S_NIM_${SUFFIX}.mp3"
+
+      - name: QC
+        shell: bash
+        env:
+          SUFFIX: ${{ matrix.suffix }}
+        run: |
+          python - <<'PY'
+          import os,json,pathlib,subprocess
+          p=pathlib.Path('out/master')/('NE_S_NIM_'+os.environ['SUFFIX']+'.wav')
+          q=subprocess.check_output(['ffprobe','-v','error','-show_entries','format=duration','-of','json',str(p)],text=True)
+          duration=float(json.loads(q)['format']['duration'])
+          assert 190 < duration < 210, duration
+          pathlib.Path('out/qc.json').write_text(json.dumps({'variant':os.environ['SUFFIX'],'duration':duration},indent=2))
+          print('GG_MASTER_QC_PASS',duration)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-ne-s-nim-master-${{ matrix.label }}
+          path: |
+            out/${{ matrix.suffix }}.wav
+            out/master/
+            out/qc.json
+          retention-days: 7
+          if-no-files-found: error
