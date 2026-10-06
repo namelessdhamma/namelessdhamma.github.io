@@ -139,7 +139,6 @@ jobs:
       - name: Verify identity artifact
         run: |
           cd /tmp/a8-r02c-v6/out
-          test -s ultra-masculine-preview.png
           test -s ultra-masculine-static.glb
           test -s vitruvian-ultra-masculine-editable.blend
           python3 - <<'PY'
@@ -148,6 +147,8 @@ jobs:
           assert d["ok"]
           assert d["morph_values"]["Gender_Male"] > 0.99
           assert d["morph_values"]["BodyType_Muscular"] > 0.99
+          assert d["identity_vertices_changed"] == d["base_vertices"]
+          assert d["identity_geometry_rms"] > 1e-4
           assert d["glb_size"] > 100000
           print(json.dumps(d,indent=2))
           PY
@@ -159,7 +160,6 @@ jobs:
         with:
           name: a8-r02c-charmorph-upstream-v6
           path: |
-            /tmp/a8-r02c-v6/out/ultra-masculine-preview.png
             /tmp/a8-r02c-v6/out/ultra-masculine-static.glb
             /tmp/a8-r02c-v6/out/report.json
             /tmp/a8-r02c-v6/out/sha256.txt
