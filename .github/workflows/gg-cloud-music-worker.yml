@@ -30,6 +30,12 @@ jobs:
         with:
           path: .gg-applio-cache
           key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
+      - name: Restore qualified RVC model cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-${{ runner.os }}
+
       - name: Install free cloud studio runtime
         shell: bash
         run: |
@@ -62,6 +68,7 @@ jobs:
           MARKER: ${{ steps.marker.outputs.marker }}
           GG_EVIDENCE_DIR: ${{ github.workspace }}/gg-worker-evidence
           GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
