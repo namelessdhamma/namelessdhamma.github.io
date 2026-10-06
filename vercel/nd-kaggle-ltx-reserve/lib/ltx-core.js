@@ -448,7 +448,7 @@ export async function submit(args={},cfg=configFromEnv()){
       "exec(compile(worker.read_text(encoding='utf-8'),'kaggle_ltx2b_direct_worker.py','exec'),{'__name__':'__main__'})"
     ].join("\n");
     if(Buffer.byteLength(script,"utf8")>=900000) throw err("Kaggle kernel source exceeds 900 KB");
-    const cacheSources=[username+"/nd-ltx-2b-distilled-cache"];
+    const cacheSources=providerAttempt>1?[]:[username+"/nd-ltx-2b-distilled-cache"];
     let save;
     try{
       save=await rpc(cfg.token,"kernels.KernelsApiService","SaveKernel",{
