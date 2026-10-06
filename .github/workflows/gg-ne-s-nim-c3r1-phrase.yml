@@ -36,13 +36,13 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .gg-applio-cache
-          key: gg-applio-cpu-v2-\${{ runner.os }}-324f4d89
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
 
       - name: Restore Awata RVC
         uses: actions/cache/restore@v4
         with:
           path: .gg-rvc-model-cache
-          key: gg-rvc-awata-v1.2-\${{ runner.os }}
+          key: gg-rvc-awata-v1.2-${{ runner.os }}
 
       - name: Install runtime
         shell: bash
@@ -60,14 +60,14 @@ jobs:
         with:
           name: gg-ne-s-nim-shared-c3
           run-id: 37436534625
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
           path: c3
 
       - name: Render local phrase variants
         shell: bash
         env:
-          GG_APPLIO_CACHE_DIR: \${{ github.workspace }}/.gg-applio-cache
-          GG_RVC_MODEL_CACHE_DIR: \${{ github.workspace }}/.gg-rvc-model-cache
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
         run: |
           set -euo pipefail
           mkdir -p phrase variants repaired
