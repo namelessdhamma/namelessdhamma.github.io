@@ -1,0 +1,341 @@
+name: A8 R02C Godot Cinematic V1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-godot-cinematic-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cinematic-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Install Godot 4.7.2 cinematic runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers vulkan-tools
+          mkdir -p /tmp/a8-r02c/bin /tmp/a8-r02c/project /tmp/a8-r02c/out
+          curl -L --fail --retry 3 -o /tmp/a8-r02c/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c/godot.zip -d /tmp/a8-r02c/bin
+          chmod +x /tmp/a8-r02c/bin/Godot_v4.7.2-stable_linux.x86_64
+          /tmp/a8-r02c/bin/Godot_v4.7.2-stable_linux.x86_64 --version
+          ls /usr/share/vulkan/icd.d/ || true
+
+      - name: Write isolated Forward+ cinematic project
+        run: |
+          cat > /tmp/a8-r02c/project/project.godot <<'EOF'
+          [application]
+          config/name="A8 R02C Godot Cinematic V1"
+          run/main_scene="res://main.tscn"
+
+          [display]
+          window/size/viewport_width=960
+          window/size/viewport_height=540
+          window/size/window_width_override=960
+          window/size/window_height_override=540
+
+          [rendering]
+          renderer/rendering_method="forward_plus"
+          renderer/rendering_method.mobile="gl_compatibility"
+          textures/default_filters/use_nearest_mipmap_filter=false
+          EOF
+
+          cat > /tmp/a8-r02c/project/main.tscn <<'EOF'
+          [gd_scene load_steps=2 format=3]
+
+          [ext_resource path="res://cinematic.gd" type="Script" id="1"]
+
+          [node name="GodotCinematicV1" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+
+          cat > /tmp/a8-r02c/project/cinematic.gd <<'EOF'
+          extends Node3D
+
+          const SHOT_SECONDS: float = 2.25
+          var elapsed: float = 0.0
+          var left_fighter: Dictionary = {}
+          var right_fighter: Dictionary = {}
+          var rain: Array[Node3D] = []
+          var camera: Camera3D
+
+          func _ready() -> void:
+              _build_environment()
+              _build_deck()
+              _build_ship()
+              _build_lighting()
+              left_fighter = _build_fighter("Silas", Color(0.035,0.045,0.06), Color(0.025,0.022,0.018), -1.75)
+              right_fighter = _build_fighter("RedPirate", Color(0.16,0.04,0.025), Color(0.55,0.075,0.022), 1.65)
+              _build_camera()
+              _build_rain()
+              _apply_pose(0.0)
+
+          func _process(delta: float) -> void:
+              elapsed += delta
+              var t: float = clampf(elapsed / SHOT_SECONDS, 0.0, 1.0)
+              _apply_pose(t)
+              _animate_rain(delta)
+              var target: Vector3 = Vector3(0.10 + sin(t * PI) * 0.14, 1.48, 0.0)
+              camera.position = Vector3(0.10 + sin(t * PI * 2.0) * 0.035, 2.48 + sin(t * PI) * 0.04, 7.55 - t * 0.34)
+              camera.look_at(target, Vector3.UP)
+
+          func _material(color: Color, rough: float, metal: float, emission: Color = Color(0,0,0)) -> StandardMaterial3D:
+              var m: StandardMaterial3D = StandardMaterial3D.new()
+              m.albedo_color = color
+              m.roughness = rough
+              m.metallic = metal
+              if emission != Color(0,0,0):
+                  m.emission_enabled = true
+                  m.emission = emission
+                  m.emission_energy_multiplier = 3.0
+              return m
+
+          func _box(parent: Node, name: String, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
+              var n: MeshInstance3D = MeshInstance3D.new()
+              n.name = name
+              var mesh: BoxMesh = BoxMesh.new()
+              mesh.size = size
+              n.mesh = mesh
+              n.position = pos
+              n.material_override = mat
+              parent.add_child(n)
+              return n
+
+          func _sphere(parent: Node, name: String, radius: float, pos: Vector3, mat: Material) -> MeshInstance3D:
+              var n: MeshInstance3D = MeshInstance3D.new()
+              n.name = name
+              var mesh: SphereMesh = SphereMesh.new()
+              mesh.radius = radius
+              mesh.height = radius * 2.0
+              n.mesh = mesh
+              n.position = pos
+              n.material_override = mat
+              parent.add_child(n)
+              return n
+
+          func _cylinder(parent: Node, name: String, radius: float, height: float, pos: Vector3, mat: Material) -> MeshInstance3D:
+              var n: MeshInstance3D = MeshInstance3D.new()
+              n.name = name
+              var mesh: CylinderMesh = CylinderMesh.new()
+              mesh.top_radius = radius
+              mesh.bottom_radius = radius
+              mesh.height = height
+              n.mesh = mesh
+              n.position = pos
+              n.material_override = mat
+              parent.add_child(n)
+              return n
+
+          func _build_environment() -> void:
+              var world: WorldEnvironment = WorldEnvironment.new()
+              var env: Environment = Environment.new()
+              env.background_mode = Environment.BG_COLOR
+              env.background_color = Color(0.002,0.006,0.014)
+              env.background_energy_multiplier = 0.58
+              env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+              env.ambient_light_color = Color(0.075,0.12,0.20)
+              env.ambient_light_energy = 0.46
+              env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+              env.tonemap_exposure = 1.18
+              env.adjustment_enabled = true
+              env.adjustment_contrast = 1.18
+              env.adjustment_saturation = 0.82
+              env.fog_enabled = true
+              env.fog_light_color = Color(0.07,0.11,0.17)
+              env.fog_light_energy = 0.65
+              env.fog_density = 0.012
+              env.volumetric_fog_enabled = true
+              env.volumetric_fog_density = 0.028
+              env.volumetric_fog_length = 28.0
+              env.volumetric_fog_albedo = Color(0.24,0.31,0.42)
+              env.ssao_enabled = true
+              env.ssao_intensity = 2.2
+              env.ssil_enabled = true
+              env.ssil_intensity = 1.2
+              env.ssr_enabled = true
+              env.glow_enabled = true
+              env.glow_intensity = 0.9
+              world.environment = env
+              add_child(world)
+
+          func _build_deck() -> void:
+              var deck: Node3D = Node3D.new()
+              deck.name = "WetDeck"
+              add_child(deck)
+              var wet: StandardMaterial3D = _material(Color(0.052,0.029,0.019),0.16,0.08)
+              var seam: StandardMaterial3D = _material(Color(0.008,0.010,0.013),0.68,0.0)
+              var puddle: StandardMaterial3D = _material(Color(0.018,0.055,0.085),0.04,0.25)
+              for i: int in range(22):
+                  var x: float = -5.25 + float(i) * 0.50
+                  _box(deck,"Plank_%02d" % i,Vector3(0.46,0.12,6.0),Vector3(x,-0.11,0),wet)
+                  _box(deck,"Seam_%02d" % i,Vector3(0.018,0.124,6.02),Vector3(x+0.24,-0.104,0),seam)
+              _box(deck,"PuddleA",Vector3(1.35,0.012,0.56),Vector3(-2.2,-0.035,0.72),puddle)
+              _box(deck,"PuddleB",Vector3(1.05,0.012,0.42),Vector3(0.28,-0.035,-0.62),puddle)
+              _box(deck,"PuddleC",Vector3(1.28,0.012,0.52),Vector3(2.55,-0.035,0.36),puddle)
+
+          func _build_ship() -> void:
+              var ship: Node3D = Node3D.new()
+              ship.name = "ShipSilhouette"
+              add_child(ship)
+              var wood: StandardMaterial3D = _material(Color(0.032,0.019,0.013),0.31,0.04)
+              for x: float in [-5.2,-3.5,-1.8,0.0,1.8,3.5,5.2]:
+                  _cylinder(ship,"RailPost",0.065,1.4,Vector3(x,0.62,-2.75),wood)
+              _box(ship,"BackRail",Vector3(10.8,0.12,0.12),Vector3(0,1.16,-2.75),wood)
+              _cylinder(ship,"Mast",0.22,7.0,Vector3(-3.7,3.45,-1.5),wood)
+              _box(ship,"Yard",Vector3(4.2,0.12,0.12),Vector3(-3.7,4.7,-1.5),wood)
+              var sail: StandardMaterial3D = _material(Color(0.018,0.022,0.031),0.76,0.0)
+              _box(ship,"Sail",Vector3(3.8,2.2,0.035),Vector3(-3.7,3.4,-1.52),sail)
+
+          func _build_lighting() -> void:
+              var moon: DirectionalLight3D = DirectionalLight3D.new()
+              moon.light_color = Color(0.42,0.60,0.90)
+              moon.light_energy = 1.65
+              moon.rotation_degrees = Vector3(-58,-24,0)
+              moon.shadow_enabled = true
+              add_child(moon)
+              _lantern(Vector3(-3.0,2.15,1.0),Color(1.0,0.30,0.075),6.0)
+              _lantern(Vector3(3.05,1.82,-0.7),Color(1.0,0.19,0.055),5.0)
+
+          func _lantern(pos: Vector3, color: Color, energy: float) -> void:
+              var l: OmniLight3D = OmniLight3D.new()
+              l.light_color = color
+              l.light_energy = energy
+              l.omni_range = 6.5
+              l.shadow_enabled = true
+              l.position = pos
+              add_child(l)
+              _sphere(self,"LanternGlow",0.11,pos,_material(Color(0.12,0.025,0.006),0.25,0.0,color))
+
+          func _build_fighter(name: String, cloth_color: Color, hair_color: Color, x_pos: float) -> Dictionary:
+              var root: Node3D = Node3D.new()
+              root.name = name
+              root.position = Vector3(x_pos,0,0)
+              add_child(root)
+              var cloth: StandardMaterial3D = _material(cloth_color,0.28,0.0)
+              var leather: StandardMaterial3D = _material(Color(0.065,0.032,0.018),0.25,0.04)
+              var skin: StandardMaterial3D = _material(Color(0.43,0.27,0.20),0.43,0.0)
+              var hair: StandardMaterial3D = _material(hair_color,0.60,0.0)
+              var steel: StandardMaterial3D = _material(Color(0.38,0.44,0.52),0.08,0.94)
+
+              _box(root,"Torso",Vector3(0.58,1.05,0.34),Vector3(0,1.36,0),cloth)
+              _box(root,"Belt",Vector3(0.64,0.13,0.39),Vector3(0,0.88,0),leather)
+              _sphere(root,"Head",0.24,Vector3(0,2.05,0),skin)
+              _sphere(root,"Hair",0.255,Vector3(0,2.18,-0.01),hair)
+
+              var arm_r: Node3D = Node3D.new()
+              arm_r.position = Vector3(0.40,1.72,0)
+              root.add_child(arm_r)
+              _cylinder(arm_r,"UpperR",0.075,0.66,Vector3(0,-0.31,0),cloth)
+              _cylinder(arm_r,"ForeR",0.062,0.62,Vector3(0,-0.91,0),skin)
+              _box(arm_r,"Sword",Vector3(0.055,1.7,0.035),Vector3(0,-1.88,0),steel)
+              _box(arm_r,"Guard",Vector3(0.34,0.045,0.055),Vector3(0,-1.05,0),steel)
+
+              var arm_l: Node3D = Node3D.new()
+              arm_l.position = Vector3(-0.40,1.72,0)
+              root.add_child(arm_l)
+              _cylinder(arm_l,"UpperL",0.075,0.66,Vector3(0,-0.31,0),cloth)
+              _cylinder(arm_l,"ForeL",0.062,0.62,Vector3(0,-0.91,0),skin)
+
+              var leg_l: Node3D = Node3D.new()
+              leg_l.position = Vector3(-0.19,0.84,0)
+              root.add_child(leg_l)
+              _cylinder(leg_l,"LegL",0.095,1.02,Vector3(0,-0.46,0),leather)
+
+              var leg_r: Node3D = Node3D.new()
+              leg_r.position = Vector3(0.19,0.84,0)
+              root.add_child(leg_r)
+              _cylinder(leg_r,"LegR",0.095,1.02,Vector3(0,-0.46,0),leather)
+
+              return {"root":root,"sword_arm":arm_r,"off_arm":arm_l,"leg_l":leg_l,"leg_r":leg_r}
+
+          func _build_camera() -> void:
+              camera = Camera3D.new()
+              camera.fov = 43.0
+              camera.near = 0.05
+              camera.far = 100.0
+              camera.position = Vector3(0.1,2.48,7.55)
+              add_child(camera)
+              camera.look_at(Vector3(0.1,1.48,0),Vector3.UP)
+              camera.current = true
+
+          func _build_rain() -> void:
+              var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+              rng.seed = 420042
+              var rain_mat: StandardMaterial3D = _material(Color(0.35,0.52,0.72),0.12,0.10)
+              for i: int in range(110):
+                  var drop: MeshInstance3D = _box(self,"Rain_%03d" % i,Vector3(0.010,rng.randf_range(0.18,0.44),0.010),Vector3(rng.randf_range(-6.0,6.0),rng.randf_range(0.4,7.2),rng.randf_range(-3.1,3.0)),rain_mat)
+                  drop.rotation_degrees.z = -12.0
+                  drop.set_meta("speed",rng.randf_range(8.0,13.5))
+                  rain.append(drop)
+
+          func _animate_rain(delta: float) -> void:
+              for d: Node3D in rain:
+                  var p: Vector3 = d.position
+                  p.y -= float(d.get_meta("speed")) * delta
+                  p.x -= 1.45 * delta
+                  if p.y < 0.05:
+                      p.y += 7.2
+                      p.x += 1.2
+                  if p.x < -6.2:
+                      p.x += 12.4
+                  d.position = p
+
+          func _sample(values: Array, t: float) -> float:
+              var scaled: float = clampf(t,0.0,1.0) * float(values.size()-1)
+              var i: int = mini(int(floor(scaled)),values.size()-2)
+              var f: float = scaled-float(i)
+              return lerpf(float(values[i]),float(values[i+1]),f)
+
+          func _apply_pose(t: float) -> void:
+              var lx: Array = [-1.82,-1.67,-1.46,-1.20,-0.92,-0.67,-0.49,-0.36,-0.28]
+              var rx: Array = [1.78,1.70,1.59,1.45,1.31,1.20,1.10,1.02,0.94]
+              var larm: Array = [-28,-44,-63,-82,-103,-118,-128,-134,-138]
+              var rarm: Array = [41,30,17,4,-10,-22,-32,-40,-46]
+              left_fighter.root.position.x = _sample(lx,t)
+              right_fighter.root.position.x = _sample(rx,t)
+              left_fighter.root.rotation_degrees.y = -7.0 + t*8.0
+              right_fighter.root.rotation_degrees.y = 8.0 - t*12.0
+              left_fighter.sword_arm.rotation_degrees = Vector3(0,0,_sample(larm,t))
+              right_fighter.sword_arm.rotation_degrees = Vector3(0,0,_sample(rarm,t))
+              left_fighter.off_arm.rotation_degrees.z = lerpf(18.0,-30.0,t)
+              right_fighter.off_arm.rotation_degrees.z = lerpf(-18.0,50.0,t)
+              left_fighter.leg_l.rotation_degrees.z = lerpf(6.0,33.0,t)
+              left_fighter.leg_r.rotation_degrees.z = lerpf(-5.0,-34.0,t)
+              right_fighter.leg_l.rotation_degrees.z = lerpf(-4.0,-23.0,t)
+              right_fighter.leg_r.rotation_degrees.z = lerpf(4.0,25.0,t)
+              left_fighter.root.position.z = sin(t*PI)*0.13
+              right_fighter.root.position.z = -sin(t*PI)*0.08
+          EOF
+
+      - name: Render Forward+ cinematic proof
+        run: |
+          GODOT=/tmp/a8-r02c/bin/Godot_v4.7.2-stable_linux.x86_64
+          cd /tmp/a8-r02c/project
+          LVP=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n1)
+          if [ -n "$LVP" ]; then export VK_ICD_FILENAMES="$LVP"; fi
+          echo "Using Vulkan ICD: $VK_ICD_FILENAMES"
+          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c/out/cinematic.avi --fixed-fps 24 --quit-after 54
+          ffmpeg -y -v error -i /tmp/a8-r02c/out/cinematic.avi -c:v libx264 -crf 16 -pix_fmt yuv420p /tmp/a8-r02c/out/cinematic.mp4
+          rm -f /tmp/a8-r02c/out/cinematic.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c/out/cinematic.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c/out/F01.png
+          ffmpeg -y -v error -i /tmp/a8-r02c/out/cinematic.mp4 -vf "select='eq(n,26)'" -vframes 1 /tmp/a8-r02c/out/F05.png
+          ffmpeg -y -v error -i /tmp/a8-r02c/out/cinematic.mp4 -vf "select='eq(n,53)'" -vframes 1 /tmp/a8-r02c/out/F09.png
+
+      - name: Verify cinematic artifact
+        run: |
+          cd /tmp/a8-r02c/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json cinematic.mp4 > cinematic.ffprobe.json
+          ffmpeg -v error -i cinematic.mp4 -f framemd5 cinematic.framemd5
+          sha256sum cinematic.mp4 F01.png F05.png F09.png > sha256.txt
+          printf '{"route":"R02C","recipe":"GODOT_CINEMATIC_V1","godot":"4.7.2","renderer":"forward_plus","target":"Blue Sea duel cinematic rendering-stack proof","resolution":"960x540","fps":24,"frames":54,"duration_s":2.25,"free_only":true}\n' > receipt.json
+
+      - name: Upload cinematic proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-godot-cinematic-v1
+          path: /tmp/a8-r02c/out
+          retention-days: 7
