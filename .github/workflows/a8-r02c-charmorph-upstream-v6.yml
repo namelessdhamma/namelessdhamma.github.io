@@ -99,55 +99,6 @@ jobs:
               # Save editable identity result before any finalization.
               bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT,"vitruvian-ultra-masculine-editable.blend"))
 
-              # Simple photographic preview in Eevee.
-              scene=bpy.context.scene
-              scene.render.engine='BLENDER_EEVEE_NEXT'
-              scene.render.resolution_x=540
-              scene.render.resolution_y=720
-              scene.render.resolution_percentage=100
-              scene.render.image_settings.file_format='PNG'
-              scene.render.film_transparent=False
-              scene.world.color=(0.012,0.018,0.030)
-
-              # Ground.
-              bpy.ops.mesh.primitive_plane_add(size=8, location=(0,0,0))
-              plane=bpy.context.object
-              mat=bpy.data.materials.new("Ground")
-              mat.diffuse_color=(0.025,0.030,0.040,1)
-              mat.roughness=0.7
-              plane.data.materials.append(mat)
-
-              # Character dimensions / center.
-              deps=bpy.context.evaluated_depsgraph_get()
-              eval_obj=char_obj.evaluated_get(deps)
-              corners=[eval_obj.matrix_world @ Vector(c) for c in eval_obj.bound_box]
-              mn=Vector((min(v.x for v in corners),min(v.y for v in corners),min(v.z for v in corners)))
-              mx=Vector((max(v.x for v in corners),max(v.y for v in corners),max(v.z for v in corners)))
-              center=(mn+mx)*0.5
-              height=max(0.5,mx.z-mn.z)
-              report["bbox_min"]=list(mn); report["bbox_max"]=list(mx); report["height"]=height
-
-              # Camera: upper-body identity proof.
-              cam_data=bpy.data.cameras.new("Camera")
-              cam=bpy.data.objects.new("Camera",cam_data)
-              scene.collection.objects.link(cam)
-              scene.camera=cam
-              cam_data.lens=58
-              cam.location=(center.x, center.y-2.2*height, center.z+0.12*height)
-              target=Vector((center.x,center.y,center.z+0.10*height))
-              cam.rotation_euler=(target-cam.location).to_track_quat('-Z','Y').to_euler()
-
-              def area(name,loc,energy,color,size):
-                  d=bpy.data.lights.new(name,'AREA'); d.energy=energy; d.color=color; d.shape='DISK'; d.size=size
-                  o=bpy.data.objects.new(name,d); scene.collection.objects.link(o); o.location=loc
-                  o.rotation_euler=(target-o.location).to_track_quat('-Z','Y').to_euler()
-              area("Key",(center.x-1.0*height,center.y-1.4*height,center.z+0.8*height),1200,(1.0,0.72,0.52),1.8)
-              area("Fill",(center.x+1.2*height,center.y-0.5*height,center.z+0.45*height),650,(0.38,0.58,1.0),2.0)
-              area("Rim",(center.x,center.y+1.2*height,center.z+0.8*height),900,(0.55,0.70,1.0),1.2)
-
-              scene.render.filepath=os.path.join(OUT,"ultra-masculine-preview.png")
-              bpy.ops.render.render(write_still=True)
-
               # Export current morphed mesh as GLB for downstream Godot feasibility.
               bpy.ops.object.select_all(action='DESELECT')
               char_obj.select_set(True)
@@ -191,7 +142,7 @@ jobs:
           assert d["glb_size"] > 100000
           print(json.dumps(d,indent=2))
           PY
-          sha256sum ultra-masculine-preview.png ultra-masculine-static.glb vitruvian-ultra-masculine-editable.blend > sha256.txt
+          sha256sum ultra-masculine-static.glb vitruvian-ultra-masculine-editable.blend > sha256.txt
           printf '{"route":"R02C","recipe":"CHARMORPH_UPSTREAM_V6","charmorph_commit":"ec5e13dcd5a7330b35fa7474b3abd2f406d77bd2","vitruvian_data_commit":"c252d1fc7f00ba59d87b66b3d32fa3471fc6ee44","blender":"4.5.14-LTS","preset":"Ultra Masculine","goal":"prove editable upstream identity generation before finalization"}\n' > receipt.json
 
       - name: Upload V6
