@@ -285,6 +285,13 @@ namespace OpenUtau.Test.Core.DiffSinger {
             using var scoreDoc = JsonDocument.Parse(File.ReadAllText(sharedScorePath!, Encoding.UTF8));
             var scoreRoot = scoreDoc.RootElement;
             int scoreBars = scoreRoot.GetProperty("bars").GetInt32();
+            if (variant == "shared_d1" && scoreRoot.TryGetProperty("tempo_map", out var tempoMap)) {
+                project.tempos.Clear();
+                foreach (var tp in tempoMap.EnumerateArray()) {
+                    project.tempos.Add(new UTempo(tp.GetProperty("bar").GetInt32() * Bar, tp.GetProperty("bpm").GetDouble()));
+                }
+                project.timeAxis.BuildSegments(project);
+            }
 
             foreach (var phrase in scoreRoot.GetProperty("phrases").EnumerateArray()) {
                 int p = phrase.GetProperty("bar").GetInt32() * Bar + phrase.GetProperty("offset").GetInt32();
@@ -360,29 +367,67 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 AddShapeCurve(DiffSingerUtils.PEXP, arcX,
                     new[] { 82, 91, 99, 86, 78, 88, 94, 100, 86, 75 });
             } else if (variant == "shared_d1") {
-                int bar = 1920;
+                // D1R5: Voice-from-Silence is implemented as actual phrase-local
+                // dynamics/expression, not as a descriptive label.
                 AddFlatCurve(DiffSingerUtils.VELC, 121);
-                // D1 full-song macro arc, driven by the Drive-authoritative 120-bar form.
-                // Intro -> Verse I -> Chorus I -> transition -> Verse II -> Chorus II ->
-                // Bridge -> drum-led development -> Final -> Coda -> return to silence.
-                AddShapeCurve(Ustx.DYN,
-                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
-                    new[] {-30,-14,7,-12,-10,8,-2,-18,12,-8,-18,-32});
-                AddShapeCurve(DiffSingerUtils.ENE,
-                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
-                    new[] {-16,-9,3,-8,-7,4,-1,-12,7,-6,-12,-17});
-                AddShapeCurve(Ustx.TENC,
-                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
-                    new[] {-32,-20,-5,-18,-16,-4,2,-18,8,-10,-24,-34});
-                AddShapeCurve(Ustx.BREC,
-                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
-                    new[] {16,11,6,12,10,6,5,12,4,10,15,18});
-                AddShapeCurve(Ustx.VOIC,
-                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
-                    new[] {93,97,100,97,98,100,100,96,100,98,95,92});
-                AddShapeCurve(DiffSingerUtils.PEXP,
-                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
-                    new[] {70,84,99,80,84,99,96,78,100,86,74,68});
+                var semantic = new HashSet<string>(new[] {
+                    "тобой","тишине","пыль","позабыл","ним","собой","голос","свой",
+                    "незримый","гость","разлуки","смех","злость","руки","год",
+                    "незабвенным","прошлое","неизменным","память","одна","увидел"
+                }, StringComparer.OrdinalIgnoreCase);
+                var sectionFirst = new HashSet<string>(new[] {"v1l1","c1l1","v2l1","c2l1","brl1","finl1","codal1"},
+                    StringComparer.OrdinalIgnoreCase);
+                int BaseDyn(string sec) => sec switch {
+                    "chorus" => 6, "bridge" => -3, "final" => 4, "coda" => -11, "verse2" => -9, _ => -12
+                };
+                int BaseEnergy(string sec) => sec switch {
+                    "chorus" => 3, "bridge" => -2, "final" => 4, "coda" => -8, "verse2" => -5, _ => -7
+                };
+                var dyn = new SortedDictionary<int,int>();
+                var ene = new SortedDictionary<int,int>();
+                var ten = new SortedDictionary<int,int>();
+                var bre = new SortedDictionary<int,int>();
+                var voi = new SortedDictionary<int,int>();
+                var pex = new SortedDictionary<int,int>();
+                void Put(SortedDictionary<int,int> d,int x,int y) {
+                    x=Math.Clamp(x,0,part.Duration); d[x]=y;
+                }
+                foreach (var ph in scoreRoot.GetProperty("phrases").EnumerateArray()) {
+                    string id=ph.GetProperty("id").GetString() ?? "";
+                    string sec=ph.GetProperty("section").GetString() ?? "verse";
+                    int p=ph.GetProperty("bar").GetInt32()*Bar+ph.GetProperty("offset").GetInt32();
+                    int startP=p;
+                    int bd=BaseDyn(sec), be=BaseEnergy(sec);
+                    bool deep=sectionFirst.Contains(id);
+                    Put(dyn,startP-120,bd-8); Put(dyn,startP,bd-(deep?18:10)); Put(dyn,startP+180,bd-5); Put(dyn,startP+520,bd);
+                    Put(ene,startP,be-(deep?8:5)); Put(ene,startP+300,be-2); Put(ene,startP+650,be);
+                    Put(ten,startP,deep?-32:-24); Put(ten,startP+420,sec=="chorus"?-8:-16);
+                    Put(bre,startP,deep?18:13); Put(bre,startP+520,sec=="chorus"?7:10);
+                    Put(voi,startP,deep?93:95); Put(voi,startP+420,98);
+                    Put(pex,startP,deep?72:80); Put(pex,startP+520,sec=="chorus"?98:88);
+                    foreach (var word in ph.GetProperty("words").EnumerateArray()) {
+                        string lyric=word.GetProperty("text").GetString() ?? "";
+                        int stress=word.GetProperty("stress").GetInt32();
+                        var ds=word.GetProperty("durations").EnumerateArray().Select(x=>x.GetInt32()).ToArray();
+                        int stressP=p;
+                        for(int q=0;q<stress;q++) stressP+=ds[q];
+                        if (semantic.Contains(lyric)) {
+                            Put(dyn,stressP,bd+8);
+                            Put(ene,stressP,be+5);
+                            Put(pex,stressP,100);
+                            Put(ten,stressP,sec=="chorus"?-2:-8);
+                        }
+                        p+=ds.Sum()+word.GetProperty("rest").GetInt32();
+                    }
+                    Put(dyn,p-180,bd-2); Put(dyn,p,bd-9); Put(dyn,p+120,bd-12);
+                    Put(ene,p,be-6); Put(ten,p,-26); Put(bre,p,16); Put(voi,p,95); Put(pex,p,76);
+                }
+                AddShapeCurve(Ustx.DYN,dyn.Keys.ToArray(),dyn.Values.ToArray());
+                AddShapeCurve(DiffSingerUtils.ENE,ene.Keys.ToArray(),ene.Values.ToArray());
+                AddShapeCurve(Ustx.TENC,ten.Keys.ToArray(),ten.Values.ToArray());
+                AddShapeCurve(Ustx.BREC,bre.Keys.ToArray(),bre.Values.ToArray());
+                AddShapeCurve(Ustx.VOIC,voi.Keys.ToArray(),voi.Values.ToArray());
+                AddShapeCurve(DiffSingerUtils.PEXP,pex.Keys.ToArray(),pex.Values.ToArray());
             } else if (variant == "rebuild_a") {
                 int bar = 1920;
                 AddFlatCurve(DiffSingerUtils.VELC, 120);
@@ -602,6 +647,24 @@ namespace OpenUtau.Test.Core.DiffSinger {
                         SkipPhonemizer = true,
                     });
                 }
+
+                // D1R5 known bounded diction repairs proven or strongly indicated by full-song ASR.
+                void ShiftPhone(string lyric, string phone, int offset) {
+                    var pp = part.phonemes.FirstOrDefault(p =>
+                        string.Equals(p.Parent?.lyric, lyric, StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(p.phoneme, phone, StringComparison.OrdinalIgnoreCase));
+                    if (pp != null) pp.Parent!.GetPhonemeOverride(pp.index).offset = offset;
+                }
+                ShiftPhone("былого", "ru/v", -60);
+                ShiftPhone("неизменным", "ru/z", -60);
+                ShiftPhone("незабвенным", "ru/z", -50);
+                ShiftPhone("незабвенным", "ru/v", -50);
+                ShiftPhone("незримый", "ru/z", -45);
+                project.Validate(new ValidateOptions {
+                    SkipTiming = true,
+                    Part = part,
+                    SkipPhonemizer = true,
+                });
 
                 Assert.True(part.PhonemesUpToDate, "Official Russian phonemizer response was not applied.");
                 Assert.True(part.phonemes.Count > 0, "Official Russian phonemizer produced no phonemes.");
