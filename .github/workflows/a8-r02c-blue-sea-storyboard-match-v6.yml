@@ -1,0 +1,471 @@
+name: A8 R02C Blue Sea Duel Action V6
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-blue-sea-storyboard-match-v6.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dual-human:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Install Godot 4.6 and Vulkan runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip git libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-r02c-v6/bin /tmp/a8-r02c-v6/src /tmp/a8-r02c-v6/out
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v6/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v6/godot.zip -d /tmp/a8-r02c-v6/bin
+          chmod +x /tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
+
+      - name: Fetch exact Vitruvian source
+        run: |
+          cd /tmp/a8-r02c-v6/src
+          curl -L --fail --retry 3 -o vitruvian.zip https://github.com/ibrews/VitruvianGodot/archive/bdecdcd537b4031fdd0fb299b7e4f93f084fffa0.zip
+          unzip -q vitruvian.zip
+          mv VitruvianGodot-bdecdcd537b4031fdd0fb299b7e4f93f084fffa0 repo
+          rm vitruvian.zip
+
+      - name: Write Blue Sea dual-human qualification scene
+        run: |
+          PROJ=/tmp/a8-r02c-v6/src/repo/godot_project
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/a8-r02c-v6/src/repo/godot_project/project.godot')
+          s=p.read_text()
+          s=s.replace('window/size/viewport_width=1280','window/size/viewport_width=960')
+          s=s.replace('window/size/viewport_height=1280','window/size/viewport_height=540')
+          s=s.replace('scaling_3d/scale=2.0','scaling_3d/scale=1.0')
+          p.write_text(s)
+          PY
+          cat > "$PROJ/scenes/blue_sea_duel_v6.tscn" <<'EOF'
+          [gd_scene load_steps=2 format=3]
+
+          [ext_resource type="Script" path="res://scenes/blue_sea_duel_v6.gd" id="1"]
+
+          [node name="BlueSeaDualHumanV4" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+
+          cat > "$PROJ/scenes/blue_sea_duel_v6.gd" <<'EOF'
+          extends Node3D
+
+          const BODY_GLB := "res://vitruvian_body.glb"
+          const HEAD_GLB := "res://vitruvian_head.glb"
+          const HAIR_GLB := "res://hairtool_cards.glb"
+          const HEAD_BONE := "mixamorig_Head"
+          const SHOT_SECONDS := 2.25
+
+          var left: Dictionary = {}
+          var right: Dictionary = {}
+          var camera: Camera3D
+          var elapsed := 0.0
+          var rain: Array[Node3D] = []
+
+          func _ready() -> void:
+              _environment()
+              _deck()
+              _ship()
+              _lights()
+              left = _make_character("SilasProxy", Vector3(-0.92,-0.16,0.10), Color(0.035,0.045,0.055), Color(0.018,0.014,0.012), false)
+              right = _make_character("RedPirateProxy", Vector3(0.98,0.02,-0.08), Color(0.10,0.035,0.028), Color(0.72,0.075,0.018), true)
+              _camera()
+              _rain()
+              _pose(0.0)
+
+          func _process(delta: float) -> void:
+              elapsed += delta
+              var t := clampf(elapsed / SHOT_SECONDS,0.0,1.0)
+              _pose(t)
+              _rain_step(delta)
+              camera.position = Vector3(0.08 + sin(t*PI)*0.035,1.44 + sin(t*PI)*0.025,3.38-t*0.10)
+              camera.look_at(Vector3(0.10,1.04,-0.02),Vector3.UP)
+
+          func _find(n: Node, needle: String) -> Node:
+              if n.name == needle:
+                  return n
+              for c in n.get_children():
+                  var r := _find(c,needle)
+                  if r != null:
+                      return r
+              return null
+
+          func _collect_meshes(n: Node, out: Array[MeshInstance3D]) -> void:
+              if n is MeshInstance3D:
+                  out.append(n)
+              for c in n.get_children():
+                  _collect_meshes(c,out)
+
+          func _tex(path: String) -> Texture2D:
+              return load(path) as Texture2D
+
+          func _mat_skin(face: bool) -> ShaderMaterial:
+              var m := ShaderMaterial.new()
+              m.shader = load("res://scenes/skin_shader_local.gdshader") as Shader
+              m.set_shader_parameter("texture_albedo", _tex("res://vit_face_bc.png" if face else "res://vit_body_bc.png"))
+              m.set_shader_parameter("albedo", Color(0.97,0.95,0.94,1) if face else Color(1,1,1,1))
+              m.set_shader_parameter("texture_normal", _tex("res://vit_face_n.png" if face else "res://vit_body_n.png"))
+              m.set_shader_parameter("texture_roughness", _tex("res://vit_face_rough.png" if face else "res://vit_body_rough.png"))
+              m.set_shader_parameter("normal_strength",1.0)
+              m.set_shader_parameter("roughness",0.92)
+              m.set_shader_parameter("specular",0.33)
+              m.set_shader_parameter("metallic",0.0)
+              m.set_shader_parameter("metallic_texture_channel",Plane(1,0,0,0))
+              m.set_shader_parameter("use_subsurface_scattering",true)
+              m.set_shader_parameter("subsurface_scattering_strength",0.54)
+              m.set_shader_parameter("skin_smoothness",1.8)
+              m.set_shader_parameter("skin_fallof_smoothness",1.05)
+              m.set_shader_parameter("sss_depth_scale",1.1)
+              m.set_shader_parameter("tinted_shadow_penumbra",true)
+              m.set_shader_parameter("double_specularity",false)
+              m.set_shader_parameter("use_noise",false)
+              m.set_shader_parameter("old_lightwarp_fallof",false)
+              m.set_shader_parameter("use_micro_detail",false)
+              m.set_shader_parameter("micro_normal_strength",0.0)
+              m.set_shader_parameter("use_ambient_occlusion",false)
+              m.set_shader_parameter("translucency",false)
+              m.set_shader_parameter("use_scatter_map",false)
+              m.set_shader_parameter("uv1_scale",Vector3.ONE)
+              m.set_shader_parameter("uv1_offset",Vector3.ZERO)
+              m.set_shader_parameter("uv2_scale",Vector3.ONE)
+              m.set_shader_parameter("uv2_offset",Vector3.ZERO)
+              return m
+
+          func _mat_cloth(c: Color) -> StandardMaterial3D:
+              var m := StandardMaterial3D.new()
+              m.albedo_color=c
+              m.roughness=0.84
+              m.normal_enabled=true
+              m.normal_texture=_tex("res://vit_fabric_n.png")
+              m.normal_scale=0.48
+              m.uv1_triplanar=true
+              m.uv1_scale=Vector3(30,30,30)
+              m.cull_mode=BaseMaterial3D.CULL_DISABLED
+              return m
+
+          func _mat_hair(c: Color) -> ShaderMaterial:
+              var m := ShaderMaterial.new()
+              m.shader=load("res://scenes/hairtool_card.gdshader") as Shader
+              m.set_shader_parameter("tex_diffuse",_tex("res://vit_hair_diffuse.png"))
+              m.set_shader_parameter("tex_normal",_tex("res://vit_hair_normal.png"))
+              m.set_shader_parameter("tex_ao",_tex("res://vit_hair_ao.png"))
+              m.set_shader_parameter("tex_opacity",_tex("res://vit_hair_opacity.png"))
+              m.set_shader_parameter("root_color",c.darkened(0.18))
+              m.set_shader_parameter("tip_color",c.lightened(0.12))
+              m.set_shader_parameter("brightness",3.0)
+              m.set_shader_parameter("diffuse_mix",1.0)
+              m.set_shader_parameter("normal_strength",0.6)
+              m.set_shader_parameter("flip_green",false)
+              m.set_shader_parameter("ao_strength",0.7)
+              m.set_shader_parameter("roughness_val",0.90)
+              m.set_shader_parameter("specular_val",0.08)
+              m.set_shader_parameter("anisotropy_val",0.08)
+              m.set_shader_parameter("tonal_variation",0.35)
+              m.set_shader_parameter("clump_count",40.0)
+              m.set_shader_parameter("tip_lighten",0.16)
+              m.set_shader_parameter("emit",0.10)
+              m.set_shader_parameter("backlight_color",c)
+              m.set_shader_parameter("backlight_strength",0.3)
+              m.set_shader_parameter("density",1.0)
+              m.set_shader_parameter("scissor",0.10)
+              return m
+
+          func _simple_mat(c: Color, rough:=0.5, metal:=0.0) -> StandardMaterial3D:
+              var m:=StandardMaterial3D.new()
+              m.albedo_color=c
+              m.roughness=rough
+              m.metallic=metal
+              return m
+
+          func _make_character(name: String, pos: Vector3, cloth: Color, hair_color: Color, flip: bool) -> Dictionary:
+              var root:=Node3D.new()
+              root.name=name
+              root.position=pos
+              root.rotation_degrees.y = 0.0
+              add_child(root)
+
+              var body_scene:=load(BODY_GLB) as PackedScene
+              var body:=body_scene.instantiate()
+              root.add_child(body)
+              var skel:=_find(body,"Skeleton3D") as Skeleton3D
+              var anim:=_find(body,"AnimationPlayer") as AnimationPlayer
+              var meshes:Array[MeshInstance3D]=[]
+              _collect_meshes(skel,meshes)
+              for mi in meshes:
+                  for si in range(mi.mesh.get_surface_count()):
+                      var mat:=mi.mesh.surface_get_material(si)
+                      var nm:=((mat.resource_name if mat else "") as String).split(".")[0]
+                      match nm:
+                          "VitShirt": mi.set_surface_override_material(si,_mat_cloth(cloth))
+                          "VitPants": mi.set_surface_override_material(si,_mat_cloth(Color(0.055,0.055,0.065)))
+                          "VitShoes": mi.set_surface_override_material(si,_simple_mat(Color(0.035,0.025,0.02),0.48,0.02))
+                          _: mi.set_surface_override_material(si,_mat_skin(false))
+
+              var hb:=skel.find_bone(HEAD_BONE)
+              var att:=BoneAttachment3D.new()
+              skel.add_child(att)
+              att.bone_idx=hb
+              var head_rig:=Node3D.new()
+              att.add_child(head_rig)
+              head_rig.global_transform=root.global_transform
+
+              var head:Node=(load(HEAD_GLB) as PackedScene).instantiate()
+              head_rig.add_child(head)
+              var hmeshes:Array[MeshInstance3D]=[]
+              _collect_meshes(head,hmeshes)
+              for mi in hmeshes:
+                  for si in range(mi.mesh.get_surface_count()):
+                      var mat:=mi.mesh.surface_get_material(si)
+                      var nm:=((mat.resource_name if mat else "") as String).split(".")[0]
+                      match nm:
+                          "VitSkin": mi.set_surface_override_material(si,_mat_skin(true))
+                          "VitSclera": mi.set_surface_override_material(si,_simple_mat(Color(0.75,0.73,0.71),0.18,0.0))
+                          "VitIris": mi.set_surface_override_material(si,_simple_mat(Color(0.20,0.13,0.07),0.48,0.0))
+                          "VitCornea", "VitCornea2":
+                              var cm:=_simple_mat(Color(1,1,1,0.03),0.03,0.0)
+                              cm.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+                              mi.set_surface_override_material(si,cm)
+                          "VitMouth": mi.set_surface_override_material(si,_simple_mat(Color(0.16,0.035,0.03),0.72,0.0))
+                          "VitScalp":
+                              var dm:=_simple_mat(Color(0,0,0,0),1.0,0.0)
+                              dm.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+                              mi.set_surface_override_material(si,dm)
+                          _: pass
+
+              var hair:Node=(load(HAIR_GLB) as PackedScene).instantiate()
+              head_rig.add_child(hair)
+              var hairmeshes:Array[MeshInstance3D]=[]
+              _collect_meshes(hair,hairmeshes)
+              for mi in hairmeshes:
+                  for si in range(mi.mesh.get_surface_count()):
+                      mi.set_surface_override_material(si,_mat_hair(hair_color))
+
+              var sword:=Node3D.new()
+              sword.name=name+"_Sword"
+              add_child(sword)
+              _box(sword,Vector3(0.035,0.035,1.58),Vector3(0,0,0.79),_simple_mat(Color(0.56,0.64,0.75),0.07,0.96))
+              _box(sword,Vector3(0.30,0.045,0.06),Vector3(0,0,0.03),_simple_mat(Color(0.32,0.18,0.06),0.28,0.25))
+
+              if anim and anim.has_animation("Idle"):
+                  anim.play("Idle")
+                  anim.seek(0.0,true)
+                  anim.pause()
+              var arm:=skel.find_bone("mixamorig_RightArm")
+              var fore:=skel.find_bone("mixamorig_RightForeArm")
+              var larm:=skel.find_bone("mixamorig_LeftArm")
+              var lfore:=skel.find_bone("mixamorig_LeftForeArm")
+              var spine:=skel.find_bone("mixamorig_Spine2")
+              return {
+                  "root":root,"skel":skel,"anim":anim,"sword":sword,
+                  "hand":skel.find_bone("mixamorig_RightHand"),
+                  "arm":arm,"fore":fore,"larm":larm,"lfore":lfore,"spine":spine,
+                  "arm_rest":skel.get_bone_pose_rotation(arm) if arm>=0 else Quaternion.IDENTITY,
+                  "fore_rest":skel.get_bone_pose_rotation(fore) if fore>=0 else Quaternion.IDENTITY,
+                  "larm_rest":skel.get_bone_pose_rotation(larm) if larm>=0 else Quaternion.IDENTITY,
+                  "lfore_rest":skel.get_bone_pose_rotation(lfore) if lfore>=0 else Quaternion.IDENTITY,
+                  "spine_rest":skel.get_bone_pose_rotation(spine) if spine>=0 else Quaternion.IDENTITY
+              }
+
+          func _pose(t: float) -> void:
+              var lx:=[-0.92,-0.88,-0.82,-0.74,-0.65,-0.57,-0.51,-0.47,-0.44]
+              var rx:=[0.98,0.97,0.95,0.92,0.88,0.84,0.81,0.79,0.77]
+              _drive(left,t,true,_sample(lx,t))
+              _drive(right,t,false,_sample(rx,t))
+              _face_and_weapons(t)
+
+          func _sample(a:Array,t:float)->float:
+              var q:=clampf(t,0,1)*float(a.size()-1)
+              var i:=mini(int(floor(q)),a.size()-2)
+              return lerpf(float(a[i]),float(a[i+1]),q-float(i))
+
+          func _drive(ch:Dictionary,t:float,attacker:bool,x:float)->void:
+              if not ch.has("root") or not ch.has("skel"):
+                  return
+              var root:=ch["root"] as Node3D
+              var skel:=ch["skel"] as Skeleton3D
+              var anim:=ch["anim"] as AnimationPlayer
+              if anim and anim.has_animation("Idle"):
+                  anim.seek(0.0,true)
+                  anim.pause()
+              root.position.x=x
+              root.position.y=lerpf(-0.16,-0.24,t) if attacker else lerpf(0.02,0.0,t)
+              root.position.z=(sin(t*PI)*0.08)*(1.0 if attacker else -0.35)
+
+              # Shoulder swing uses local Y for forward/back thrust, Z for height.
+              var aa:=_sample([-0.10,-0.18,-0.32,-0.50,-0.68,-0.82,-0.90,-0.94,-0.96],t) if attacker else _sample([0.10,0.18,0.28,0.40,0.54,0.66,0.74,0.80,0.84],t)
+              var fa:=_sample([-0.34,-0.28,-0.20,-0.12,-0.05,0.0,0.04,0.06,0.08],t) if attacker else _sample([0.40,0.48,0.58,0.66,0.72,0.77,0.80,0.82,0.84],t)
+              var la:=_sample([0.26,0.22,0.15,0.08,0.0,-0.08,-0.14,-0.18,-0.20],t) if attacker else _sample([-0.18,-0.10,0.0,0.12,0.24,0.34,0.42,0.48,0.52],t)
+              var lf:=_sample([-0.22,-0.18,-0.12,-0.05,0.02,0.08,0.12,0.15,0.18],t) if attacker else _sample([0.12,0.18,0.26,0.34,0.42,0.48,0.52,0.55,0.58],t)
+              var sa:=_sample([0.10,0.08,0.04,-0.02,-0.08,-0.13,-0.16,-0.18,-0.19],t) if attacker else _sample([-0.04,-0.01,0.04,0.10,0.16,0.21,0.24,0.26,0.28],t)
+
+              if int(ch["arm"])>=0:
+                  skel.set_bone_pose_rotation(int(ch["arm"]),(ch["arm_rest"] as Quaternion)*Quaternion(Vector3.UP,aa)*Quaternion(Vector3.FORWARD, (-0.28 if attacker else 0.58)))
+              if int(ch["fore"])>=0:
+                  skel.set_bone_pose_rotation(int(ch["fore"]),(ch["fore_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,fa))
+              if int(ch["larm"])>=0: skel.set_bone_pose_rotation(int(ch["larm"]),(ch["larm_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,la))
+              if int(ch["lfore"])>=0: skel.set_bone_pose_rotation(int(ch["lfore"]),(ch["lfore_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,lf))
+              if int(ch["spine"])>=0: skel.set_bone_pose_rotation(int(ch["spine"]),(ch["spine_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,sa))
+
+          func _face_and_weapons(t:float)->void:
+              var lroot:=left["root"] as Node3D
+              var rroot:=right["root"] as Node3D
+
+              # Character model front is +Z. Aim each actor explicitly at the other.
+              lroot.look_at(Vector3(rroot.global_position.x,1.0,rroot.global_position.z),Vector3.UP,true)
+              rroot.look_at(Vector3(lroot.global_position.x,1.0,lroot.global_position.z),Vector3.UP,true)
+
+              _place_sword(left,Vector3(rroot.global_position.x,1.08,rroot.global_position.z),false,t)
+              var guard_target:=rroot.global_position + Vector3(-0.42,2.40,-0.04)
+              _place_sword(right,guard_target,true,t)
+
+          func _place_sword(ch:Dictionary,target:Vector3,guard:bool,t:float)->void:
+              var skel:=ch["skel"] as Skeleton3D
+              var sword:=ch["sword"] as Node3D
+              var hand_idx:=int(ch["hand"])
+              if hand_idx<0:
+                  return
+              var hand_world:Transform3D=skel.global_transform * skel.get_bone_global_pose(hand_idx)
+              sword.global_position=hand_world.origin + Vector3(0.0,-0.03,0.0)
+              var aim:=target
+              if guard:
+                  aim += Vector3(0.0,sin(t*PI)*0.18,0.0)
+              sword.look_at(aim,Vector3.UP,true)
+
+          func _environment()->void:
+              var sky_mat:=ProceduralSkyMaterial.new()
+              sky_mat.sky_top_color=Color(0.006,0.012,0.025)
+              sky_mat.sky_horizon_color=Color(0.02,0.035,0.060)
+              sky_mat.ground_horizon_color=Color(0.01,0.014,0.020)
+              sky_mat.ground_bottom_color=Color(0.004,0.006,0.010)
+              sky_mat.energy_multiplier=0.35
+              var sky:=Sky.new(); sky.sky_material=sky_mat
+              var env:=Environment.new()
+              env.background_mode=Environment.BG_SKY
+              env.sky=sky
+              env.ambient_light_source=Environment.AMBIENT_SOURCE_SKY
+              env.ambient_light_energy=0.12
+              env.reflected_light_source=Environment.REFLECTION_SOURCE_SKY
+              env.tonemap_mode=Environment.TONE_MAPPER_AGX
+              env.tonemap_exposure=1.18
+              env.ssao_enabled=true
+              env.ssao_intensity=1.6
+              env.ssil_enabled=true
+              env.ssr_enabled=true
+              env.glow_enabled=true
+              env.glow_intensity=0.5
+              env.fog_enabled=true
+              env.fog_density=0.012
+              env.fog_light_color=Color(0.07,0.10,0.16)
+              var we:=WorldEnvironment.new(); we.environment=env; add_child(we)
+              RenderingServer.sub_surface_scattering_set_quality(RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_HIGH)
+              RenderingServer.sub_surface_scattering_set_scale(0.08,0.02)
+
+          func _deck()->void:
+              var root:=Node3D.new(); add_child(root)
+              var wet:=_simple_mat(Color(0.045,0.024,0.014),0.14,0.10)
+              var seam:=_simple_mat(Color(0.006,0.008,0.010),0.72,0.0)
+              for i in range(22):
+                  var x=-5.25+float(i)*0.5
+                  _box(root,Vector3(0.46,0.12,6),Vector3(x,-0.11,0),wet)
+                  _box(root,Vector3(0.018,0.124,6.02),Vector3(x+0.24,-0.104,0),seam)
+
+          func _ship()->void:
+              var wood:=_simple_mat(Color(0.025,0.014,0.010),0.32,0.04)
+              for x in [-5.0,-3.3,-1.6,0.0,1.6,3.3,5.0]:
+                  _cyl(self,0.06,1.3,Vector3(x,0.60,-2.75),wood)
+              _box(self,Vector3(10.4,0.12,0.12),Vector3(0,1.13,-2.75),wood)
+              _cyl(self,0.20,6.8,Vector3(-3.8,3.35,-1.5),wood)
+              _box(self,Vector3(3.9,0.10,0.10),Vector3(-3.8,4.55,-1.5),wood)
+
+          func _lights()->void:
+              var moon:=DirectionalLight3D.new()
+              moon.light_color=Color(0.38,0.58,0.96)
+              moon.light_energy=1.75
+              moon.rotation_degrees=Vector3(-58,-25,0)
+              moon.shadow_enabled=true
+              add_child(moon)
+              _omni(Vector3(-2.7,2.0,0.9),Color(1.0,0.28,0.065),7.0)
+              _omni(Vector3(2.8,1.8,-0.5),Color(1.0,0.17,0.04),5.5)
+
+          func _omni(pos:Vector3,c:Color,e:float)->void:
+              var l:=OmniLight3D.new()
+              l.position=pos;l.light_color=c;l.light_energy=e;l.omni_range=6.0;l.shadow_enabled=true
+              add_child(l)
+
+          func _camera()->void:
+              camera=Camera3D.new()
+              camera.fov=52.0
+              camera.near=0.03
+              camera.far=80.0
+              camera.position=Vector3(0.08,1.44,3.38)
+              camera.current=true
+              add_child(camera)
+              camera.look_at(Vector3(0.10,1.04,-0.02),Vector3.UP)
+              get_viewport().msaa_3d=Viewport.MSAA_4X
+
+          func _rain()->void:
+              var rng:=RandomNumberGenerator.new(); rng.seed=420044
+              var mat:=_simple_mat(Color(0.36,0.56,0.78),0.10,0.12)
+              for i in range(100):
+                  var d:=_box(self,Vector3(0.009,rng.randf_range(0.16,0.40),0.009),Vector3(rng.randf_range(-5.5,5.5),rng.randf_range(0.2,6.5),rng.randf_range(-2.8,2.8)),mat)
+                  d.rotation_degrees.z=-13
+                  d.set_meta("speed",rng.randf_range(8.0,13.0))
+                  rain.append(d)
+
+          func _rain_step(delta:float)->void:
+              for d in rain:
+                  var p=d.position
+                  p.y-=float(d.get_meta("speed"))*delta
+                  p.x-=1.3*delta
+                  if p.y<0:
+                      p.y+=6.5;p.x+=0.8
+                  d.position=p
+
+          func _box(parent:Node,size:Vector3,pos:Vector3,mat:Material)->MeshInstance3D:
+              var n:=MeshInstance3D.new();var mesh:=BoxMesh.new();mesh.size=size;n.mesh=mesh;n.position=pos;n.material_override=mat;parent.add_child(n);return n
+
+          func _cyl(parent:Node,radius:float,height:float,pos:Vector3,mat:Material)->MeshInstance3D:
+              var n:=MeshInstance3D.new();var mesh:=CylinderMesh.new();mesh.top_radius=radius;mesh.bottom_radius=radius;mesh.height=height;n.mesh=mesh;n.position=pos;n.material_override=mat;parent.add_child(n);return n
+          EOF
+
+      - name: Import assets
+        run: |
+          GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v6/src/repo/godot_project
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          "$GODOT" --headless --editor --path "$PROJ" --quit-after 8
+
+      - name: Render Blue Sea dual-human shot
+        run: |
+          GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v6/src/repo/godot_project
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          cd "$PROJ"
+          set -o pipefail
+          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v6/out/blue-sea-storyboard-v6.avi --fixed-fps 24 --quit-after 54 scenes/blue_sea_duel_v6.tscn 2>&1 | tee /tmp/a8-r02c-v6/out/godot.log
+          if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-r02c-v6/out/godot.log; then echo "Godot runtime errors"; exit 1; fi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/blue-sea-storyboard-v6.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v6/out/blue-sea-storyboard-v6.mp4
+          rm -f /tmp/a8-r02c-v6/out/blue-sea-storyboard-v6.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/blue-sea-storyboard-v6.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v6/out/F01.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/blue-sea-storyboard-v6.mp4 -vf "select='eq(n,26)'" -vframes 1 /tmp/a8-r02c-v6/out/F05.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/blue-sea-storyboard-v6.mp4 -vf "select='eq(n,53)'" -vframes 1 /tmp/a8-r02c-v6/out/F09.png
+
+      - name: Verify V6
+        run: |
+          cd /tmp/a8-r02c-v6/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json blue-sea-storyboard-v6.mp4 > ffprobe.json
+          ffmpeg -v error -i blue-sea-storyboard-v6.mp4 -f framemd5 frames.framemd5
+          sha256sum blue-sea-storyboard-v6.mp4 F01.png F05.png F09.png > sha256.txt
+          printf '{"route":"R02C","recipe":"BLUE_SEA_DUEL_ACTION_V6","source":"VitruvianGodot exact commit bdecdcd537b4031fdd0fb299b7e4f93f084fffa0","godot":"4.6-stable","renderer":"forward_plus","resolution":"960x540","fps":24,"frames":54,"duration_s":2.25,"goal":"storyboard-matched F01/F05/F09 composition: close camera, explicit facing, horizontal Silas thrust, overhead defender guard, non-accumulating nine-waypoint pose"}\n' > receipt.json
+
+      - name: Upload V4
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-blue-sea-storyboard-match-v6
+          path: /tmp/a8-r02c-v6/out
+          retention-days: 7
