@@ -1,0 +1,672 @@
+{
+  "version": "B2",
+  "title": "Не с ним — shared score qualification cut",
+  "bpm": 108,
+  "ticks_per_beat": 480,
+  "bars": 28,
+  "key": "A minor",
+  "target_text": "Мы встретились с тобой, как люди видятся во сне. Узнали лица, но не смели прикоснуться. Два голоса блуждали в тишине. Как две тропы, которым не сомкнуться. Я говорил не с ним. Я говорил с собой. А он в моих словах искал лишь голос свой.",
+  "chords": [
+    "Am",
+    "Fmaj7",
+    "C/E",
+    "E7",
+    "Am",
+    "Fmaj7",
+    "E7",
+    "C",
+    "G/B",
+    "E7",
+    "Dm",
+    "Am/C",
+    "E7",
+    "F",
+    "Dm",
+    "E7",
+    "F",
+    "C/E",
+    "G",
+    "Am",
+    "Dm",
+    "F",
+    "E7",
+    "Am",
+    "Am",
+    "F",
+    "E7",
+    "Am"
+  ],
+  "phrases": [
+    {
+      "id": "v1l1",
+      "bar": 4,
+      "offset": 240,
+      "section": "verse",
+      "words": [
+        {
+          "text": "мы",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 30
+        },
+        {
+          "text": "встретились",
+          "stress": 0,
+          "pitches": [
+            72,
+            71,
+            69
+          ],
+          "durations": [
+            360,
+            210,
+            240
+          ],
+          "rest": 60
+        },
+        {
+          "text": "с",
+          "stress": 0,
+          "pitches": [
+            67
+          ],
+          "durations": [
+            90
+          ],
+          "rest": 0
+        },
+        {
+          "text": "тобой",
+          "stress": 1,
+          "pitches": [
+            69,
+            72
+          ],
+          "durations": [
+            240,
+            420
+          ],
+          "rest": 120
+        },
+        {
+          "text": "как",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            180
+          ],
+          "rest": 30
+        },
+        {
+          "text": "люди",
+          "stress": 0,
+          "pitches": [
+            69,
+            67
+          ],
+          "durations": [
+            330,
+            210
+          ],
+          "rest": 60
+        },
+        {
+          "text": "видятся",
+          "stress": 0,
+          "pitches": [
+            69,
+            64,
+            64
+          ],
+          "durations": [
+            240,
+            180,
+            210
+          ],
+          "rest": 60
+        },
+        {
+          "text": "во",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            150
+          ],
+          "rest": 30
+        },
+        {
+          "text": "сне",
+          "stress": 0,
+          "pitches": [
+            68
+          ],
+          "durations": [
+            660
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l2",
+      "bar": 7,
+      "offset": 120,
+      "section": "verse",
+      "words": [
+        {
+          "text": "узнали",
+          "stress": 1,
+          "pitches": [
+            64,
+            67,
+            64
+          ],
+          "durations": [
+            210,
+            390,
+            210
+          ],
+          "rest": 60
+        },
+        {
+          "text": "лица",
+          "stress": 0,
+          "pitches": [
+            67,
+            65
+          ],
+          "durations": [
+            330,
+            210
+          ],
+          "rest": 90
+        },
+        {
+          "text": "но",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            180
+          ],
+          "rest": 30
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            180
+          ],
+          "rest": 30
+        },
+        {
+          "text": "смели",
+          "stress": 0,
+          "pitches": [
+            62,
+            62
+          ],
+          "durations": [
+            360,
+            240
+          ],
+          "rest": 120
+        },
+        {
+          "text": "прикоснуться",
+          "stress": 2,
+          "pitches": [
+            62,
+            59,
+            71,
+            71
+          ],
+          "durations": [
+            210,
+            180,
+            450,
+            300
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l3",
+      "bar": 10,
+      "offset": 180,
+      "section": "verse",
+      "words": [
+        {
+          "text": "два",
+          "stress": 0,
+          "pitches": [
+            62
+          ],
+          "durations": [
+            210
+          ],
+          "rest": 30
+        },
+        {
+          "text": "голоса",
+          "stress": 2,
+          "pitches": [
+            62,
+            65,
+            69
+          ],
+          "durations": [
+            180,
+            180,
+            390
+          ],
+          "rest": 90
+        },
+        {
+          "text": "блуждали",
+          "stress": 1,
+          "pitches": [
+            69,
+            69,
+            69
+          ],
+          "durations": [
+            240,
+            390,
+            240
+          ],
+          "rest": 120
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            67
+          ],
+          "durations": [
+            90
+          ],
+          "rest": 0
+        },
+        {
+          "text": "тишине",
+          "stress": 2,
+          "pitches": [
+            64,
+            64,
+            69
+          ],
+          "durations": [
+            210,
+            180,
+            660
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "v1l4",
+      "bar": 13,
+      "offset": 120,
+      "section": "verse",
+      "words": [
+        {
+          "text": "как",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            180
+          ],
+          "rest": 30
+        },
+        {
+          "text": "две",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            180
+          ],
+          "rest": 30
+        },
+        {
+          "text": "тропы",
+          "stress": 1,
+          "pitches": [
+            65,
+            69
+          ],
+          "durations": [
+            210,
+            420
+          ],
+          "rest": 90
+        },
+        {
+          "text": "которым",
+          "stress": 1,
+          "pitches": [
+            65,
+            69,
+            67
+          ],
+          "durations": [
+            210,
+            360,
+            180
+          ],
+          "rest": 90
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            180
+          ],
+          "rest": 30
+        },
+        {
+          "text": "сомкнуться",
+          "stress": 1,
+          "pitches": [
+            62,
+            69,
+            71
+          ],
+          "durations": [
+            210,
+            480,
+            330
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c1l1",
+      "bar": 16,
+      "offset": 120,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "я",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 30
+        },
+        {
+          "text": "говорил",
+          "stress": 2,
+          "pitches": [
+            69,
+            72,
+            72
+          ],
+          "durations": [
+            210,
+            210,
+            510
+          ],
+          "rest": 60
+        },
+        {
+          "text": "не",
+          "stress": 0,
+          "pitches": [
+            74
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 30
+        },
+        {
+          "text": "с",
+          "stress": 0,
+          "pitches": [
+            72
+          ],
+          "durations": [
+            90
+          ],
+          "rest": 0
+        },
+        {
+          "text": "ним",
+          "stress": 0,
+          "pitches": [
+            76
+          ],
+          "durations": [
+            840
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c1l2",
+      "bar": 18,
+      "offset": 60,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "я",
+          "stress": 0,
+          "pitches": [
+            71
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 30
+        },
+        {
+          "text": "говорил",
+          "stress": 2,
+          "pitches": [
+            71,
+            74,
+            79
+          ],
+          "durations": [
+            210,
+            210,
+            510
+          ],
+          "rest": 60
+        },
+        {
+          "text": "с",
+          "stress": 0,
+          "pitches": [
+            74
+          ],
+          "durations": [
+            90
+          ],
+          "rest": 0
+        },
+        {
+          "text": "собой",
+          "stress": 1,
+          "pitches": [
+            72,
+            76
+          ],
+          "durations": [
+            300,
+            840
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c1l3",
+      "bar": 20,
+      "offset": 120,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "а",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            180
+          ],
+          "rest": 30
+        },
+        {
+          "text": "он",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            270
+          ],
+          "rest": 60
+        },
+        {
+          "text": "в",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            90
+          ],
+          "rest": 0
+        },
+        {
+          "text": "моих",
+          "stress": 1,
+          "pitches": [
+            69,
+            74
+          ],
+          "durations": [
+            300,
+            450
+          ],
+          "rest": 60
+        },
+        {
+          "text": "словах",
+          "stress": 1,
+          "pitches": [
+            69,
+            72
+          ],
+          "durations": [
+            300,
+            840
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c1l4",
+      "bar": 22,
+      "offset": 60,
+      "section": "chorus",
+      "words": [
+        {
+          "text": "искал",
+          "stress": 1,
+          "pitches": [
+            68,
+            71
+          ],
+          "durations": [
+            300,
+            450
+          ],
+          "rest": 60
+        },
+        {
+          "text": "лишь",
+          "stress": 0,
+          "pitches": [
+            71
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 60
+        },
+        {
+          "text": "голос",
+          "stress": 0,
+          "pitches": [
+            71,
+            68
+          ],
+          "durations": [
+            420,
+            240
+          ],
+          "rest": 90
+        },
+        {
+          "text": "свой",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            960
+          ],
+          "rest": 0
+        }
+      ]
+    }
+  ],
+  "groove": {
+    "pulse_eighths": [
+      0,
+      3,
+      6
+    ],
+    "kick_beats": [
+      0,
+      2
+    ],
+    "snare_beats": [
+      1,
+      3
+    ],
+    "stress_tambourine": true,
+    "response_source": "last4_vocal_pitches"
+  }
+}
