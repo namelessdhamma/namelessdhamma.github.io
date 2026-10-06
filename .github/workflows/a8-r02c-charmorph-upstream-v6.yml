@@ -116,7 +116,7 @@ jobs:
                   filepath=os.path.join(OUT,"ultra-masculine-static.glb"),
                   export_format='GLB',
                   use_selection=True,
-                  export_materials='EXPORT',
+                  export_materials='NONE',
                   export_yup=True,
               )
               report["glb_size"]=os.path.getsize(os.path.join(OUT,"ultra-masculine-static.glb"))
