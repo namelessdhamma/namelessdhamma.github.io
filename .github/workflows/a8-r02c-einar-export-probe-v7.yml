@@ -1,0 +1,192 @@
+name: A8 R02C Einar Export Probe V7
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-einar-export-probe-v7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  einar-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Install Blender and tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq blender ffmpeg unzip
+          blender --version | head -n 3
+          mkdir -p /tmp/a8-r02c-v7/einar /tmp/a8-r02c-v7/out
+
+      - name: Download official free Einar archive
+        run: |
+          curl -L --fail --retry 3 --retry-delay 5 -o /tmp/a8-r02c-v7/einar.zip https://media.blenderstudio.cn/blender-studio-cn-folder/einar_v1.zip
+          unzip -q /tmp/a8-r02c-v7/einar.zip -d /tmp/a8-r02c-v7/einar
+          du -sh /tmp/a8-r02c-v7/einar
+          find /tmp/a8-r02c-v7/einar -type f -printf '%s %p\n' | sort -nr | head -n 80 > /tmp/a8-r02c-v7/out/archive-largest.txt
+          find /tmp/a8-r02c-v7/einar -type f -iname '*.blend' -printf '%s %p\n' | sort -nr > /tmp/a8-r02c-v7/out/blend-files.txt
+          cat /tmp/a8-r02c-v7/out/blend-files.txt
+          test -s /tmp/a8-r02c-v7/out/blend-files.txt
+
+      - name: Export largest Einar blend to GLB
+        run: |
+          BLEND=$(sort -nr /tmp/a8-r02c-v7/out/blend-files.txt | head -n1 | cut -d' ' -f2-)
+          echo "$BLEND" > /tmp/a8-r02c-v7/out/source-blend.txt
+          cat > /tmp/a8-r02c-v7/export.py <<'PY'
+          import bpy, json, os, sys, math
+          from mathutils import Vector
+
+          src = os.environ["EINAR_BLEND"]
+          out = "/tmp/a8-r02c-v7/out/einar-export.glb"
+          report = {"source":src}
+          bpy.ops.wm.open_mainfile(filepath=src)
+
+          meshes = [o for o in bpy.context.scene.objects if o.type == 'MESH']
+          arms = [o for o in bpy.context.scene.objects if o.type == 'ARMATURE']
+          report["mesh_count"] = len(meshes)
+          report["armature_count"] = len(arms)
+          report["mesh_names"] = [o.name for o in meshes[:100]]
+          report["armature_names"] = [o.name for o in arms[:30]]
+          report["collections"] = [c.name for c in bpy.data.collections[:100]]
+
+          pts=[]
+          for o in meshes:
+              if not o.visible_get():
+                  continue
+              for c in o.bound_box:
+                  pts.append(o.matrix_world @ Vector(c))
+          if pts:
+              mn=Vector((min(p.x for p in pts),min(p.y for p in pts),min(p.z for p in pts)))
+              mx=Vector((max(p.x for p in pts),max(p.y for p in pts),max(p.z for p in pts)))
+              report["bounds_min"]=list(mn)
+              report["bounds_max"]=list(mx)
+              report["bounds_size"]=list(mx-mn)
+
+          # Export visible renderable character scene. Keep deform skeleton and materials.
+          bpy.ops.export_scene.gltf(
+              filepath=out,
+              export_format='GLB',
+              use_visible=True,
+              export_cameras=False,
+              export_lights=False,
+              export_animations=False,
+              export_skins=True,
+              export_materials='EXPORT',
+              export_yup=True
+          )
+          report["glb_size"]=os.path.getsize(out)
+          with open("/tmp/a8-r02c-v7/out/export-report.json","w") as f:
+              json.dump(report,f,indent=2)
+          print(json.dumps(report,indent=2))
+          PY
+          EINAR_BLEND="$BLEND" blender --background --python /tmp/a8-r02c-v7/export.py
+          test -s /tmp/a8-r02c-v7/out/einar-export.glb
+
+      - name: Install Godot and import exported GLB
+        run: |
+          sudo apt-get install -y -qq xvfb libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-r02c-v7/bin /tmp/a8-r02c-v7/project/assets
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v7/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v7/godot.zip -d /tmp/a8-r02c-v7/bin
+          chmod +x /tmp/a8-r02c-v7/bin/Godot_v4.7.2-stable_linux.x86_64
+          cp /tmp/a8-r02c-v7/out/einar-export.glb /tmp/a8-r02c-v7/project/assets/einar.glb
+          cat > /tmp/a8-r02c-v7/project/project.godot <<'EOF'
+          [application]
+          config/name="A8 R02C Einar Import Probe"
+          run/main_scene="res://main.tscn"
+          [display]
+          window/size/viewport_width=768
+          window/size/viewport_height=768
+          [rendering]
+          renderer/rendering_method="forward_plus"
+          EOF
+          cat > /tmp/a8-r02c-v7/project/main.tscn <<'EOF'
+          [gd_scene load_steps=2 format=3]
+          [ext_resource type="Script" path="res://main.gd" id="1"]
+          [node name="EinarProbe" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+          cat > /tmp/a8-r02c-v7/project/main.gd <<'EOF'
+          extends Node3D
+          var hero: Node3D
+          var camera: Camera3D
+          var t:=0.0
+
+          func _ready():
+              var ps=load("res://assets/einar.glb") as PackedScene
+              hero=ps.instantiate() as Node3D
+              add_child(hero)
+              _frame_character()
+              _lighting()
+              _camera()
+
+          func _process(delta):
+              t+=delta
+              hero.rotation_degrees.y=sin(t*0.6)*8.0
+
+          func _frame_character():
+              # Blender report says scene scale should be near real meters; normalize only if absurd.
+              hero.scale=Vector3.ONE
+
+          func _lighting():
+              var we=WorldEnvironment.new()
+              var e=Environment.new()
+              e.background_mode=Environment.BG_COLOR
+              e.background_color=Color(0.004,0.006,0.010)
+              e.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR
+              e.ambient_light_color=Color(0.11,0.14,0.20)
+              e.ambient_light_energy=0.55
+              e.tonemap_mode=Environment.TONE_MAPPER_AGX
+              e.tonemap_exposure=1.1
+              e.ssao_enabled=true
+              e.ssil_enabled=true
+              e.glow_enabled=true
+              we.environment=e
+              add_child(we)
+              var key=DirectionalLight3D.new()
+              key.light_color=Color(1.0,0.82,0.66)
+              key.light_energy=2.6
+              key.rotation_degrees=Vector3(-38,-55,0)
+              key.shadow_enabled=true
+              add_child(key)
+              var rim=DirectionalLight3D.new()
+              rim.light_color=Color(0.35,0.55,1.0)
+              rim.light_energy=2.2
+              rim.rotation_degrees=Vector3(-25,135,0)
+              add_child(rim)
+
+          func _camera():
+              camera=Camera3D.new()
+              camera.fov=36
+              camera.position=Vector3(0,1.55,3.2)
+              camera.current=true
+              add_child(camera)
+              camera.look_at(Vector3(0,1.35,0),Vector3.UP)
+          EOF
+          GODOT=/tmp/a8-r02c-v7/bin/Godot_v4.7.2-stable_linux.x86_64
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          "$GODOT" --headless --editor --path /tmp/a8-r02c-v7/project --quit-after 8
+          xvfb-run -a "$GODOT" --path /tmp/a8-r02c-v7/project --rendering-method forward_plus --write-movie /tmp/a8-r02c-v7/out/einar-godot.avi --fixed-fps 24 --quit-after 48
+          ffmpeg -y -v error -i /tmp/a8-r02c-v7/out/einar-godot.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v7/out/einar-godot.mp4
+          rm -f /tmp/a8-r02c-v7/out/einar-godot.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v7/out/einar-godot.mp4 -vf "select='eq(n,24)'" -vframes 1 /tmp/a8-r02c-v7/out/einar-godot.png
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json /tmp/a8-r02c-v7/out/einar-godot.mp4 > /tmp/a8-r02c-v7/out/einar-godot.ffprobe.json
+          sha256sum /tmp/a8-r02c-v7/out/einar-export.glb /tmp/a8-r02c-v7/out/einar-godot.mp4 > /tmp/a8-r02c-v7/out/sha256.txt
+
+      - name: Upload V7 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-einar-export-probe-v7
+          path: |
+            /tmp/a8-r02c-v7/out/archive-largest.txt
+            /tmp/a8-r02c-v7/out/blend-files.txt
+            /tmp/a8-r02c-v7/out/source-blend.txt
+            /tmp/a8-r02c-v7/out/export-report.json
+            /tmp/a8-r02c-v7/out/einar-godot.mp4
+            /tmp/a8-r02c-v7/out/einar-godot.png
+            /tmp/a8-r02c-v7/out/einar-godot.ffprobe.json
+            /tmp/a8-r02c-v7/out/sha256.txt
+          retention-days: 7
