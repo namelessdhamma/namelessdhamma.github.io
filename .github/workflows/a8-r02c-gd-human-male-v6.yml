@@ -1,0 +1,193 @@
+name: A8 R02C GD Human Male V6
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-gd-human-male-v6.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gd-human:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Install Godot 4.7.2 and Vulkan runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-r02c-v6/bin /tmp/a8-r02c-v6/src /tmp/a8-r02c-v6/out
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v6/godot.zip https://downloads.sourceforge.net/project/godot-engine.mirror/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v6/godot.zip -d /tmp/a8-r02c-v6/bin
+          chmod +x /tmp/a8-r02c-v6/bin/Godot_v4.7.2-stable_linux.x86_64
+
+      - name: Fetch exact GD-Human-Framework source
+        run: |
+          cd /tmp/a8-r02c-v6/src
+          curl -L --fail --retry 3 -o gd-human.zip https://github.com/Yni-Viar/gd-human-framework/archive/cf0e05de95ddc2f5a371cb27eb4af72d016566d0.zip
+          unzip -q gd-human.zip
+          mv gd-human-framework-cf0e05de95ddc2f5a371cb27eb4af72d016566d0 repo
+          rm gd-human.zip
+          test -f repo/src/addons/gd-human-framework/technical/character.tscn
+          test -f repo/src/addons/gd-human-framework/shapes.dat
+
+      - name: Write isolated male fidelity probe
+        run: |
+          PROJ=/tmp/a8-r02c-v6/src/repo/src
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/a8-r02c-v6/src/repo/src/project.godot')
+          s=p.read_text()
+          s=s.replace('renderer/rendering_method="gl_compatibility"','renderer/rendering_method="forward_plus"')
+          s=s.replace('renderer/rendering_method.mobile="gl_compatibility"','renderer/rendering_method.mobile="forward_plus"')
+          s=s.replace('window/size/viewport_width=1280','window/size/viewport_width=720')
+          s=s.replace('window/size/viewport_height=720','window/size/viewport_height=720')
+          p.write_text(s)
+          PY
+          cat > "$PROJ/v6_male.tscn" <<'EOF'
+          [gd_scene load_steps=2 format=3]
+
+          [ext_resource type="Script" path="res://v6_male.gd" id="1"]
+
+          [node name="GDHumanMaleV6" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+
+          cat > "$PROJ/v6_male.gd" <<'EOF'
+          extends Node3D
+
+          var human: Node3D
+          var camera: Camera3D
+          var elapsed := 0.0
+
+          func _ready() -> void:
+              _environment()
+              _lights()
+              _floor()
+              var packed := load("res://addons/gd-human-framework/technical/character.tscn") as PackedScene
+              human = packed.instantiate()
+              human.name = "MaleCharacter"
+              add_child(human)
+              call_deferred("_configure_human")
+              _camera()
+
+          func _configure_human() -> void:
+              if human.has_method("take_on_clothes"):
+                  human.call("take_on_clothes","male_shirt_01")
+                  human.call("take_on_clothes","male_jeans_01")
+              if human.has_method("update_morph"):
+                  human.call("update_morph","man",1.0)
+                  human.call("update_morph","muscle",0.28)
+                  human.call("update_morph","armmuscle",0.20)
+                  human.call("update_morph","legmuscle",0.18)
+                  human.call("update_morph","jaw_pam1_+",0.22)
+                  human.call("update_morph","jaw_pam3_+",0.16)
+                  human.call("update_morph","nose_scale_X",0.08)
+                  human.call("update_morph","head_scale_Y",0.05)
+              human.position = Vector3(0,-0.02,0)
+              human.rotation_degrees.y = -8.0
+              print("[V6] human class=",human.get_class()," methods=",human.has_method("update_morph"))
+
+          func _process(delta: float) -> void:
+              elapsed += delta
+              var t := clampf(elapsed/2.0,0.0,1.0)
+              camera.position = Vector3(0.15 + sin(t*PI*2.0)*0.10,1.48,3.35 - t*0.08)
+              camera.look_at(Vector3(0,1.30,0),Vector3.UP)
+
+          func _environment() -> void:
+              var sky_mat := ProceduralSkyMaterial.new()
+              sky_mat.sky_top_color = Color(0.012,0.018,0.030)
+              sky_mat.sky_horizon_color = Color(0.045,0.050,0.060)
+              sky_mat.ground_horizon_color = Color(0.018,0.018,0.022)
+              sky_mat.ground_bottom_color = Color(0.006,0.006,0.009)
+              sky_mat.energy_multiplier = 0.45
+              var sky := Sky.new(); sky.sky_material=sky_mat
+              var env := Environment.new()
+              env.background_mode=Environment.BG_SKY
+              env.sky=sky
+              env.ambient_light_source=Environment.AMBIENT_SOURCE_SKY
+              env.ambient_light_energy=0.22
+              env.reflected_light_source=Environment.REFLECTION_SOURCE_SKY
+              env.tonemap_mode=Environment.TONE_MAPPER_AGX
+              env.tonemap_exposure=1.10
+              env.ssao_enabled=true
+              env.ssao_intensity=1.5
+              env.ssil_enabled=true
+              env.glow_enabled=true
+              env.glow_intensity=0.35
+              var we:=WorldEnvironment.new();we.environment=env;add_child(we)
+              RenderingServer.sub_surface_scattering_set_quality(RenderingServer.SUB_SURFACE_SCATTERING_QUALITY_HIGH)
+              RenderingServer.sub_surface_scattering_set_scale(0.08,0.02)
+
+          func _lights() -> void:
+              var key:=DirectionalLight3D.new()
+              key.light_color=Color(1.0,0.82,0.67)
+              key.light_energy=2.8
+              key.rotation_degrees=Vector3(-42,-48,0)
+              key.shadow_enabled=true
+              add_child(key)
+              var rim:=DirectionalLight3D.new()
+              rim.light_color=Color(0.38,0.58,1.0)
+              rim.light_energy=2.4
+              rim.rotation_degrees=Vector3(-18,142,0)
+              add_child(rim)
+              var fill:=DirectionalLight3D.new()
+              fill.light_color=Color(0.55,0.66,0.85)
+              fill.light_energy=0.65
+              fill.rotation_degrees=Vector3(5,25,0)
+              add_child(fill)
+
+          func _floor() -> void:
+              var n:=MeshInstance3D.new()
+              var m:=PlaneMesh.new();m.size=Vector2(8,8);n.mesh=m
+              var mat:=StandardMaterial3D.new();mat.albedo_color=Color(0.025,0.027,0.032);mat.roughness=0.55
+              n.material_override=mat
+              add_child(n)
+
+          func _camera() -> void:
+              camera=Camera3D.new()
+              camera.fov=38.0
+              camera.near=0.03
+              camera.far=50.0
+              camera.position=Vector3(0.15,1.48,3.35)
+              camera.current=true
+              add_child(camera)
+              camera.look_at(Vector3(0,1.30,0),Vector3.UP)
+              get_viewport().msaa_3d=Viewport.MSAA_4X
+          EOF
+
+      - name: Import framework assets
+        run: |
+          GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.7.2-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v6/src/repo/src
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          "$GODOT" --headless --editor --path "$PROJ" --quit-after 10
+
+      - name: Render male fidelity probe
+        run: |
+          GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.7.2-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v6/src/repo/src
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          cd "$PROJ"
+          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v6/out/gd-human-male.avi --fixed-fps 24 --quit-after 48 v6_male.tscn
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/gd-human-male.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v6/out/gd-human-male.mp4
+          rm -f /tmp/a8-r02c-v6/out/gd-human-male.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/gd-human-male.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v6/out/F01.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/gd-human-male.mp4 -vf "select='eq(n,23)'" -vframes 1 /tmp/a8-r02c-v6/out/F05.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/gd-human-male.mp4 -vf "select='eq(n,47)'" -vframes 1 /tmp/a8-r02c-v6/out/F09.png
+
+      - name: Verify V6
+        run: |
+          cd /tmp/a8-r02c-v6/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json gd-human-male.mp4 > ffprobe.json
+          sha256sum gd-human-male.mp4 F01.png F05.png F09.png > sha256.txt
+          printf '{"route":"R02C","recipe":"GD_HUMAN_MALE_V6","source_repo":"Yni-Viar/gd-human-framework","source_commit":"cf0e05de95ddc2f5a371cb27eb4af72d016566d0","license":"CC0 project/assets; MIT skin shader components","godot":"4.7.2-stable","renderer":"forward_plus","resolution":"720x720","fps":24,"frames":48,"duration_s":2.0,"goal":"programmable realistic male-human asset fidelity probe"}\n' > receipt.json
+
+      - name: Upload V6
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-gd-human-male-v6
+          path: /tmp/a8-r02c-v6/out
+          retention-days: 7
