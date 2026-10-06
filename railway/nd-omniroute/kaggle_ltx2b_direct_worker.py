@@ -176,12 +176,27 @@ def prepare_runtime() -> tuple[Path, Path, Path]:
 
         worker_path = Path(sys.argv[0]).resolve()
         print("ND_LTX2B_STAGE=clean_child_begin", flush=True)
-        child = subprocess.run(
+        child_started = time.time()
+        child = subprocess.Popen(
             [sys.executable, str(worker_path), sys.argv[1]],
             env=env,
         )
-        print(f"ND_LTX2B_STAGE=clean_child_rc_{child.returncode}", flush=True)
-        raise SystemExit(child.returncode)
+        next_heartbeat = child_started + 20.0
+        while True:
+            rc = child.poll()
+            if rc is not None:
+                break
+            now = time.time()
+            if now >= next_heartbeat:
+                print(
+                    "ND_LTX2B_PARENT_HEARTBEAT elapsed_s="
+                    + str(round(now - child_started, 1)),
+                    flush=True,
+                )
+                next_heartbeat = now + 20.0
+            time.sleep(2.0)
+        print(f"ND_LTX2B_STAGE=clean_child_rc_{rc}", flush=True)
+        raise SystemExit(rc)
 
     from huggingface_hub import hf_hub_download
 
