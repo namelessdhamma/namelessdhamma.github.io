@@ -1,0 +1,308 @@
+name: A8 R02C Godot Cinematic Assets V2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-godot-cinematic-assets-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rigged-asset-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Install Godot and Vulkan runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-r02c-v2/bin /tmp/a8-r02c-v2/project/assets /tmp/a8-r02c-v2/out
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v2/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v2/godot.zip -d /tmp/a8-r02c-v2/bin
+          chmod +x /tmp/a8-r02c-v2/bin/Godot_v4.7.2-stable_linux.x86_64
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v2/project/assets/CesiumMan.glb https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/CesiumMan/glTF-Binary/CesiumMan.glb
+
+      - name: Write isolated rigged cinematic project
+        run: |
+          cat > /tmp/a8-r02c-v2/project/project.godot <<'EOF'
+          [application]
+          config/name="A8 R02C Godot Cinematic Assets V2"
+          run/main_scene="res://main.tscn"
+
+          [display]
+          window/size/viewport_width=960
+          window/size/viewport_height=540
+          window/size/window_width_override=960
+          window/size/window_height_override=540
+
+          [rendering]
+          renderer/rendering_method="forward_plus"
+          renderer/rendering_method.mobile="gl_compatibility"
+          EOF
+
+          cat > /tmp/a8-r02c-v2/project/main.tscn <<'EOF'
+          [gd_scene load_steps=2 format=3]
+
+          [ext_resource path="res://main.gd" type="Script" id="1"]
+
+          [node name="CinematicAssetProof" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+
+          cat > /tmp/a8-r02c-v2/project/main.gd <<'EOF'
+          extends Node3D
+
+          const SHOT_SECONDS: float = 2.25
+          var t_elapsed: float = 0.0
+          var left_root: Node3D
+          var right_root: Node3D
+          var camera: Camera3D
+          var rain: Array[Node3D] = []
+
+          func _ready() -> void:
+              _environment()
+              _deck()
+              _ship()
+              _lights()
+              left_root = _humanoid("SilasProxy", -1.55, -14.0)
+              right_root = _humanoid("RedPirateProxy", 1.55, 16.0)
+              _sword(left_root, Color(0.48,0.56,0.68))
+              _sword(right_root, Color(0.45,0.52,0.62))
+              _camera()
+              _rain()
+
+          func _process(delta: float) -> void:
+              t_elapsed += delta
+              var t: float = clampf(t_elapsed / SHOT_SECONDS, 0.0, 1.0)
+              left_root.position.x = lerpf(-1.65,-0.34,t)
+              right_root.position.x = lerpf(1.62,0.72,t)
+              left_root.position.z = sin(t*PI)*0.18
+              right_root.position.z = -sin(t*PI)*0.10
+              left_root.rotation_degrees.y = lerpf(-10.0,8.0,t)
+              right_root.rotation_degrees.y = lerpf(14.0,-10.0,t)
+              for d: Node3D in rain:
+                  var p: Vector3 = d.position
+                  p.y -= float(d.get_meta("speed")) * delta
+                  p.x -= 1.25 * delta
+                  if p.y < 0.05:
+                      p.y += 7.0
+                      p.x += 0.8
+                  d.position = p
+              camera.position = Vector3(0.12+sin(t*PI)*0.05,2.30,7.1-t*0.28)
+              camera.look_at(Vector3(0.12,1.25,0.0),Vector3.UP)
+
+          func _mat(c: Color, rough: float, metal: float, emission: Color = Color(0,0,0)) -> StandardMaterial3D:
+              var m := StandardMaterial3D.new()
+              m.albedo_color = c
+              m.roughness = rough
+              m.metallic = metal
+              if emission != Color(0,0,0):
+                  m.emission_enabled = true
+                  m.emission = emission
+                  m.emission_energy_multiplier = 3.0
+              return m
+
+          func _box(parent: Node, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
+              var n := MeshInstance3D.new()
+              var mesh := BoxMesh.new()
+              mesh.size = size
+              n.mesh = mesh
+              n.position = pos
+              n.material_override = mat
+              parent.add_child(n)
+              return n
+
+          func _cyl(parent: Node, radius: float, height: float, pos: Vector3, mat: Material) -> MeshInstance3D:
+              var n := MeshInstance3D.new()
+              var mesh := CylinderMesh.new()
+              mesh.top_radius = radius
+              mesh.bottom_radius = radius
+              mesh.height = height
+              n.mesh = mesh
+              n.position = pos
+              n.material_override = mat
+              parent.add_child(n)
+              return n
+
+          func _sphere(parent: Node, radius: float, pos: Vector3, mat: Material) -> MeshInstance3D:
+              var n := MeshInstance3D.new()
+              var mesh := SphereMesh.new()
+              mesh.radius = radius
+              mesh.height = radius*2.0
+              n.mesh = mesh
+              n.position = pos
+              n.material_override = mat
+              parent.add_child(n)
+              return n
+
+          func _environment() -> void:
+              var we := WorldEnvironment.new()
+              var e := Environment.new()
+              e.background_mode = Environment.BG_COLOR
+              e.background_color = Color(0.002,0.006,0.015)
+              e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+              e.ambient_light_color = Color(0.065,0.11,0.19)
+              e.ambient_light_energy = 0.55
+              e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+              e.tonemap_exposure = 1.28
+              e.adjustment_enabled = true
+              e.adjustment_contrast = 1.16
+              e.adjustment_saturation = 0.82
+              e.fog_enabled = true
+              e.fog_density = 0.010
+              e.fog_light_color = Color(0.07,0.11,0.18)
+              e.volumetric_fog_enabled = true
+              e.volumetric_fog_density = 0.022
+              e.volumetric_fog_length = 26.0
+              e.volumetric_fog_albedo = Color(0.22,0.30,0.42)
+              e.ssao_enabled = true
+              e.ssao_intensity = 2.0
+              e.ssil_enabled = true
+              e.ssil_intensity = 1.15
+              e.ssr_enabled = true
+              e.glow_enabled = true
+              e.glow_intensity = 0.82
+              we.environment = e
+              add_child(we)
+
+          func _deck() -> void:
+              var root := Node3D.new()
+              add_child(root)
+              var wet := _mat(Color(0.050,0.028,0.018),0.14,0.10)
+              var dark := _mat(Color(0.006,0.008,0.011),0.72,0.0)
+              var puddle := _mat(Color(0.016,0.048,0.075),0.035,0.32)
+              for i: int in range(22):
+                  var x: float = -5.25 + float(i)*0.5
+                  _box(root,Vector3(0.46,0.12,6.0),Vector3(x,-0.11,0),wet)
+                  _box(root,Vector3(0.018,0.124,6.02),Vector3(x+0.24,-0.104,0),dark)
+              _box(root,Vector3(1.4,0.012,0.5),Vector3(-2.0,-0.035,0.65),puddle)
+              _box(root,Vector3(1.1,0.012,0.44),Vector3(0.3,-0.035,-0.58),puddle)
+              _box(root,Vector3(1.35,0.012,0.52),Vector3(2.4,-0.035,0.3),puddle)
+
+          func _ship() -> void:
+              var root := Node3D.new()
+              add_child(root)
+              var wood := _mat(Color(0.028,0.017,0.012),0.32,0.04)
+              for x: float in [-5.2,-3.5,-1.8,0.0,1.8,3.5,5.2]:
+                  _cyl(root,0.06,1.35,Vector3(x,0.60,-2.72),wood)
+              _box(root,Vector3(10.8,0.12,0.12),Vector3(0,1.15,-2.72),wood)
+              _cyl(root,0.21,7.0,Vector3(-3.7,3.45,-1.5),wood)
+              _box(root,Vector3(4.0,0.11,0.11),Vector3(-3.7,4.65,-1.5),wood)
+              _box(root,Vector3(3.7,2.15,0.035),Vector3(-3.7,3.35,-1.52),_mat(Color(0.016,0.020,0.028),0.78,0.0))
+
+          func _lights() -> void:
+              var moon := DirectionalLight3D.new()
+              moon.light_color = Color(0.42,0.60,0.92)
+              moon.light_energy = 1.75
+              moon.rotation_degrees = Vector3(-58,-24,0)
+              moon.shadow_enabled = true
+              add_child(moon)
+              _lantern(Vector3(-2.9,2.0,0.8),Color(1.0,0.28,0.07),6.2)
+              _lantern(Vector3(3.0,1.8,-0.8),Color(1.0,0.18,0.045),5.2)
+
+          func _lantern(pos: Vector3, c: Color, energy: float) -> void:
+              var l := OmniLight3D.new()
+              l.position = pos
+              l.light_color = c
+              l.light_energy = energy
+              l.omni_range = 6.0
+              l.shadow_enabled = true
+              add_child(l)
+              _sphere(self,0.10,pos,_mat(Color(0.08,0.01,0.002),0.25,0.0,c))
+
+          func _humanoid(name: String, x: float, yrot: float) -> Node3D:
+              var root := Node3D.new()
+              root.name = name
+              root.position = Vector3(x,0.0,0.0)
+              root.rotation_degrees.y = yrot
+              add_child(root)
+              var packed := load("res://assets/CesiumMan.glb") as PackedScene
+              var model := packed.instantiate()
+              model.name = "RiggedHumanoid"
+              root.add_child(model)
+              model.scale = Vector3(0.92,0.92,0.92)
+              var ap := _find_animation_player(model)
+              if ap != null:
+                  var animations: PackedStringArray = ap.get_animation_list()
+                  for anim: StringName in animations:
+                      if String(anim) != "RESET":
+                          ap.play(anim)
+                          break
+              return root
+
+          func _find_animation_player(n: Node) -> AnimationPlayer:
+              if n is AnimationPlayer:
+                  return n as AnimationPlayer
+              for c: Node in n.get_children():
+                  var found := _find_animation_player(c)
+                  if found != null:
+                      return found
+              return null
+
+          func _sword(root: Node3D, c: Color) -> void:
+              var pivot := Node3D.new()
+              pivot.position = Vector3(0.38,1.16,0.04)
+              pivot.rotation_degrees = Vector3(0,0,-40)
+              root.add_child(pivot)
+              _box(pivot,Vector3(0.045,1.55,0.035),Vector3(0,-0.75,0),_mat(c,0.06,0.95))
+              _box(pivot,Vector3(0.28,0.045,0.05),Vector3(0,0,0),_mat(Color(0.38,0.24,0.12),0.28,0.35))
+
+          func _camera() -> void:
+              camera = Camera3D.new()
+              camera.fov = 42.0
+              camera.near = 0.05
+              camera.far = 100.0
+              camera.position = Vector3(0.12,2.30,7.1)
+              add_child(camera)
+              camera.look_at(Vector3(0.12,1.25,0),Vector3.UP)
+              camera.current = true
+
+          func _rain() -> void:
+              var rng := RandomNumberGenerator.new()
+              rng.seed = 420043
+              var mat := _mat(Color(0.34,0.52,0.75),0.10,0.10)
+              for i: int in range(120):
+                  var d := _box(self,Vector3(0.009,rng.randf_range(0.18,0.42),0.009),Vector3(rng.randf_range(-6,6),rng.randf_range(0.3,7.0),rng.randf_range(-3.0,3.0)),mat)
+                  d.rotation_degrees.z = -12
+                  d.set_meta("speed",rng.randf_range(8.0,13.0))
+                  rain.append(d)
+          EOF
+
+      - name: Import glTF asset
+        run: |
+          GODOT=/tmp/a8-r02c-v2/bin/Godot_v4.7.2-stable_linux.x86_64
+          cd /tmp/a8-r02c-v2/project
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          "$GODOT" --headless --editor --path . --quit-after 4
+          test -d .godot/imported
+          find .godot/imported -maxdepth 1 -type f | head
+
+      - name: Render rigged cinematic proof
+        run: |
+          GODOT=/tmp/a8-r02c-v2/bin/Godot_v4.7.2-stable_linux.x86_64
+          cd /tmp/a8-r02c-v2/project
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v2/out/cinematic-rigged.avi --fixed-fps 24 --quit-after 54
+          ffmpeg -y -v error -i /tmp/a8-r02c-v2/out/cinematic-rigged.avi -c:v libx264 -crf 16 -pix_fmt yuv420p /tmp/a8-r02c-v2/out/cinematic-rigged.mp4
+          rm /tmp/a8-r02c-v2/out/cinematic-rigged.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v2/out/cinematic-rigged.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v2/out/F01.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v2/out/cinematic-rigged.mp4 -vf "select='eq(n,26)'" -vframes 1 /tmp/a8-r02c-v2/out/F05.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v2/out/cinematic-rigged.mp4 -vf "select='eq(n,53)'" -vframes 1 /tmp/a8-r02c-v2/out/F09.png
+
+      - name: Verify rigged output
+        run: |
+          cd /tmp/a8-r02c-v2/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json cinematic-rigged.mp4 > cinematic-rigged.ffprobe.json
+          ffmpeg -v error -i cinematic-rigged.mp4 -f framemd5 cinematic-rigged.framemd5
+          sha256sum cinematic-rigged.mp4 F01.png F05.png F09.png > sha256.txt
+          printf '{"route":"R02C","recipe":"GODOT_CINEMATIC_ASSETS_V2","godot":"4.7.2","renderer":"forward_plus","asset":"CesiumMan glTF CC-BY-4.0","proof":"glTF import + skin + animation + cinematic 3D render","resolution":"960x540","fps":24,"frames":54,"duration_s":2.25}\n' > receipt.json
+          printf 'CesiumMan: Copyright 2017 Cesium, licensed CC BY 4.0. Source: KhronosGroup/glTF-Sample-Assets.\n' > ATTRIBUTION.txt
+
+      - name: Upload rigged cinematic proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-godot-cinematic-assets-v2
+          path: /tmp/a8-r02c-v2/out
+          retention-days: 7
