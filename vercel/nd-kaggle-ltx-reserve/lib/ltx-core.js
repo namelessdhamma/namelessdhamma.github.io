@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 const DEFAULT_RAILWAY_BASE="https://nd-external-intelligence-production.up.railway.app";
-const QUALIFIED_WORKER_COMMIT="5c1757f83f2580e800cfd1e8c9804bcb23d46b43";
+const QUALIFIED_WORKER_COMMIT="0b499bd9d54fe7099cc9fca115f889965d3b313e";
 const WORKER_URL="https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/"+QUALIFIED_WORKER_COMMIT+"/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py";
 
 function err(message,status=0,code=""){
@@ -253,8 +253,8 @@ async function prepareInput(value,cfg,label,ctx){
 
 
 
-function effectRef({startInput,endInput,prompt,negativePrompt,duration,width,height,seed,idempotencyKey}){
-  const canonical=JSON.stringify({
+function effectRef({startInput,endInput,prompt,negativePrompt,duration,width,height,seed,idempotencyKey,qualityMode}){
+  const body={
     version:1,
     start_sha256:startInput.fingerprint,
     end_sha256:endInput.fingerprint,
@@ -266,7 +266,9 @@ function effectRef({startInput,endInput,prompt,negativePrompt,duration,width,hei
     seed:Number(seed),
     direct:true,
     idempotency_key:String(idempotencyKey||"")
-  });
+  };
+  if(String(qualityMode||"direct")!=="direct") body.quality_mode=String(qualityMode);
+  const canonical=JSON.stringify(body);
   const hash=sha256(canonical);
   const token="r"+hash.slice(0,12)+"-"+hash.slice(12,16);
   return {effect_id:"ltx2b:"+hash,token,kernel_slug:"nd-ltx2b-"+token};
@@ -415,9 +417,11 @@ export async function submit(args={},cfg=configFromEnv()){
     const negativePrompt=String(args.negative_prompt||"").trim()||undefined;
     const duration=Number(args.duration_seconds??2);
     const width=Number(args.width??512),height=Number(args.height??288);
+    const qualityMode=String(args.quality_mode||"direct").trim().toLowerCase();
+    if(!["direct","multiscale"].includes(qualityMode)) throw err("quality_mode must be direct or multiscale");
     const effect=effectRef({
       startInput,endInput,prompt,negativePrompt,duration,width,height,seed,
-      idempotencyKey:args.idempotency_key
+      idempotencyKey:args.idempotency_key,qualityMode
     });
     const retryTerminal=args.retry_terminal===true||args.retry_failed===true;
     const found=await latestEffectAttempt(cfg,username,effect.token,ctx);
@@ -437,7 +441,8 @@ export async function submit(args={},cfg=configFromEnv()){
     const pf=await preflight(cfg,username,ctx);
     const request={
       start_image_url:startInput.url,end_image_url:endInput.url,
-      prompt,negative_prompt:negativePrompt,duration_seconds:duration,width,height,seed
+      prompt,negative_prompt:negativePrompt,duration_seconds:duration,width,height,seed,
+      quality_mode:qualityMode
     };
     const reqB64=Buffer.from(JSON.stringify(request),"utf8").toString("base64");
     const script=[
@@ -507,7 +512,8 @@ export async function submit(args={},cfg=configFromEnv()){
       ok:true,state:"SUBMITTED",reused_existing:false,
       request_id:providerRequestId(effect.token,providerAttempt,version),effect_id:effect.effect_id,effect_token:effect.token,provider_attempt:providerAttempt,
       provider_ref:username+"/"+providerSlug+"/"+version,
-      route:"kaggle_ltx2b_direct_f2l",worker_mode:"DIRECT_LTX",
+      route:"kaggle_ltx2b_direct_f2l",worker_mode:qualityMode==="multiscale"?"MULTISCALE_LTX":"DIRECT_LTX",
+      quality_mode:qualityMode,
       cache_sources:cacheSources,machine_shape_requested:"NvidiaTeslaT4",
       cost_policy:"FREE_ONLY",gpu_quota:pf.gpu,seed,nonblocking:true,
       caller_action:"CONTINUE_OTHER_USEFUL_WORK"
