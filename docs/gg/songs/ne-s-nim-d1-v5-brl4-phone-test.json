@@ -1,0 +1,77 @@
+{
+  "version": "D1_V5_BRL4_PHONE_TEST",
+  "title": "Не с ним — brl4 native phoneme timing test",
+  "bpm": 108,
+  "ticks_per_beat": 480,
+  "bars": 3,
+  "key": "A minor",
+  "target_text": "былого что осталось неизменным",
+  "phrases": [
+    {
+      "id": "brl4",
+      "bar": 0,
+      "offset": 240,
+      "section": "brl4_phone_test",
+      "words": [
+        {
+          "text": "былого",
+          "stress": 1,
+          "pitches": [
+            64,
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "что",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "осталось",
+          "stress": 1,
+          "pitches": [
+            64,
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "неизменным",
+          "stress": 2,
+          "pitches": [
+            64,
+            64,
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            240,
+            720,
+            480
+          ],
+          "rest": 0
+        }
+      ]
+    }
+  ]
+}
