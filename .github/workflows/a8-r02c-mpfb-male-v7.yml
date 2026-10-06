@@ -1,0 +1,167 @@
+name: A8 R02C MPFB Male V7
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-mpfb-male-v7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mpfb-male:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Install render/runtime dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip xz-utils libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-r02c-v7/{bin,src,assets,godot,out}
+
+      - name: Fetch Blender 4.5.9 and Godot 4.7.2
+        run: |
+          curl -L --fail --retry 3 https://download.blender.org/release/Blender4.5/blender-4.5.9-linux-x64.tar.xz -o /tmp/a8-r02c-v7/blender.tar.xz
+          tar -xJf /tmp/a8-r02c-v7/blender.tar.xz -C /tmp/a8-r02c-v7/bin
+          BLENDER=$(find /tmp/a8-r02c-v7/bin -type f -name blender | head -n1)
+          "$BLENDER" --background --version | head -n3
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v7/godot.zip https://downloads.sourceforge.net/project/godot-engine.mirror/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v7/godot.zip -d /tmp/a8-r02c-v7/bin
+          chmod +x /tmp/a8-r02c-v7/bin/Godot_v4.7.2-stable_linux.x86_64
+
+      - name: Fetch exact generator script and MakeHuman assets
+        run: |
+          curl -L --fail --retry 3 https://raw.githubusercontent.com/kunalkushwaha/vsim/3f97faf85e46d2f9a122b0a8b8d3ccc0af598f91/scripts/blender/make-human.py -o /tmp/a8-r02c-v7/src/make-human.py
+          curl -L --fail --retry 3 https://files.makehumancommunity.org/plugins/mpfb2-latest.zip -o /tmp/a8-r02c-v7/assets/mpfb2.zip
+          curl -L --fail --retry 3 https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip -o /tmp/a8-r02c-v7/assets/system-assets.zip
+          unzip -q /tmp/a8-r02c-v7/assets/system-assets.zip -d /tmp/a8-r02c-v7/assets/system
+          SKIN=$(find /tmp/a8-r02c-v7/assets/system -type f -iname '*young*caucasian*male*.mhmat' | grep -v female | head -n1)
+          CLOTH=$(find /tmp/a8-r02c-v7/assets/system -type f -iname '*male*worksuit*.mhclo' | head -n1)
+          HAIR=$(find /tmp/a8-r02c-v7/assets/system -type f -path '*/hair*/*' -name '*.mhclo' | head -n1)
+          test -n "$SKIN"
+          echo "SKIN=$SKIN" | tee /tmp/a8-r02c-v7/assets/selection.txt
+          echo "CLOTH=$CLOTH" | tee -a /tmp/a8-r02c-v7/assets/selection.txt
+          echo "HAIR=$HAIR" | tee -a /tmp/a8-r02c-v7/assets/selection.txt
+
+      - name: Generate distinct realistic male GLB headlessly
+        run: |
+          BLENDER=$(find /tmp/a8-r02c-v7/bin -type f -name blender | head -n1)
+          SKIN=$(sed -n 's/^SKIN=//p' /tmp/a8-r02c-v7/assets/selection.txt)
+          CLOTH=$(sed -n 's/^CLOTH=//p' /tmp/a8-r02c-v7/assets/selection.txt)
+          HAIR=$(sed -n 's/^HAIR=//p' /tmp/a8-r02c-v7/assets/selection.txt)
+          ARGS=(/tmp/a8-r02c-v7/assets/mpfb2.zip /tmp/a8-r02c-v7/godot/male.glb "$SKIN")
+          if [ -n "$CLOTH" ]; then ARGS+=("$CLOTH"); fi
+          if [ -n "$HAIR" ]; then ARGS+=("$HAIR"); fi
+          ARGS+=(gender=1.0 age=0.42 muscle=0.38 weight=0.46 height=0.58 caucasian=1.0 tex=1024)
+          "$BLENDER" --background --python /tmp/a8-r02c-v7/src/make-human.py -- "${ARGS[@]}"
+          test -s /tmp/a8-r02c-v7/godot/male.glb
+          ls -lh /tmp/a8-r02c-v7/godot/male.glb
+
+      - name: Write isolated Godot fidelity scene
+        run: |
+          cat > /tmp/a8-r02c-v7/godot/project.godot <<'EOF'
+          [application]
+          config/name="A8 R02C MPFB Male V7"
+          run/main_scene="res://main.tscn"
+          [display]
+          window/size/viewport_width=720
+          window/size/viewport_height=720
+          [rendering]
+          renderer/rendering_method="forward_plus"
+          renderer/rendering_method.mobile="forward_plus"
+          EOF
+          cat > /tmp/a8-r02c-v7/godot/main.tscn <<'EOF'
+          [gd_scene load_steps=2 format=3]
+          [ext_resource type="Script" path="res://main.gd" id="1"]
+          [node name="MPFBMaleV7" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+          cat > /tmp/a8-r02c-v7/godot/main.gd <<'EOF'
+          extends Node3D
+          var camera: Camera3D
+          var elapsed:=0.0
+          func _ready()->void:
+              _env(); _lights(); _floor()
+              var p:=load("res://male.glb") as PackedScene
+              var h:=p.instantiate()
+              h.name="MPFBMale"
+              add_child(h)
+              var ap:=_find_ap(h)
+              if ap:
+                  for a in ap.get_animation_list():
+                      if String(a).to_lower().contains("idle"):
+                          ap.play(a); break
+              camera=Camera3D.new()
+              camera.fov=36.0; camera.near=0.03; camera.far=60.0
+              camera.position=Vector3(0.15,1.48,3.25); camera.current=true
+              add_child(camera); camera.look_at(Vector3(0,1.32,0),Vector3.UP)
+              get_viewport().msaa_3d=Viewport.MSAA_4X
+          func _process(delta:float)->void:
+              elapsed+=delta
+              camera.position=Vector3(0.12+sin(elapsed*1.2)*0.08,1.48,3.20)
+              camera.look_at(Vector3(0,1.32,0),Vector3.UP)
+          func _find_ap(n:Node)->AnimationPlayer:
+              if n is AnimationPlayer: return n
+              for c in n.get_children():
+                  var x:=_find_ap(c)
+                  if x:return x
+              return null
+          func _env()->void:
+              var sm:=ProceduralSkyMaterial.new()
+              sm.sky_top_color=Color(0.010,0.016,0.027); sm.sky_horizon_color=Color(0.05,0.055,0.065)
+              sm.ground_horizon_color=Color(0.018,0.018,0.022); sm.ground_bottom_color=Color(0.005,0.005,0.008)
+              sm.energy_multiplier=0.45
+              var sky:=Sky.new();sky.sky_material=sm
+              var e:=Environment.new()
+              e.background_mode=Environment.BG_SKY;e.sky=sky;e.ambient_light_source=Environment.AMBIENT_SOURCE_SKY;e.ambient_light_energy=0.20
+              e.reflected_light_source=Environment.REFLECTION_SOURCE_SKY;e.tonemap_mode=Environment.TONE_MAPPER_AGX;e.tonemap_exposure=1.08
+              e.ssao_enabled=true;e.ssao_intensity=1.5;e.ssil_enabled=true;e.ssr_enabled=true;e.glow_enabled=true;e.glow_intensity=0.35
+              var we:=WorldEnvironment.new();we.environment=e;add_child(we)
+          func _lights()->void:
+              var k:=DirectionalLight3D.new();k.light_color=Color(1.0,0.82,0.68);k.light_energy=2.8;k.rotation_degrees=Vector3(-42,-48,0);k.shadow_enabled=true;add_child(k)
+              var r:=DirectionalLight3D.new();r.light_color=Color(0.38,0.58,1.0);r.light_energy=2.5;r.rotation_degrees=Vector3(-18,142,0);add_child(r)
+              var f:=DirectionalLight3D.new();f.light_color=Color(0.60,0.70,0.88);f.light_energy=0.55;f.rotation_degrees=Vector3(5,22,0);add_child(f)
+          func _floor()->void:
+              var n:=MeshInstance3D.new();var p:=PlaneMesh.new();p.size=Vector2(8,8);n.mesh=p
+              var m:=StandardMaterial3D.new();m.albedo_color=Color(0.024,0.026,0.031);m.roughness=0.52;n.material_override=m;add_child(n)
+          EOF
+
+      - name: Import generated GLB
+        run: |
+          GODOT=/tmp/a8-r02c-v7/bin/Godot_v4.7.2-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v7/godot
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          "$GODOT" --headless --editor --path "$PROJ" --quit-after 8
+          SCN=$(sed -n 's/^path="\(.*\.scn\)"/\1/p' "$PROJ/male.glb.import" | head -n1)
+          test -n "$SCN"
+          sed -i "s|res://male.glb|$SCN|g" "$PROJ/main.gd"
+
+      - name: Render MPFB male in Godot
+        run: |
+          set -o pipefail
+          GODOT=/tmp/a8-r02c-v7/bin/Godot_v4.7.2-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v7/godot
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          cd "$PROJ"
+          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v7/out/mpfb-male.avi --fixed-fps 24 --quit-after 48 main.tscn 2>&1 | tee /tmp/a8-r02c-v7/out/godot.log
+          if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-r02c-v7/out/godot.log; then exit 1; fi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v7/out/mpfb-male.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v7/out/mpfb-male.mp4
+          rm -f /tmp/a8-r02c-v7/out/mpfb-male.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v7/out/mpfb-male.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v7/out/F01.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v7/out/mpfb-male.mp4 -vf "select='eq(n,23)'" -vframes 1 /tmp/a8-r02c-v7/out/F05.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v7/out/mpfb-male.mp4 -vf "select='eq(n,47)'" -vframes 1 /tmp/a8-r02c-v7/out/F09.png
+
+      - name: Verify V7
+        run: |
+          cd /tmp/a8-r02c-v7/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json mpfb-male.mp4 > ffprobe.json
+          sha256sum mpfb-male.mp4 F01.png F05.png F09.png > sha256.txt
+          printf '{"route":"R02C","recipe":"MPFB_MALE_V7","generator":"MPFB2/MakeHuman via vsim script commit 3f97faf85e46d2f9a122b0a8b8d3ccc0af598f91","asset_pack":"MakeHuman system assets CC0","godot":"4.7.2","renderer":"forward_plus","resolution":"720x720","fps":24,"frames":48,"duration_s":2.0,"goal":"headless distinct realistic male generation -> GLB -> Godot fidelity"}\n' > receipt.json
+
+      - name: Upload V7
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-mpfb-male-v7
+          path: /tmp/a8-r02c-v7/out
+          retention-days: 7
