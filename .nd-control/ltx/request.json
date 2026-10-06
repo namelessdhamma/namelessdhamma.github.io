@@ -1,6 +1,6 @@
 {
   "op": "submit",
-  "nonce": "a8-r01-qualitymax-1024-f01-f09-tiled-retry-20261006-v2",
+  "nonce": "a8-r01-qualitymax-1024-tiled-20261006-v3",
   "args": {
     "start_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/382ecc95-cb75-4b41-b39c-47a7d53c10d1.jpg",
     "end_image_url": "https://cdn.creativeclaw.co/u/3ce53768/images/84110699-a0f7-4529-815f-a954a274541c.jpg",
@@ -10,7 +10,6 @@
     "width": 1024,
     "height": 576,
     "seed": 42,
-    "idempotency_key": "a8-r01-qualitymax-1024-f01-f09-20261006-v2",
-    "retry_terminal": true
+    "idempotency_key": "a8-r01-qualitymax-1024-tiled-worker-5c1757f-20261006-v3"
   }
 }
