@@ -144,12 +144,39 @@ async function existing(username,kernelSlug,ctx){
   return {version,state:stateOf(st?.status),provider_status:st?.status??null};
 }
 async function latestEffectAttempt(username,token,ctx){
-  const prefix=providerKernelSlug(token,1);
-  const listed=await rpc('kernels.KernelsApiService','ListKernels',{user:username,search:prefix,pageSize:50},ctx);
+  const base=providerKernelSlug(token,1);
+  const listed=await rpc('kernels.KernelsApiService','ListKernels',{user:username,search:base,pageSize:50},ctx);
   const kernels=Array.isArray(listed?.kernels)?listed.kernels:[],owner=username.toLowerCase();
-  const re=new RegExp('^nd-ltx2b-'+token+'(?:-a(\\d+))?
+  const attempts=[];
+  for(const k of kernels){
+    const slug=String(k?.slug||'').replace(/^.*\//,'');
+    const lower=slug.toLowerCase(),baseLower=base.toLowerCase();
+    let attempt=0;
+    if(lower===baseLower)attempt=1;
+    else if(lower.startsWith(baseLower+'-a')){
+      const suffix=lower.slice((baseLower+'-a').length);
+      const parsed=Number(suffix);
+      if(Number.isInteger(parsed)&&parsed>=2&&String(parsed)===suffix)attempt=parsed;
+    }
+    if(!attempt)continue;
+    const ref=String(k?.ref||'').toLowerCase();
+    const author=String(k?.author||'').toLowerCase();
+    if(ref&&ref!==owner+'/'+lower)continue;
+    if(author&&author!==owner&&author!=='savva savchenko')continue;
+    attempts.push({attempt,slug});
+  }
+  attempts.sort((a,b)=>b.attempt-a.attempt);
+  for(const a of attempts){
+    const found=await existing(username,a.slug,ctx);
+    if(found)return {...found,attempt:a.attempt,slug:a.slug};
+  }
+  const legacy=await existing(username,base,ctx);
+  return legacy?{...legacy,attempt:1,slug:base}:null;
+}
+async function resolveKernel(username,ref,ctx){
   let last=null;
-  for(const slug of [ref.kernel_slug,ref.direct_kernel_slug]){
+  const slugs=ref.attempt>1?[ref.kernel_slug]:[ref.kernel_slug,ref.direct_kernel_slug].filter(Boolean);
+  for(const slug of slugs){
     try{return {slug,st:await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:username,kernelSlug:slug,versionLabel:'v'+ref.version},ctx)};}
     catch(e){last=e;if(ctx?.isDeadline())throw e;}
   }
