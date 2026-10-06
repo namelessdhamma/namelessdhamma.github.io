@@ -439,7 +439,7 @@ jobs:
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           cd "$PROJ"
           xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v5/out/blue-sea-duel-v5.avi --fixed-fps 24 --quit-after 54 scenes/blue_sea_dual_v5.tscn
-          ffmpeg -y -v error -i /tmp/a8-r02c-v5/out/blue-sea-duel-v5.avi -c:v libx264 -crf 15 -pix_fmt yuv520p /tmp/a8-r02c-v5/out/blue-sea-duel-v5.mp4
+          ffmpeg -y -v error -i /tmp/a8-r02c-v5/out/blue-sea-duel-v5.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v5/out/blue-sea-duel-v5.mp4
           rm -f /tmp/a8-r02c-v5/out/blue-sea-duel-v5.avi
           ffmpeg -y -v error -i /tmp/a8-r02c-v5/out/blue-sea-duel-v5.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v5/out/F01.png
           ffmpeg -y -v error -i /tmp/a8-r02c-v5/out/blue-sea-duel-v5.mp4 -vf "select='eq(n,26)'" -vframes 1 /tmp/a8-r02c-v5/out/F05.png
