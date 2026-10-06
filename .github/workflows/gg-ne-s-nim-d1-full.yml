@@ -11,6 +11,7 @@ on:
       - 'tools/gg_ne_s_nim_d1_full_arrange.py'
       - 'tools/gg_audio_qa.py'
       - 'tools/gg_d1r5_phrase_repair.py'
+      - 'tools/gg_d1r5_guide_identity_repair.py'
       - 'tools/gg_d1r5_vfs_envelope.py'
   workflow_dispatch:
 
@@ -186,6 +187,17 @@ jobs:
           guide="$(find "$GITHUB_WORKSPACE/song/vocal" -name '*OPENUTAU_RU_QC.wav' -print -quit)"
           test -s "$guide"
           cp "$guide" "$GITHUB_WORKSPACE/song/vocal/00_GUIDE_D1.wav"
+
+      - name: Repair degraded identical guide repetitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp song/vocal/00_GUIDE_D1.wav song/vocal/00_GUIDE_D1_RAW.wav
+          python tools/gg_d1r5_guide_identity_repair.py \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            --input song/vocal/00_GUIDE_D1_RAW.wav \
+            --output song/vocal/00_GUIDE_D1.wav \
+            --report song/guide-identity-repair.json
 
       - name: Render D North Star
         shell: bash
@@ -395,6 +407,8 @@ jobs:
           path: |
             song/master/
             song/vocal/00_GUIDE_D1.wav
+            song/vocal/00_GUIDE_D1_RAW.wav
+            song/guide-identity-repair.json
             song/vocal/D_D1_FCPE_IDX050.wav
             song/vocal/D_D1_REPAIRED.wav
             song/vocal/D_D1_RAW.wav
