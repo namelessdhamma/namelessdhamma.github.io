@@ -1,0 +1,208 @@
+{
+  "version": "D1_V4_BRIDGE_GUIDE_TEST",
+  "title": "Не с ним — D1v4 bridge diction guide test",
+  "bpm": 108,
+  "ticks_per_beat": 480,
+  "bars": 9,
+  "key": "A minor",
+  "target_text": "который общим был и незабвенным былого что осталось неизменным искал лишь голос свой",
+  "phrases": [
+    {
+      "id": "brl2",
+      "bar": 0,
+      "offset": 240,
+      "section": "bridge_test",
+      "words": [
+        {
+          "text": "который",
+          "stress": 1,
+          "pitches": [
+            64,
+            64,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "общим",
+          "stress": 0,
+          "pitches": [
+            64,
+            64
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "был",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            480
+          ],
+          "rest": 0
+        },
+        {
+          "text": "и",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "незабвенным",
+          "stress": 2,
+          "pitches": [
+            64,
+            64,
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            240,
+            720,
+            240
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "brl4",
+      "bar": 3,
+      "offset": 240,
+      "section": "bridge_test",
+      "words": [
+        {
+          "text": "былого",
+          "stress": 1,
+          "pitches": [
+            64,
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "что",
+          "stress": 0,
+          "pitches": [
+            64
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "осталось",
+          "stress": 1,
+          "pitches": [
+            64,
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            480,
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "неизменным",
+          "stress": 2,
+          "pitches": [
+            64,
+            64,
+            65,
+            64
+          ],
+          "durations": [
+            240,
+            240,
+            720,
+            480
+          ],
+          "rest": 0
+        }
+      ]
+    },
+    {
+      "id": "c2l4",
+      "bar": 6,
+      "offset": 240,
+      "section": "bridge_test",
+      "words": [
+        {
+          "text": "искал",
+          "stress": 1,
+          "pitches": [
+            62,
+            65
+          ],
+          "durations": [
+            240,
+            720
+          ],
+          "rest": 0
+        },
+        {
+          "text": "лишь",
+          "stress": 0,
+          "pitches": [
+            65
+          ],
+          "durations": [
+            240
+          ],
+          "rest": 0
+        },
+        {
+          "text": "голос",
+          "stress": 0,
+          "pitches": [
+            65,
+            64
+          ],
+          "durations": [
+            480,
+            240
+          ],
+          "rest": 240
+        },
+        {
+          "text": "свой",
+          "stress": 0,
+          "pitches": [
+            69
+          ],
+          "durations": [
+            1440
+          ],
+          "rest": 0
+        }
+      ]
+    }
+  ]
+}
