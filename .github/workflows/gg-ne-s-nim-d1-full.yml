@@ -1,9 +1,9 @@
-name: GG Ne S Nim D1 Full Qualification
+name: GG Nezrimy Gost D1R5 Production Qualification
 
 on:
   push:
     branches:
-      - compute/gg-ne-s-nim-d1-full-20261006
+      - compute/gg-nezrimy-gost-d1r5-20261006
     paths:
       - '.github/workflows/gg-ne-s-nim-d1-full.yml'
       - 'docs/gg/songs/ne-s-nim-d1-full-v3.json'
@@ -177,6 +177,7 @@ jobs:
           GG_VFS_SPEAKER_HINT="Mature" \
           GG_VFS_VARIANT="shared_d1" \
           GG_VFS_STEPS="64" \
+          GG_VFS_L_OFFSET_TICKS="-60" \
           GG_SHARED_SCORE="$GITHUB_WORKSPACE/docs/gg/songs/ne-s-nim-d1-full-v3.json" \
           dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj \
             --configuration Release --no-build --filter RenderNeSNimD1Full
@@ -198,8 +199,8 @@ jobs:
           root,vpy,rt=ns['ensure_applio_runtime'](work)
           model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
           guide=pathlib.Path('song/vocal/00_GUIDE_D1.wav').resolve()
-          out=pathlib.Path('song/vocal/D_D1_FCPE_IDX050.wav').resolve()
-          code="import os,sys; root,source,out,model,index=sys.argv[1:6]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,volume_envelope=1.0,protect=0.5,f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
+          out=pathlib.Path('song/vocal/D_D1_RAW.wav').resolve()
+          code="import os,sys; root,source,out,model,index=sys.argv[1:6]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,volume_envelope=1.0,protect=0.30,f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
           p=subprocess.run([str(vpy),'-c',code,str(root),str(guide),str(out),str(model),str(index)],
                            cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=2400)
           print(p.stdout[-12000:])
@@ -207,21 +208,31 @@ jobs:
               raise SystemExit('Applio D1 full failed')
           PY
 
+      - name: Build diction-preserving D1R5 vocal blend
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -y -v error \
+            -i song/vocal/D_D1_RAW.wav \
+            -i song/vocal/00_GUIDE_D1.wav \
+            -filter_complex "[0:a]aresample=48000,volume=0.97[d];[1:a]aresample=48000,volume=0.16[g];[d][g]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.98[out]" \
+            -map "[out]" -ar 48000 -c:a pcm_s24le song/vocal/D_D1_FCPE_IDX050.wav
+
       - name: Mix qualification cut
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p song/master
           ffmpeg -y -v error -i song/vocal/D_D1_FCPE_IDX050.wav \
-            -af "highpass=f=80,equalizer=f=2400:t=q:w=1:g=1.5,acompressor=threshold=-18dB:ratio=2.1:attack=14:release=150,aresample=48000,volume=1.12" \
+            -af "highpass=f=75,equalizer=f=2600:t=q:w=1:g=0.8,acompressor=threshold=-12dB:ratio=1.35:attack=22:release=190,aresample=48000,volume=0.96" \
             song/vocal/D_D1_MIX.wav
           ffmpeg -y -v error \
             -i song/arrangement/instrumental.wav \
             -i song/vocal/D_D1_MIX.wav \
-            -filter_complex "[0:a]volume=0.86[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.0:attack=14:release=180,alimiter=limit=0.95,loudnorm=I=-14:LRA=11:TP=-1.0[out]" \
-            -map "[out]" -ar 48000 -c:a pcm_s24le song/master/NE_S_NIM_D1_FULL.wav
-          ffmpeg -y -v error -i song/master/NE_S_NIM_D1_FULL.wav \
-            -codec:a libmp3lame -b:a 320k song/master/NE_S_NIM_D1_FULL.mp3
+            -filter_complex "[0:a]volume=1.08[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-8dB:ratio=1.25:attack=25:release=220,alimiter=limit=0.96,loudnorm=I=-15.8:LRA=12:TP=-1.0[out]" \
+            -map "[out]" -ar 48000 -c:a pcm_s24le song/master/NEZRIMY_GOST_D1R5.wav
+          ffmpeg -y -v error -i song/master/NEZRIMY_GOST_D1R5.wav \
+            -codec:a libmp3lame -b:a 320k song/master/NEZRIMY_GOST_D1R5.mp3
 
       - name: Rendered-audio QA
         shell: bash
@@ -231,6 +242,8 @@ jobs:
             --vocal song/vocal/D_D1_FCPE_IDX050.wav \
             --instrumental song/arrangement/instrumental.wav \
             --drums song/arrangement/processed/drums.wav \
+            --riff song/arrangement/processed/riff.wav \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
             --bpm 108 \
             --out song/qa-audio.json
           echo "audio_qa_exit=$?" >> "$GITHUB_ENV"
@@ -247,7 +260,16 @@ jobs:
           from jiwer import wer,cer
 
           score=json.loads(pathlib.Path('docs/gg/songs/ne-s-nim-d1-full-v3.json').read_text())
-          tpb=score['ticks_per_beat']; bpm=score['bpm']; tick_sec=60.0/bpm/tpb
+          tpb=score['ticks_per_beat']; bpm=score['bpm']; BAR=tpb*4
+          tempo_map=sorted(score.get('tempo_map') or [{'bar':0,'bpm':bpm}],key=lambda x:x['bar'])
+          tempo_pts=[(int(x['bar'])*BAR,float(x['bpm'])) for x in tempo_map]
+          def tick_to_sec(tick):
+              total=0.0; last=0; cur=tempo_pts[0][1]
+              for pos,nbpm in tempo_pts[1:]:
+                  if tick<=pos: break
+                  total+=(pos-last)*60.0/(cur*tpb); last=pos; cur=nbpm
+              total+=(tick-last)*60.0/(cur*tpb)
+              return total
 
           def norm(s):
               s=s.lower().replace('ё','е')
@@ -270,8 +292,8 @@ jobs:
                   end_tick=start_tick
                   for w in ph['words']:
                       end_tick+=sum(w['durations'])+w['rest']
-                  start=max(0.0,start_tick*tick_sec-0.12)
-                  end=min(len(y)/sr,end_tick*tick_sec+0.18)
+                  start=max(0.0,tick_to_sec(start_tick)-0.12)
+                  end=min(len(y)/sr,tick_to_sec(end_tick)+0.18)
                   seg=y[int(start*sr):int(end*sr)]
                   tmp=pathlib.Path(tempfile.gettempdir())/f"{label}-{ph['id']}.wav"
                   sf.write(tmp,seg,sr)
@@ -327,12 +349,13 @@ jobs:
               if abs(sum(x['cer'] for x in d1)/4-sum(x['cer'] for x in d2)/4)>0.30:
                   failures.append('d_chorus_consistency')
 
-          if gd['wer']>0.45: failures.append('guide_asr_wer')
-          if gd['cer']>0.30: failures.append('guide_asr_cer')
-          if gd['max_phrase_cer']>0.55: failures.append('guide_phrase_intelligibility')
-          if dd['wer']>0.50: failures.append('d_asr_wer')
-          if dd['cer']>0.33: failures.append('d_asr_cer')
-          if dd['max_phrase_cer']>0.58: failures.append('d_phrase_intelligibility')
+          if gd['wer']>0.30: failures.append('guide_asr_wer')
+          if gd['cer']>0.15: failures.append('guide_asr_cer')
+          if gd['max_phrase_cer']>0.25: failures.append('guide_phrase_intelligibility')
+          if dd['wer']>0.32: failures.append('d_asr_wer')
+          if dd['cer']>0.20: failures.append('d_asr_cer')
+          if dd['max_phrase_cer']>0.30: failures.append('d_phrase_intelligibility')
+          if sum(1 for x in dd['phrases'] if x['cer']>0.20)>3: failures.append('d_too_many_damaged_phrases')
 
           result={
             'status':'PASS' if not failures else 'REJECT',
@@ -340,7 +363,7 @@ jobs:
             'asr_guide':gd,
             'asr_d':dd,
             'failures':failures,
-            'gate_version':'D1_FULL_V3'
+            'gate_version':'D1R5'
           }
           pathlib.Path('song/qualification.json').write_text(
               json.dumps(result,ensure_ascii=False,indent=2))
@@ -356,7 +379,9 @@ jobs:
             song/master/
             song/vocal/00_GUIDE_D1.wav
             song/vocal/D_D1_FCPE_IDX050.wav
+            song/vocal/D_D1_RAW.wav
             song/arrangement/instrumental.mp3
+            song/arrangement/processed/riff.wav
             song/arrangement/composition-map.json
             song/qa-audio.json
             song/qa-asr-guide.json
