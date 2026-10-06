@@ -1,0 +1,44 @@
+name: GG Vocal Mutate Qualification
+
+on:
+  push:
+    branches:
+      - experiment/gg-vocal-mutate-applio-20261006-worker
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Static qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/gg_cloud_music_worker.py
+          python - <<'PY'
+          import runpy
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_vocal_mutate_qualification')
+          assert ns['APPLIO_COMMIT']=='324f4d89c3e0e8dc0e555a3d53784e3282c16e09'
+          assert callable(ns['vocal_mutate'])
+          assert ns['_bounded_float']({'x':0.5},'x',0,0,1)==0.5
+          try:
+              ns['_bounded_float']({'x':2},'x',0,0,1)
+          except RuntimeError:
+              pass
+          else:
+              raise SystemExit('bounds guard failed')
+          src=open('tools/gg_cloud_music_worker.py',encoding='utf-8').read()
+          assert 'elif op=="vocal_mutate"' in src
+          assert 'weights_only=True' in src
+          print('GG_VOCAL_MUTATE_STATIC=PASS')
+          PY
+          grep -q 'GG_APPLIO_CACHE_DIR' .github/workflows/gg-cloud-music-worker.yml
+          grep -q 'timeout-minutes: 60' .github/workflows/gg-cloud-music-worker.yml
