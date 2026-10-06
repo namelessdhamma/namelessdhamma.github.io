@@ -127,7 +127,8 @@ async function list(){
 
 
 {
-  let kernels=[],saveCalls=0,nextVersion=1,providerStatus=1;
+  let kernels=[],saveCalls=0,providerStatus=1;
+  const versions=new Map();
   globalThis.fetch=async (url,opts={})=>{
     const u=String(url),body=opts.body?JSON.parse(String(opts.body)):{};
     if(u.includes('/security.OAuthService/IntrospectToken'))return json({active:true,username:'testuser'});
@@ -139,8 +140,9 @@ async function list(){
     if(u.includes('/kernels.KernelsApiService/GetKernelSessionStatus'))return json({status:providerStatus});
     if(u.includes('/kernels.KernelsApiService/SaveKernel')){
       saveCalls++;
-      const slug=String(body.slug).split('/').pop(),version=nextVersion++;
-      kernels=[{slug,ref:'testuser/'+slug,author:'testuser',currentVersionNumber:version}];
+      const slug=String(body.slug).split('/').pop();
+      const version=(versions.get(slug)||0)+1; versions.set(slug,version);
+      kernels=[...kernels.filter(k=>k.slug!==slug),{slug,ref:'testuser/'+slug,author:'testuser',currentVersionNumber:version}];
       return json({versionNumber:version});
     }
     throw new Error('unexpected '+u);
@@ -154,6 +156,7 @@ async function list(){
   const retried=(await call('ltx_generate_keyframes',{...args,retry_terminal:true})).structuredContent;
   if(retried?.state!=='SUBMITTED'||saveCalls!==2)throw new Error('primary explicit terminal retry failed '+JSON.stringify(retried));
   if(retried?.effect_id!==first?.effect_id||retried?.request_id===first?.request_id)throw new Error('primary retry identity/version mismatch');
+  if(retried?.provider_attempt!==2||!String(retried?.request_id||'').endsWith('-a2-v1'))throw new Error('primary retry did not isolate provider attempt '+JSON.stringify(retried));
   console.log('PRIMARY_V2_TERMINAL_RETRY=PASS',first.request_id,'->',retried.request_id);
 }
 
