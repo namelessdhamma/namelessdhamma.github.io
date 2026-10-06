@@ -1,5 +1,5 @@
 {
-  "op": "result",
-  "nonce": "blue-sea-extra-shot-result-20261006-v1",
-  "request_id": "k2b-r9d7ce482837d-b040-v1"
+  "op": "health",
+  "nonce": "nd-kaggle-ltx-idle-after-blue-sea-extra-20261006",
+  "note": "Blue Sea extra shot k2b-r9d7ce482837d-b040-v1 completed, materialized and True Visual reviewed PASS; no pending effect."
 }
