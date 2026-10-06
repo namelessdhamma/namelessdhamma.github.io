@@ -1,0 +1,30 @@
+name: GG Vocal Mutate Relay Qualification
+
+on:
+  push:
+    branches:
+      - experiment/gg-vocal-mutate-applio-20261006-studio
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Relay static qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check render/gg-cloud-music-studio/server.mjs
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const s=fs.readFileSync('render/gg-cloud-music-studio/server.mjs','utf8');
+          if(!s.includes("vocal_render | vocal_mutate | song_render")) throw new Error('tool description missing vocal_mutate');
+          if(!s.includes("'vocal_mutate'")) throw new Error('bootstrap allowlist missing vocal_mutate');
+          if(!s.includes("version:'0.3.0'")) throw new Error('version bump missing');
+          console.log('GG_VOCAL_MUTATE_RELAY_STATIC=PASS');
+          NODE
