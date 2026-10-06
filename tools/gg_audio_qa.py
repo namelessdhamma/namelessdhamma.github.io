@@ -38,11 +38,12 @@ def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('--vocal',required=True); ap.add_argument('--instrumental',required=True)
     ap.add_argument('--drums',required=True); ap.add_argument('--riff',required=True)
+    ap.add_argument('--master',required=True)
     ap.add_argument('--score',required=True); ap.add_argument('--bpm',type=float,required=True)
     ap.add_argument('--out',required=True)
     args=ap.parse_args()
     sr=22050; hop=512
-    yv=load(args.vocal,sr); yi=load(args.instrumental,sr); yd=load(args.drums,sr); yr=load(args.riff,sr)
+    yv=load(args.vocal,sr); yi=load(args.instrumental,sr); yd=load(args.drums,sr); yr=load(args.riff,sr); ym=load(args.master,sr)
 
     f0,_,_=librosa.pyin(yv,fmin=librosa.note_to_hz('C3'),fmax=librosa.note_to_hz('G5'),
                         sr=sr,frame_length=2048,hop_length=hop)
@@ -87,6 +88,31 @@ def main():
         delta=float(db_ratio(rms(a),rms(b))); onset_rows.append({'id':phr['id'],'attack_vs_body_db':delta})
     vfs_med=float(np.median([x['attack_vs_body_db'] for x in onset_rows])) if onset_rows else 99.0
 
+    # Section-level macro dynamics and rhythmic contrast. The user explicitly
+    # rejected a song whose sections felt equally loud and metrically uniform.
+    form=score.get('form',{})
+    sec_rows={}
+    drum_rows={}
+    for name,rng in form.items():
+        if not isinstance(rng,list) or len(rng)!=2: continue
+        b0,b1=int(rng[0]),int(rng[1])
+        t0=tick_to_sec(b0*BAR)
+        t1=tick_to_sec((b1+1)*BAR)
+        a=max(0,int(t0*sr)); b=min(len(ym),int(t1*sr))
+        seg=ym[a:b]
+        sec_rows[name]=20*np.log10(rms(seg)+1e-9)
+        da=max(0,int(t0*sr)); db=min(len(yd),int(t1*sr))
+        dseg=yd[da:db]
+        ons=ots(dseg)
+        drum_rows[name]=float(len(ons)/max(1e-6,t1-t0))
+    def delta(a,b):
+        return sec_rows.get(a,-120.0)-sec_rows.get(b,-120.0)
+    main_names=[x for x in ['verse_I','chorus_I','verse_II','chorus_II','bridge','instrumental_development','final','coda'] if x in sec_rows]
+    main_vals=[sec_rows[x] for x in main_names]
+    macro_range=max(main_vals)-min(main_vals) if main_vals else 0.0
+    groove_vals=[drum_rows[x] for x in main_names if x in drum_rows and drum_rows[x]>0]
+    groove_ratio=(max(groove_vals)/max(1e-6,min(groove_vals))) if groove_vals else 1.0
+
     metrics={
       'vocal_instrument_top3_pitch_support':float(np.mean(top3)) if top3 else 0.0,
       'vocal_instrument_pitch_support_median':float(np.median(supports)) if supports else 0.0,
@@ -98,6 +124,15 @@ def main():
       'riff_to_vocal_midband_median_db':riff_med,
       'vfs_section_start_attack_vs_body_median_db':vfs_med,
       'vfs_section_start_rows':onset_rows,
+      'section_rms_db':sec_rows,
+      'drum_onset_density_per_second':drum_rows,
+      'macro_section_range_db':float(macro_range),
+      'drum_density_max_min_ratio':float(groove_ratio),
+      'chorus1_over_verse1_db':float(delta('chorus_I','verse_I')),
+      'chorus2_over_verse2_db':float(delta('chorus_II','verse_II')),
+      'development_over_verse2_db':float(delta('instrumental_development','verse_II')),
+      'final_over_verse2_db':float(delta('final','verse_II')),
+      'coda_below_final_db':float(delta('coda','final')),
       'vocal_onsets':int(len(tv))
     }
     thresholds={
@@ -107,7 +142,13 @@ def main():
       'instrument_over_vocal_plus6db_fraction_max':0.10,
       'instrument_to_vocal_midband_median_db_min':-16.0,
       'riff_to_vocal_midband_median_db_min':-22.0,
-      'vfs_section_start_attack_vs_body_median_db_max':-2.0
+      'vfs_section_start_attack_vs_body_median_db_max':-2.0,
+      'chorus_over_verse_db_min':1.0,
+      'development_over_verse2_db_min':0.0,
+      'final_over_verse2_db_min':1.0,
+      'coda_below_final_db_max':-2.0,
+      'macro_section_range_db_min':3.0,
+      'drum_density_max_min_ratio_min':1.20
     }
     failures=[]
     if metrics['vocal_instrument_top3_pitch_support']<.55: failures.append('harmonic_coupling')
@@ -117,6 +158,13 @@ def main():
     if inst_med<-16.0: failures.append('instrument_buried_under_vocal')
     if riff_med<-22.0: failures.append('riff_buried_under_vocal')
     if vfs_med>-2.0: failures.append('voice_from_silence_attack_missing')
+    if delta('chorus_I','verse_I')<1.0: failures.append('chorus1_not_lifted_over_verse')
+    if delta('chorus_II','verse_II')<1.0: failures.append('chorus2_not_lifted_over_verse')
+    if delta('instrumental_development','verse_II')<0.0: failures.append('instrumental_development_collapsed')
+    if delta('final','verse_II')<1.0: failures.append('final_not_lifted')
+    if delta('coda','final')>-2.0: failures.append('coda_not_released')
+    if macro_range<3.0: failures.append('macro_dynamics_too_flat')
+    if groove_ratio<1.20: failures.append('rhythmic_density_too_uniform')
     result={'status':'PASS' if not failures else 'REJECT','metrics':metrics,'thresholds':thresholds,'failures':failures}
     pathlib.Path(args.out).write_text(json.dumps(result,ensure_ascii=False,indent=2))
     print(json.dumps(result,ensure_ascii=False,indent=2)); return 0 if not failures else 2
