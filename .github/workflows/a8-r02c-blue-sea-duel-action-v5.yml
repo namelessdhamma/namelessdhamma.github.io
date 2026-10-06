@@ -19,9 +19,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb ffmpeg unzip git libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
           mkdir -p /tmp/a8-r02c-v5/bin /tmp/a8-r02c-v5/src /tmp/a8-r02c-v5/out
-          curl -L --fail --retry 3 -o /tmp/a8-r02c-v5/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v5.6-stable_linux.x86_64.zip
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v5/godot.zip https://downloads.sourceforge.net/project/godot-engine.mirror/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
           unzip -q /tmp/a8-r02c-v5/godot.zip -d /tmp/a8-r02c-v5/bin
-          chmod +x /tmp/a8-r02c-v5/bin/Godot_v5.6-stable_linux.x86_64
+          chmod +x /tmp/a8-r02c-v5/bin/Godot_v4.7.2-stable_linux.x86_64
 
       - name: Fetch exact Vitruvian source
         run: |
@@ -427,14 +427,14 @@ jobs:
 
       - name: Import assets
         run: |
-          GODOT=/tmp/a8-r02c-v5/bin/Godot_v5.6-stable_linux.x86_64
+          GODOT=/tmp/a8-r02c-v5/bin/Godot_v4.7.2-stable_linux.x86_64
           PROJ=/tmp/a8-r02c-v5/src/repo/godot_project
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           "$GODOT" --headless --editor --path "$PROJ" --quit-after 8
 
       - name: Render Blue Sea dual-human shot
         run: |
-          GODOT=/tmp/a8-r02c-v5/bin/Godot_v5.6-stable_linux.x86_64
+          GODOT=/tmp/a8-r02c-v5/bin/Godot_v4.7.2-stable_linux.x86_64
           PROJ=/tmp/a8-r02c-v5/src/repo/godot_project
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           cd "$PROJ"
