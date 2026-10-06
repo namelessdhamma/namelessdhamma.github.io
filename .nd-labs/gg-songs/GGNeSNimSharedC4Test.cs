@@ -221,7 +221,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
             var singer = (USinger)new DiffSingerSinger(voicebank);
             Assert.True(singer.Found && singer.Loaded, $"Direct DiffSinger bank failed: {string.Join("; ", singer.Errors)}");
 
-            var variant = (Environment.GetEnvironmentVariable("GG_VFS_VARIANT") ?? "native").Trim().ToLowerInvariant();
+            var variant = (Environment.GetEnvironmentVariable("GG_VFS_VARIANT") ?? "shared_c4").Trim().ToLowerInvariant();
             var project = new UProject();
             project.tempos.Clear();
             project.tempos.Add(new UTempo(0, variant switch {
@@ -246,7 +246,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 "long_a" => 74,
                 "long_b" => 72,
                 "long_c" => 70,
-                _ => 80,
+                _ => 108,
             }));
             project.timeAxis.BuildSegments(project);
             RegisterBaseExpressions(project);
@@ -362,23 +362,23 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 int bar = 1920;
                 AddFlatCurve(DiffSingerUtils.VELC, 121);
                 AddShapeCurve(Ustx.DYN,
-                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar},
-                    new[] {-28,-13,-9,-5,5,10,-8,-24});
+                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar,32*bar},
+                    new[] {-28,-13,-9,-5,5,10,-8,-24,-30});
                 AddShapeCurve(DiffSingerUtils.ENE,
-                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar},
-                    new[] {-14,-8,-6,-4,2,5,-6,-12});
+                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar,32*bar},
+                    new[] {-14,-8,-6,-4,2,5,-6,-12,-14});
                 AddShapeCurve(Ustx.TENC,
-                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar},
-                    new[] {-30,-18,-14,-10,-3,3,-14,-28});
+                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar,32*bar},
+                    new[] {-30,-18,-14,-10,-3,3,-14,-28,-30});
                 AddShapeCurve(Ustx.BREC,
-                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar},
-                    new[] {14,10,8,7,6,5,10,15});
+                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar,32*bar},
+                    new[] {14,10,8,7,6,5,10,15,16});
                 AddShapeCurve(Ustx.VOIC,
-                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar},
-                    new[] {94,97,98,99,100,100,97,93});
+                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar,32*bar},
+                    new[] {94,97,98,99,100,100,97,93,92});
                 AddShapeCurve(DiffSingerUtils.PEXP,
-                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar},
-                    new[] {72,84,88,92,98,100,84,72});
+                    new[] {0,4*bar,8*bar,12*bar,16*bar,20*bar,24*bar,28*bar,32*bar},
+                    new[] {72,84,88,92,98,100,84,72,70});
             } else if (variant == "rebuild_a") {
                 int bar = 1920;
                 AddFlatCurve(DiffSingerUtils.VELC, 120);
@@ -668,7 +668,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     $"duration_seconds={mix.Length / (double)sampleRate:F3}\n" +
                     $"peak={peak:F6}\n" +
                     $"phonemizer={track.Phonemizer.Name}\n" +
-                    $"lyrics=Не с ним — clean literary Russian / shared score B1\n" +
+                    $"lyrics=Не с ним — clean literary Russian / shared score C4\n" +
                     $"phrases={rendered.Count}\n" +
                     string.Join("\n", rendered.Select((x, i) => $"phrase_{i+1}_phones={x.phones}")) +
                     "\n" +
