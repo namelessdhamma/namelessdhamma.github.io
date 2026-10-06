@@ -365,19 +365,19 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
                     new[] {-30,-14,4,-12,-10,5,8,14,0,-10,-22,-32});
                 AddShapeCurve(DiffSingerUtils.ENE,
-                    new[] {0,4*bar,16*bar,28*bar,32*bar,44*bar,56*bar,68*bar,84*bar,96*bar,120*bar},
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,120*bar},
                     new[] {-15,-8,2,-7,-6,3,5,9,1,-8,-15});
                 AddShapeCurve(Ustx.TENC,
-                    new[] {0,4*bar,16*bar,28*bar,32*bar,44*bar,56*bar,68*bar,84*bar,96*bar,120*bar},
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,120*bar},
                     new[] {-32,-18,-3,-16,-14,-2,4,10,-4,-20,-32});
                 AddShapeCurve(Ustx.BREC,
-                    new[] {0,4*bar,16*bar,28*bar,32*bar,44*bar,56*bar,68*bar,84*bar,96*bar,120*bar},
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,120*bar},
                     new[] {15,10,6,11,10,6,5,4,7,12,17});
                 AddShapeCurve(Ustx.VOIC,
-                    new[] {0,4*bar,16*bar,28*bar,32*bar,44*bar,56*bar,68*bar,84*bar,96*bar,120*bar},
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,120*bar},
                     new[] {93,97,100,96,97,100,100,100,99,96,91});
                 AddShapeCurve(DiffSingerUtils.PEXP,
-                    new[] {0,4*bar,16*bar,28*bar,32*bar,44*bar,56*bar,68*bar,84*bar,96*bar,120*bar},
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,120*bar},
                     new[] {70,84,98,78,82,98,100,100,92,76,66});
             } else if (variant == "rebuild_a") {
                 int bar = 1920;
