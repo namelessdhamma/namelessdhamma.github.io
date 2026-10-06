@@ -1,0 +1,373 @@
+name: GG Ne S Nim C3R1 Phrase Repair
+
+on:
+  push:
+    branches:
+      - compute/gg-ne-s-nim-c3r1-phrase-20261006
+    paths:
+      - '.github/workflows/gg-ne-s-nim-c3r1-phrase.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore Applio runtime
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-\${{ runner.os }}-324f4d89
+
+      - name: Restore Awata RVC
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-\${{ runner.os }}
+
+      - name: Install runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git unzip ffmpeg build-essential libsndfile1 libportaudio2 patchelf
+          python -m pip install -q \
+            pyyaml numpy scipy soundfile librosa==0.10.2.post1 \
+            faster-whisper==1.1.1 jiwer==3.0.4
+
+      - name: Recover accepted C3 cut
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-ne-s-nim-shared-c3
+          run-id: 37436534625
+          github-token: \${{ github.token }}
+          path: c3
+
+      - name: Render local phrase variants
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: \${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: \${{ github.workspace }}/.gg-rvc-model-cache
+        run: |
+          set -euo pipefail
+          mkdir -p phrase variants repaired
+          python - <<'PY'
+          import json,pathlib,soundfile as sf
+          d=json.loads(pathlib.Path('c3/qa-asr-guide.json').read_text())
+          ph=next(x for x in d['phrases'] if x['id']=='c1l2')
+          y,sr=sf.read('c3/vocal/00_GUIDE_C3.wav')
+          if getattr(y,'ndim',1)>1: y=y.mean(axis=1)
+          start=max(0.0,ph['start']-0.10)
+          end=min(len(y)/sr,ph['end']+0.10)
+          seg=y[int(start*sr):int(end*sr)]
+          sf.write('phrase/guide_c1l2.wav',seg,sr)
+          pathlib.Path('phrase/window.json').write_text(json.dumps({
+            'start':start,'end':end,'duration':end-start,'target':'я говорил с собой'
+          },ensure_ascii=False,indent=2))
+          PY
+
+          python - <<'PY'
+          import pathlib,runpy,subprocess,json
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_c3r1_phrase')
+          work=pathlib.Path('/tmp/applio-c3r1'); work.mkdir(exist_ok=True)
+          root,vpy,rt=ns['ensure_applio_runtime'](work)
+          model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
+          source=pathlib.Path('phrase/guide_c1l2.wav').resolve()
+          variants=[
+            ('A_IDX050_P035',0.50,0.35),
+            ('B_IDX040_P035',0.40,0.35),
+            ('C_IDX030_P035',0.30,0.35),
+            ('D_IDX040_P025',0.40,0.25),
+            ('E_IDX050_P025',0.50,0.25),
+          ]
+          code="import os,sys; root,source,out,model,index,idx,protect=sys.argv[1:8]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=float(idx),volume_envelope=1.0,protect=float(protect),f0_method='fcpe',split_audio=False,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
+          for name,idx,protect in variants:
+              out=pathlib.Path('variants')/(name+'.wav')
+              p=subprocess.run([str(vpy),'-c',code,str(root),str(source),str(out.resolve()),str(model),str(index),str(idx),str(protect)],
+                               cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=900)
+              print(name,p.returncode,p.stdout[-4000:])
+              if p.returncode or not out.exists() or out.stat().st_size==0:
+                  raise SystemExit('variant failed '+name)
+          PY
+
+      - name: Phrase ASR and blend critic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,re,json,tempfile,math
+          import numpy as np, soundfile as sf, librosa
+          from faster_whisper import WhisperModel
+          from jiwer import wer,cer
+
+          target='я говорил с собой'
+          def norm(s):
+              s=s.lower().replace('ё','е')
+              s=re.sub(r'[^а-я0-9 ]+',' ',s)
+              return re.sub(r'\s+',' ',s).strip()
+
+          guide,sr=sf.read('phrase/guide_c1l2.wav')
+          if getattr(guide,'ndim',1)>1: guide=guide.mean(axis=1)
+          duration=len(guide)/sr
+
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+
+          def exact_length(y,sr):
+              n=len(guide)
+              if len(y)==n: return y
+              if len(y)>0 and abs(len(y)-n)/n <= 0.05:
+                  # modest resampling of time axis; preserve pitch sufficiently for a short repair phrase.
+                  x=np.linspace(0,1,len(y),endpoint=False)
+                  xi=np.linspace(0,1,n,endpoint=False)
+                  return np.interp(xi,x,y).astype(np.float32)
+              if len(y)<n:
+                  return np.pad(y,(0,n-len(y)))
+              return y[:n]
+
+          def transcribe(path):
+              segs,info=model.transcribe(str(path),language='ru',beam_size=5,vad_filter=False,
+                                         condition_on_previous_text=False,temperature=0.0)
+              txt=' '.join(s.text.strip() for s in list(segs)).strip()
+              nt,nr=norm(target),norm(txt)
+              return txt,float(wer(nt,nr)),float(cer(nt,nr))
+
+          rows=[]
+          base_d,sr_d=sf.read('c3/vocal/D_C3_FCPE_IDX050.wav')
+          if getattr(base_d,'ndim',1)>1: base_d=base_d.mean(axis=1)
+          win=json.loads(pathlib.Path('phrase/window.json').read_text())
+          bseg=base_d[int(win['start']*sr_d):int(win['end']*sr_d)]
+          bseg=exact_length(bseg,sr_d)
+          sf.write('variants/BASELINE_D.wav',bseg,sr_d)
+
+          candidates=list(pathlib.Path('variants').glob('*.wav'))
+          for p in candidates:
+              y,s=sf.read(p)
+              if getattr(y,'ndim',1)>1: y=y.mean(axis=1)
+              if s!=sr:
+                  y=librosa.resample(y,orig_sr=s,target_sr=sr)
+              y=exact_length(y,sr)
+              sf.write(p,y,sr)
+              txt,w,c=transcribe(p)
+              # pitch preservation against guide
+              f0g,_,_=librosa.pyin(guide,fmin=librosa.note_to_hz('C3'),fmax=librosa.note_to_hz('G5'),
+                                   sr=sr,frame_length=2048,hop_length=256)
+              f0y,_,_=librosa.pyin(y,fmin=librosa.note_to_hz('C3'),fmax=librosa.note_to_hz('G5'),
+                                   sr=sr,frame_length=2048,hop_length=256)
+              n=min(len(f0g),len(f0y))
+              mask=np.isfinite(f0g[:n]) & np.isfinite(f0y[:n])
+              pdiff=float(np.nanmedian(np.abs(librosa.hz_to_midi(f0g[:n][mask])-librosa.hz_to_midi(f0y[:n][mask])))) if mask.any() else 99.0
+              rows.append({'name':p.stem,'transcript':txt,'wer':w,'cer':c,'pitch_median_abs_semitones':pdiff})
+
+          # choose best raw candidate, with timbre-preservation preference for higher index when ASR is close
+          def raw_score(r):
+              idx_pen=0.0
+              if 'IDX040' in r['name']: idx_pen=0.02
+              elif 'IDX030' in r['name']: idx_pen=0.04
+              protect_pen=0.0 if 'P035' in r['name'] else 0.01
+              return r['cer'] + 0.35*r['wer'] + 0.02*min(r['pitch_median_abs_semitones'],5) + idx_pen + protect_pen
+          raw_best=min([r for r in rows if r['name']!='BASELINE_D'],key=raw_score)
+          raw_path=pathlib.Path('variants')/(raw_best['name']+'.wav')
+          raw,s=sf.read(raw_path)
+          if getattr(raw,'ndim',1)>1: raw=raw.mean(axis=1)
+
+          # articulation blends: retain RVC as dominant layer, add a quiet clean guide layer.
+          for frac in (0.12,0.20):
+              mix=(1-frac)*raw+frac*guide
+              peak=max(np.max(np.abs(mix)),1e-9)
+              if peak>0.98: mix=mix*(0.98/peak)
+              name=f"{raw_best['name']}_GUIDE{int(frac*100):02d}"
+              p=pathlib.Path('variants')/(name+'.wav')
+              sf.write(p,mix,sr)
+              txt,w,c=transcribe(p)
+              rows.append({'name':name,'transcript':txt,'wer':w,'cer':c,'pitch_median_abs_semitones':raw_best['pitch_median_abs_semitones']})
+
+          baseline=next(r for r in rows if r['name']=='BASELINE_D')
+          viable=[r for r in rows if r['name']!='BASELINE_D' and r['pitch_median_abs_semitones']<=0.75]
+          if not viable:
+              raise SystemExit('No pitch-stable repair candidate')
+          winner=min(viable,key=lambda r:(r['cer'],r['wer'],raw_score(r)))
+          pathlib.Path('phrase/repair-report.json').write_text(json.dumps({
+              'target':target,'baseline':baseline,'raw_best':raw_best,'winner':winner,'all':rows
+          },ensure_ascii=False,indent=2))
+          print(json.dumps({'baseline':baseline,'winner':winner,'all':rows},ensure_ascii=False,indent=2))
+          if winner['cer'] >= baseline['cer']:
+              raise SystemExit('No intelligibility improvement over baseline D')
+          pathlib.Path('phrase/winner.txt').write_text(winner['name'])
+          PY
+
+      - name: Splice winner and rebuild C3R1 master
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,json,numpy as np,soundfile as sf
+          win=json.loads(pathlib.Path('phrase/window.json').read_text())
+          name=pathlib.Path('phrase/winner.txt').read_text().strip()
+          base,sr=sf.read('c3/vocal/D_C3_FCPE_IDX050.wav')
+          if getattr(base,'ndim',1)>1: base=base.mean(axis=1)
+          rep,rr=sf.read('variants/'+name+'.wav')
+          if getattr(rep,'ndim',1)>1: rep=rep.mean(axis=1)
+          if rr!=sr: raise SystemExit('sample-rate mismatch')
+          a=int(win['start']*sr); b=int(win['end']*sr)
+          target=b-a
+          if len(rep)<target: rep=np.pad(rep,(0,target-len(rep)))
+          rep=rep[:target]
+          out=base.copy()
+          fade=int(0.08*sr)
+          if fade*2>=target: fade=max(1,target//8)
+          out[a:b]=rep
+          # crossfade boundaries against original D to avoid splice clicks / identity jumps.
+          ramp=np.linspace(0,1,fade)
+          out[a:a+fade]=(1-ramp)*base[a:a+fade]+ramp*out[a:a+fade]
+          ramp2=np.linspace(1,0,fade)
+          out[b-fade:b]=(1-ramp2)*base[b-fade:b]+ramp2*out[b-fade:b]
+          sf.write('repaired/D_C3R1.wav',out,sr,subtype='PCM_24')
+          pathlib.Path('repaired/winner.txt').write_text(name)
+          PY
+
+          ffmpeg -y -v error -i repaired/D_C3R1.wav \
+            -af "highpass=f=80,equalizer=f=2400:t=q:w=1:g=1.5,acompressor=threshold=-18dB:ratio=2.1:attack=14:release=150,aresample=48000,volume=1.12" \
+            repaired/D_C3R1_MIX.wav
+
+          ffmpeg -y -v error \
+            -i c3/arrangement/instrumental.mp3 \
+            -i repaired/D_C3R1_MIX.wav \
+            -filter_complex "[0:a]volume=0.86[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-10dB:ratio=2.0:attack=14:release=180,alimiter=limit=0.95,loudnorm=I=-14:LRA=11:TP=-1.0[out]" \
+            -map "[out]" -ar 48000 -c:a pcm_s24le repaired/NE_S_NIM_C3R1.wav
+          ffmpeg -y -v error -i repaired/NE_S_NIM_C3R1.wav \
+            -codec:a libmp3lame -b:a 320k repaired/NE_S_NIM_C3R1.mp3
+
+      - name: Full phrase ASR and repaired audio critic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,pathlib,tempfile
+          import numpy as np,soundfile as sf,librosa
+          from faster_whisper import WhisperModel
+          from jiwer import wer,cer
+
+          guide=json.loads(pathlib.Path('c3/qa-asr-guide.json').read_text())
+          target_by_id={x['id']:x['target'] for x in guide['phrases']}
+          windows={x['id']:(x['start'],x['end']) for x in guide['phrases']}
+
+          def norm(s):
+              s=s.lower().replace('ё','е')
+              s=re.sub(r'[^а-я0-9 ]+',' ',s)
+              return re.sub(r'\s+',' ',s).strip()
+
+          y,sr=sf.read('repaired/D_C3R1.wav')
+          if getattr(y,'ndim',1)>1: y=y.mean(axis=1)
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          phrases=[]
+          for pid,target in target_by_id.items():
+              a,b=windows[pid]
+              seg=y[int(a*sr):int(b*sr)]
+              p=pathlib.Path(tempfile.gettempdir())/f'c3r1-{pid}.wav'
+              sf.write(p,seg,sr)
+              ss,info=model.transcribe(str(p),language='ru',beam_size=5,vad_filter=False,
+                                       condition_on_previous_text=False,temperature=0.0)
+              txt=' '.join(x.text.strip() for x in list(ss)).strip()
+              nt,nr=norm(target),norm(txt)
+              phrases.append({'id':pid,'target':target,'transcript':txt,
+                              'wer':float(wer(nt,nr)),'cer':float(cer(nt,nr))})
+          ft=' '.join(x['target'] for x in phrases)
+          fr=' '.join(x['transcript'] for x in phrases)
+          result={
+              'wer':float(wer(norm(ft),norm(fr))),
+              'cer':float(cer(norm(ft),norm(fr))),
+              'max_phrase_cer':max(x['cer'] for x in phrases),
+              'phrases':phrases
+          }
+          pathlib.Path('repaired/qa-asr-d.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+
+          # Recompute the two metrics affected by phrase replacement.
+          inst,si=librosa.load('c3/arrangement/instrumental.mp3',sr=22050,mono=True)
+          voc,sv=librosa.load('repaired/D_C3R1.wav',sr=22050,mono=True)
+          hop=512
+          f0,_,_=librosa.pyin(voc,fmin=librosa.note_to_hz('C3'),fmax=librosa.note_to_hz('G5'),
+                              sr=sv,frame_length=2048,hop_length=hop)
+          chroma=librosa.feature.chroma_cqt(y=inst,sr=si,hop_length=hop)
+          n=min(len(f0),chroma.shape[1])
+          midi=librosa.hz_to_midi(f0[:n]); pcs=np.mod(np.round(midi),12); valid=np.isfinite(f0[:n])
+          top3=[]
+          for idx in np.where(valid)[0]:
+              c=chroma[:,idx]
+              if c.max()>0: top3.append(int(pcs[idx]) in np.argsort(c)[::-1][:3])
+          pitch_support=float(np.mean(top3)) if top3 else 0.0
+
+          nfft=2048
+          Sv=np.abs(librosa.stft(voc,n_fft=nfft,hop_length=hop))
+          Si=np.abs(librosa.stft(inst,n_fft=nfft,hop_length=hop))
+          freq=librosa.fft_frequencies(sr=sv,n_fft=nfft); band=(freq>=300)&(freq<=4000)
+          nf=min(Sv.shape[1],Si.shape[1])
+          Ev=np.sqrt(np.mean(Sv[band,:nf]**2,axis=0))+1e-9
+          Ei=np.sqrt(np.mean(Si[band,:nf]**2,axis=0))+1e-9
+          rv=librosa.feature.rms(y=voc,frame_length=2048,hop_length=hop)[0][:nf]
+          vdb=librosa.amplitude_to_db(rv+1e-8,ref=np.max); active=vdb>-35
+          ratio=20*np.log10(Ei/Ev)
+          mask=float(np.mean(ratio[active]>0)) if active.any() else 1.0
+          severe=float(np.mean(ratio[active]>6)) if active.any() else 1.0
+
+          baseline=json.loads(pathlib.Path('c3/qa-audio.json').read_text())
+          qc={
+            'status':'PASS',
+            'inherited_unchanged_metrics':{
+              'vocal_onset_within_150ms_of_drum':baseline['metrics']['vocal_onset_within_150ms_of_drum'],
+              'vocal_onset_within_100ms_of_eighth_grid':baseline['metrics']['vocal_onset_within_100ms_of_eighth_grid'],
+              'reason':'same guide timing and exact aligned phrase splice'
+            },
+            'recomputed':{
+              'vocal_instrument_top3_pitch_support':pitch_support,
+              'instrument_over_vocal_300_4000hz_fraction':mask,
+              'instrument_over_vocal_plus6db_fraction':severe
+            }
+          }
+          failures=[]
+          if result['wer']>0.50: failures.append('d_asr_wer')
+          if result['cer']>0.33: failures.append('d_asr_cer')
+          if result['max_phrase_cer']>0.58: failures.append('d_phrase_intelligibility')
+          if pitch_support<0.55: failures.append('harmonic_coupling')
+          if mask>0.22: failures.append('midband_masking')
+          if severe>0.10: failures.append('severe_midband_masking')
+          qc['failures']=failures
+          qc['status']='PASS' if not failures else 'REJECT'
+          pathlib.Path('repaired/qualification.json').write_text(json.dumps({
+              'status':qc['status'],'audio':qc,'asr_d':result,
+              'repair':json.loads(pathlib.Path('phrase/repair-report.json').read_text()),
+              'failures':failures,'gate_version':'C3R1'
+          },ensure_ascii=False,indent=2))
+          print(json.dumps({'qualification':qc,'asr':result},ensure_ascii=False,indent=2))
+          if failures: raise SystemExit('C3R1 rejected: '+','.join(failures))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-ne-s-nim-c3r1-phrase-repair
+          path: |
+            phrase/
+            variants/
+            repaired/
+          retention-days: 7
+          if-no-files-found: warn
