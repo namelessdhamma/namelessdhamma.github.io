@@ -488,11 +488,14 @@ def ensure_applio_runtime(work):
         if cp.returncode: raise RuntimeError("uv install failed:\n"+cp.stdout[-10000:])
         uv=shutil.which("uv")
     if not uv: raise RuntimeError("uv executable unavailable after install")
+    uv_env=os.environ.copy()
+    uv_env["UV_PYTHON_INSTALL_DIR"]=str(cache/"uv-python")
+    uv_env["UV_CACHE_DIR"]=str(cache/"uv-cache")
     if venv.exists(): shutil.rmtree(venv)
-    cp=subprocess.run([uv,"venv",str(venv),"--python","3.12"],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=600)
+    cp=subprocess.run([uv,"venv",str(venv),"--python","3.12"],env=uv_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=600)
     if cp.returncode: raise RuntimeError("Applio venv creation failed:\n"+cp.stdout[-12000:])
     vpy=venv/"bin/python"
-    cp=subprocess.run([uv,"pip","install","--python",str(vpy),"torch==2.11.0","torchaudio==2.11.0","--index-url","https://download.pytorch.org/whl/cpu"],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=1200)
+    cp=subprocess.run([uv,"pip","install","--python",str(vpy),"torch==2.11.0","torchaudio==2.11.0","--index-url","https://download.pytorch.org/whl/cpu"],env=uv_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=1200)
     if cp.returncode: raise RuntimeError("Applio CPU torch install failed:\n"+cp.stdout[-12000:])
     req=(root/"requirements.txt").read_text()
     filtered=[]
@@ -501,9 +504,9 @@ def ensure_applio_runtime(work):
         if s.startswith("torch==") or s.startswith("torchaudio==") or s.startswith("onnxruntime-gpu=="):
             continue
         filtered.append(line)
-    filtered.append("onnxruntime>=1.22,<2")
+    filtered.append("onnxruntime==1.26.0")
     req_cpu=cache/"requirements-cpu.txt"; req_cpu.write_text("\n".join(filtered)+"\n")
-    cp=subprocess.run([uv,"pip","install","--python",str(vpy),"-r",str(req_cpu)],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=1800)
+    cp=subprocess.run([uv,"pip","install","--python",str(vpy),"-r",str(req_cpu)],cwd=root,env=uv_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=1800)
     if cp.returncode: raise RuntimeError("Applio dependency install failed:\n"+cp.stdout[-16000:])
     prereq="""from rvc.lib.tools.prerequisites_download import prequisites_download_pipeline\nprequisites_download_pipeline(False, True, False)\n"""
     cp=subprocess.run([str(vpy),"-c",prereq],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=900)
