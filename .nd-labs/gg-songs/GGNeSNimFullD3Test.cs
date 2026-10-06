@@ -240,7 +240,6 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 "singer_b" => 72,
                 "singer_c" => 70,
                 "full_d3" => 108,
-                "full_d3" => 108,
                 "rebuild_a" => 108,
                 "song_v2" => 108,
                 "song" => 108,
