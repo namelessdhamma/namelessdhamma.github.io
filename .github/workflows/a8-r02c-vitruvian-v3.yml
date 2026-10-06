@@ -1,0 +1,86 @@
+name: A8 R02C Vitruvian Cinematic V3
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-vitruvian-v3.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vitruvian-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Install Godot 4.6 and Vulkan runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip git libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-r02c-v3/bin /tmp/a8-r02c-v3/src /tmp/a8-r02c-v3/out
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v3/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v3/godot.zip -d /tmp/a8-r02c-v3/bin
+          chmod +x /tmp/a8-r02c-v3/bin/Godot_v4.6-stable_linux.x86_64
+          /tmp/a8-r02c-v3/bin/Godot_v4.6-stable_linux.x86_64 --version
+
+      - name: Fetch exact VitruvianGodot source
+        run: |
+          cd /tmp/a8-r02c-v3/src
+          curl -L --fail --retry 3 -o vitruvian.zip https://github.com/ibrews/VitruvianGodot/archive/bdecdcd537b4031fdd0fb299b7e4f93f084fffa0.zip
+          unzip -q vitruvian.zip
+          mv VitruvianGodot-bdecdcd537b4031fdd0fb299b7e4f93f084fffa0 repo
+          rm vitruvian.zip
+          test -f repo/godot_project/vitruvian_body.glb
+          test -f repo/godot_project/vitruvian_head.glb
+          test -f repo/godot_project/vitruvian_hair_rigged.glb
+          test -f repo/godot_project/scenes/vitruvian_cinematic.tscn
+
+      - name: Downscale qualification viewport only
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/a8-r02c-v3/src/repo/godot_project/project.godot')
+          s=p.read_text()
+          s=s.replace('window/size/viewport_width=1280','window/size/viewport_width=768')
+          s=s.replace('window/size/viewport_height=1280','window/size/viewport_height=768')
+          s=s.replace('scaling_3d/scale=2.0','scaling_3d/scale=1.0')
+          p.write_text(s)
+          PY
+
+      - name: Import Vitruvian assets
+        run: |
+          GODOT=/tmp/a8-r02c-v3/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v3/src/repo/godot_project
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          "$GODOT" --headless --editor --path "$PROJ" --quit-after 8
+          test -d "$PROJ/.godot/imported"
+          find "$PROJ/.godot/imported" -type f | wc -l
+
+      - name: Render stock Vitruvian cinematic proof
+        run: |
+          GODOT=/tmp/a8-r02c-v3/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v3/src/repo/godot_project
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          cd "$PROJ"
+          CINEMA_MOVIE=1 CINEMA_DUR=2.25 xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v3/out/vitruvian.avi --fixed-fps 24 --quit-after 54 scenes/vitruvian_cinematic.tscn
+          ffmpeg -y -v error -i /tmp/a8-r02c-v3/out/vitruvian.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v3/out/vitruvian.mp4
+          rm -f /tmp/a8-r02c-v3/out/vitruvian.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v3/out/vitruvian.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v3/out/F01.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v3/out/vitruvian.mp4 -vf "select='eq(n,26)'" -vframes 1 /tmp/a8-r02c-v3/out/F05.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v3/out/vitruvian.mp4 -vf "select='eq(n,53)'" -vframes 1 /tmp/a8-r02c-v3/out/F09.png
+
+      - name: Verify V3 artifact
+        run: |
+          cd /tmp/a8-r02c-v3/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json vitruvian.mp4 > vitruvian.ffprobe.json
+          ffmpeg -v error -i vitruvian.mp4 -f framemd5 vitruvian.framemd5
+          sha256sum vitruvian.mp4 F01.png F05.png F09.png > sha256.txt
+          printf '{"route":"R02C","recipe":"VITRUVIAN_GODOT_V3","source_repo":"ibrews/VitruvianGodot","source_commit":"bdecdcd537b4031fdd0fb299b7e4f93f084fffa0","godot":"4.6-stable","renderer":"forward_plus","license":"CC0 character/assets + MIT code; bundled Mixamo animations governed by Adobe license","resolution":"768x768","fps":24,"frames":54,"duration_s":2.25}\n' > receipt.json
+
+      - name: Upload V3 proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-vitruvian-v3
+          path: /tmp/a8-r02c-v3/out
+          retention-days: 7
