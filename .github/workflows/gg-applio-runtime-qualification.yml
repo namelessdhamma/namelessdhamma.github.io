@@ -1,0 +1,55 @@
+name: GG Applio Runtime Qualification
+
+on:
+  push:
+    branches:
+      - experiment/gg-vocal-mutate-applio-20261006-worker
+    paths:
+      - '.github/workflows/gg-applio-runtime-qualification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore Applio runtime cache
+        uses: actions/cache@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v1-${{ runner.os }}-324f4d89
+      - name: Install system prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends git ffmpeg curl ca-certificates python3 python3-pip build-essential libsndfile1 libportaudio2
+      - name: Qualify real Applio runtime
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib, runpy, subprocess, os
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_applio_runtime_qualification')
+          root,vpy,meta=ns['ensure_applio_runtime'](pathlib.Path('/tmp/gg-applio-runtime'))
+          p=subprocess.run([str(vpy),'core.py','--help'],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=120)
+          if p.returncode:
+              raise SystemExit(p.stdout[-12000:])
+          for token in ('infer','batch-infer','model-blender'):
+              if token not in p.stdout.lower().replace('_','-'):
+                  raise SystemExit('missing Applio CLI surface: '+token)
+          print('GG_APPLIO_RUNTIME=PASS',meta)
+          print(p.stdout[-3000:])
+          PY
