@@ -50,7 +50,7 @@
             69
           ],
           "durations": [
-            240
+            480
           ],
           "rest": 0
         },
@@ -63,9 +63,9 @@
             69
           ],
           "durations": [
-            360,
-            240,
-            360
+            300,
+            180,
+            240
           ],
           "rest": 0
         },
@@ -112,8 +112,8 @@
             67
           ],
           "durations": [
-            240,
-            240
+            300,
+            180
           ],
           "rest": 0
         },
@@ -285,9 +285,9 @@
             69
           ],
           "durations": [
-            240,
-            480,
-            240
+            180,
+            600,
+            180
           ],
           "rest": 0
         },
@@ -332,7 +332,7 @@
             69
           ],
           "durations": [
-            240
+            480
           ],
           "rest": 0
         },
@@ -343,7 +343,7 @@
             69
           ],
           "durations": [
-            240
+            480
           ],
           "rest": 0
         },
@@ -396,8 +396,8 @@
           ],
           "durations": [
             240,
-            480,
-            240
+            600,
+            120
           ],
           "rest": 0
         }
@@ -450,7 +450,7 @@
           "text": "с",
           "stress": 0,
           "pitches": [
-            72
+            69
           ],
           "durations": [
             240
@@ -461,7 +461,7 @@
           "text": "ним",
           "stress": 0,
           "pitches": [
-            76
+            72
           ],
           "durations": [
             960
@@ -517,8 +517,8 @@
           "text": "собой",
           "stress": 1,
           "pitches": [
-            72,
-            76
+            74,
+            72
           ],
           "durations": [
             240,
@@ -670,7 +670,7 @@
     "response_source": "last4_vocal_pitches"
   },
   "notes": {
-    "design": "C2 repairs C1 symbolic critic: smooth прикоснуться leap, remove non-syntactic rests, shape chorus pre-hook, vary internal syllable durations while preserving word-grid alignment",
+    "design": "C2.1: smoother syntax/intervals; lower chorus peaks; lengthened key lexical anchors; uneven syllable timing; harmonic-shadow arrangement planned",
     "source_drive_doc": "1qBqnDosMqH7wh1r22YNWqMgJZI3eZ5E_rzdf6US-tVE",
     "user_facing": false
   }
