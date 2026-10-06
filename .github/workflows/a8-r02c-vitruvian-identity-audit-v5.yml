@@ -1,0 +1,91 @@
+name: A8 R02C Vitruvian Identity Morph Audit V5
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-vitruvian-identity-audit-v5.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Fetch exact Vitruvian source
+        run: |
+          mkdir -p /tmp/a8-r02c-v5
+          cd /tmp/a8-r02c-v5
+          curl -L --fail --retry 3 -o vitruvian.zip https://github.com/ibrews/VitruvianGodot/archive/bdecdcd537b4031fdd0fb299b7e4f93f084fffa0.zip
+          unzip -q vitruvian.zip
+          mv VitruvianGodot-bdecdcd537b4031fdd0fb299b7e4f93f084fffa0 repo
+          test -f repo/blender_prep/vitruvian_rigged.blend
+
+      - name: Install Blender 4.5.14 LTS
+        run: |
+          cd /tmp/a8-r02c-v5
+          curl -L --fail --retry 3 -o blender.tar.xz https://download.blender.org/release/Blender4.5/blender-4.5.14-linux-x64.tar.xz
+          tar -xf blender.tar.xz
+          ./blender-4.5.14-linux-x64/blender --version | head -n 2
+
+      - name: Inspect identity morph and rig surfaces
+        run: |
+          cat > /tmp/a8-r02c-v5/inspect.py <<'PY'
+          import bpy, json
+          out={"objects":[],"shape_keys":[],"actions":[],"armatures":[]}
+          for o in bpy.data.objects:
+              row={"name":o.name,"type":o.type}
+              if o.type=="MESH":
+                  row["vertices"]=len(o.data.vertices)
+                  keys=o.data.shape_keys.key_blocks if o.data.shape_keys else []
+                  row["shape_key_count"]=len(keys)
+                  row["shape_key_names"]=[k.name for k in keys]
+                  if keys:
+                      out["shape_keys"].append({"object":o.name,"count":len(keys),"names":[k.name for k in keys]})
+              elif o.type=="ARMATURE":
+                  names=[b.name for b in o.data.bones]
+                  row["bone_count"]=len(names)
+                  row["bones"]=names
+                  out["armatures"].append({"object":o.name,"bone_count":len(names),"bones":names})
+              out["objects"].append(row)
+          for a in bpy.data.actions:
+              out["actions"].append({"name":a.name,"frame_range":[float(a.frame_range[0]),float(a.frame_range[1])]})
+          with open("/tmp/a8-r02c-v5/audit.json","w") as f:
+              json.dump(out,f,indent=2)
+          print("AUDIT_SHAPE_KEY_GROUPS",[(x["object"],x["count"]) for x in out["shape_keys"]])
+          print("AUDIT_ACTIONS",[x["name"] for x in out["actions"]])
+          PY
+          /tmp/a8-r02c-v5/blender-4.5.14-linux-x64/blender -b /tmp/a8-r02c-v5/repo/blender_prep/vitruvian_rigged.blend -P /tmp/a8-r02c-v5/inspect.py
+          python3 - <<'PY'
+          import json
+          p=json.load(open('/tmp/a8-r02c-v5/audit.json'))
+          names=[]
+          for g in p["shape_keys"]:
+              names+=g["names"]
+          low=[n.lower() for n in names]
+          id_tokens=("gender","male","female","age","body","height","weight","muscle","face","nose","jaw","chin","head","cheek","eye","brow")
+          identity=[n for n in names if any(t in n.lower() for t in id_tokens)]
+          facs=[n for n in names if any(t in n.lower() for t in ("mouth","lips","eyes_","eyebrows","happy","sad","angry","scared","disgust","thinking","viseme","aa_","ow_"))]
+          summary={
+            "shape_key_groups":[{"object":x["object"],"count":x["count"]} for x in p["shape_keys"]],
+            "total_shape_keys":len(names),
+            "identity_candidate_count":len(identity),
+            "identity_candidates":identity[:300],
+            "facs_candidate_count":len(facs),
+            "actions":p["actions"],
+            "armatures":[{"object":x["object"],"bone_count":x["bone_count"]} for x in p["armatures"]]
+          }
+          json.dump(summary,open('/tmp/a8-r02c-v5/summary.json','w'),indent=2)
+          print(json.dumps(summary,indent=2))
+          PY
+
+      - name: Upload identity audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-vitruvian-identity-audit-v5
+          path: |
+            /tmp/a8-r02c-v5/summary.json
+            /tmp/a8-r02c-v5/audit.json
+          retention-days: 7
