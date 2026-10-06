@@ -198,7 +198,7 @@ async function submit(args={}){
     const reqB64=Buffer.from(JSON.stringify(req),'utf8').toString('base64');
     const script=['import base64,sys,urllib.request','from pathlib import Path',"request_path=Path('/kaggle/working/nd-ltx2b-request.json')","request_path.write_bytes(base64.b64decode('"+reqB64+"'))","worker=Path('/kaggle/working/kaggle_ltx2b_direct_worker.py')","req=urllib.request.Request('"+WORKER_URL+"',headers={'User-Agent':'nd-kaggle-ltx2b/1.1'})","worker.write_bytes(urllib.request.urlopen(req,timeout=120).read())","sys.argv=['kaggle_ltx2b_direct_worker.py',str(request_path)]","exec(compile(worker.read_text(encoding='utf-8'),'kaggle_ltx2b_direct_worker.py','exec'),{'__name__':'__main__'})"].join('\n');
     if(Buffer.byteLength(script,'utf8')>=900000)throw new Error('Kaggle kernel source exceeds 900 KB');
-    const cacheSources=[username+'/nd-ltx-2b-distilled-cache'];
+    const cacheSources=providerAttempt>1?[]:[username+'/nd-ltx-2b-distilled-cache'];
     let save;
     try{save=await rpc('kernels.KernelsApiService','SaveKernel',{slug:username+'/'+providerSlug,newTitle:'ND LTX2B '+effect.token+' attempt '+providerAttempt,text:script,language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:cacheSources,competitionDataSources:[],categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,kernelExecutionType:'SaveAndRunAll',machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:3600},ctx);}
     catch(e){
