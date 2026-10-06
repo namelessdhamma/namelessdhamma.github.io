@@ -14,14 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - name: Install Godot 4.7.2 and Vulkan runtime
+      - name: Install Godot 4.6 and Vulkan runtime
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb ffmpeg unzip git libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
           mkdir -p /tmp/a8-r02c-v5/bin /tmp/a8-r02c-v5/src /tmp/a8-r02c-v5/out
-          curl -L --fail --retry 3 -o /tmp/a8-r02c-v5/godot.zip https://downloads.sourceforge.net/project/godot-engine.mirror/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v5/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip
           unzip -q /tmp/a8-r02c-v5/godot.zip -d /tmp/a8-r02c-v5/bin
-          chmod +x /tmp/a8-r02c-v5/bin/Godot_v4.7.2-stable_linux.x86_64
+          chmod +x /tmp/a8-r02c-v5/bin/Godot_v4.6-stable_linux.x86_64
 
       - name: Fetch exact Vitruvian source
         run: |
@@ -427,14 +427,14 @@ jobs:
 
       - name: Import assets
         run: |
-          GODOT=/tmp/a8-r02c-v5/bin/Godot_v4.7.2-stable_linux.x86_64
+          GODOT=/tmp/a8-r02c-v5/bin/Godot_v4.6-stable_linux.x86_64
           PROJ=/tmp/a8-r02c-v5/src/repo/godot_project
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           "$GODOT" --headless --editor --path "$PROJ" --quit-after 8
 
       - name: Render Blue Sea dual-human shot
         run: |
-          GODOT=/tmp/a8-r02c-v5/bin/Godot_v4.7.2-stable_linux.x86_64
+          GODOT=/tmp/a8-r02c-v5/bin/Godot_v4.6-stable_linux.x86_64
           PROJ=/tmp/a8-r02c-v5/src/repo/godot_project
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           cd "$PROJ"
@@ -451,7 +451,7 @@ jobs:
           ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json blue-sea-duel-v5.mp4 > ffprobe.json
           ffmpeg -v error -i blue-sea-duel-v5.mp4 -f framemd5 frames.framemd5
           sha256sum blue-sea-duel-v5.mp4 F01.png F05.png F09.png > sha256.txt
-          printf '{"route":"R02C","recipe":"BLUE_SEA_DUAL_HUMAN_V5","source":"VitruvianGodot exact commit bdecdcd537b4031fdd0fb299b7e4f93f084fffa0","godot":"4.7.2-stable","renderer":"forward_plus","resolution":"960x540","fps":24,"frames":54,"duration_s":2.25,"goal":"fix non-accumulating nine-waypoint duel pose + side-on confrontation + tighter cinematic framing"}\n' > receipt.json
+          printf '{"route":"R02C","recipe":"BLUE_SEA_DUAL_HUMAN_V5","source":"VitruvianGodot exact commit bdecdcd537b4031fdd0fb299b7e4f93f084fffa0","godot":"4.6-stable","renderer":"forward_plus","resolution":"960x540","fps":24,"frames":54,"duration_s":2.25,"goal":"fix non-accumulating nine-waypoint duel pose + side-on confrontation + tighter cinematic framing"}\n' > receipt.json
 
       - name: Upload V5
         uses: actions/upload-artifact@v5
