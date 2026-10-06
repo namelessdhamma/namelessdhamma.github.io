@@ -1,0 +1,217 @@
+name: GG Ne S Nim FULL D6 Guide Qualification
+
+on:
+  push:
+    branches:
+      - compute/gg-ne-s-nim-full-d6-staged-20261006
+    paths:
+      - '.github/workflows/gg-ne-s-nim-full-d6-guide.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install guide and ASR runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git unzip ffmpeg build-essential libsndfile1 libportaudio2 patchelf libicu-dev
+          python -m pip install -q \
+            pyyaml numpy scipy soundfile faster-whisper==1.1.1 jiwer==3.0.4
+
+      - name: Prepare OpenUtau and Awata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGNeSNimFullD6Test.cs" />\n  </ItemGroup>\n'
+          if 'GGNeSNimFullD6Test.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+
+          mkdir -p /tmp/openutau/OpenUtau.Test/Core/DiffSinger
+          cp .nd-labs/gg-songs/GGNeSNimFullD6Test.cs \
+            /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGNeSNimFullD6Test.cs
+
+          curl -fL --retry 3 -o /tmp/awata.zip \
+            https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          mkdir -p /tmp/awata
+          unzip -q /tmp/awata.zip -d /tmp/awata
+          bank="$(find /tmp/awata -type f -name dsconfig.yaml -printf '%h\n' | head -n1)"
+          test -n "$bank"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Awata Weak\nauthor=hhskt\nvoice=Awata Weak\n' > "$bank/character.txt"
+          fi
+          echo "AWATA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Install EZV
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,urllib.request,zipfile,yaml,shutil,os
+          bank=pathlib.Path(os.environ['AWATA_BANK'])
+          dst=bank/'dsvocoder'
+          if not (dst/'vocoder.yaml').exists():
+              arc=pathlib.Path('/tmp/ezv.oudep')
+              arc.write_bytes(urllib.request.urlopen(
+                  'https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep',
+                  timeout=300).read())
+              dst.mkdir(exist_ok=True)
+              with zipfile.ZipFile(arc) as z:
+                  names={n.replace('\\','/'):n for n in z.namelist()}
+                  cfg=next(n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml')
+                  data=z.read(names[cfg]); model=yaml.safe_load(data)['model']
+                  m=next(n for n in names if n.split('/')[-1]==model)
+                  (dst/'vocoder.yaml').write_bytes(data)
+                  with z.open(names[m]) as inf,(dst/model).open('wb') as out:
+                      shutil.copyfileobj(inf,out,1024*1024)
+          PY
+
+      - name: Build and render FULL_D6 clean guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/openutau
+          dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+          mkdir -p "$GITHUB_WORKSPACE/song/vocal"
+
+          OPENUTAU_TEST_SINGERS="$AWATA_BANK" \
+          GG_VFS_OUT="$GITHUB_WORKSPACE/song/vocal" \
+          GG_VFS_TAG="NE_S_NIM_FULL_D6_GUIDE" \
+          GG_VFS_SPEAKER_HINT="Mature" \
+          GG_VFS_VARIANT="full_d6" \
+          GG_VFS_STEPS="64" \
+          GG_SHARED_SCORE="$GITHUB_WORKSPACE/docs/gg/songs/ne-s-nim-full-d6.json" \
+          dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj \
+            --configuration Release --no-build --filter RenderNeSNimFullD6
+
+          guide="$(find "$GITHUB_WORKSPACE/song/vocal" -name '*OPENUTAU_RU_QC.wav' -print -quit)"
+          test -s "$guide"
+          cp "$guide" "$GITHUB_WORKSPACE/song/vocal/00_GUIDE_FULL_D6.wav"
+
+      - name: Phrase-level Russian ASR
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,pathlib,tempfile
+          import soundfile as sf
+          from faster_whisper import WhisperModel
+          from jiwer import wer,cer
+
+          score=json.loads(pathlib.Path('docs/gg/songs/ne-s-nim-full-d6.json').read_text())
+          tpb=score['ticks_per_beat']; bpm=score['bpm']; tick_sec=60.0/bpm/tpb
+
+          def norm(s):
+              s=s.lower().replace('ё','е')
+              s=re.sub(r'[^а-я0-9 ]+',' ',s)
+              return re.sub(r'\s+',' ',s).strip()
+
+          y,sr=sf.read('song/vocal/00_GUIDE_FULL_D6.wav')
+          if getattr(y,'ndim',1)>1: y=y.mean(axis=1)
+
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          rows=[]
+          for ph in score['phrases']:
+              start_tick=ph['bar']*tpb*4+ph['offset']
+              end_tick=start_tick
+              target=' '.join(w['text'] for w in ph['words'])
+              for w in ph['words']:
+                  end_tick+=sum(w['durations'])+w['rest']
+              start=max(0.0,start_tick*tick_sec-0.12)
+              end=min(len(y)/sr,end_tick*tick_sec+0.18)
+              seg=y[int(start*sr):int(end*sr)]
+              tmp=pathlib.Path(tempfile.gettempdir())/f"full-d6-{ph['id']}.wav"
+              sf.write(tmp,seg,sr)
+              ss,info=model.transcribe(
+                  str(tmp),language='ru',beam_size=5,vad_filter=False,
+                  condition_on_previous_text=False,temperature=0.0)
+              txt=' '.join(x.text.strip() for x in list(ss)).strip()
+              nt,nr=norm(target),norm(txt)
+              rows.append({
+                  'id':ph['id'],'section':ph['section'],
+                  'target':target,'transcript':txt,
+                  'wer':float(wer(nt,nr)),'cer':float(cer(nt,nr)),
+                  'start':start,'end':end
+              })
+
+          ft=' '.join(x['target'] for x in rows)
+          fr=' '.join(x['transcript'] for x in rows)
+          nt,nr=norm(ft),norm(fr)
+          result={
+              'status':'UNDECIDED',
+              'wer':float(wer(nt,nr)),
+              'cer':float(cer(nt,nr)),
+              'mean_phrase_wer':sum(x['wer'] for x in rows)/len(rows),
+              'mean_phrase_cer':sum(x['cer'] for x in rows)/len(rows),
+              'max_phrase_cer':max(x['cer'] for x in rows),
+              'bad_phrase_count_cer_gt_035':sum(x['cer']>0.35 for x in rows),
+              'phrases':rows
+          }
+          failures=[]
+          if result['wer']>0.32: failures.append('guide_asr_wer')
+          if result['cer']>0.20: failures.append('guide_asr_cer')
+          if result['max_phrase_cer']>0.55: failures.append('guide_max_phrase_cer')
+          if result['bad_phrase_count_cer_gt_035']>3: failures.append('too_many_bad_phrases')
+          result['failures']=failures
+          result['status']='PASS' if not failures else 'REJECT'
+          pathlib.Path('song/qa-guide-full-d6.json').write_text(
+              json.dumps(result,ensure_ascii=False,indent=2))
+
+          worst=sorted(rows,key=lambda x:x['cer'],reverse=True)[:8]
+          print(json.dumps({
+              'summary':{k:v for k,v in result.items() if k!='phrases'},
+              'worst_phrases':worst
+          },ensure_ascii=False,indent=2))
+
+          if failures:
+              raise SystemExit('FULL_D6 guide rejected: '+','.join(failures))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-ne-s-nim-full-d6-guide
+          path: |
+            song/vocal/00_GUIDE_FULL_D6.wav
+            song/vocal/*manifest.txt
+            song/qa-guide-full-d6.json
+          retention-days: 7
+          if-no-files-found: warn
