@@ -524,6 +524,16 @@ def main() -> None:
     ).to(torch.bfloat16)
     vae._model_dtype = torch.bfloat16
 
+    # High-resolution decode on Kaggle T4 must tile the VAE. The diffusion
+    # transformer itself can complete 1024x576; untiled VAE decode exceeds
+    # 14.56 GiB VRAM. Wan2GP's own automatic policy uses 512px HW tiles and
+    # 4-frame Z tiles for GPUs in this memory class.
+    if width * height > 768 * 448:
+        vae.enable_z_tiling(4)
+        vae.enable_hw_tiling()
+        vae.set_tiling_params(sample_size=512, overlap_factor=0.25)
+        print("ND_LTX2B_VAE_TILING=z4_hw512", flush=True)
+
     transformer = offload.fast_load_transformers_model(
         str(model),
         modelClass=Transformer3DModel,
