@@ -457,8 +457,8 @@ def main() -> None:
 
     width = align32(int(request.get("width") or 512))
     height = align32(int(request.get("height") or 288))
-    if width * height > 1024 * 576:
-        scale = math.sqrt((1024 * 576) / float(width * height))
+    if width * height > 1216 * 704:
+        scale = math.sqrt((1216 * 704) / float(width * height))
         width = align32(max(256, int(width * scale)))
         height = align32(max(256, int(height * scale)))
     frames = frame_count(float(request.get("duration_seconds") or 2.0))
