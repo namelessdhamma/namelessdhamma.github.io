@@ -21,6 +21,12 @@ jobs:
       image: debian:sid
     steps:
       - uses: actions/checkout@v4
+      - name: Bootstrap container prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
