@@ -11,6 +11,10 @@ const QUALIFIED_WORKER_COMMIT='2ef1d79f198afc45febb4c42d3ddea7b35898e7c';
 const WORKER_URL='https://raw.githubusercontent.com/namelessdhamma/namelessdhamma.github.io/'+QUALIFIED_WORKER_COMMIT+'/railway/nd-omniroute/kaggle_ltx2b_direct_worker.py';
 
 function errorText(e){return String(e?.message||e||'error').slice(0,1800);}
+function isProviderVisibilityPending(e){
+  const msg=String(e?.message||e||'');
+  return Number(e?.status||0)===403&&/kernels\.get|PERMISSION_DENIED/i.test(msg);
+}
 function json(res,status,obj){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});return res.end(JSON.stringify(obj));}
 function toolResult(value){return {content:[{type:'text',text:JSON.stringify(value)}],structuredContent:value,isError:false};}
 function durationSeconds(v){
@@ -226,7 +230,14 @@ async function reconcile(args={}){
 }
 async function status(args={}){
   return withLtxControlDeadline('ltx.primary.status',ltxControlTimeout('status'),async ctx=>{
-    const ref=requestRef(args.request_id),username=await identity(ctx),resolved=await resolveKernel(username,ref,ctx),state=stateOf(resolved.st?.status);
+    const ref=requestRef(args.request_id),username=await identity(ctx);
+    let resolved;
+    try{resolved=await resolveKernel(username,ref,ctx);}
+    catch(e){
+      if(isProviderVisibilityPending(e))return {ok:true,request_id:ref.request_id,state:'PROVIDER_VISIBILITY_PENDING',provider_status:null,failure_message:null,provider_ref:username+'/'+ref.kernel_slug+'/'+ref.version,diagnostics:null,nonblocking:true,control_observed_at:new Date().toISOString(),next_check_after_seconds:60,safe_to_resubmit:false};
+      throw e;
+    }
+    const state=stateOf(resolved.st?.status);
     let diagnostics=null;
     if(state==='FAILED'||state==='CANCELLED'||args.include_diagnostics===true){
       try{
@@ -242,7 +253,14 @@ async function status(args={}){
 }
 async function result(args={}){
   return withLtxControlDeadline('ltx.primary.result',ltxControlTimeout('result'),async ctx=>{
-    const ref=requestRef(args.request_id),username=await identity(ctx),resolved=await resolveKernel(username,ref,ctx),state=stateOf(resolved.st?.status);
+    const ref=requestRef(args.request_id),username=await identity(ctx);
+    let resolved;
+    try{resolved=await resolveKernel(username,ref,ctx);}
+    catch(e){
+      if(isProviderVisibilityPending(e))return {ok:false,request_id:ref.request_id,state:'PROVIDER_VISIBILITY_PENDING',provider_status:null,failure_message:null,nonblocking:true,safe_to_resubmit:false};
+      throw e;
+    }
+    const state=stateOf(resolved.st?.status);
     if(state!=='COMPLETED')return {ok:false,request_id:ref.request_id,state,provider_status:resolved.st?.status??null,failure_message:resolved.st?.failureMessage||resolved.st?.failure_message||null,nonblocking:true};
     const video=await outputUrl(username,resolved.slug,'result.mp4',ref.version,ctx);
     let receiptUrl=null,receipt_state='READY';try{if(ctx.remainingMs()>500)receiptUrl=await outputUrl(username,resolved.slug,'result.json',ref.version,ctx);else receipt_state='DEFERRED_CONTROL_BUDGET';}catch(e){receipt_state=e?.code==='CONTROL_DEADLINE'||ctx.isDeadline()?'DEFERRED_CONTROL_BUDGET':'UNAVAILABLE';}
