@@ -1,0 +1,194 @@
+name: GG Ne S Nim D1R4 brl4 D repair
+
+on:
+  push:
+    branches:
+      - compute/gg-ne-s-nim-d1r4-brl4-rvc-20261006
+    paths:
+      - '.github/workflows/gg-ne-s-nim-d1r4-brl4-rvc.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates git unzip ffmpeg libicu-dev libsndfile1 libportaudio2 patchelf build-essential
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore Applio runtime
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-\${{ runner.os }}-324f4d89
+
+      - name: Restore Awata RVC
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-\${{ runner.os }}
+
+      - name: Install analysis runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q faster-whisper==1.1.1 jiwer==3.0.4 soundfile requests pyyaml numpy scipy
+
+      - name: Prepare OpenUtau and Awata DiffSinger
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGNeSNimBrl4PhoneTest.cs" />\n  </ItemGroup>\n'
+          if 'GGNeSNimBrl4PhoneTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          mkdir -p /tmp/openutau/OpenUtau.Test/Core/DiffSinger
+          cp .nd-labs/gg-songs/GGNeSNimBrl4PhoneTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGNeSNimBrl4PhoneTest.cs
+          curl -fL --retry 3 -o /tmp/awata.zip https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          mkdir -p /tmp/awata
+          unzip -q /tmp/awata.zip -d /tmp/awata
+          bank="$(find /tmp/awata -type f -name dsconfig.yaml -printf '%h\n' | head -n1)"
+          test -n "$bank"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Awata Weak\nauthor=hhskt\nvoice=Awata Weak\n' > "$bank/character.txt"
+          fi
+          echo "AWATA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Install EZV
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,urllib.request,zipfile,yaml,shutil,os
+          bank=pathlib.Path(os.environ['AWATA_BANK']); dst=bank/'dsvocoder'
+          if not (dst/'vocoder.yaml').exists():
+              arc=pathlib.Path('/tmp/ezv.oudep')
+              arc.write_bytes(urllib.request.urlopen('https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep',timeout=300).read())
+              dst.mkdir(exist_ok=True)
+              with zipfile.ZipFile(arc) as z:
+                  names={n.replace('\\','/'):n for n in z.namelist()}
+                  cfg=next(n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml')
+                  data=z.read(names[cfg]); model=yaml.safe_load(data)['model']
+                  m=next(n for n in names if n.split('/')[-1]==model)
+                  (dst/'vocoder.yaml').write_bytes(data)
+                  with z.open(names[m]) as inf,(dst/model).open('wb') as out:
+                      shutil.copyfileobj(inf,out,1024*1024)
+          PY
+
+      - name: Render accepted V60Z60 clean guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/openutau
+          dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+          mkdir -p "$GITHUB_WORKSPACE/repair"
+          OPENUTAU_TEST_SINGERS="$AWATA_BANK" \
+          GG_VFS_OUT="$GITHUB_WORKSPACE/repair" \
+          GG_VFS_TAG="BRL4_V60Z60" \
+          GG_VFS_SPEAKER_HINT="Mature" \
+          GG_VFS_VARIANT="bridge_test" \
+          GG_VFS_STEPS="64" \
+          GG_SHARED_SCORE="$GITHUB_WORKSPACE/docs/gg/songs/ne-s-nim-d1-v5-brl4-phone-test.json" \
+          GG_BR_V_OFFSET_TICKS="-60" \
+          GG_BR_Z_OFFSET_TICKS="-60" \
+          dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderNeSNimBrl4PhoneTest
+          cp "$GITHUB_WORKSPACE/repair/BRL4_V60Z60__OPENUTAU_RU_QC.wav" "$GITHUB_WORKSPACE/repair/guide.wav"
+
+      - name: Render Awata D protect variants
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: \${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: \${{ github.workspace }}/.gg-rvc-model-cache
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,runpy,subprocess,json
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_brl4_d1r4')
+          work=pathlib.Path('/tmp/applio-brl4'); work.mkdir(exist_ok=True)
+          root,vpy,rt=ns['ensure_applio_runtime'](work)
+          model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
+          guide=pathlib.Path('repair/guide.wav').resolve()
+          rows=[]
+          for protect in (0.50,0.35,0.25):
+              tag=str(protect).replace('.','')
+              out=pathlib.Path(f'repair/D_BRL4_P{tag}.wav').resolve()
+              code="import os,sys; root,source,out,model,index,protect=sys.argv[1:7]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,volume_envelope=1.0,protect=float(protect),f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
+              p=subprocess.run([str(vpy),'-c',code,str(root),str(guide),str(out),str(model),str(index),str(protect)],cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=1200)
+              print(p.stdout[-6000:])
+              if p.returncode or not out.exists() or out.stat().st_size==0:
+                  raise SystemExit(f'RVC failed protect={protect}')
+              rows.append({'protect':protect,'path':str(out)})
+          pathlib.Path('repair/rvc-manifest.json').write_text(json.dumps(rows,indent=2))
+          PY
+
+      - name: Rank D variants by phrase ASR and duration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,pathlib
+          import soundfile as sf
+          from faster_whisper import WhisperModel
+          from jiwer import cer,wer
+          target='былого что осталось неизменным'
+          def norm(s):
+              s=s.lower().replace('ё','е')
+              s=re.sub(r'[^а-я0-9 ]+',' ',s)
+              return re.sub(r'\s+',' ',s).strip()
+          gy,gsr=sf.read('repair/guide.wav')
+          gd=len(gy)/gsr
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          rows=[]
+          for p in sorted(pathlib.Path('repair').glob('D_BRL4_P*.wav')):
+              y,sr=sf.read(p)
+              dur=len(y)/sr
+              segs,_=model.transcribe(str(p),language='ru',beam_size=5,vad_filter=False,condition_on_previous_text=False,temperature=0.0)
+              txt=' '.join(x.text.strip() for x in list(segs)).strip()
+              nt,nr=norm(target),norm(txt)
+              rows.append({'file':p.name,'transcript':txt,'wer':float(wer(nt,nr)),'cer':float(cer(nt,nr)),'duration_s':dur,'duration_delta_s':dur-gd})
+          rows.sort(key=lambda x:(x['cer'],abs(x['duration_delta_s']),x['wer']))
+          out={'target':target,'guide_duration_s':gd,'winner':rows[0],'variants':rows,'status':'PASS' if rows[0]['cer']<=0.35 and abs(rows[0]['duration_delta_s'])<=0.15 else 'REJECT'}
+          pathlib.Path('repair/d-qa.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          if out['status']!='PASS': raise SystemExit(2)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-ne-s-nim-d1r4-brl4-d-repair
+          path: |
+            repair/*.wav
+            repair/*.json
+            repair/*manifest.txt
+          retention-days: 7
+          if-no-files-found: warn
