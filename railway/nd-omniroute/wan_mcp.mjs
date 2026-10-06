@@ -3143,6 +3143,11 @@ const TOOLS=[
     inputSchema:{type:'object',properties:{},additionalProperties:false}
   },
   {
+    name:'wan_kaggle_retire_slug',
+    description:'Guarded destructive recovery for one exact owned ND-LTX transient Kaggle kernel slug. Deletes only after exact owner/title checks and verifies absence afterward.',
+    inputSchema:{type:'object',properties:{slug:{type:'string'}},required:['slug'],additionalProperties:false}
+  },
+  {
     name:'wan_kaggle_ltx_cache_inventory',
     description:'Read-only inventory of the existing mounted LTX cache, including per-root sizes for transformer, text encoder, VAE, tokenizer and scheduler.',
     inputSchema:{type:'object',properties:{},additionalProperties:false}
@@ -3420,6 +3425,7 @@ export function createWanMcpHandler(){
         else if(name==='wan_ltx13b_adaptive_result') result=await ltxKaggleBatchResult(args);
         else if(name==='wan_kaggle_diagnose_sessions') result=await ltxKaggleDiagnoseSessions();
         else if(name==='wan_kaggle_recent_kernels') result=await ltxKaggleRecentKernelMetadata();
+        else if(name==='wan_kaggle_retire_slug') result=await ltxKaggleRetireSlug(args);
         else if(name==='wan_kaggle_ltx_cache_inventory') result=await ltxKaggleCacheInventory();
         else if(name==='wan_ltx2b_latest_load_probe') result=await ltxKaggle2bLatestProbe();
         else if(name==='wan_kaggle_accel_probe_submit') result=await ltxKaggleAccelProbeSubmit(args);
