@@ -551,9 +551,9 @@ jobs:
                               if "A8V97_SKIN" in nm:
                                   sm.roughness=0.56
                                   sm.metallic_specular=0.10
-                                  sm.subsurf_scatter_enabled=true
-                                  sm.subsurf_scatter_skin_mode=true
-                                  sm.subsurf_scatter_strength=0.16
+                                  sm.subsurf_scatter_enabled=false
+                                  sm.subsurf_scatter_skin_mode=false
+                                  sm.subsurf_scatter_strength=0.0
                               elif "A8V97_IRIS" in nm or "A8V97_PUPIL" in nm:
                                   sm.roughness=0.11
                               elif "A8V97_SCLERA" in nm:
@@ -642,13 +642,13 @@ jobs:
           inv=json.load(open('/tmp/a8-einar-v9/out/v9-inventory.json'))
           receipt={
             'route':'R02C',
-            'recipe':'EINAR_V9_9_REBUILT_FINAL_NORMALS',
+            'recipe':'EINAR_V9_10_SSS_ISOLATION',
             'source':'official Blender Studio Einar v1',
             'source_license':'CC-BY',
             'source_archive_sha256':'3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7',
             'selected_objects':inv['selected'],
             'texture_map':inv['textures'],
-            'goal':'rebuild final high-detail snapshot and groom normals after Catmull/evaluation, drop stale tangents, and verify black nose/ear artifacts disappear without changing source lookdev',
+            'goal':'isolate black nose/ear artifacts as Godot skin SSS behavior by disabling subsurface scattering while preserving rebuilt normals, source lookdev, groom and lighting unchanged',
             'glb_bytes':os.path.getsize('/tmp/a8-einar-v9/out/einar-hero-v9.glb')
           }
           json.dump(receipt,open('/tmp/a8-einar-v9/out/receipt.json','w'),indent=2)
