@@ -25,6 +25,7 @@ def converter(score):
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--score",required=True); ap.add_argument("--guide",required=True)
+    ap.add_argument("--timing-report")
     ap.add_argument("--out",required=True); ap.add_argument("--threshold",type=float,default=.20)
     a=ap.parse_args()
     score=json.loads(pathlib.Path(a.score).read_text())
@@ -32,11 +33,19 @@ def main():
     if getattr(y,"ndim",1)>1:y=y.mean(axis=1)
     model=WhisperModel("small",device="cpu",compute_type="int8")
     to_sec=converter(score); tpb=score["ticks_per_beat"]; BAR=tpb*4
+    end_override={}
+    if a.timing_report and pathlib.Path(a.timing_report).exists():
+        tr=json.loads(pathlib.Path(a.timing_report).read_text())
+        for r in tr.get("repairs",[]):
+            if r.get("applied") and r.get("winner",{}).get("end") is not None:
+                end_override[r["id"]]=float(r["winner"]["end"])
     rows=[]; td=pathlib.Path(tempfile.mkdtemp(prefix="gg-guide-gate-"))
     for ph in score["phrases"]:
         st=ph["bar"]*BAR+ph["offset"]; en=st
         for w in ph["words"]: en+=sum(w["durations"])+w["rest"]
-        t0=max(0,to_sec(st)-.12); t1=min(len(y)/sr,to_sec(en)+.18)
+        t0=max(0,to_sec(st)-.12)
+        actual_end=end_override.get(ph["id"],to_sec(en))
+        t1=min(len(y)/sr,actual_end+.18)
         seg=y[int(t0*sr):int(t1*sr)]
         p=td/f"{ph['id']}.wav"; sf.write(p,seg,sr)
         ss,_=model.transcribe(str(p),language="ru",beam_size=5,vad_filter=False,
