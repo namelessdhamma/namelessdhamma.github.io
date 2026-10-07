@@ -1,9 +1,9 @@
-name: A8 R02C Blue Sea Duel Action V5B
+name: A8 R02C Blue Sea Duel IK V6
 
 on:
   push:
     paths:
-      - '.github/workflows/a8-r02c-blue-sea-duel-action-v5b.yml'
+      - '.github/workflows/a8-r02c-blue-sea-duel-ik-v6.yml'
   workflow_dispatch:
 
 permissions:
@@ -18,14 +18,14 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq xvfb ffmpeg unzip git libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
-          mkdir -p /tmp/a8-r02c-v5b/bin /tmp/a8-r02c-v5b/src /tmp/a8-r02c-v5b/out
-          curl -L --fail --retry 3 -o /tmp/a8-r02c-v5b/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip
-          unzip -q /tmp/a8-r02c-v5b/godot.zip -d /tmp/a8-r02c-v5b/bin
-          chmod +x /tmp/a8-r02c-v5b/bin/Godot_v4.6-stable_linux.x86_64
+          mkdir -p /tmp/a8-r02c-v6/bin /tmp/a8-r02c-v6/src /tmp/a8-r02c-v6/out
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v6/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v6/godot.zip -d /tmp/a8-r02c-v6/bin
+          chmod +x /tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
 
       - name: Fetch exact Vitruvian source
         run: |
-          cd /tmp/a8-r02c-v5b/src
+          cd /tmp/a8-r02c-v6/src
           curl -L --fail --retry 3 -o vitruvian.zip https://github.com/ibrews/VitruvianGodot/archive/bdecdcd537b4031fdd0fb299b7e4f93f084fffa0.zip
           unzip -q vitruvian.zip
           mv VitruvianGodot-bdecdcd537b4031fdd0fb299b7e4f93f084fffa0 repo
@@ -33,26 +33,26 @@ jobs:
 
       - name: Write Blue Sea dual-human qualification scene
         run: |
-          PROJ=/tmp/a8-r02c-v5b/src/repo/godot_project
+          PROJ=/tmp/a8-r02c-v6/src/repo/godot_project
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('/tmp/a8-r02c-v5b/src/repo/godot_project/project.godot')
+          p=Path('/tmp/a8-r02c-v6/src/repo/godot_project/project.godot')
           s=p.read_text()
           s=s.replace('window/size/viewport_width=1280','window/size/viewport_width=960')
           s=s.replace('window/size/viewport_height=1280','window/size/viewport_height=540')
           s=s.replace('scaling_3d/scale=2.0','scaling_3d/scale=1.0')
           p.write_text(s)
           PY
-          cat > "$PROJ/scenes/blue_sea_duel_v5b.tscn" <<'EOF'
+          cat > "$PROJ/scenes/blue_sea_duel_v6.tscn" <<'EOF'
           [gd_scene load_steps=2 format=3]
 
-          [ext_resource type="Script" path="res://scenes/blue_sea_duel_v5b.gd" id="1"]
+          [ext_resource type="Script" path="res://scenes/blue_sea_duel_v6.gd" id="1"]
 
           [node name="BlueSeaDualHumanV4" type="Node3D"]
           script = ExtResource("1")
           EOF
 
-          cat > "$PROJ/scenes/blue_sea_duel_v5b.gd" <<'EOF'
+          cat > "$PROJ/scenes/blue_sea_duel_v6.gd" <<'EOF'
           extends Node3D
 
           const BODY_GLB := "res://vitruvian_body.glb"
@@ -83,8 +83,8 @@ jobs:
               var t := clampf(elapsed / SHOT_SECONDS,0.0,1.0)
               _pose(t)
               _rain_step(delta)
-              camera.position = Vector3(0.04 + sin(t*PI)*0.05,1.72 + sin(t*PI)*0.03,4.65-t*0.18)
-              camera.look_at(Vector3(0.04,1.18,0.0),Vector3.UP)
+              camera.position = Vector3(0.02 + sin(t*PI)*0.04,1.70 + sin(t*PI)*0.025,4.15-t*0.12)
+              camera.look_at(Vector3(0.02,1.20,0.0),Vector3.UP)
 
           func _find(n: Node, needle: String) -> Node:
               if n.name == needle:
@@ -186,7 +186,8 @@ jobs:
               var root:=Node3D.new()
               root.name=name
               root.position=pos
-              root.rotation_degrees.y = -68.0 if not flip else 68.0
+              # Imported Vitruvian faces +Z in Godot.  Left must face +X, right -X.
+              root.rotation_degrees.y = 90.0 if not flip else -90.0
               add_child(root)
 
               var body_scene:=load(BODY_GLB) as PackedScene
@@ -245,70 +246,98 @@ jobs:
                   for si in range(mi.mesh.get_surface_count()):
                       mi.set_surface_override_material(si,_mat_hair(hair_color))
 
-              var sword_att:=BoneAttachment3D.new()
-              skel.add_child(sword_att)
-              sword_att.bone_idx=skel.find_bone("mixamorig_RightHand")
-              var sp:=Node3D.new()
-              sp.position=Vector3(0,-0.18,0.02)
-              sp.rotation_degrees=Vector3(0,0,8 if not flip else -8)
-              sword_att.add_child(sp)
-              _box(sp,Vector3(0.035,1.45,0.025),Vector3(0,-0.72,0),_simple_mat(Color(0.52,0.60,0.70),0.08,0.95))
-              _box(sp,Vector3(0.28,0.035,0.055),Vector3(0,-0.02,0),_simple_mat(Color(0.30,0.17,0.07),0.30,0.2))
-
               if anim and anim.has_animation("Idle"):
                   anim.play("Idle")
                   anim.seek(0.0,true)
                   anim.pause()
-              var arm:=skel.find_bone("mixamorig_RightArm")
-              var fore:=skel.find_bone("mixamorig_RightForeArm")
-              var larm:=skel.find_bone("mixamorig_LeftArm")
-              var lfore:=skel.find_bone("mixamorig_LeftForeArm")
-              var spine:=skel.find_bone("mixamorig_Spine2")
+
+              var hand:=skel.find_bone("mixamorig_RightHand")
+              var ik:=SkeletonIK3D.new()
+              ik.name="RightArmIK"
+              skel.add_child(ik)
+              ik.root_bone=&"mixamorig_RightArm"
+              ik.tip_bone=&"mixamorig_RightHand"
+              ik.override_tip_basis=false
+              ik.use_magnet=true
+              ik.max_iterations=18
+              ik.min_distance=0.002
+              ik.influence=1.0
+
+              var sword:=_make_sword(name+"Sword")
               return {
                   "root":root,"skel":skel,"anim":anim,
-                  "arm":arm,"fore":fore,"larm":larm,"lfore":lfore,"spine":spine,
-                  "arm_rest":skel.get_bone_pose_rotation(arm) if arm>=0 else Quaternion.IDENTITY,
-                  "fore_rest":skel.get_bone_pose_rotation(fore) if fore>=0 else Quaternion.IDENTITY,
-                  "larm_rest":skel.get_bone_pose_rotation(larm) if larm>=0 else Quaternion.IDENTITY,
-                  "lfore_rest":skel.get_bone_pose_rotation(lfore) if lfore>=0 else Quaternion.IDENTITY,
-                  "spine_rest":skel.get_bone_pose_rotation(spine) if spine>=0 else Quaternion.IDENTITY
+                  "hand":hand,"ik":ik,"sword":sword,
+                  "attacker":not flip
               }
 
           func _pose(t: float) -> void:
-              var lx:=[-1.22,-1.14,-1.03,-0.89,-0.73,-0.58,-0.47,-0.39,-0.35]
-              var rx:=[1.16,1.12,1.06,0.98,0.89,0.80,0.73,0.68,0.64]
-              _drive(left,t,true,_sample(lx,t))
-              _drive(right,t,false,_sample(rx,t))
+              var lx:=[-1.30,-1.22,-1.11,-0.96,-0.78,-0.61,-0.49,-0.42,-0.38]
+              var rx:=[1.23,1.20,1.15,1.08,0.99,0.90,0.83,0.78,0.74]
+              _drive_ik(left,t,true,_sample(lx,t))
+              _drive_ik(right,t,false,_sample(rx,t))
 
           func _sample(a:Array,t:float)->float:
               var q:=clampf(t,0,1)*float(a.size()-1)
               var i:=mini(int(floor(q)),a.size()-2)
               return lerpf(float(a[i]),float(a[i+1]),q-float(i))
 
-          func _drive(ch:Dictionary,t:float,attacker:bool,x:float)->void:
-              if not ch.has("root") or not ch.has("skel"):
-                  return
+          func _make_sword(n:String)->Node3D:
+              var s:=Node3D.new()
+              s.name=n
+              add_child(s)
+              var steel:=_simple_mat(Color(0.62,0.70,0.78),0.10,0.92)
+              var leather:=_simple_mat(Color(0.16,0.07,0.025),0.58,0.04)
+              _box(s,Vector3(0.035,0.035,1.42),Vector3(0,0,-0.73),steel)
+              _box(s,Vector3(0.34,0.045,0.055),Vector3(0,0,-0.035),steel)
+              _box(s,Vector3(0.055,0.055,0.30),Vector3(0,0,0.16),leather)
+              return s
+
+          func _hand_world(ch:Dictionary)->Vector3:
+              var skel:=ch["skel"] as Skeleton3D
+              var hi:=int(ch["hand"])
+              if hi<0:
+                  return (ch["root"] as Node3D).global_position+Vector3(0,1.25,0)
+              var hp:=skel.get_bone_global_pose(hi)
+              return skel.global_transform * hp.origin
+
+          func _drive_ik(ch:Dictionary,t:float,attacker:bool,x:float)->void:
               var root:=ch["root"] as Node3D
               var skel:=ch["skel"] as Skeleton3D
               var anim:=ch["anim"] as AnimationPlayer
+              var ik:=ch["ik"] as SkeletonIK3D
+              var sword:=ch["sword"] as Node3D
+
               if anim and anim.has_animation("Idle"):
                   anim.seek(0.0,true)
                   anim.pause()
+
               root.position.x=x
-              root.position.z=(sin(t*PI)*0.11)*(1.0 if attacker else -0.45)
-              root.rotation_degrees.y=lerpf(-68.0,-61.0,t) if attacker else lerpf(68.0,76.0,t)
+              root.position.z=(sin(t*PI)*0.08)*(1.0 if attacker else -0.30)
+              root.rotation_degrees.y=lerpf(90.0,84.0,t) if attacker else lerpf(-90.0,-96.0,t)
 
-              var aa:=_sample([-0.20,-0.34,-0.52,-0.74,-0.98,-1.18,-1.30,-1.36,-1.40],t) if attacker else _sample([0.38,0.48,0.60,0.73,0.84,0.92,0.97,1.00,1.02],t)
-              var fa:=_sample([-0.48,-0.40,-0.30,-0.18,-0.08,-0.02,0.02,0.04,0.05],t) if attacker else _sample([0.22,0.30,0.40,0.50,0.58,0.63,0.67,0.70,0.72],t)
-              var la:=_sample([0.30,0.24,0.16,0.07,-0.03,-0.10,-0.15,-0.18,-0.20],t) if attacker else _sample([-0.12,-0.06,0.02,0.12,0.22,0.30,0.36,0.40,0.42],t)
-              var lf:=_sample([-0.28,-0.24,-0.18,-0.10,-0.02,0.04,0.08,0.10,0.12],t) if attacker else _sample([0.08,0.12,0.18,0.24,0.30,0.35,0.38,0.40,0.42],t)
-              var sa:=_sample([0.03,0.02,0.0,-0.04,-0.08,-0.12,-0.14,-0.15,-0.16],t) if attacker else _sample([-0.02,0.0,0.03,0.06,0.09,0.11,0.12,0.13,0.14],t)
+              var target_world:Vector3
+              var magnet_world:Vector3
+              var blade_target:Vector3
+              if attacker:
+                  # One controlled thrust: shoulder/hand extend toward the defender's upper torso.
+                  target_world=Vector3(lerpf(-0.58,0.34,t),lerpf(1.28,1.35,t),lerpf(0.26,0.05,t))
+                  magnet_world=root.global_position+Vector3(0.05,1.22,0.55)
+                  blade_target=Vector3((right["root"] as Node3D).global_position.x-0.08,1.34,0.02)
+              else:
+                  # Defensive parry rises into the thrust line while the body yields.
+                  target_world=Vector3(lerpf(0.72,0.39,t),lerpf(1.15,1.48,t),lerpf(0.28,0.10,t))
+                  magnet_world=root.global_position+Vector3(-0.03,1.25,0.55)
+                  blade_target=Vector3(lerpf(0.05,-0.18,t),lerpf(1.42,1.60,t),0.02)
 
-              if int(ch["arm"])>=0: skel.set_bone_pose_rotation(int(ch["arm"]),(ch["arm_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,aa))
-              if int(ch["fore"])>=0: skel.set_bone_pose_rotation(int(ch["fore"]),(ch["fore_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,fa))
-              if int(ch["larm"])>=0: skel.set_bone_pose_rotation(int(ch["larm"]),(ch["larm_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,la))
-              if int(ch["lfore"])>=0: skel.set_bone_pose_rotation(int(ch["lfore"]),(ch["lfore_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,lf))
-              if int(ch["spine"])>=0: skel.set_bone_pose_rotation(int(ch["spine"]),(ch["spine_rest"] as Quaternion)*Quaternion(Vector3.FORWARD,sa))
+              ik.target=Transform3D(Basis.IDENTITY,skel.to_local(target_world))
+              ik.magnet=skel.to_local(magnet_world)
+              ik.start(true)
+              skel.force_update_all_bone_transforms()
+
+              var hw:=_hand_world(ch)
+              sword.global_position=hw
+              if hw.distance_to(blade_target)>0.05:
+                  sword.look_at(blade_target,Vector3.UP)
 
           func _environment()->void:
               var sky_mat:=ProceduralSkyMaterial.new()
@@ -373,13 +402,13 @@ jobs:
 
           func _camera()->void:
               camera=Camera3D.new()
-              camera.fov=48.0
+              camera.fov=46.0
               camera.near=0.03
               camera.far=80.0
-              camera.position=Vector3(0.04,1.72,4.65)
+              camera.position=Vector3(0.02,1.70,4.15)
               camera.current=true
               add_child(camera)
-              camera.look_at(Vector3(0.04,1.18,0),Vector3.UP)
+              camera.look_at(Vector3(0.02,1.20,0),Vector3.UP)
               get_viewport().msaa_3d=Viewport.MSAA_4X
 
           func _rain()->void:
@@ -409,37 +438,37 @@ jobs:
 
       - name: Import assets
         run: |
-          GODOT=/tmp/a8-r02c-v5b/bin/Godot_v4.6-stable_linux.x86_64
-          PROJ=/tmp/a8-r02c-v5b/src/repo/godot_project
+          GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v6/src/repo/godot_project
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           "$GODOT" --headless --editor --path "$PROJ" --quit-after 8
 
       - name: Render Blue Sea dual-human shot
         run: |
-          GODOT=/tmp/a8-r02c-v5b/bin/Godot_v4.6-stable_linux.x86_64
-          PROJ=/tmp/a8-r02c-v5b/src/repo/godot_project
+          GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v6/src/repo/godot_project
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           cd "$PROJ"
           set -o pipefail
-          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v5b/out/blue-sea-duel-v5b.avi --fixed-fps 24 --quit-after 54 scenes/blue_sea_duel_v5b.tscn 2>&1 | tee /tmp/a8-r02c-v5b/out/godot.log
-          if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-r02c-v5b/out/godot.log; then echo "Godot runtime errors"; exit 1; fi
-          ffmpeg -y -v error -i /tmp/a8-r02c-v5b/out/blue-sea-duel-v5b.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v5b/out/blue-sea-duel-v5b.mp4
-          rm -f /tmp/a8-r02c-v5b/out/blue-sea-duel-v5b.avi
-          ffmpeg -y -v error -i /tmp/a8-r02c-v5b/out/blue-sea-duel-v5b.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v5b/out/F01.png
-          ffmpeg -y -v error -i /tmp/a8-r02c-v5b/out/blue-sea-duel-v5b.mp4 -vf "select='eq(n,26)'" -vframes 1 /tmp/a8-r02c-v5b/out/F05.png
-          ffmpeg -y -v error -i /tmp/a8-r02c-v5b/out/blue-sea-duel-v5b.mp4 -vf "select='eq(n,53)'" -vframes 1 /tmp/a8-r02c-v5b/out/F09.png
+          xvfb-run -a "$GODOT" --path . --rendering-method forward_plus --write-movie /tmp/a8-r02c-v6/out/blue-sea-duel-v6.avi --fixed-fps 24 --quit-after 54 scenes/blue_sea_duel_v6.tscn 2>&1 | tee /tmp/a8-r02c-v6/out/godot.log
+          if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-r02c-v6/out/godot.log; then echo "Godot runtime errors"; exit 1; fi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/blue-sea-duel-v6.avi -c:v libx264 -crf 15 -pix_fmt yuv420p /tmp/a8-r02c-v6/out/blue-sea-duel-v6.mp4
+          rm -f /tmp/a8-r02c-v6/out/blue-sea-duel-v6.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/blue-sea-duel-v6.mp4 -vf "select='eq(n,0)'" -vframes 1 /tmp/a8-r02c-v6/out/F01.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/blue-sea-duel-v6.mp4 -vf "select='eq(n,26)'" -vframes 1 /tmp/a8-r02c-v6/out/F05.png
+          ffmpeg -y -v error -i /tmp/a8-r02c-v6/out/blue-sea-duel-v6.mp4 -vf "select='eq(n,53)'" -vframes 1 /tmp/a8-r02c-v6/out/F09.png
 
-      - name: Verify V5B
+      - name: Verify V6
         run: |
-          cd /tmp/a8-r02c-v5b/out
-          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json blue-sea-duel-v5b.mp4 > ffprobe.json
-          ffmpeg -v error -i blue-sea-duel-v5b.mp4 -f framemd5 frames.framemd5
-          sha256sum blue-sea-duel-v5b.mp4 F01.png F05.png F09.png > sha256.txt
-          printf '{"route":"R02C","recipe":"BLUE_SEA_DUEL_ACTION_V5B","source":"VitruvianGodot exact commit bdecdcd537b4031fdd0fb299b7e4f93f084fffa0","godot":"4.6-stable","renderer":"forward_plus","resolution":"960x540","fps":24,"frames":54,"duration_s":2.25,"goal":"clean V4-derived nine-waypoint lunge with absolute bone poses and tighter side-on framing"}\n' > receipt.json
+          cd /tmp/a8-r02c-v6/out
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -show_entries format=duration,size -of json blue-sea-duel-v6.mp4 > ffprobe.json
+          ffmpeg -v error -i blue-sea-duel-v6.mp4 -f framemd5 frames.framemd5
+          sha256sum blue-sea-duel-v6.mp4 F01.png F05.png F09.png > sha256.txt
+          printf '{"route":"R02C","recipe":"BLUE_SEA_DUEL_IK_V6","source":"VitruvianGodot exact commit bdecdcd537b4031fdd0fb299b7e4f93f084fffa0","godot":"4.6-stable","renderer":"forward_plus","resolution":"960x540","fps":24,"frames":54,"duration_s":2.25,"goal":"correct imported facing axes + SkeletonIK3D hand targets + world-aligned swords for readable single-lunge confrontation"}\n' > receipt.json
 
-      - name: Upload V4
+      - name: Upload V6
         uses: actions/upload-artifact@v4
         with:
-          name: a8-r02c-blue-sea-duel-action-v5b
-          path: /tmp/a8-r02c-v5b/out
+          name: a8-r02c-blue-sea-duel-ik-v6
+          path: /tmp/a8-r02c-v6/out
           retention-days: 7
