@@ -61,7 +61,7 @@ jobs:
           lab={'version':'BRL1_BOUNDARY_LAB','title':'BRL1 z-boundary lab','bpm':108,
                'ticks_per_beat':src['ticks_per_beat'],'bars':4,'phrases':[p],
                'target_text':'взирали сквозь друг друга в давний год'}
-          pathlib.Path('brl1-lab/score-whole.json').write_text(json.dumps(lab,ensure_ascii=False,indent=2))          PY
+          pathlib.Path('brl1-lab/score-whole.json').write_text(json.dumps(lab,ensure_ascii=False,indent=2))\n          PY
 
       - name: Prepare OpenUtau and Awata
         shell: bash
