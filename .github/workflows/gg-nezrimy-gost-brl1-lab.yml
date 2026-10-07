@@ -58,22 +58,32 @@ jobs:
           src=json.loads(pathlib.Path('docs/gg/songs/ne-s-nim-d1-full-v3.json').read_text())
           p=copy.deepcopy(next(x for x in src['phrases'] if x['id']=='brl1'))
           p['bar']=0; p['offset']=240
-          def make(tag,durs,sep=False):
+          def emit(tag, words):
               q=copy.deepcopy(p)
-              wz=next(w for w in q['words'] if w['text']=='взирали')
-              assert sum(wz['durations'])==960
-              wz['durations']=durs
-              if sep:
-                  wp=next(w for w in q['words'] if w['text']=='в')
-                  assert wp['durations']==[240]
-                  wp['durations']=[120]; wp['rest']=120
-              lab={'version':'BRL1_LAB','title':'BRL1 micro lab '+tag,'bpm':108,'ticks_per_beat':src['ticks_per_beat'],'bars':4,
-                   'phrases':[q],'target_text':' '.join(w['text'] for w in q['words'])}
+              q['words']=words
+              lab={'version':'BRL1_LAB_2','title':'BRL1 lexical phonemization lab '+tag,'bpm':108,
+                   'ticks_per_beat':src['ticks_per_beat'],'bars':4,'phrases':[q],
+                   'target_text':'взирали сквозь друг друга в давний год'}
               pathlib.Path(f'brl1-lab/score-{tag}.json').write_text(json.dumps(lab,ensure_ascii=False,indent=2))
-          make('d360',[360,360,240],False)
-          make('d480',[480,240,240],False)
-          make('d360-r120',[360,360,240],True)
-          make('d480-r120',[480,240,240],True)
+          base=copy.deepcopy(p['words'])
+          # Variant A: preserve the word as-is.
+          emit('whole',copy.deepcopy(base))
+          # Variant B: split the first word into lexical «в» + «зирали», preserving
+          # the same three notes, total 960 ticks and exact melodic contour.
+          split=copy.deepcopy(base)
+          first=split.pop(0)
+          assert first['text']=='взирали' and first['pitches']==[60,60,59] and sum(first['durations'])==960
+          v={'text':'в','pitches':[60],'durations':[180],'stress':0,'rest':0}
+          z={'text':'зирали','pitches':[60,59],'durations':[300,480],'stress':0,'rest':first['rest']}
+          split=[v,z]+split
+          emit('split-v-zirali',split)
+          # Variant C: slightly longer standalone «в», still preserving total time.
+          split2=copy.deepcopy(base)
+          first=split2.pop(0)
+          v2={'text':'в','pitches':[60],'durations':[240],'stress':0,'rest':0}
+          z2={'text':'зирали','pitches':[60,59],'durations':[300,420],'stress':0,'rest':first['rest']}
+          split2=[v2,z2]+split2
+          emit('split-v240-zirali',split2)
           PY
 
       - name: Prepare OpenUtau and Awata
@@ -153,10 +163,9 @@ jobs:
             wav="$(find "$out" -name '*OPENUTAU_RU_QC.wav' -print -quit)"
             test -s "$wav"; cp "$wav" "$GITHUB_WORKSPACE/brl1-lab/$tag.wav"
           }
-          render_one D360 brl1-lab/score-d360.json 0
-          render_one D480 brl1-lab/score-d480.json 0
-          render_one D360_R120 brl1-lab/score-d360-r120.json 0
-          render_one D480_R120 brl1-lab/score-d480-r120.json 0
+          render_one WHOLE brl1-lab/score-whole.json 0
+          render_one SPLIT_V brl1-lab/score-split-v-zirali.json 0
+          render_one SPLIT_V240 brl1-lab/score-split-v240-zirali.json 0
 
       - name: ASR select BRL1 winner
         shell: bash
@@ -172,7 +181,7 @@ jobs:
               s=s.lower().replace('ё','е'); s=re.sub(r'[^а-я0-9 ]+',' ',s); return re.sub(r'\s+',' ',s).strip()
           model=WhisperModel('small',device='cpu',compute_type='int8')
           rows=[]
-          for tag in ['D360','D480','D360_R120','D480_R120']:
+          for tag in ['WHOLE','SPLIT_V','SPLIT_V240']:
               segs,_=model.transcribe(f'brl1-lab/{tag}.wav',language='ru',beam_size=5,vad_filter=False,condition_on_previous_text=False,temperature=0.0)
               txt=' '.join(s.text.strip() for s in list(segs)).strip()
               rows.append({'tag':tag,'transcript':txt,'wer':float(wer(norm(target),norm(txt))),'cer':float(cer(norm(target),norm(txt)))})
