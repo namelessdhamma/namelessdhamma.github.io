@@ -1,0 +1,206 @@
+name: GG Nezrimy Gost BRL1 Phone Lab
+
+on:
+  push:
+    branches:
+      - compute/gg-nezrimy-gost-brl1-phone-lab-20261007
+    paths:
+      - '.github/workflows/gg-nezrimy-gost-brl1-phone-lab.yml'
+      - '.nd-labs/gg-songs/GGNeSNimD1FullTest.cs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gg-nezrimy-gost-brl1-phone-lab
+  cancel-in-progress: true
+
+jobs:
+  brl1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap action prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install lab runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends git unzip ffmpeg build-essential libsndfile1 libportaudio2 patchelf libicu-dev
+          python -m pip install -q requests numpy soundfile faster-whisper==1.1.1 jiwer==3.0.4 pyyaml
+
+      - name: Build one-phrase score
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p brl1-lab
+          python - <<'PY'
+          import copy,json,pathlib
+          src=json.loads(pathlib.Path('docs/gg/songs/ne-s-nim-d1-full-v3.json').read_text())
+          p=copy.deepcopy(next(x for x in src['phrases'] if x['id']=='brl1'))
+          p['bar']=0; p['offset']=240
+          lab={
+            'version':'D1R5_BRL1_PHONE_LAB_1','title':'Незримый гость — brl1 phone lab',
+            'bpm':108,'ticks_per_beat':src['ticks_per_beat'],'bars':4,
+            'phrases':[p],
+            'target_text':' '.join(w['text'] for w in p['words'])
+          }
+          pathlib.Path('brl1-lab/score.json').write_text(json.dumps(lab,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Prepare OpenUtau and Awata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
+          x=p.read_text()
+          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
+              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
+          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGNeSNimD1FullTest.cs" />\n  </ItemGroup>\n'
+          if 'GGNeSNimD1FullTest.cs' not in x:
+              x=x.replace('</Project>', item+'</Project>')
+          p.write_text(x)
+          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
+          PY
+          mkdir -p /tmp/openutau/OpenUtau.Test/Core/DiffSinger
+          cp .nd-labs/gg-songs/GGNeSNimD1FullTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGNeSNimD1FullTest.cs
+
+          curl -fL --retry 3 -o /tmp/awata.zip https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          mkdir -p /tmp/awata
+          unzip -q /tmp/awata.zip -d /tmp/awata
+          bank="$(find /tmp/awata -type f -name dsconfig.yaml -printf '%h\n' | head -n1)"
+          test -n "$bank"
+          if [ ! -f "$bank/character.txt" ]; then
+            printf 'name=Awata Weak\nauthor=hhskt\nvoice=Awata Weak\n' > "$bank/character.txt"
+          fi
+          echo "AWATA_BANK=$bank" >> "$GITHUB_ENV"
+
+      - name: Install EZV
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,urllib.request,zipfile,yaml,shutil,os
+          bank=pathlib.Path(os.environ['AWATA_BANK']); dst=bank/'dsvocoder'
+          arc=pathlib.Path('/tmp/ezv.oudep')
+          arc.write_bytes(urllib.request.urlopen('https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep',timeout=300).read())
+          dst.mkdir(exist_ok=True)
+          with zipfile.ZipFile(arc) as z:
+              names={n.replace('\\','/'):n for n in z.namelist()}
+              cfg=next(n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml')
+              data=z.read(names[cfg]); model=yaml.safe_load(data)['model']
+              m=next(n for n in names if n.split('/')[-1]==model)
+              (dst/'vocoder.yaml').write_bytes(data)
+              with z.open(names[m]) as inf,(dst/model).open('wb') as out: shutil.copyfileobj(inf,out,1024*1024)
+          PY
+
+      - name: Build once
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/openutau
+          dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
+
+      - name: Render BRL1 timing variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/brl1-lab/guides"
+          cd /tmp/openutau
+          for spec in \
+            BASE:0:0 \
+            V40:-40:0 \
+            V60:-60:0 \
+            V80:-80:0 \
+            V100:-100:0 \
+            V60G40:-60:-40 \
+            V80G40:-80:-40 \
+            V80G60:-80:-60
+          do
+            IFS=: read tag vo go <<< "$spec"
+            out="$GITHUB_WORKSPACE/brl1-lab/render-$tag"
+            mkdir -p "$out"
+            OPENUTAU_TEST_SINGERS="$AWATA_BANK" \
+            GG_VFS_OUT="$out" \
+            GG_VFS_TAG="BRL1_$tag" \
+            GG_VFS_SPEAKER_HINT="Mature" \
+            GG_VFS_VARIANT="shared_d1" \
+            GG_D1_GUIDE_PROFILE="articulation" \
+            GG_D1_IGNORE_TEMPO_MAP="1" \
+            GG_VFS_STEPS="56" \
+            GG_VFS_L_OFFSET_TICKS="0" \
+            GG_D1_BRL1_V_OFFSET_TICKS="$vo" \
+            GG_D1_BRL1_G_OFFSET_TICKS="$go" \
+            GG_SHARED_SCORE="$GITHUB_WORKSPACE/brl1-lab/score.json" \
+            dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj --configuration Release --no-build --filter RenderNeSNimD1Full
+            wav="$(find "$out" -name '*OPENUTAU_RU_QC.wav' -print -quit)"
+            cp "$wav" "$GITHUB_WORKSPACE/brl1-lab/guides/$tag.wav"
+          done
+
+      - name: Rank BRL1 variants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re
+          from faster_whisper import WhisperModel
+          from jiwer import wer,cer
+          target='взирали сквозь друг друга в давний год'
+          def norm(s):
+              s=s.lower().replace('ё','е');s=re.sub(r'[^а-я0-9 ]+',' ',s);return re.sub(r'\s+',' ',s).strip()
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          rows=[]
+          for p in sorted(pathlib.Path('brl1-lab/guides').glob('*.wav')):
+              ss,_=model.transcribe(str(p),language='ru',beam_size=5,vad_filter=False,condition_on_previous_text=False,temperature=0.0)
+              txt=' '.join(x.text.strip() for x in list(ss)).strip()
+              nt,nr=norm(target),norm(txt)
+              rows.append({'tag':p.stem,'transcript':txt,'wer':float(wer(nt,nr)),'cer':float(cer(nt,nr))})
+          rows.sort(key=lambda x:(x['cer'],x['wer']))
+          result={'target':target,'winner':rows[0],'variants':rows,'status':'PASS' if rows[0]['cer']<=0.15 else 'REJECT'}
+          pathlib.Path('brl1-lab/qa.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-nezrimy-gost-brl1-phone-lab
+          path: |
+            brl1-lab/score.json
+            brl1-lab/guides/*.wav
+            brl1-lab/render-*/*manifest.txt
+            brl1-lab/qa.json
+          retention-days: 14
+
+      - name: Gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,sys
+          j=json.load(open('brl1-lab/qa.json'))
+          print(j)
+          sys.exit(0 if j['status']=='PASS' else 2)
+          PY
