@@ -25,6 +25,7 @@ def main():
     y=np.asarray(y,dtype=np.float32); score=json.loads(pathlib.Path(a.score).read_text())
     tpb=score["ticks_per_beat"]; bar=tpb*4; to_sec=converter(score)
     section_first={"v1l1","c1l1","v2l1","c2l1","brl1","finl1","codal1"}
+    semantic=set(score.get("d1r5",{}).get("semantic_accent_words",[]))
     rows=[]
     for ph in score["phrases"]:
         st_tick=ph["bar"]*bar+ph["offset"]; en_tick=st_tick
@@ -45,11 +46,32 @@ def main():
         release=min(seglen,max(1,int(0.20*sr)))
         tail=np.linspace(1.0,10**(-4.5/20),release,dtype=np.float32)
         env[-release:]=np.minimum(env[-release:],tail)
+
+        # Semantic Expression stays separate from Voice Identity: a small,
+        # deterministic post-RVC gain emphasis around the stressed syllable.
+        # It never shifts lexical stress, pitch or score timing.
+        p=st_tick
+        accents=[]
+        for w in ph["words"]:
+            ds=w["durations"]; stress=int(w["stress"])
+            stress_tick=p+sum(ds[:stress])
+            stress_dur=ds[stress]
+            if w["text"] in semantic:
+                center=to_sec(stress_tick+stress_dur//2)-st
+                ci=int(center*sr)
+                radius=max(1,int(0.16*sr))
+                lo=max(0,ci-radius); hi=min(seglen,ci+radius+1)
+                if hi>lo:
+                    x=np.linspace(-1,1,hi-lo,dtype=np.float32)
+                    bump=1.0+(10**(1.8/20)-1.0)*np.exp(-3.2*x*x)
+                    env[lo:hi]*=bump
+                    accents.append({"word":w["text"],"center_s":float(center),"gain_db":1.8})
+            p+=sum(ds)+int(w["rest"])
         before=float(np.sqrt(np.mean(y[a0:b0]**2)+1e-12))
         y[a0:b0]*=env
         after=float(np.sqrt(np.mean(y[a0:b0]**2)+1e-12))
         rows.append({"id":ph["id"],"start":st,"end":en,"section_open":ph["id"] in section_first,
-                     "rms_before":before,"rms_after":after})
+                     "semantic_accents":accents,"rms_before":before,"rms_after":after})
     peak=float(np.max(np.abs(y))) if len(y) else 0.0
     if peak>0.985: y*=0.985/peak
     sf.write(a.output,y,sr,subtype="PCM_24")
