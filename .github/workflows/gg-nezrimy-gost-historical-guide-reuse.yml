@@ -1,0 +1,82 @@
+name: GG Nezrimy Gost Historical Guide Reuse
+
+on:
+  push:
+    branches:
+      - compute/gg-nezrimy-gost-guide-lab-20261007
+    paths:
+      - '.github/workflows/gg-nezrimy-gost-historical-guide-reuse.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  historical-guide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: python -m pip install -q requests numpy soundfile faster-whisper==1.1.1 jiwer==3.0.4
+      - name: Download proven D1R4 guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p hist/phrases
+          curl -fL --retry 3 -o hist/GUIDE_D1_R1_REPAIRED.wav \
+            'https://cdn.creativeclaw.co/u/3ce53768/audio/c796eeb5-dba2-4277-859a-b409d1119658.wav'
+      - name: Slice and ASR chorus phrases
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re,tempfile
+          import soundfile as sf
+          from faster_whisper import WhisperModel
+          from jiwer import wer,cer
+          score=json.loads(pathlib.Path('docs/gg/songs/ne-s-nim-d1-full-v3.json').read_text())
+          y,sr=sf.read('hist/GUIDE_D1_R1_REPAIRED.wav')
+          if getattr(y,'ndim',1)>1:y=y.mean(axis=1)
+          tpb=score['ticks_per_beat']; BAR=tpb*4; tick_sec=60.0/score['bpm']/tpb
+          ids=['c1l2','c1l4','c2l2','c2l4','brl1']
+          by={p['id']:p for p in score['phrases']}
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          def norm(s):
+              s=s.lower().replace('ё','е');s=re.sub(r'[^а-я0-9 ]+',' ',s);return re.sub(r'\s+',' ',s).strip()
+          rows=[]
+          for pid in ids:
+              ph=by[pid]; st=ph['bar']*BAR+ph['offset']; en=st
+              for w in ph['words']: en+=sum(w['durations'])+w['rest']
+              t0=max(0,st*tick_sec-.12); t1=min(len(y)/sr,en*tick_sec+.18)
+              seg=y[int(t0*sr):int(t1*sr)]
+              out=pathlib.Path('hist/phrases')/f'{pid}.wav'; sf.write(out,seg,sr,subtype='PCM_24')
+              ss,_=model.transcribe(str(out),language='ru',beam_size=5,vad_filter=False,condition_on_previous_text=False,temperature=0.0)
+              txt=' '.join(x.text.strip() for x in list(ss)).strip()
+              target=' '.join(w['text'] for w in ph['words']); nt,nr=norm(target),norm(txt)
+              rows.append({'id':pid,'target':target,'transcript':txt,'wer':float(wer(nt,nr)),'cer':float(cer(nt,nr)),
+                           'start':t0,'end':t1})
+          pathlib.Path('hist/report.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+          print(json.dumps(rows,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-nezrimy-gost-historical-guide-reuse
+          path: |
+            hist/report.json
+            hist/phrases/*.wav
+          retention-days: 14
+      - name: Gate reusable chorus
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,sys
+          j=json.load(open('hist/report.json'))
+          chorus=[x for x in j if x['id'].startswith('c')]
+          bad=[x for x in chorus if x['cer']>.20]
+          print('CHORUS_REUSE',[(x['id'],round(x['cer'],3),x['transcript']) for x in chorus])
+          sys.exit(0 if not bad else 2)
+          PY
