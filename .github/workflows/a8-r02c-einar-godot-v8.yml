@@ -104,9 +104,118 @@ jobs:
           bpy.context.scene.render.engine='BLENDER_EEVEE'
           bpy.ops.file.find_missing_files(directory='/tmp/a8-einar-v8/src/einar/textures')
 
-          # Background-safe inventory. Avoid UI-dependent selection operators entirely.
-          exportable=[o for o in objs if o.type in {'MESH','ARMATURE','CURVE','CURVES'}]
+          # Build an intentionally narrow HUMAN-only export subset.
+          # The official Einar file contains robot-arm/turntable/tool geometry with UDIM
+          # materials that are irrelevant to Blue Sea and break Blender 3.6 glTF packing.
+          mechanical_terms=('robot','arm_guard','hyd_','hose','zip_tie','anchor','pipe_wrench','tool_prop','turntable','helper','dummy')
+          exportable=[]
+          excluded=[]
+          for o in objs:
+              if o.type not in {'MESH','ARMATURE','CURVE','CURVES'}:
+                  continue
+              key=o.name.lower()
+              if any(t in key for t in mechanical_terms):
+                  excluded.append({'name':o.name,'type':o.type,'reason':'mechanical_or_helper'})
+                  continue
+              exportable.append(o)
           info['selected_exportable']=[{'name':o.name,'type':o.type} for o in exportable]
+          info['excluded_objects']=excluded
+
+          # Godot-safe material bridge made only from ordinary, non-UDIM official Einar textures.
+          TEX='/tmp/a8-einar-v8/src/einar/textures'
+          def find_tex(rel):
+              p=os.path.join(TEX,rel)
+              return p if os.path.exists(p) else None
+
+          def load_image(rel, noncolor=False):
+              p=find_tex(rel)
+              if not p:
+                  return None
+              img=bpy.data.images.load(p, check_existing=True)
+              if getattr(img,'source',None)=='TILED':
+                  raise RuntimeError('SAFE_TEXTURE_UNEXPECTED_UDIM:'+p)
+              if noncolor:
+                  try: img.colorspace_settings.name='Non-Color'
+                  except: pass
+              return img
+
+          def make_pbr(name, base=(0.5,0.5,0.5,1), color_tex=None, rough=0.6, rough_tex=None, normal_tex=None, metallic=0.0):
+              m=bpy.data.materials.get(name) or bpy.data.materials.new(name)
+              m.use_nodes=True
+              nt=m.node_tree
+              nt.nodes.clear()
+              out=nt.nodes.new('ShaderNodeOutputMaterial')
+              bs=nt.nodes.new('ShaderNodeBsdfPrincipled')
+              bs.inputs['Base Color'].default_value=base
+              bs.inputs['Roughness'].default_value=rough
+              bs.inputs['Metallic'].default_value=metallic
+              nt.links.new(bs.outputs['BSDF'],out.inputs['Surface'])
+              if color_tex:
+                  img=load_image(color_tex,False)
+                  if img:
+                      n=nt.nodes.new('ShaderNodeTexImage');n.image=img
+                      nt.links.new(n.outputs['Color'],bs.inputs['Base Color'])
+              if rough_tex:
+                  img=load_image(rough_tex,True)
+                  if img:
+                      n=nt.nodes.new('ShaderNodeTexImage');n.image=img
+                      nt.links.new(n.outputs['Color'],bs.inputs['Roughness'])
+              if normal_tex:
+                  img=load_image(normal_tex,True)
+                  if img:
+                      n=nt.nodes.new('ShaderNodeTexImage');n.image=img
+                      nm=nt.nodes.new('ShaderNodeNormalMap')
+                      nt.links.new(n.outputs['Color'],nm.inputs['Color'])
+                      nt.links.new(nm.outputs['Normal'],bs.inputs['Normal'])
+              return m
+
+          safe_skin=make_pbr('A8_EINAR_SKIN',(0.72,0.50,0.40,1),'face/einar_skin.albedo.tif',0.48,'face/einar_skin.roughness.tif')
+          safe_eye=make_pbr('A8_EINAR_EYE',(0.22,0.16,0.11,1),'face/eyes.albedo.tif',0.18)
+          safe_hair=make_pbr('A8_EINAR_HAIR',(0.10,0.055,0.025,1),'einar.hair.color.tif',0.72)
+          safe_cloth=make_pbr('A8_EINAR_CLOTH',(0.12,0.15,0.18,1),'einar.clothing.color_base.tif',0.68,None,'einar.clothing.normal_base.tif')
+          safe_dark=make_pbr('A8_EINAR_DARK',(0.055,0.060,0.070,1),None,0.72)
+          safe_metal=make_pbr('A8_EINAR_METAL',(0.16,0.18,0.21,1),None,0.28,None,None,0.72)
+
+          assignments={}
+          for o in exportable:
+              if o.type!='MESH':
+                  continue
+              old_names=[m.name if m else '' for m in o.data.materials]
+              key=(o.name+' '+' '.join(old_names)).lower()
+              if any(t in key for t in ('eye','iris','sclera','cornea')):
+                  chosen=safe_eye
+              elif any(t in key for t in ('hair','beard','brow','lash')):
+                  chosen=safe_hair
+              elif any(t in key for t in ('cloth','clothing','shirt','sweater','pants','trouser','boot','shoe','jacket','vest','sock')):
+                  chosen=safe_cloth
+              elif any(t in key for t in ('metal','buckle','button','zipper')):
+                  chosen=safe_metal
+              elif any(t in key for t in ('skin','face','head','body','ear','neck','hand','finger','arm','leg','foot','einar')):
+                  chosen=safe_skin
+              else:
+                  chosen=safe_dark
+              if len(o.data.materials)==0:
+                  o.data.materials.append(chosen)
+              else:
+                  for i in range(len(o.data.materials)):
+                      o.data.materials[i]=chosen
+              assignments[o.name]={'from':old_names,'to':chosen.name}
+          info['safe_material_assignments']=assignments
+
+          # Direct object selection works in background mode; avoid bpy.ops.object.select_all.
+          for o in bpy.context.view_layer.objects:
+              try: o.select_set(False)
+              except: pass
+          selected=[]
+          for o in exportable:
+              try:
+                  o.hide_viewport=False
+                  o.hide_render=False
+                  o.select_set(True)
+                  selected.append(o.name)
+              except Exception as e:
+                  excluded.append({'name':o.name,'type':o.type,'reason':'selection:'+str(e)})
+          info['selected_in_view_layer']=selected
 
           # Bounding box in world space, useful for downstream auto-camera.
           pts=[]
@@ -119,15 +228,18 @@ jobs:
               mx=Vector((max(p.x for p in pts),max(p.y for p in pts),max(p.z for p in pts)))
               info['bounds_world']={'min':list(mn),'max':list(mx),'size':list(mx-mn),'center':list((mn+mx)*0.5)}
 
-          with open(os.path.join(OUT,'blender-inventory.json'),'w') as f:
-              json.dump(info,f,indent=2)
+          with open(os.path.join(OUT,'blender-inventory.json'),'w') as fh:
+              json.dump(info,fh,indent=2)
+          print('EINAR_TARGET_COLLECTION=',target.name)
+          print('EINAR_EXPORTABLE_COUNT=',len(exportable),'SELECTED=',len(selected),'EXCLUDED=',len(excluded))
+          print(json.dumps(info,indent=2)[:30000])
 
-          # Export. glTF cannot reproduce every Blender procedural shader/hair feature;
-          # that loss is itself part of this qualification.
+          # First transfer probe deliberately disables morph export. The question here is
+          # whether high-quality geometry + ordinary PBR textures survive Blender -> Godot.
           bpy.ops.export_scene.gltf(
               filepath=os.path.join(OUT,'einar-godot.glb'),
               export_format='GLB',
-              use_selection=False,
+              use_selection=True,
               export_apply=True,
               export_texcoords=True,
               export_normals=True,
@@ -137,19 +249,20 @@ jobs:
               export_cameras=False,
               export_lights=False,
               export_skins=True,
-              export_morph=True,
+              export_morph=False,
               export_animations=False,
               export_yup=True,
           )
           glb=os.path.join(OUT,'einar-godot.glb')
           assert os.path.exists(glb) and os.path.getsize(glb)>1000000
           print('EINAR_EXPORT_BYTES=',os.path.getsize(glb))
-          print(json.dumps(info,indent=2)[:30000])
           PY
           BLENDER=$(find /tmp/a8-einar-v8/bin -maxdepth 2 -type f -name blender | head -n1)
           cd /tmp/a8-einar-v8/src/einar
           "$BLENDER" --background --enable-autoexec einar_release_v1.blend --python /tmp/a8-einar-v8/src/inspect_export.py 2>&1 | tee /tmp/a8-einar-v8/out/blender.log
-          test $(stat -c%s /tmp/a8-einar-v8/out/einar-godot.glb) -gt 1000000
+          test -f /tmp/a8-einar-v8/out/einar-godot.glb
+          GLB_BYTES=$(stat -c%s /tmp/a8-einar-v8/out/einar-godot.glb)
+          test "$GLB_BYTES" -gt 1000000
           sha256sum /tmp/a8-einar-v8/out/einar-godot.glb > /tmp/a8-einar-v8/out/einar-godot.sha256
 
       - name: Install Godot 4.6
