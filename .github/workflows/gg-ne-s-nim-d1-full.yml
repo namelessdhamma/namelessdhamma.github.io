@@ -10,8 +10,8 @@ on:
       - '.nd-labs/gg-songs/GGNeSNimD1FullTest.cs'
       - 'tools/gg_ne_s_nim_d1_full_arrange.py'
       - 'tools/gg_audio_qa.py'
-      - 'tools/gg_d1r5_phrase_repair.py'
-      - 'tools/gg_d1r5_guide_identity_repair.py'
+      - 'tools/gg_d1r5_guide_gate.py'
+      - 'tools/gg_d1r5_rvc_variant_select.py'
       - 'tools/gg_d1r5_vfs_envelope.py'
   workflow_dispatch:
 
@@ -38,10 +38,6 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends curl ca-certificates
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -65,9 +61,9 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             git unzip ffmpeg fluidsynth fluid-soundfont-gm build-essential \
-            libsndfile1 libportaudio2 patchelf libicu-dev
+            libsndfile1 libportaudio2
           python -m pip install -q \
-            mido numpy scipy soundfile librosa==0.10.2.post1 pyyaml \
+            mido numpy scipy soundfile librosa==0.10.2.post1 pyyaml requests \
             faster-whisper==1.1.1 jiwer==3.0.4
 
       - name: Verify Drive-authoritative D1 projection
@@ -116,128 +112,73 @@ jobs:
             docs/gg/songs/ne-s-nim-d1-full-v3.json \
             "$GITHUB_WORKSPACE/song/arrangement"
 
-      - name: Prepare OpenUtau and Awata
-        shell: bash
-        run: |
-          set -euo pipefail
-          git clone --depth 1 https://github.com/openutau/OpenUtau.git /tmp/openutau
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p=Path('/tmp/openutau/OpenUtau.Test/OpenUtau.Test.csproj')
-          x=p.read_text()
-          if '<EnableDefaultCompileItems>false</EnableDefaultCompileItems>' not in x:
-              x=x.replace('<PropertyGroup>', '<PropertyGroup>\n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>', 1)
-          item='  <ItemGroup>\n    <Compile Include="Core/DiffSinger/GGNeSNimD1FullTest.cs" />\n  </ItemGroup>\n'
-          if 'GGNeSNimD1FullTest.cs' not in x:
-              x=x.replace('</Project>', item+'</Project>')
-          p.write_text(x)
-          Path('/tmp/openutau/global.json').write_text(json.dumps({'test':{'runner':'Microsoft.Testing.Platform'}},indent=2))
-          PY
-          mkdir -p /tmp/openutau/OpenUtau.Test/Core/DiffSinger
-          cp .nd-labs/gg-songs/GGNeSNimD1FullTest.cs /tmp/openutau/OpenUtau.Test/Core/DiffSinger/GGNeSNimD1FullTest.cs
-
-          curl -fL --retry 3 -o /tmp/awata.zip \
-            https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
-          mkdir -p /tmp/awata
-          unzip -q /tmp/awata.zip -d /tmp/awata
-          bank="$(find /tmp/awata -type f -name dsconfig.yaml -printf '%h\n' | head -n1)"
-          test -n "$bank"
-          if [ ! -f "$bank/character.txt" ]; then
-            printf 'name=Awata Weak\nauthor=hhskt\nvoice=Awata Weak\n' > "$bank/character.txt"
-          fi
-          echo "AWATA_BANK=$bank" >> "$GITHUB_ENV"
-
-      - name: Install EZV
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import pathlib,urllib.request,zipfile,yaml,shutil,os
-          bank=pathlib.Path(os.environ['AWATA_BANK']); dst=bank/'dsvocoder'
-          if not (dst/'vocoder.yaml').exists():
-              arc=pathlib.Path('/tmp/ezv.oudep')
-              arc.write_bytes(urllib.request.urlopen(
-                  'https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep',
-                  timeout=300).read())
-              dst.mkdir(exist_ok=True)
-              with zipfile.ZipFile(arc) as z:
-                  names={n.replace('\\','/'):n for n in z.namelist()}
-                  cfg=next(n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml')
-                  data=z.read(names[cfg]); model=yaml.safe_load(data)['model']
-                  m=next(n for n in names if n.split('/')[-1]==model)
-                  (dst/'vocoder.yaml').write_bytes(data)
-                  with z.open(names[m]) as inf,(dst/model).open('wb') as out:
-                      shutil.copyfileobj(inf,out,1024*1024)
-          PY
-
-      - name: Render clean vocal guide from same shared score
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd /tmp/openutau
-          dotnet build OpenUtau.Test/OpenUtau.Test.csproj --configuration Release
-          mkdir -p "$GITHUB_WORKSPACE/song/vocal"
-          OPENUTAU_TEST_SINGERS="$AWATA_BANK" \
-          GG_VFS_OUT="$GITHUB_WORKSPACE/song/vocal" \
-          GG_VFS_TAG="NE_S_NIM_D1_FULL_GUIDE" \
-          GG_VFS_SPEAKER_HINT="Mature" \
-          GG_VFS_VARIANT="shared_d1" \
-          GG_VFS_STEPS="64" \
-          GG_VFS_L_OFFSET_TICKS="-60" \
-          GG_SHARED_SCORE="$GITHUB_WORKSPACE/docs/gg/songs/ne-s-nim-d1-full-v3.json" \
-          dotnet test --project OpenUtau.Test/OpenUtau.Test.csproj \
-            --configuration Release --no-build --filter RenderNeSNimD1Full
-          guide="$(find "$GITHUB_WORKSPACE/song/vocal" -name '*OPENUTAU_RU_QC.wav' -print -quit)"
-          test -s "$guide"
-          cp "$guide" "$GITHUB_WORKSPACE/song/vocal/00_GUIDE_D1.wav"
-
-      - name: Repair degraded identical guide repetitions
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp song/vocal/00_GUIDE_D1.wav song/vocal/00_GUIDE_D1_RAW.wav
-          python tools/gg_d1r5_guide_identity_repair.py \
-            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
-            --input song/vocal/00_GUIDE_D1_RAW.wav \
-            --output song/vocal/00_GUIDE_D1.wav \
-            --report song/guide-identity-repair.json
-
-      - name: Render D North Star
+      - name: Fetch qualified D1R5E clean guide
         shell: bash
         env:
-          GG_APPLIO_CACHE_DIR: \${{ github.workspace }}/.gg-applio-cache
-          GG_RVC_MODEL_CACHE_DIR: \${{ github.workspace }}/.gg-rvc-model-cache
+          GUIDE_URL: 'https://sdmntpraustraliaeast.oaiusercontent.com/files/00000000-16d8-81fa-873b-e08fa89924d4/raw?se=2026-10-07T03%3A34%3A30Z&sp=r&sv=2026-02-06&sr=b&scid=0c62358e-833c-5ce8-bc34-634b76745a8f&skoid=f8b66c09-1aa0-4801-9884-173c5cef2b8c&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-10-07T03%3A15%3A04Z&ske=2026-10-08T03%3A15%3A04Z&sks=b&skv=2026-02-06&sig=0224ZK5F%2FVSg3SjdOkjbuI9ixhh6UZrI2pB01x1ULr8%3D'
+        run: |
+          set -euo pipefail
+          mkdir -p song/vocal
+          curl -fL --retry 4 --retry-delay 2 "$GUIDE_URL" -o song/vocal/00_GUIDE_D1.wav
+          test -s song/vocal/00_GUIDE_D1.wav
+          ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 song/vocal/00_GUIDE_D1.wav
+
+      - name: Strict clean-guide gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/gg_d1r5_guide_gate.py \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            --guide song/vocal/00_GUIDE_D1.wav \
+            --out song/qa-guide-pre-rvc.json \
+            --threshold 0.20
+
+      - name: Render D RVC protect bank
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
         run: |
           set -euo pipefail
           python - <<'PY'
-          import pathlib,runpy,subprocess
-          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_shared_d1')
-          work=pathlib.Path('/tmp/applio-d1'); work.mkdir(exist_ok=True)
+          import pathlib,runpy,subprocess,json
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_shared_d1r5e')
+          work=pathlib.Path('/tmp/applio-d1r5e'); work.mkdir(exist_ok=True)
           root,vpy,rt=ns['ensure_applio_runtime'](work)
           model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
           guide=pathlib.Path('song/vocal/00_GUIDE_D1.wav').resolve()
-          out=pathlib.Path('song/vocal/D_D1_RAW.wav').resolve()
-          code="import os,sys; root,source,out,model,index=sys.argv[1:6]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,volume_envelope=1.0,protect=0.30,f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
-          p=subprocess.run([str(vpy),'-c',code,str(root),str(guide),str(out),str(model),str(index)],
-                           cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=2400)
-          print(p.stdout[-12000:])
-          if p.returncode or not out.exists() or out.stat().st_size==0:
-              raise SystemExit('Applio D1 full failed')
+          protects=[0.20,0.30,0.40,0.50]
+          rows=[]
+          for protect in protects:
+              tag=f"p{int(round(protect*100)):03d}"
+              out=pathlib.Path(f'song/vocal/D_{tag}.wav').resolve()
+              code="import os,sys; root,source,out,model,index,protect=sys.argv[1:7]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,volume_envelope=1.0,protect=float(protect),f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
+              p=subprocess.run([str(vpy),'-c',code,str(root),str(guide),str(out),str(model),str(index),str(protect)],
+                               cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=2400)
+              print(f"=== {tag} protect={protect} ===\n"+p.stdout[-8000:])
+              if p.returncode or not out.exists() or out.stat().st_size==0:
+                  raise SystemExit(f'Applio D1R5E failed for {tag}')
+              rows.append({'tag':tag,'protect':protect,'path':str(out)})
+          pathlib.Path('song/rvc-bank.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
           PY
 
-      - name: Phrase-local diction repair search
+      - name: Phrase-wise RVC selector
         shell: bash
         run: |
           set +e
-          python tools/gg_d1r5_phrase_repair.py \
+          python tools/gg_d1r5_rvc_variant_select.py \
             --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
             --guide song/vocal/00_GUIDE_D1.wav \
-            --raw-d song/vocal/D_D1_RAW.wav \
-            --out song/vocal/D_D1_REPAIRED.wav \
-            --report song/diction-repair.json \
+            --candidate p020=song/vocal/D_p020.wav \
+            --candidate p030=song/vocal/D_p030.wav \
+            --candidate p040=song/vocal/D_p040.wav \
+            --candidate p050=song/vocal/D_p050.wav \
+            --output song/vocal/D_D1_REPAIRED.wav \
+            --report song/rvc-selection.json \
             --threshold 0.20
-          echo "phrase_repair_exit=$?" >> "$GITHUB_ENV"
+          code=$?
+          echo "rvc_select_exit=$code" >> "$GITHUB_ENV"
+          test -s song/vocal/D_D1_REPAIRED.wav
           exit 0
 
       - name: Render Voice-from-Silence envelope on D vocal
@@ -261,10 +202,10 @@ jobs:
           ffmpeg -y -v error \
             -i song/arrangement/instrumental.wav \
             -i song/vocal/D_D1_MIX.wav \
-            -filter_complex "[0:a]volume=1.06[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-7dB:ratio=1.20:attack=28:release=230,alimiter=limit=0.96,loudnorm=I=-15.8:LRA=12:TP=-1.0[out]" \
-            -map "[out]" -ar 48000 -c:a pcm_s24le song/master/NEZRIMY_GOST_D1R5.wav
-          ffmpeg -y -v error -i song/master/NEZRIMY_GOST_D1R5.wav \
-            -codec:a libmp3lame -b:a 320k song/master/NEZRIMY_GOST_D1R5.mp3
+            -filter_complex "[0:a]volume=1.12[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-7dB:ratio=1.20:attack=28:release=230,alimiter=limit=0.96,loudnorm=I=-15.8:LRA=12:TP=-1.0[out]" \
+            -map "[out]" -ar 48000 -c:a pcm_s24le song/master/NEZRIMY_GOST_D1R5E.wav
+          ffmpeg -y -v error -i song/master/NEZRIMY_GOST_D1R5E.wav \
+            -codec:a libmp3lame -b:a 320k song/master/NEZRIMY_GOST_D1R5E.mp3
 
       - name: Rendered-audio QA
         shell: bash
@@ -275,7 +216,7 @@ jobs:
             --instrumental song/arrangement/instrumental.wav \
             --drums song/arrangement/processed/drums.wav \
             --riff song/arrangement/processed/riff.wav \
-            --master song/master/NEZRIMY_GOST_D1R5.wav \
+            --master song/master/NEZRIMY_GOST_D1R5E.wav \
             --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
             --bpm 108 \
             --out song/qa-audio.json
@@ -367,7 +308,10 @@ jobs:
           aq=json.loads(pathlib.Path('song/qa-audio.json').read_text())
           gd=json.loads(pathlib.Path('song/qa-asr-guide.json').read_text())
           dd=json.loads(pathlib.Path('song/qa-asr-d.json').read_text())
+          import os
           failures=list(aq.get('failures',[]))
+          if os.environ.get('rvc_select_exit','0')!='0':
+              failures.append('rvc_phrase_selector')
 
           # Repeated chorus must remain the same musical/textual object acoustically.
           def by_id(obj,prefix):
@@ -396,7 +340,7 @@ jobs:
             'asr_guide':gd,
             'asr_d':dd,
             'failures':failures,
-            'gate_version':'D1R5D'
+            'gate_version':'D1R5E'
           }
           pathlib.Path('song/qualification.json').write_text(
               json.dumps(result,ensure_ascii=False,indent=2))
@@ -411,12 +355,15 @@ jobs:
           path: |
             song/master/
             song/vocal/00_GUIDE_D1.wav
-            song/vocal/00_GUIDE_D1_RAW.wav
-            song/guide-identity-repair.json
+            song/qa-guide-pre-rvc.json
+            song/vocal/D_p020.wav
+            song/vocal/D_p030.wav
+            song/vocal/D_p040.wav
+            song/vocal/D_p050.wav
+            song/rvc-bank.json
+            song/rvc-selection.json
             song/vocal/D_D1_FCPE_IDX050.wav
             song/vocal/D_D1_REPAIRED.wav
-            song/vocal/D_D1_RAW.wav
-            song/diction-repair.json
             song/vfs-envelope.json
             song/arrangement/instrumental.mp3
             song/arrangement/processed/riff.wav
@@ -425,5 +372,5 @@ jobs:
             song/qa-asr-guide.json
             song/qa-asr-d.json
             song/qualification.json
-          retention-days: 7
+          retention-days: 14
           if-no-files-found: warn
