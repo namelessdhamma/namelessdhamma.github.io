@@ -139,23 +139,31 @@ jobs:
               return m
 
           mats={
-            'skin':pbr('A8V9_SKIN',(0.72,0.50,0.40,1),0.42,color=tex['skin_color'],roughmap=tex['skin_rough'],normal=tex['skin_normal']),
-            'eye':pbr('A8V9_EYE',(0.38,0.26,0.15,1),0.16,color=tex['eye_color']),
-            'hair':pbr('A8V9_HAIR',(0.055,0.025,0.012,1),0.58,color=tex['hair_color'],roughmap=tex['hair_rough'],alpha=True),
-            'cloth':pbr('A8V9_CLOTH',(0.10,0.13,0.16,1),0.62,color=tex['cloth_color'],roughmap=tex['cloth_rough'],normal=tex['cloth_normal']),
-            'mouth':pbr('A8V9_MOUTH',(0.34,0.08,0.06,1),0.44),
-            'teeth':pbr('A8V9_TEETH',(0.72,0.67,0.56,1),0.34),
-            'dark':pbr('A8V9_DARK',(0.045,0.05,0.06,1),0.62),
+            'skin':pbr('A8V92_SKIN',(0.72,0.50,0.40,1),0.52,color=tex['skin_color'],roughmap=tex['skin_rough'],normal=tex['skin_normal']),
+            'iris':pbr('A8V92_IRIS',(0.18,0.11,0.055,1),0.16,color=tex['eye_color']),
+            'pupil':pbr('A8V92_PUPIL',(0.006,0.006,0.006,1),0.10,color=tex['eye_color']),
+            'sclera':pbr('A8V92_SCLERA',(0.78,0.73,0.66,1),0.28,color=tex['eye_color']),
+            'cornea':pbr('A8V92_CORNEA',(0.92,0.97,1.0,0.08),0.035,alpha=True),
+            'meniscus':pbr('A8V92_MENISCUS',(0.72,0.86,0.94,0.18),0.05,alpha=True),
+            'hair':pbr('A8V92_HAIR',(0.055,0.025,0.012,1),0.50,color=tex['hair_color'],roughmap=tex['hair_rough'],alpha=True),
+            'cloth':pbr('A8V92_CLOTH',(0.10,0.13,0.16,1),0.62,color=tex['cloth_color'],roughmap=tex['cloth_rough'],normal=tex['cloth_normal']),
+            'mouth':pbr('A8V92_MOUTH',(0.34,0.08,0.06,1),0.46),
+            'gums':pbr('A8V92_GUMS',(0.30,0.055,0.05,1),0.42),
+            'teeth':pbr('A8V92_TEETH',(0.72,0.67,0.56,1),0.34),
+            'dark':pbr('A8V92_DARK',(0.045,0.05,0.06,1),0.62),
           }
+          mats['cornea'].blend_method='BLEND'
+          mats['meniscus'].blend_method='BLEND'
 
           names=[
             'GEO-einar_head',
             'GEO-eye.L','GEO-eye.R','GEO-eye.cornea.L','GEO-eye.cornea.R',
             'GEO-eye.meniscus.L','GEO-eye.meniscus.R',
             'GEO-eye.plica_semilunaris.L','GEO-eye.plica_semilunaris.R',
+            'GEO-einar_eyelash_surfdef',
             'GEO-einar_tongue','GEO-einar_teeth_upper','GEO-einar_teeth_lower',
-            'GEO-einar_hair_preview','GEO-einar_eyebrows_preview','GEO-einar_beard_preview','GEO-einar_stache_preview',
-            'GEO-einar_hat','GEO-einar_sweater','GEO-einar_jacket_main','GEO-einar_jacket_collar1','GEO-einar_jacket_collar2'
+            'GEO-einar_hair_preview','GEO-einar_eyebrows_preview',
+            'GEO-einar_sweater','GEO-einar_jacket_main','GEO-einar_jacket_collar1','GEO-einar_jacket_collar2'
           ]
           chosen=[]
           missing=[]
@@ -168,28 +176,56 @@ jobs:
           print('V9_CHOSEN=',[o.name for o in chosen])
           print('V9_MISSING=',missing)
 
+          def choose_slot(obj_name,old_name):
+              key=(obj_name+' '+old_name).lower()
+              if 'einar.skin' in key or obj_name=='GEO-einar_head': return mats['skin']
+              if 'pupil' in key: return mats['pupil']
+              if 'iris' in key: return mats['iris']
+              if 'white' in key: return mats['sclera']
+              if 'cornea' in key or 'eyes_shell' in key: return mats['cornea']
+              if 'meniscus' in key: return mats['meniscus']
+              if 'plica' in key: return mats['gums']
+              if any(k in key for k in ('hair_preview','eyebrows_preview','eyelash','hair_mesh')): return mats['hair']
+              if 'tongue' in key: return mats['mouth']
+              if 'gum' in key: return mats['gums']
+              if 'teeth' in key: return mats['teeth']
+              if any(k in key for k in ('sweater','jacket','cloth','fabric')): return mats['cloth']
+              return mats['dark']
+
+          # Preserve each semantic surface instead of replacing all slots on an object with one material.
           for o in chosen:
-              key=o.name.lower()
               old=[m.name if m else '' for m in o.data.materials]
-              if 'head' in key:
-                  mat=mats['skin']
-              elif 'eye.' in key or 'cornea' in key or 'meniscus' in key or 'plica' in key:
-                  mat=mats['eye']
-              elif any(k in key for k in ('hair_preview','eyebrows_preview','beard_preview','stache_preview')):
-                  mat=mats['hair']
-              elif 'tongue' in key:
-                  mat=mats['mouth']
-              elif 'teeth' in key:
-                  mat=mats['teeth']
-              elif any(k in key for k in ('sweater','jacket','hat')):
-                  mat=mats['cloth']
+              if len(o.data.materials)==0:
+                  o.data.materials.append(choose_slot(o.name,''))
               else:
-                  mat=mats['dark']
-              if len(o.data.materials)==0: o.data.materials.append(mat)
-              else:
-                  for i in range(len(o.data.materials)): o.data.materials[i]=mat
+                  for i in range(len(o.data.materials)):
+                      o.data.materials[i]=choose_slot(o.name,old[i])
               o.hide_viewport=False; o.hide_render=False
-              print('MAT',o.name,old,'=>',mat.name)
+              print('MAT92',o.name,old,'=>',[m.name if m else '' for m in o.data.materials])
+
+          # Bake the evaluated current hero state into clean static meshes so subdivision,
+          # corrective/surface-deform and geometry-node results survive the fidelity gate.
+          clean=bpy.data.collections.new('A8_V92_HERO_SNAPSHOT')
+          bpy.context.scene.collection.children.link(clean)
+          dg=bpy.context.evaluated_depsgraph_get()
+          snapshots=[]
+          snap_fail=[]
+          for src in chosen:
+              try:
+                  ev=src.evaluated_get(dg)
+                  me=bpy.data.meshes.new_from_object(ev,preserve_all_data_layers=True,depsgraph=dg)
+                  if me is None or len(me.polygons)==0:
+                      snap_fail.append({'name':src.name,'reason':'no_polygons'})
+                      continue
+                  ob=bpy.data.objects.new('A8V92_'+src.name,me)
+                  ob.matrix_world=src.matrix_world.copy()
+                  clean.objects.link(ob)
+                  snapshots.append(ob)
+              except Exception as e:
+                  snap_fail.append({'name':src.name,'reason':repr(e)})
+          print('V92_SNAPSHOT=',[(o.name,len(o.data.polygons)) for o in snapshots])
+          print('V92_SNAPSHOT_FAIL=',snap_fail)
+          chosen=snapshots
 
           for o in bpy.context.view_layer.objects:
               try:o.select_set(False)
@@ -197,16 +233,15 @@ jobs:
           selected=[]
           for o in chosen:
               try:
-                  o.hide_set(False)
-                  o.select_set(True)
+                  o.hide_set(False);o.hide_viewport=False;o.hide_render=False;o.select_set(True)
                   selected.append(o.name)
               except Exception as e:
                   print('SELECT_FAIL',o.name,e)
-          assert 'GEO-einar_head' in selected
-          assert 'GEO-einar_hair_preview' in selected
-          assert 'GEO-einar_eyebrows_preview' in selected
+          assert any('GEO-einar_head' in n for n in selected)
+          assert any('GEO-einar_hair_preview' in n for n in selected)
+          assert any('GEO-einar_eyebrows_preview' in n for n in selected)
 
-          inv={'textures':tex,'selected':selected,'missing':missing}
+          inv={'textures':tex,'selected':selected,'missing':missing,'snapshot_fail':snap_fail,'snapshot_polys':{o.name:len(o.data.polygons) for o in snapshots}}
           json.dump(inv,open(OUT+'/v9-inventory.json','w'),indent=2)
 
           bpy.ops.export_scene.gltf(
@@ -322,23 +357,29 @@ jobs:
           func _tune_materials(n:Node):
               if n is MeshInstance3D:
                   var mi:=n as MeshInstance3D
-                  for i in range(mi.get_surface_override_material_count()):
-                      pass
                   if mi.mesh:
                       for i in range(mi.mesh.get_surface_count()):
                           var m:=mi.get_active_material(i)
                           if m is StandardMaterial3D:
                               var sm:=m as StandardMaterial3D
                               var nm:=sm.resource_name
-                              if "A8V9_SKIN" in nm:
-                                  sm.roughness=0.42
-                                  sm.set("subsurf_scatter_enabled",true)
-                                  sm.set("subsurf_scatter_strength",0.18)
-                              elif "A8V9_EYE" in nm:
-                                  sm.roughness=0.12
-                              elif "A8V9_HAIR" in nm:
-                                  sm.roughness=0.54
+                              if "A8V92_SKIN" in nm:
+                                  sm.roughness=0.50
+                                  sm.metallic_specular=0.28
+                                  sm.subsurf_scatter_enabled=true
+                                  sm.subsurf_scatter_skin_mode=true
+                                  sm.subsurf_scatter_strength=0.11
+                              elif "A8V92_IRIS" in nm or "A8V92_PUPIL" in nm:
+                                  sm.roughness=0.11
+                              elif "A8V92_SCLERA" in nm:
+                                  sm.roughness=0.24
+                              elif "A8V92_CORNEA" in nm or "A8V92_MENISCUS" in nm:
+                                  sm.roughness=0.035
+                                  sm.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+                              elif "A8V92_HAIR" in nm:
+                                  sm.roughness=0.50
                                   sm.cull_mode=BaseMaterial3D.CULL_DISABLED
+                                  sm.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA_HASH
               for c in n.get_children(): _tune_materials(c)
 
           func _env():
@@ -409,13 +450,13 @@ jobs:
           inv=json.load(open('/tmp/a8-einar-v9/out/v9-inventory.json'))
           receipt={
             'route':'R02C',
-            'recipe':'EINAR_V9_1_HEAD_BOUNDS_HERO_CAMERA',
+            'recipe':'EINAR_V9_2_EVALUATED_SEMANTIC_MATERIALS',
             'source':'official Blender Studio Einar v1',
             'source_license':'CC-BY',
             'source_archive_sha256':'3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7',
             'selected_objects':inv['selected'],
             'texture_map':inv['textures'],
-            'goal':'preserve face/hair/PBR fidelity and qualify true head-centered hero framing across 8 azimuths in Godot Forward+',
+            'goal':'bake evaluated Einar hero geometry and preserve semantic skin/hair/eye surfaces for cinematic Godot fidelity',
             'glb_bytes':os.path.getsize('/tmp/a8-einar-v9/out/einar-hero-v9.glb')
           }
           json.dump(receipt,open('/tmp/a8-einar-v9/out/receipt.json','w'),indent=2)
