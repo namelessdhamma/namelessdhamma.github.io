@@ -80,7 +80,8 @@ jobs:
               {'text':'не','pitches':[65],'durations':[180],'stress':0,'rest':60},
               {'text':'зримый','pitches':[67,64],'durations':[480,240],'stress':0,'rest':word['rest']}
           ]
-          emit('split-ne180-r60-zrimyi',split2)\n          PY
+          emit('split-ne180-r60-zrimyi',split2)
+          PY
 
       - name: Prepare OpenUtau and Awata
         shell: bash
