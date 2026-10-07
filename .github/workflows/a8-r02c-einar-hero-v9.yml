@@ -105,7 +105,7 @@ jobs:
                   except: pass
               return im
 
-          def pbr(name,base,rough,metal=0.0,color=None,roughmap=None,normal=None,alpha=False):
+          def pbr(name,base,rough,metal=0.0,color=None,roughmap=None,normal=None,alpha=False,color_texture_weight=1.0):
               m=bpy.data.materials.get(name) or bpy.data.materials.new(name)
               m.use_nodes=True
               m.diffuse_color=base
@@ -126,7 +126,15 @@ jobs:
               ci=img(color,False)
               if ci:
                   n=nt.nodes.new('ShaderNodeTexImage'); n.image=ci
-                  nt.links.new(n.outputs['Color'],bs.inputs['Base Color'])
+                  if color_texture_weight < 0.999:
+                      mix=nt.nodes.new('ShaderNodeMixRGB')
+                      mix.blend_type='MIX'
+                      mix.inputs[0].default_value=1.0-max(0.0,min(1.0,color_texture_weight))
+                      mix.inputs[2].default_value=base
+                      nt.links.new(n.outputs['Color'],mix.inputs[1])
+                      nt.links.new(mix.outputs['Color'],bs.inputs['Base Color'])
+                  else:
+                      nt.links.new(n.outputs['Color'],bs.inputs['Base Color'])
                   if alpha and 'Alpha' in n.outputs and 'Alpha' in bs.inputs:
                       nt.links.new(n.outputs['Alpha'],bs.inputs['Alpha'])
               ri=img(roughmap,True)
@@ -146,18 +154,18 @@ jobs:
               return m
 
           mats={
-            'skin':pbr('A8V94_SKIN',(0.72,0.50,0.40,1),0.52,color=tex['skin_color'],roughmap=tex['skin_rough'],normal=tex['skin_normal']),
-            'iris':pbr('A8V94_IRIS',(0.16,0.075,0.028,1),0.22),
-            'pupil':pbr('A8V94_PUPIL',(0.004,0.004,0.004,1),0.18),
-            'sclera':pbr('A8V94_SCLERA',(0.72,0.67,0.60,1),0.34),
-            'cornea':pbr('A8V94_CORNEA',(0.92,0.97,1.0,0.08),0.035,alpha=True),
-            'meniscus':pbr('A8V94_MENISCUS',(0.72,0.86,0.94,0.18),0.05,alpha=True),
-            'hair':pbr('A8V94_HAIR',(0.028,0.011,0.004,1),0.56),
-            'cloth':pbr('A8V94_CLOTH',(0.10,0.13,0.16,1),0.62,color=tex['cloth_color'],roughmap=tex['cloth_rough'],normal=tex['cloth_normal']),
-            'mouth':pbr('A8V94_MOUTH',(0.34,0.08,0.06,1),0.46),
-            'gums':pbr('A8V94_GUMS',(0.30,0.055,0.05,1),0.42),
-            'teeth':pbr('A8V94_TEETH',(0.72,0.67,0.56,1),0.34),
-            'dark':pbr('A8V94_DARK',(0.045,0.05,0.06,1),0.62),
+            'skin':pbr('A8V95_SKIN',(0.68,0.46,0.36,1),0.54,color=tex['skin_color'],normal=tex['skin_normal'],color_texture_weight=0.28),
+            'iris':pbr('A8V95_IRIS',(0.16,0.075,0.028,1),0.22),
+            'pupil':pbr('A8V95_PUPIL',(0.004,0.004,0.004,1),0.18),
+            'sclera':pbr('A8V95_SCLERA',(0.72,0.67,0.60,1),0.34),
+            'cornea':pbr('A8V95_CORNEA',(0.92,0.97,1.0,0.08),0.035,alpha=True),
+            'meniscus':pbr('A8V95_MENISCUS',(0.72,0.86,0.94,0.18),0.05,alpha=True),
+            'hair':pbr('A8V95_HAIR',(0.028,0.011,0.004,1),0.56),
+            'cloth':pbr('A8V95_CLOTH',(0.10,0.13,0.16,1),0.62,color=tex['cloth_color'],roughmap=tex['cloth_rough'],normal=tex['cloth_normal']),
+            'mouth':pbr('A8V95_MOUTH',(0.34,0.08,0.06,1),0.46),
+            'gums':pbr('A8V95_GUMS',(0.30,0.055,0.05,1),0.42),
+            'teeth':pbr('A8V95_TEETH',(0.72,0.67,0.56,1),0.34),
+            'dark':pbr('A8V95_DARK',(0.045,0.05,0.06,1),0.62),
           }
           mats['cornea'].blend_method='BLEND'
           mats['meniscus'].blend_method='BLEND'
@@ -169,7 +177,6 @@ jobs:
             'GEO-eye.plica_semilunaris.L','GEO-eye.plica_semilunaris.R',
             'GEO-einar_eyelash_surfdef',
             'GEO-einar_tongue','GEO-einar_teeth_upper','GEO-einar_teeth_lower',
-            'GEO-einar_hair_preview','GEO-einar_eyebrows_preview',
             'GEO-einar_sweater','GEO-einar_jacket_main','GEO-einar_jacket_collar1','GEO-einar_jacket_collar2'
           ]
           chosen=[]
@@ -192,7 +199,7 @@ jobs:
               if 'cornea' in key or 'eyes_shell' in key: return mats['cornea']
               if 'meniscus' in key: return mats['meniscus']
               if 'plica' in key: return mats['gums']
-              if any(k in key for k in ('hair_preview','eyebrows_preview','eyelash','hair_mesh')): return mats['hair']
+              if any(k in key for k in ('eyelash','hair_mesh')): return mats['hair']
               if 'tongue' in key: return mats['mouth']
               if 'gum' in key: return mats['gums']
               if 'teeth' in key: return mats['teeth']
@@ -237,7 +244,7 @@ jobs:
 
           # Bake the evaluated current hero state into clean static meshes so subdivision,
           # corrective/surface-deform and geometry-node results survive the fidelity gate.
-          clean=bpy.data.collections.new('A8_V94_HERO_SNAPSHOT')
+          clean=bpy.data.collections.new('A8_V95_HERO_SNAPSHOT')
           bpy.context.scene.collection.children.link(clean)
           dg=bpy.context.evaluated_depsgraph_get()
           snapshots=[]
@@ -249,14 +256,14 @@ jobs:
                   if me is None or len(me.polygons)==0:
                       snap_fail.append({'name':src.name,'reason':'no_polygons'})
                       continue
-                  ob=bpy.data.objects.new('A8V94_'+src.name,me)
+                  ob=bpy.data.objects.new('A8V95_'+src.name,me)
                   ob.matrix_world=src.matrix_world.copy()
                   clean.objects.link(ob)
                   snapshots.append(ob)
               except Exception as e:
                   snap_fail.append({'name':src.name,'reason':repr(e)})
-          print('V94_SNAPSHOT=',[(o.name,len(o.data.polygons)) for o in snapshots])
-          print('V94_SNAPSHOT_FAIL=',snap_fail)
+          print('V95_SNAPSHOT=',[(o.name,len(o.data.polygons)) for o in snapshots])
+          print('V95_SNAPSHOT_FAIL=',snap_fail)
           for ob in snapshots:
               if ob.type=='MESH':
                   for p in ob.data.polygons: p.use_smooth=True
@@ -269,14 +276,84 @@ jobs:
                       bpy.context.view_layer.objects.active=ob
                       for q in bpy.context.selected_objects: q.select_set(False)
                       ob.select_set(True)
-                      sub=ob.modifiers.new('A8V94_CatmullClark','SUBSURF')
+                      sub=ob.modifiers.new('A8V95_CatmullClark','SUBSURF')
                       sub.subdivision_type='CATMULL_CLARK'
                       sub.levels=2
                       sub.render_levels=2
                       bpy.ops.object.modifier_apply(modifier=sub.name)
               head_snap=next((o for o in snapshots if 'GEO-einar_head' in o.name),None)
-              print('V94_MANUAL_SUBDIV_APPLIED=',len(head_snap.data.polygons) if head_snap else -1)
-          assert head_snap is not None and len(head_snap.data.polygons)>=30000, 'V94_HEAD_NOT_HIGH_DETAIL:'+str(len(head_snap.data.polygons) if head_snap else -1)
+              print('V95_MANUAL_SUBDIV_APPLIED=',len(head_snap.data.polygons) if head_snap else -1)
+          assert head_snap is not None and len(head_snap.data.polygons)>=30000, 'V95_HEAD_NOT_HIGH_DETAIL:'+str(len(head_snap.data.polygons) if head_snap else -1)
+
+          # Convert Einar's real hair CURVES to thin exportable strand meshes.
+          # This replaces the blocky *_preview meshes used in V9.1-V9.4.
+          hair_specs=[
+              ('GEO-einar_hair',0.00042,3),
+              ('GEO-einar_eyebrows',0.00024,3),
+              ('GEO-einar_beard',0.00028,3),
+              ('GEO-einar_mustache',0.00026,3),
+              ('GEO-einar_eyelashes',0.00016,3),
+          ]
+          hair_report=[]
+          hair_fail=[]
+          def curve_strands(src_name,radius,resolution):
+              src=bpy.data.objects.get(src_name)
+              if src is None or src.type!='CURVES':
+                  hair_fail.append({'name':src_name,'reason':'missing_or_not_CURVES'})
+                  return None
+              try:
+                  curve_count=len(src.data.curves)
+              except: curve_count=-1
+              try:
+                  point_count=len(src.data.points)
+              except: point_count=-1
+              dup=src.copy()
+              dup.data=src.data.copy()
+              dup.name='A8V95_SRC_'+src_name
+              clean.objects.link(dup)
+              dup.hide_viewport=False; dup.hide_render=False
+              for mod in dup.modifiers:
+                  mod.show_viewport=True; mod.show_render=True
+
+              ng=bpy.data.node_groups.new('A8V95_GN_'+src_name,'GeometryNodeTree')
+              ng.inputs.new('NodeSocketGeometry','Geometry')
+              ng.outputs.new('NodeSocketGeometry','Geometry')
+              ni=ng.nodes.new('NodeGroupInput')
+              no=ng.nodes.new('NodeGroupOutput')
+              circle=ng.nodes.new('GeometryNodeCurvePrimitiveCircle')
+              circle.inputs['Resolution'].default_value=resolution
+              circle.inputs['Radius'].default_value=radius
+              ctm=ng.nodes.new('GeometryNodeCurveToMesh')
+              ng.links.new(ni.outputs['Geometry'],ctm.inputs['Curve'])
+              ng.links.new(circle.outputs['Curve'],ctm.inputs['Profile Curve'])
+              ng.links.new(ctm.outputs['Mesh'],no.inputs['Geometry'])
+              mod=dup.modifiers.new('A8V95_CurveToMesh','NODES')
+              mod.node_group=ng
+              bpy.context.view_layer.update()
+              ev=dup.evaluated_get(dg)
+              me=bpy.data.meshes.new_from_object(ev,preserve_all_data_layers=True,depsgraph=dg)
+              if me is None or len(me.polygons)==0:
+                  hair_fail.append({'name':src_name,'reason':'curve_to_mesh_no_polygons','curves':curve_count,'points':point_count})
+                  return None
+              ob=bpy.data.objects.new('A8V95_STRANDS_'+src_name,me)
+              ob.matrix_world=src.matrix_world.copy()
+              clean.objects.link(ob)
+              if len(ob.data.materials)==0: ob.data.materials.append(mats['hair'])
+              else:
+                  for mi in range(len(ob.data.materials)): ob.data.materials[mi]=mats['hair']
+              for p in ob.data.polygons: p.use_smooth=True
+              hair_report.append({'name':src_name,'curves':curve_count,'points':point_count,'polys':len(me.polygons),'radius':radius})
+              return ob
+
+          for hn,hr,hres in hair_specs:
+              ho=curve_strands(hn,hr,hres)
+              if ho is not None:
+                  snapshots.append(ho)
+
+          print('V95_HAIR_REPORT=',json.dumps(hair_report,indent=2))
+          print('V95_HAIR_FAIL=',json.dumps(hair_fail,indent=2))
+          assert any(r['name']=='GEO-einar_hair' and r['polys']>0 for r in hair_report), 'V95_MAIN_HAIR_CURVES_CONVERSION_FAILED'
+          assert any(r['name']=='GEO-einar_eyebrows' and r['polys']>0 for r in hair_report), 'V95_BROW_CURVES_CONVERSION_FAILED'
           chosen=snapshots
 
           for o in bpy.context.view_layer.objects:
@@ -290,10 +367,10 @@ jobs:
               except Exception as e:
                   print('SELECT_FAIL',o.name,e)
           assert any('GEO-einar_head' in n for n in selected)
-          assert any('GEO-einar_hair_preview' in n for n in selected)
-          assert any('GEO-einar_eyebrows_preview' in n for n in selected)
+          assert any('A8V95_STRANDS_GEO-einar_hair' in n for n in selected)
+          assert any('A8V95_STRANDS_GEO-einar_eyebrows' in n for n in selected)
 
-          inv={'textures':tex,'selected':selected,'missing':missing,'snapshot_fail':snap_fail,'snapshot_polys':{o.name:len(o.data.polygons) for o in snapshots},'modifier_report':modifier_report}
+          inv={'textures':tex,'selected':selected,'missing':missing,'snapshot_fail':snap_fail,'snapshot_polys':{o.name:len(o.data.polygons) for o in snapshots},'modifier_report':modifier_report,'hair_report':hair_report,'hair_fail':hair_fail}
           json.dump(inv,open(OUT+'/v9-inventory.json','w'),indent=2)
 
           bpy.ops.export_scene.gltf(
@@ -415,21 +492,21 @@ jobs:
                           if m is StandardMaterial3D:
                               var sm:=m as StandardMaterial3D
                               var nm:=sm.resource_name
-                              if "A8V94_SKIN" in nm:
-                                  sm.roughness=0.50
-                                  sm.metallic_specular=0.16
+                              if "A8V95_SKIN" in nm:
+                                  sm.roughness=0.54
+                                  sm.metallic_specular=0.10
                                   sm.subsurf_scatter_enabled=true
                                   sm.subsurf_scatter_skin_mode=true
-                                  sm.subsurf_scatter_strength=0.11
-                              elif "A8V94_IRIS" in nm or "A8V94_PUPIL" in nm:
+                                  sm.subsurf_scatter_strength=0.09
+                              elif "A8V95_IRIS" in nm or "A8V95_PUPIL" in nm:
                                   sm.roughness=0.11
-                              elif "A8V94_SCLERA" in nm:
+                              elif "A8V95_SCLERA" in nm:
                                   sm.roughness=0.24
-                              elif "A8V94_CORNEA" in nm or "A8V94_MENISCUS" in nm:
+                              elif "A8V95_CORNEA" in nm or "A8V95_MENISCUS" in nm:
                                   sm.roughness=0.035
                                   sm.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-                              elif "A8V94_HAIR" in nm:
-                                  sm.roughness=0.56
+                              elif "A8V95_HAIR" in nm:
+                                  sm.roughness=0.52
                                   sm.cull_mode=BaseMaterial3D.CULL_DISABLED
               for c in n.get_children(): _tune_materials(c)
 
@@ -501,13 +578,13 @@ jobs:
           inv=json.load(open('/tmp/a8-einar-v9/out/v9-inventory.json'))
           receipt={
             'route':'R02C',
-            'recipe':'EINAR_V9_4_HIGH_DETAIL_TRANSFER',
+            'recipe':'EINAR_V9_5_REAL_CURVES_GROOM',
             'source':'official Blender Studio Einar v1',
             'source_license':'CC-BY',
             'source_archive_sha256':'3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7',
             'selected_objects':inv['selected'],
             'texture_map':inv['textures'],
-            'goal':'disable source simplify, include Einar displacement/stretch evaluation, guarantee high-detail Catmull snapshot, correct transparent eye shells, and render neutral Godot hero fidelity',
+            'goal':'transfer high-detail Einar face plus real CURVES groom converted to strand meshes, with restrained skin albedo and stable cinematic Godot materials',
             'glb_bytes':os.path.getsize('/tmp/a8-einar-v9/out/einar-hero-v9.glb')
           }
           json.dump(receipt,open('/tmp/a8-einar-v9/out/receipt.json','w'),indent=2)
