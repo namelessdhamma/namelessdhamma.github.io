@@ -62,6 +62,8 @@ jobs:
           TEX='/tmp/a8-einar-v9/src/einar/textures'
           os.makedirs(OUT,exist_ok=True)
           bpy.context.scene.render.engine='BLENDER_EEVEE'
+          bpy.context.scene.render.use_simplify=False
+          print('V94_SIMPLIFY=',bpy.context.scene.render.use_simplify)
           try:
               bpy.ops.file.find_missing_files(directory=TEX)
           except Exception as e:
@@ -116,6 +118,7 @@ jobs:
               bs.inputs['Base Color'].default_value=base
               bs.inputs['Roughness'].default_value=rough
               bs.inputs['Metallic'].default_value=metal
+              if 'Alpha' in bs.inputs: bs.inputs['Alpha'].default_value=base[3]
               if 'Subsurface' in bs.inputs:
                   try: bs.inputs['Subsurface'].default_value=0.08 if 'SKIN' in name else 0.0
                   except: pass
@@ -143,18 +146,18 @@ jobs:
               return m
 
           mats={
-            'skin':pbr('A8V93_SKIN',(0.72,0.50,0.40,1),0.52,color=tex['skin_color'],roughmap=tex['skin_rough'],normal=tex['skin_normal']),
-            'iris':pbr('A8V93_IRIS',(0.16,0.075,0.028,1),0.22),
-            'pupil':pbr('A8V93_PUPIL',(0.004,0.004,0.004,1),0.18),
-            'sclera':pbr('A8V93_SCLERA',(0.72,0.67,0.60,1),0.34),
-            'cornea':pbr('A8V93_CORNEA',(0.92,0.97,1.0,0.08),0.035,alpha=True),
-            'meniscus':pbr('A8V93_MENISCUS',(0.72,0.86,0.94,0.18),0.05,alpha=True),
-            'hair':pbr('A8V93_HAIR',(0.028,0.011,0.004,1),0.56),
-            'cloth':pbr('A8V93_CLOTH',(0.10,0.13,0.16,1),0.62,color=tex['cloth_color'],roughmap=tex['cloth_rough'],normal=tex['cloth_normal']),
-            'mouth':pbr('A8V93_MOUTH',(0.34,0.08,0.06,1),0.46),
-            'gums':pbr('A8V93_GUMS',(0.30,0.055,0.05,1),0.42),
-            'teeth':pbr('A8V93_TEETH',(0.72,0.67,0.56,1),0.34),
-            'dark':pbr('A8V93_DARK',(0.045,0.05,0.06,1),0.62),
+            'skin':pbr('A8V94_SKIN',(0.72,0.50,0.40,1),0.52,color=tex['skin_color'],roughmap=tex['skin_rough'],normal=tex['skin_normal']),
+            'iris':pbr('A8V94_IRIS',(0.16,0.075,0.028,1),0.22),
+            'pupil':pbr('A8V94_PUPIL',(0.004,0.004,0.004,1),0.18),
+            'sclera':pbr('A8V94_SCLERA',(0.72,0.67,0.60,1),0.34),
+            'cornea':pbr('A8V94_CORNEA',(0.92,0.97,1.0,0.08),0.035,alpha=True),
+            'meniscus':pbr('A8V94_MENISCUS',(0.72,0.86,0.94,0.18),0.05,alpha=True),
+            'hair':pbr('A8V94_HAIR',(0.028,0.011,0.004,1),0.56),
+            'cloth':pbr('A8V94_CLOTH',(0.10,0.13,0.16,1),0.62,color=tex['cloth_color'],roughmap=tex['cloth_rough'],normal=tex['cloth_normal']),
+            'mouth':pbr('A8V94_MOUTH',(0.34,0.08,0.06,1),0.46),
+            'gums':pbr('A8V94_GUMS',(0.30,0.055,0.05,1),0.42),
+            'teeth':pbr('A8V94_TEETH',(0.72,0.67,0.56,1),0.34),
+            'dark':pbr('A8V94_DARK',(0.045,0.05,0.06,1),0.62),
           }
           mats['cornea'].blend_method='BLEND'
           mats['meniscus'].blend_method='BLEND'
@@ -212,10 +215,14 @@ jobs:
                   elif mod.type in {'CORRECTIVE_SMOOTH','LATTICE','SURFACE_DEFORM','SHRINKWRAP','DATA_TRANSFER','CAST'}:
                       mod.show_viewport=True
                       mod.show_render=True
+                  elif mod.type=='NODES' and any(t in mod.name.lower() for t in ('displacement','stretch','store')):
+                      mod.show_viewport=True
+                      mod.show_render=True
+                      row['forced_nodes']=True
                   rows.append(row)
               modifier_report[o.name]=rows
           bpy.context.view_layer.update()
-          print('V93_MODIFIERS=',json.dumps(modifier_report,indent=2))
+          print('V94_MODIFIERS=',json.dumps(modifier_report,indent=2))
 
           # Preserve each semantic surface instead of replacing all slots on an object with one material.
           for o in chosen:
@@ -230,7 +237,7 @@ jobs:
 
           # Bake the evaluated current hero state into clean static meshes so subdivision,
           # corrective/surface-deform and geometry-node results survive the fidelity gate.
-          clean=bpy.data.collections.new('A8_V93_HERO_SNAPSHOT')
+          clean=bpy.data.collections.new('A8_V94_HERO_SNAPSHOT')
           bpy.context.scene.collection.children.link(clean)
           dg=bpy.context.evaluated_depsgraph_get()
           snapshots=[]
@@ -242,16 +249,34 @@ jobs:
                   if me is None or len(me.polygons)==0:
                       snap_fail.append({'name':src.name,'reason':'no_polygons'})
                       continue
-                  ob=bpy.data.objects.new('A8V93_'+src.name,me)
+                  ob=bpy.data.objects.new('A8V94_'+src.name,me)
                   ob.matrix_world=src.matrix_world.copy()
                   clean.objects.link(ob)
                   snapshots.append(ob)
               except Exception as e:
                   snap_fail.append({'name':src.name,'reason':repr(e)})
-          print('V93_SNAPSHOT=',[(o.name,len(o.data.polygons)) for o in snapshots])
-          print('V93_SNAPSHOT_FAIL=',snap_fail)
+          print('V94_SNAPSHOT=',[(o.name,len(o.data.polygons)) for o in snapshots])
+          print('V94_SNAPSHOT_FAIL=',snap_fail)
+          for ob in snapshots:
+              if ob.type=='MESH':
+                  for p in ob.data.polygons: p.use_smooth=True
+
           head_snap=next((o for o in snapshots if 'GEO-einar_head' in o.name),None)
-          assert head_snap is not None and len(head_snap.data.polygons)>=30000, 'V93_HEAD_NOT_HIGH_DETAIL:'+str(len(head_snap.data.polygons) if head_snap else -1)
+          if head_snap is not None and len(head_snap.data.polygons)<30000:
+              # Deterministic fallback: apply Catmull-Clark on the already-evaluated clean snapshot.
+              for ob in list(snapshots):
+                  if any(k in ob.name for k in ('GEO-einar_head','GEO-eye.L','GEO-eye.R','GEO-eye.cornea')):
+                      bpy.context.view_layer.objects.active=ob
+                      for q in bpy.context.selected_objects: q.select_set(False)
+                      ob.select_set(True)
+                      sub=ob.modifiers.new('A8V94_CatmullClark','SUBSURF')
+                      sub.subdivision_type='CATMULL_CLARK'
+                      sub.levels=2
+                      sub.render_levels=2
+                      bpy.ops.object.modifier_apply(modifier=sub.name)
+              head_snap=next((o for o in snapshots if 'GEO-einar_head' in o.name),None)
+              print('V94_MANUAL_SUBDIV_APPLIED=',len(head_snap.data.polygons) if head_snap else -1)
+          assert head_snap is not None and len(head_snap.data.polygons)>=30000, 'V94_HEAD_NOT_HIGH_DETAIL:'+str(len(head_snap.data.polygons) if head_snap else -1)
           chosen=snapshots
 
           for o in bpy.context.view_layer.objects:
@@ -390,20 +415,20 @@ jobs:
                           if m is StandardMaterial3D:
                               var sm:=m as StandardMaterial3D
                               var nm:=sm.resource_name
-                              if "A8V93_SKIN" in nm:
+                              if "A8V94_SKIN" in nm:
                                   sm.roughness=0.50
                                   sm.metallic_specular=0.16
                                   sm.subsurf_scatter_enabled=true
                                   sm.subsurf_scatter_skin_mode=true
                                   sm.subsurf_scatter_strength=0.11
-                              elif "A8V93_IRIS" in nm or "A8V93_PUPIL" in nm:
+                              elif "A8V94_IRIS" in nm or "A8V94_PUPIL" in nm:
                                   sm.roughness=0.11
-                              elif "A8V93_SCLERA" in nm:
+                              elif "A8V94_SCLERA" in nm:
                                   sm.roughness=0.24
-                              elif "A8V93_CORNEA" in nm or "A8V93_MENISCUS" in nm:
+                              elif "A8V94_CORNEA" in nm or "A8V94_MENISCUS" in nm:
                                   sm.roughness=0.035
                                   sm.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
-                              elif "A8V93_HAIR" in nm:
+                              elif "A8V94_HAIR" in nm:
                                   sm.roughness=0.56
                                   sm.cull_mode=BaseMaterial3D.CULL_DISABLED
               for c in n.get_children(): _tune_materials(c)
@@ -476,13 +501,13 @@ jobs:
           inv=json.load(open('/tmp/a8-einar-v9/out/v9-inventory.json'))
           receipt={
             'route':'R02C',
-            'recipe':'EINAR_V9_3_FORCED_SUBDIV_MATERIAL_REMAP',
+            'recipe':'EINAR_V9_4_HIGH_DETAIL_TRANSFER',
             'source':'official Blender Studio Einar v1',
             'source_license':'CC-BY',
             'source_archive_sha256':'3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7',
             'selected_objects':inv['selected'],
             'texture_map':inv['textures'],
-            'goal':'force true high-detail Einar subdivision, remap roughness safely, use semantic eye/hair colors, and render a neutral hero fidelity gate in Godot',
+            'goal':'disable source simplify, include Einar displacement/stretch evaluation, guarantee high-detail Catmull snapshot, correct transparent eye shells, and render neutral Godot hero fidelity',
             'glb_bytes':os.path.getsize('/tmp/a8-einar-v9/out/einar-hero-v9.glb')
           }
           json.dump(receipt,open('/tmp/a8-einar-v9/out/receipt.json','w'),indent=2)
