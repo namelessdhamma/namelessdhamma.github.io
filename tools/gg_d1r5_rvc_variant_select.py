@@ -71,6 +71,8 @@ def main():
                     help="label=path, e.g. p025=song/vocal/D_P025.wav")
     ap.add_argument("--output",required=True); ap.add_argument("--report",required=True)
     ap.add_argument("--threshold",type=float,default=0.20)
+    ap.add_argument("--allow-guide-blend",action="store_true",
+                    help="Emergency fallback only; direct RVC candidates are preferred by default.")
     args=ap.parse_args()
 
     score=json.loads(pathlib.Path(args.score).read_text())
@@ -145,8 +147,8 @@ def main():
                 src=np.interp(new,old,src).astype(np.float32)
                 ss=score_text(model,src,sr,target,tmp/f"{row['id']}-reuse-{other['id']}.wav")
                 options.append((ss["cer"],ss["wer"],"repeat",f"{other['id']}:{label}",src,ss))
-        # Phrase-local guide blend is allowed only if the guide itself passes.
-        if row["guide"]["cer"]<=args.threshold:
+        # Phrase-local guide blend is an explicit emergency fallback only.
+        if args.allow_guide_blend and row["guide"]["cer"]<=args.threshold:
             best_direct=min(options,key=lambda x:(x[0],x[1]))
             seed=best_direct[4]; g=guide[a:b].copy()
             if len(g)!=len(seed):
@@ -189,7 +191,8 @@ def main():
     d_bad=[{"id":r["id"],"cer":r["cer"],"transcript":r["transcript"]}
            for r in final if r["cer"]>args.threshold]
     report={
-      "threshold":args.threshold,"base_label":base_label,"candidate_median_cer":med,
+      "threshold":args.threshold,"allow_guide_blend":args.allow_guide_blend,
+      "base_label":base_label,"candidate_median_cer":med,
       "guide_blockers":guide_bad,"repairs":repair_rows,"final":final,
       "unresolved":d_bad,
       "status":"PASS" if not guide_bad and not d_bad else "REJECT"
