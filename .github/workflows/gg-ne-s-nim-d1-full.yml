@@ -1,9 +1,9 @@
-name: GG Nezrimy Gost D1R5 Production Qualification
+name: GG Nezrimy Gost D1R5E Production Qualification
 
 on:
   push:
     branches:
-      - compute/gg-nezrimy-gost-d1r5-20261006
+      - compute/gg-nezrimy-gost-d1r5e-20261007
     paths:
       - '.github/workflows/gg-ne-s-nim-d1-full.yml'
       - 'docs/gg/songs/ne-s-nim-d1-full-v3.json'
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: gg-nezrimy-gost-d1r5-${{ github.ref }}
+  group: gg-nezrimy-gost-d1r5e-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
