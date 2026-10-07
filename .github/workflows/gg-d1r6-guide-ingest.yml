@@ -1,0 +1,50 @@
+name: GG D1R6 Guide Ingest
+
+on:
+  push:
+    branches:
+      - compute/gg-nezrimy-gost-d1r6-prep-20261007
+    paths:
+      - '.github/workflows/gg-d1r6-guide-ingest.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch and verify qualified guide bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p guide-ingest
+          curl -fL --retry 3 -o guide-ingest/NEZRIMY_GOST_D1R6_GUIDE_BUNDLE.zip \
+            'https://d2ol7oe51mr4n9.cloudfront.net/user_3JgFz9TrcdqBwOVpTmQiWMKucx2/bd3e3e0a-888e-4216-b967-a3b0da23e9ef.zip'
+          echo '95b5d101a3f29b96d41f42675423a831e0a569249a8789e0fa81c3031f8f8ffc  guide-ingest/NEZRIMY_GOST_D1R6_GUIDE_BUNDLE.zip' | sha256sum -c -
+          unzip -q guide-ingest/NEZRIMY_GOST_D1R6_GUIDE_BUNDLE.zip -d guide-ingest/unpacked
+          echo '889678385affaf2b022817801ca22eb753221723c7401e7130142b52b5d6f216  guide-ingest/unpacked/NEZRIMY_GOST_D1R6_GUIDE.wav' | sha256sum -c -
+          echo 'd9eea4d9d5682486d6e76e55351b2b65727386776b1d08acd07185b626c5a683  guide-ingest/unpacked/NEZRIMY_GOST_D1R6_GUIDE_QA.json' | sha256sum -c -
+          python - <<'PY'
+          import json
+          q=json.load(open('guide-ingest/unpacked/NEZRIMY_GOST_D1R6_GUIDE_QA.json'))
+          s=q.get('summary',q)
+          assert s.get('status')=='PASS', s
+          assert not s.get('blockers'), s.get('blockers')
+          assert s.get('max_cer',1)<=0.20, s.get('max_cer')
+          print(json.dumps({'status':'PASS','max_cer':s.get('max_cer'),'blockers':s.get('blockers',[])},ensure_ascii=False))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-nezrimy-gost-d1r6-qualified-guide
+          path: |
+            guide-ingest/NEZRIMY_GOST_D1R6_GUIDE_BUNDLE.zip
+            guide-ingest/unpacked/NEZRIMY_GOST_D1R6_GUIDE.wav
+            guide-ingest/unpacked/NEZRIMY_GOST_D1R6_GUIDE_QA.json
+          retention-days: 14
+          if-no-files-found: error
