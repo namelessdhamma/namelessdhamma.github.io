@@ -1,0 +1,297 @@
+name: GG Nezrimy Gost D1R5E Qualification
+
+on:
+  push:
+    branches:
+      - compute/gg-nezrimy-gost-d1r5e-20261007
+    paths:
+      - '.github/workflows/gg-nezrimy-gost-d1r5e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gg-nezrimy-gost-d1r5e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Restore Applio runtime
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
+
+      - name: Restore Awata RVC
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-${{ runner.os }}
+
+      - name: Install runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git unzip ffmpeg fluidsynth fluid-soundfont-gm build-essential \
+            libsndfile1 libportaudio2 patchelf libicu-dev
+          python -m pip install -q \
+            requests mido numpy scipy soundfile librosa==0.10.2.post1 pyyaml \
+            faster-whisper==1.1.1 jiwer==3.0.4
+
+      - name: Verify fixed-108 production projection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          p=pathlib.Path('docs/gg/songs/ne-s-nim-d1-full-v3.json')
+          s=json.loads(p.read_text())
+          assert s['version']=='D1_FULL_V3'
+          assert s['bpm']==108
+          assert 'tempo_map' not in s
+          assert len(s['phrases'])==30
+          assert len(s['chords'])==120
+          print({'status':'PASS','revision':s.get('production_revision'),'bpm':s['bpm']})
+          PY
+
+      - name: Render fixed-108 arrangement
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p song/arrangement
+          python tools/gg_ne_s_nim_d1_full_arrange.py \
+            docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            "$GITHUB_WORKSPACE/song/arrangement"
+
+      - name: Recover qualified D1R5E clean guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p song/vocal
+          curl -fL --retry 3 \
+            'https://cdn.creativeclaw.co/u/3ce53768/audio/32e3897e-4497-4fa9-b27d-ea420b9d597c.wav' \
+            -o song/vocal/00_GUIDE_D1.wav
+          test -s song/vocal/00_GUIDE_D1.wav
+          echo 'ea3f0798db4e60927e307467997ea00856bf807d7959a952aa66281182fbc14e  song/vocal/00_GUIDE_D1.wav' | sha256sum -c -
+          python tools/gg_d1r5_guide_gate.py \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            --guide song/vocal/00_GUIDE_D1.wav \
+            --out song/qa-guide-clean.json \
+            --threshold 0.20
+
+      - name: Render Awata RVC protect bank
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,runpy,subprocess
+          ns=runpy.run_path('tools/gg_cloud_music_worker.py',run_name='gg_d1r5e_rvc')
+          work=pathlib.Path('/tmp/applio-d1r5e'); work.mkdir(exist_ok=True)
+          root,vpy,rt=ns['ensure_applio_runtime'](work)
+          model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
+          guide=pathlib.Path('song/vocal/00_GUIDE_D1.wav').resolve()
+          variants=[('p020',0.20),('p030',0.30),('p035',0.35),('p045',0.45)]
+          code="""import os,sys
+root,source,out,model,index,protect=sys.argv[1:7]
+os.chdir(root); sys.path.insert(0,root)
+from core import run_infer_script
+run_infer_script(
+ input_path=source,output_path=out,pth_path=model,index_path=index,
+ export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,
+ volume_envelope=1.0,protect=float(protect),f0_method='fcpe',
+ split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,
+ proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,
+ clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,
+ post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,
+ distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,
+ delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,
+ reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,
+ pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,
+ gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,
+ chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,
+ bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,
+ compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,
+ delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)
+"""
+          for label,protect in variants:
+              out=pathlib.Path(f'song/vocal/D_{label}.wav').resolve()
+              p=subprocess.run(
+                  [str(vpy),'-c',code,str(root),str(guide),str(out),str(model),str(index),str(protect)],
+                  cwd=root,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=2400)
+              print(label,p.stdout[-8000:])
+              if p.returncode or not out.exists() or out.stat().st_size==0:
+                  raise SystemExit(f'RVC failed: {label}')
+          PY
+
+      - name: Phrase-wise direct RVC selection
+        shell: bash
+        run: |
+          set +e
+          python tools/gg_d1r5_rvc_variant_select.py \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            --guide song/vocal/00_GUIDE_D1.wav \
+            --candidate p020=song/vocal/D_p020.wav \
+            --candidate p030=song/vocal/D_p030.wav \
+            --candidate p035=song/vocal/D_p035.wav \
+            --candidate p045=song/vocal/D_p045.wav \
+            --output song/vocal/D_D1_SELECTED.wav \
+            --report song/rvc-selection.json \
+            --threshold 0.20
+          echo "rvc_select_exit=$?" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Apply proven post-RVC Voice-from-Silence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s song/vocal/D_D1_SELECTED.wav
+          python tools/gg_d1r5_vfs_envelope.py \
+            --input song/vocal/D_D1_SELECTED.wav \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            --output song/vocal/D_D1_VFS.wav \
+            --report song/vfs-envelope.json
+
+      - name: Mix D1R5E
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p song/master
+          ffmpeg -y -v error -i song/vocal/D_D1_VFS.wav \
+            -af "highpass=f=75,equalizer=f=2600:t=q:w=1:g=0.6,acompressor=threshold=-10dB:ratio=1.25:attack=26:release=210,aresample=48000,volume=0.92" \
+            song/vocal/D_D1_MIX.wav
+
+          # Preserve the proven D1R5 arrangement. Lift the ensemble by ~0.5 dB and
+          # give Chorus I a further bounded +0.4 dB instead of compressing the vocal harder.
+          ffmpeg -y -v error \
+            -i song/arrangement/instrumental.wav \
+            -i song/vocal/D_D1_MIX.wav \
+            -filter_complex "[0:a]volume=1.12,volume=1.047:enable='between(t,62.222,88.889)'[inst];[inst][1:a]amix=inputs=2:duration=longest:normalize=0,acompressor=threshold=-7dB:ratio=1.20:attack=28:release=230,alimiter=limit=0.96,loudnorm=I=-15.8:LRA=12:TP=-1.0[out]" \
+            -map "[out]" -ar 48000 -c:a pcm_s24le song/master/NEZRIMY_GOST_D1R5E.wav
+          ffmpeg -y -v error -i song/master/NEZRIMY_GOST_D1R5E.wav \
+            -codec:a libmp3lame -b:a 320k song/master/NEZRIMY_GOST_D1R5E.mp3
+
+      - name: Rendered-audio QA
+        shell: bash
+        run: |
+          set +e
+          python tools/gg_audio_qa.py \
+            --vocal song/vocal/D_D1_VFS.wav \
+            --instrumental song/arrangement/instrumental.wav \
+            --drums song/arrangement/processed/drums.wav \
+            --riff song/arrangement/processed/riff.wav \
+            --master song/master/NEZRIMY_GOST_D1R5E.wav \
+            --score docs/gg/songs/ne-s-nim-d1-full-v3.json \
+            --bpm 108 \
+            --out song/qa-audio.json
+          echo "audio_qa_exit=$?" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Post-VFS phrase ASR
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,pathlib,tempfile
+          import soundfile as sf
+          from faster_whisper import WhisperModel
+          from jiwer import wer,cer
+          score=json.loads(pathlib.Path('docs/gg/songs/ne-s-nim-d1-full-v3.json').read_text())
+          y,sr=sf.read('song/vocal/D_D1_VFS.wav')
+          if getattr(y,'ndim',1)>1: y=y.mean(axis=1)
+          tpb=score['ticks_per_beat']; bpm=score['bpm']; tick_sec=60.0/bpm/tpb
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          def norm(s):
+              s=s.lower().replace('ё','е')
+              s=re.sub(r'[^а-я0-9 ]+',' ',s)
+              return re.sub(r'\s+',' ',s).strip()
+          rows=[]
+          for ph in score['phrases']:
+              st=ph['bar']*tpb*4+ph['offset']; en=st
+              for w in ph['words']: en+=sum(w['durations'])+w['rest']
+              t0=max(0,st*tick_sec-.12); t1=min(len(y)/sr,en*tick_sec+.18)
+              tmp=pathlib.Path(tempfile.gettempdir())/f"d1r5e-{ph['id']}.wav"
+              sf.write(tmp,y[int(t0*sr):int(t1*sr)],sr)
+              segs,_=model.transcribe(str(tmp),language='ru',beam_size=5,vad_filter=False,
+                                      condition_on_previous_text=False,temperature=0.0)
+              txt=' '.join(x.text.strip() for x in list(segs)).strip()
+              target=' '.join(w['text'] for w in ph['words'])
+              nt,nr=norm(target),norm(txt)
+              rows.append({'id':ph['id'],'target':target,'transcript':txt,
+                           'wer':float(wer(nt,nr)),'cer':float(cer(nt,nr))})
+          bad=[x for x in rows if x['cer']>.20]
+          result={'status':'PASS' if not bad else 'REJECT',
+                  'max_phrase_cer':max(x['cer'] for x in rows),
+                  'mean_phrase_cer':sum(x['cer'] for x in rows)/len(rows),
+                  'blockers':bad,'phrases':rows}
+          pathlib.Path('song/qa-asr-d-postvfs.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Critic gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,sys
+          guide=json.loads(pathlib.Path('song/qa-guide-clean.json').read_text())
+          sel=json.loads(pathlib.Path('song/rvc-selection.json').read_text())
+          audio=json.loads(pathlib.Path('song/qa-audio.json').read_text())
+          vocal=json.loads(pathlib.Path('song/qa-asr-d-postvfs.json').read_text())
+          failures=[]
+          if guide.get('status')!='PASS': failures.append('clean_guide')
+          if sel.get('status')!='PASS': failures.append('rvc_phrase_selection')
+          if vocal.get('status')!='PASS': failures.append('post_vfs_diction')
+          failures.extend(audio.get('failures',[]))
+          result={'status':'PASS' if not failures else 'REJECT','failures':failures,
+                  'guide':guide,'rvc_selection':sel,'audio':audio,'post_vfs_asr':vocal,
+                  'gate_version':'D1R5E'}
+          pathlib.Path('song/qualification.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          if failures: sys.exit(2)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-nezrimy-gost-d1r5e
+          path: |
+            song/master/
+            song/vocal/00_GUIDE_D1.wav
+            song/vocal/D_p*.wav
+            song/vocal/D_D1_SELECTED.wav
+            song/vocal/D_D1_VFS.wav
+            song/rvc-selection.json
+            song/vfs-envelope.json
+            song/arrangement/instrumental.mp3
+            song/arrangement/processed/riff.wav
+            song/arrangement/composition-map.json
+            song/qa-guide-clean.json
+            song/qa-audio.json
+            song/qa-asr-d-postvfs.json
+            song/qualification.json
+          retention-days: 7
+          if-no-files-found: warn
