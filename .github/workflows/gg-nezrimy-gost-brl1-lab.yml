@@ -72,18 +72,23 @@ jobs:
           # the same three notes, total 960 ticks and exact melodic contour.
           split=copy.deepcopy(base)
           first=split.pop(0)
-          assert first['text']=='взирали' and first['pitches']==[60,60,59] and sum(first['durations'])==960
-          v={'text':'в','pitches':[60],'durations':[180],'stress':0,'rest':0}
-          z={'text':'зирали','pitches':[60,59],'durations':[300,480],'stress':0,'rest':first['rest']}
+          assert first['text']=='взирали' and first['pitches']==[64,65,64] and first['durations']==[240,480,240]
+          v={'text':'в','pitches':[64],'durations':[180],'stress':0,'rest':0}
+          z={'text':'зирали','pitches':[65,64],'durations':[540,240],'stress':0,'rest':first['rest']}
           split=[v,z]+split
           emit('split-v-zirali',split)
-          # Variant C: slightly longer standalone «в», still preserving total time.
+          # Variant C: slightly longer standalone «в», preserving total 960 ticks.
           split2=copy.deepcopy(base)
           first=split2.pop(0)
-          v2={'text':'в','pitches':[60],'durations':[240],'stress':0,'rest':0}
-          z2={'text':'зирали','pitches':[60,59],'durations':[300,420],'stress':0,'rest':first['rest']}
+          v2={'text':'в','pitches':[64],'durations':[240],'stress':0,'rest':0}
+          z2={'text':'зирали','pitches':[65,64],'durations':[480,240],'stress':0,'rest':first['rest']}
           split2=[v2,z2]+split2
           emit('split-v240-zirali',split2)
+          # Variant D: orthographic pronunciation aid without changing note geometry.
+          resp=copy.deepcopy(base)
+          resp[0]['text']='визирали'
+          resp[0]['stress']=1
+          emit('respell-vizirali',resp)
           PY
 
       - name: Prepare OpenUtau and Awata
@@ -166,6 +171,7 @@ jobs:
           render_one WHOLE brl1-lab/score-whole.json 0
           render_one SPLIT_V brl1-lab/score-split-v-zirali.json 0
           render_one SPLIT_V240 brl1-lab/score-split-v240-zirali.json 0
+          render_one RESPELL_VIZIRALI brl1-lab/score-respell-vizirali.json 0
 
       - name: ASR select BRL1 winner
         shell: bash
@@ -181,7 +187,7 @@ jobs:
               s=s.lower().replace('ё','е'); s=re.sub(r'[^а-я0-9 ]+',' ',s); return re.sub(r'\s+',' ',s).strip()
           model=WhisperModel('small',device='cpu',compute_type='int8')
           rows=[]
-          for tag in ['WHOLE','SPLIT_V','SPLIT_V240']:
+          for tag in ['WHOLE','SPLIT_V','SPLIT_V240','RESPELL_VIZIRALI']:
               segs,_=model.transcribe(f'brl1-lab/{tag}.wav',language='ru',beam_size=5,vad_filter=False,condition_on_previous_text=False,temperature=0.0)
               txt=' '.join(s.text.strip() for s in list(segs)).strip()
               rows.append({'tag':tag,'transcript':txt,'wer':float(wer(norm(target),norm(txt))),'cer':float(cer(norm(target),norm(txt)))})
