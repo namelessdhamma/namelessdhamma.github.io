@@ -285,7 +285,8 @@ namespace OpenUtau.Test.Core.DiffSinger {
             using var scoreDoc = JsonDocument.Parse(File.ReadAllText(sharedScorePath!, Encoding.UTF8));
             var scoreRoot = scoreDoc.RootElement;
             int scoreBars = scoreRoot.GetProperty("bars").GetInt32();
-            if (variant == "shared_d1" && scoreRoot.TryGetProperty("tempo_map", out var tempoMap)) {
+            bool ignoreTempoMap = string.Equals(Environment.GetEnvironmentVariable("GG_D1_IGNORE_TEMPO_MAP"), "1", StringComparison.OrdinalIgnoreCase);
+            if (variant == "shared_d1" && !ignoreTempoMap && scoreRoot.TryGetProperty("tempo_map", out var tempoMap)) {
                 project.tempos.Clear();
                 foreach (var tp in tempoMap.EnumerateArray()) {
                     project.tempos.Add(new UTempo(tp.GetProperty("bar").GetInt32() * Bar, tp.GetProperty("bpm").GetDouble()));
@@ -367,9 +368,11 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 AddShapeCurve(DiffSingerUtils.PEXP, arcX,
                     new[] { 82, 91, 99, 86, 78, 88, 94, 100, 86, 75 });
             } else if (variant == "shared_d1") {
-                // D1R5: Voice-from-Silence is implemented as actual phrase-local
-                // dynamics/expression, not as a descriptive label.
-                AddFlatCurve(DiffSingerUtils.VELC, 121);
+                // D1 guide lab: separate synthesis intelligibility from post-RVC VFS.
+                // full = production profile; articulation = restrained expressive profile;
+                // neutral = clarity control with nearly flat synthesis expressions.
+                var guideProfile = (Environment.GetEnvironmentVariable("GG_D1_GUIDE_PROFILE") ?? "full")
+                    .Trim().ToLowerInvariant();
                 var semantic = new HashSet<string>(new[] {
                     "тобой","тишине","пыль","позабыл","ним","собой","голос","свой",
                     "незримый","гость","разлуки","смех","злость","руки","год",
@@ -377,57 +380,88 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 }, StringComparer.OrdinalIgnoreCase);
                 var sectionFirst = new HashSet<string>(new[] {"v1l1","c1l1","v2l1","c2l1","brl1","finl1","codal1"},
                     StringComparer.OrdinalIgnoreCase);
-                int BaseDyn(string sec) => sec switch {
-                    "chorus" => 6, "bridge" => -3, "final" => 4, "coda" => -11, "verse2" => -9, _ => -12
-                };
-                int BaseEnergy(string sec) => sec switch {
-                    "chorus" => 3, "bridge" => -2, "final" => 4, "coda" => -8, "verse2" => -5, _ => -7
-                };
-                var dyn = new SortedDictionary<int,int>();
-                var ene = new SortedDictionary<int,int>();
-                var ten = new SortedDictionary<int,int>();
-                var bre = new SortedDictionary<int,int>();
-                var voi = new SortedDictionary<int,int>();
-                var pex = new SortedDictionary<int,int>();
-                void Put(SortedDictionary<int,int> d,int x,int y) {
-                    x=Math.Clamp(x,0,part.Duration); d[x]=y;
-                }
-                foreach (var ph in scoreRoot.GetProperty("phrases").EnumerateArray()) {
-                    string id=ph.GetProperty("id").GetString() ?? "";
-                    string sec=ph.GetProperty("section").GetString() ?? "verse";
-                    int p=ph.GetProperty("bar").GetInt32()*Bar+ph.GetProperty("offset").GetInt32();
-                    int startP=p;
-                    int bd=BaseDyn(sec), be=BaseEnergy(sec);
-                    bool deep=sectionFirst.Contains(id);
-                    Put(dyn,startP-120,bd-8); Put(dyn,startP,bd-(deep?18:10)); Put(dyn,startP+180,bd-5); Put(dyn,startP+520,bd);
-                    Put(ene,startP,be-(deep?8:5)); Put(ene,startP+300,be-2); Put(ene,startP+650,be);
-                    Put(ten,startP,deep?-32:-24); Put(ten,startP+420,sec=="chorus"?-8:-16);
-                    Put(bre,startP,deep?18:13); Put(bre,startP+520,sec=="chorus"?7:10);
-                    Put(voi,startP,deep?93:95); Put(voi,startP+420,98);
-                    Put(pex,startP,deep?72:80); Put(pex,startP+520,sec=="chorus"?98:88);
-                    foreach (var word in ph.GetProperty("words").EnumerateArray()) {
-                        string lyric=word.GetProperty("text").GetString() ?? "";
-                        int stress=word.GetProperty("stress").GetInt32();
-                        var ds=word.GetProperty("durations").EnumerateArray().Select(x=>x.GetInt32()).ToArray();
-                        int stressP=p;
-                        for(int q=0;q<stress;q++) stressP+=ds[q];
-                        if (semantic.Contains(lyric)) {
-                            Put(dyn,stressP,bd+8);
-                            Put(ene,stressP,be+5);
-                            Put(pex,stressP,100);
-                            Put(ten,stressP,sec=="chorus"?-2:-8);
-                        }
-                        p+=ds.Sum()+word.GetProperty("rest").GetInt32();
+
+                if (guideProfile == "neutral") {
+                    AddFlatCurve(DiffSingerUtils.VELC, 124);
+                    AddFlatCurve(Ustx.DYN, 0);
+                    AddFlatCurve(DiffSingerUtils.ENE, 0);
+                    AddFlatCurve(Ustx.TENC, -8);
+                    AddFlatCurve(Ustx.BREC, 4);
+                    AddFlatCurve(Ustx.VOIC, 100);
+                    AddFlatCurve(DiffSingerUtils.PEXP, 94);
+                } else {
+                    bool articulation = guideProfile == "articulation";
+                    AddFlatCurve(DiffSingerUtils.VELC, articulation ? 124 : 121);
+                    int BaseDyn(string sec) => articulation ? sec switch {
+                        "chorus" => 3, "bridge" => 0, "final" => 2, "coda" => -4, "verse2" => -2, _ => -3
+                    } : sec switch {
+                        "chorus" => 6, "bridge" => -3, "final" => 4, "coda" => -11, "verse2" => -9, _ => -12
+                    };
+                    int BaseEnergy(string sec) => articulation ? sec switch {
+                        "chorus" => 2, "bridge" => 0, "final" => 2, "coda" => -3, "verse2" => -1, _ => -2
+                    } : sec switch {
+                        "chorus" => 3, "bridge" => -2, "final" => 4, "coda" => -8, "verse2" => -5, _ => -7
+                    };
+                    var dyn = new SortedDictionary<int,int>();
+                    var ene = new SortedDictionary<int,int>();
+                    var ten = new SortedDictionary<int,int>();
+                    var bre = new SortedDictionary<int,int>();
+                    var voi = new SortedDictionary<int,int>();
+                    var pex = new SortedDictionary<int,int>();
+                    void Put(SortedDictionary<int,int> d,int x,int y) {
+                        x=Math.Clamp(x,0,part.Duration); d[x]=y;
                     }
-                    Put(dyn,p-180,bd-2); Put(dyn,p,bd-9); Put(dyn,p+120,bd-12);
-                    Put(ene,p,be-6); Put(ten,p,-26); Put(bre,p,16); Put(voi,p,95); Put(pex,p,76);
+                    foreach (var ph in scoreRoot.GetProperty("phrases").EnumerateArray()) {
+                        string id=ph.GetProperty("id").GetString() ?? "";
+                        string sec=ph.GetProperty("section").GetString() ?? "verse";
+                        int p=ph.GetProperty("bar").GetInt32()*Bar+ph.GetProperty("offset").GetInt32();
+                        int startP=p;
+                        int bd=BaseDyn(sec), be=BaseEnergy(sec);
+                        bool deep=sectionFirst.Contains(id);
+                        if (articulation) {
+                            Put(dyn,startP-120,bd-2); Put(dyn,startP,bd-(deep?4:3)); Put(dyn,startP+180,bd-1); Put(dyn,startP+420,bd);
+                            Put(ene,startP,be-(deep?2:1)); Put(ene,startP+260,be); Put(ene,startP+520,be+1);
+                            Put(ten,startP,-12); Put(ten,startP+360,-8);
+                            Put(bre,startP,6); Put(bre,startP+420,4);
+                            Put(voi,startP,99); Put(voi,startP+320,100);
+                            Put(pex,startP,92); Put(pex,startP+420,96);
+                        } else {
+                            Put(dyn,startP-120,bd-8); Put(dyn,startP,bd-(deep?18:10)); Put(dyn,startP+180,bd-5); Put(dyn,startP+520,bd);
+                            Put(ene,startP,be-(deep?8:5)); Put(ene,startP+300,be-2); Put(ene,startP+650,be);
+                            Put(ten,startP,deep?-32:-24); Put(ten,startP+420,sec=="chorus"?-8:-16);
+                            Put(bre,startP,deep?18:13); Put(bre,startP+520,sec=="chorus"?7:10);
+                            Put(voi,startP,deep?93:95); Put(voi,startP+420,98);
+                            Put(pex,startP,deep?72:80); Put(pex,startP+520,sec=="chorus"?98:88);
+                        }
+                        foreach (var word in ph.GetProperty("words").EnumerateArray()) {
+                            string lyric=word.GetProperty("text").GetString() ?? "";
+                            int stress=word.GetProperty("stress").GetInt32();
+                            var ds=word.GetProperty("durations").EnumerateArray().Select(x=>x.GetInt32()).ToArray();
+                            int stressP=p;
+                            for(int q=0;q<stress;q++) stressP+=ds[q];
+                            if (semantic.Contains(lyric)) {
+                                Put(dyn,stressP,bd+(articulation?4:8));
+                                Put(ene,stressP,be+(articulation?2:5));
+                                Put(pex,stressP,articulation?98:100);
+                                Put(ten,stressP,articulation?-5:(sec=="chorus"?-2:-8));
+                            }
+                            p+=ds.Sum()+word.GetProperty("rest").GetInt32();
+                        }
+                        if (articulation) {
+                            Put(dyn,p-160,bd); Put(dyn,p,bd-3); Put(dyn,p+100,bd-4);
+                            Put(ene,p,be-2); Put(ten,p,-10); Put(bre,p,6); Put(voi,p,99); Put(pex,p,90);
+                        } else {
+                            Put(dyn,p-180,bd-2); Put(dyn,p,bd-9); Put(dyn,p+120,bd-12);
+                            Put(ene,p,be-6); Put(ten,p,-26); Put(bre,p,16); Put(voi,p,95); Put(pex,p,76);
+                        }
+                    }
+                    AddShapeCurve(Ustx.DYN,dyn.Keys.ToArray(),dyn.Values.ToArray());
+                    AddShapeCurve(DiffSingerUtils.ENE,ene.Keys.ToArray(),ene.Values.ToArray());
+                    AddShapeCurve(Ustx.TENC,ten.Keys.ToArray(),ten.Values.ToArray());
+                    AddShapeCurve(Ustx.BREC,bre.Keys.ToArray(),bre.Values.ToArray());
+                    AddShapeCurve(Ustx.VOIC,voi.Keys.ToArray(),voi.Values.ToArray());
+                    AddShapeCurve(DiffSingerUtils.PEXP,pex.Keys.ToArray(),pex.Values.ToArray());
                 }
-                AddShapeCurve(Ustx.DYN,dyn.Keys.ToArray(),dyn.Values.ToArray());
-                AddShapeCurve(DiffSingerUtils.ENE,ene.Keys.ToArray(),ene.Values.ToArray());
-                AddShapeCurve(Ustx.TENC,ten.Keys.ToArray(),ten.Values.ToArray());
-                AddShapeCurve(Ustx.BREC,bre.Keys.ToArray(),bre.Values.ToArray());
-                AddShapeCurve(Ustx.VOIC,voi.Keys.ToArray(),voi.Values.ToArray());
-                AddShapeCurve(DiffSingerUtils.PEXP,pex.Keys.ToArray(),pex.Values.ToArray());
             } else if (variant == "rebuild_a") {
                 int bar = 1920;
                 AddFlatCurve(DiffSingerUtils.VELC, 120);
@@ -725,6 +759,8 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     $"singer={singer.Name}\n" +
                     $"speaker={chosenSpeaker}\n" +
                     $"variant={variant}\n" +
+                    $"guide_profile={Environment.GetEnvironmentVariable("GG_D1_GUIDE_PROFILE") ?? "full"}\n" +
+                    $"ignore_tempo_map={Environment.GetEnvironmentVariable("GG_D1_IGNORE_TEMPO_MAP") ?? "0"}\n" +
                     $"l_offset_ticks={lOffsetTicks}\n" +
                     $"render_steps={renderSteps}\n" +
                     $"vocoder_name={usedVocoder?.config?.name ?? "unknown"}\n" +
