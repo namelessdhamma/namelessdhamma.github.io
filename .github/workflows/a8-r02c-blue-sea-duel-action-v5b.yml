@@ -3,7 +3,7 @@ name: A8 R02C Blue Sea Duel IK V6
 on:
   push:
     paths:
-      - '.github/workflows/a8-r02c-blue-sea-duel-ik-v6.yml'
+      - '.github/workflows/a8-r02c-blue-sea-duel-action-v5b.yml'
   workflow_dispatch:
 
 permissions:
