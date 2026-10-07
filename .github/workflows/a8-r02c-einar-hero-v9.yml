@@ -307,42 +307,49 @@ jobs:
               try:
                   point_count=len(src.data.points)
               except: point_count=-1
-              dup=src.copy()
-              dup.data=src.data.copy()
-              dup.name='A8V95_SRC_'+src_name
-              clean.objects.link(dup)
-              dup.hide_viewport=False; dup.hide_render=False
-              for mod in dup.modifiers:
-                  mod.show_viewport=True; mod.show_render=True
 
-              ng=bpy.data.node_groups.new('A8V95_GN_'+src_name,'GeometryNodeTree')
-              ng.inputs.new('NodeSocketGeometry','Geometry')
+              # Blender 3.6 new_from_object() cannot materialize CURVES directly.
+              # Use a temporary MESH host whose Geometry Nodes reads the real CURVES
+              # through Object Info and emits Curve-to-Mesh geometry.
+              host_mesh=bpy.data.meshes.new('A8V951_HOST_MESH_'+src_name)
+              host=bpy.data.objects.new('A8V951_HOST_'+src_name,host_mesh)
+              clean.objects.link(host)
+
+              ng=bpy.data.node_groups.new('A8V951_GN_'+src_name,'GeometryNodeTree')
               ng.outputs.new('NodeSocketGeometry','Geometry')
-              ni=ng.nodes.new('NodeGroupInput')
               no=ng.nodes.new('NodeGroupOutput')
+              oi=ng.nodes.new('GeometryNodeObjectInfo')
+              oi.inputs['Object'].default_value=src
+              try: oi.transform_space='ORIGINAL'
+              except: pass
               circle=ng.nodes.new('GeometryNodeCurvePrimitiveCircle')
               circle.inputs['Resolution'].default_value=resolution
               circle.inputs['Radius'].default_value=radius
               ctm=ng.nodes.new('GeometryNodeCurveToMesh')
-              ng.links.new(ni.outputs['Geometry'],ctm.inputs['Curve'])
+              ng.links.new(oi.outputs['Geometry'],ctm.inputs['Curve'])
               ng.links.new(circle.outputs['Curve'],ctm.inputs['Profile Curve'])
               ng.links.new(ctm.outputs['Mesh'],no.inputs['Geometry'])
-              mod=dup.modifiers.new('A8V95_CurveToMesh','NODES')
+              mod=host.modifiers.new('A8V951_CurveToMesh','NODES')
               mod.node_group=ng
               bpy.context.view_layer.update()
-              ev=dup.evaluated_get(dg)
-              me=bpy.data.meshes.new_from_object(ev,preserve_all_data_layers=True,depsgraph=dg)
-              if me is None or len(me.polygons)==0:
-                  hair_fail.append({'name':src_name,'reason':'curve_to_mesh_no_polygons','curves':curve_count,'points':point_count})
+
+              ev=host.evaluated_get(dg)
+              try:
+                  me=bpy.data.meshes.new_from_object(ev,preserve_all_data_layers=True,depsgraph=dg)
+              except Exception as e:
+                  hair_fail.append({'name':src_name,'reason':'mesh_host_eval:'+repr(e),'curves':curve_count,'points':point_count})
                   return None
-              ob=bpy.data.objects.new('A8V95_STRANDS_'+src_name,me)
-              ob.matrix_world=src.matrix_world.copy()
+              if me is None or len(me.polygons)==0:
+                  hair_fail.append({'name':src_name,'reason':'mesh_host_no_polygons','curves':curve_count,'points':point_count})
+                  return None
+              ob=bpy.data.objects.new('A8V951_STRANDS_'+src_name,me)
+              ob.matrix_world=host.matrix_world.copy()
               clean.objects.link(ob)
               if len(ob.data.materials)==0: ob.data.materials.append(mats['hair'])
               else:
                   for mi in range(len(ob.data.materials)): ob.data.materials[mi]=mats['hair']
               for p in ob.data.polygons: p.use_smooth=True
-              hair_report.append({'name':src_name,'curves':curve_count,'points':point_count,'polys':len(me.polygons),'radius':radius})
+              hair_report.append({'name':src_name,'curves':curve_count,'points':point_count,'polys':len(me.polygons),'verts':len(me.vertices),'radius':radius})
               return ob
 
           for hn,hr,hres in hair_specs:
@@ -367,8 +374,8 @@ jobs:
               except Exception as e:
                   print('SELECT_FAIL',o.name,e)
           assert any('GEO-einar_head' in n for n in selected)
-          assert any('A8V95_STRANDS_GEO-einar_hair' in n for n in selected)
-          assert any('A8V95_STRANDS_GEO-einar_eyebrows' in n for n in selected)
+          assert any('A8V951_STRANDS_GEO-einar_hair' in n for n in selected)
+          assert any('A8V951_STRANDS_GEO-einar_eyebrows' in n for n in selected)
 
           inv={'textures':tex,'selected':selected,'missing':missing,'snapshot_fail':snap_fail,'snapshot_polys':{o.name:len(o.data.polygons) for o in snapshots},'modifier_report':modifier_report,'hair_report':hair_report,'hair_fail':hair_fail}
           json.dump(inv,open(OUT+'/v9-inventory.json','w'),indent=2)
@@ -578,13 +585,13 @@ jobs:
           inv=json.load(open('/tmp/a8-einar-v9/out/v9-inventory.json'))
           receipt={
             'route':'R02C',
-            'recipe':'EINAR_V9_5_REAL_CURVES_GROOM',
+            'recipe':'EINAR_V9_5_1_REAL_CURVES_GROOM_MESH_HOST',
             'source':'official Blender Studio Einar v1',
             'source_license':'CC-BY',
             'source_archive_sha256':'3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7',
             'selected_objects':inv['selected'],
             'texture_map':inv['textures'],
-            'goal':'transfer high-detail Einar face plus real CURVES groom converted to strand meshes, with restrained skin albedo and stable cinematic Godot materials',
+            'goal':'transfer high-detail Einar face plus real CURVES groom via Blender 3.6 mesh-host Geometry Nodes, with restrained skin albedo and stable cinematic Godot materials',
             'glb_bytes':os.path.getsize('/tmp/a8-einar-v9/out/einar-hero-v9.glb')
           }
           json.dump(receipt,open('/tmp/a8-einar-v9/out/receipt.json','w'),indent=2)
