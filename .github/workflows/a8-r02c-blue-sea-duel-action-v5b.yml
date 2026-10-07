@@ -191,6 +191,10 @@ jobs:
               add_child(root)
 
               var body_scene:=load(BODY_GLB) as PackedScene
+              if body_scene == null:
+                  push_error("BODY_GLB failed to load after import")
+                  get_tree().quit(21)
+                  return {}
               var body:=body_scene.instantiate()
               root.add_child(body)
               var skel:=_find(body,"Skeleton3D") as Skeleton3D
@@ -215,7 +219,12 @@ jobs:
               att.add_child(head_rig)
               head_rig.global_transform=root.global_transform
 
-              var head:Node=(load(HEAD_GLB) as PackedScene).instantiate()
+              var head_scene:=load(HEAD_GLB) as PackedScene
+              if head_scene == null:
+                  push_error("HEAD_GLB failed to load after import")
+                  get_tree().quit(22)
+                  return {}
+              var head:Node=head_scene.instantiate()
               head_rig.add_child(head)
               var hmeshes:Array[MeshInstance3D]=[]
               _collect_meshes(head,hmeshes)
@@ -238,7 +247,12 @@ jobs:
                               mi.set_surface_override_material(si,dm)
                           _: pass
 
-              var hair:Node=(load(HAIR_GLB) as PackedScene).instantiate()
+              var hair_scene:=load(HAIR_GLB) as PackedScene
+              if hair_scene == null:
+                  push_error("HAIR_GLB failed to load after import")
+                  get_tree().quit(23)
+                  return {}
+              var hair:Node=hair_scene.instantiate()
               head_rig.add_child(hair)
               var hairmeshes:Array[MeshInstance3D]=[]
               _collect_meshes(hair,hairmeshes)
@@ -441,7 +455,11 @@ jobs:
           GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
           PROJ=/tmp/a8-r02c-v6/src/repo/godot_project
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
-          "$GODOT" --headless --editor --path "$PROJ" --quit-after 8
+          test $(stat -c%s "$PROJ/vitruvian_body.glb") -gt 1000000
+          test $(stat -c%s "$PROJ/vitruvian_head.glb") -gt 1000000
+          "$GODOT" --headless --editor --path "$PROJ" --import
+          test -d "$PROJ/.godot/imported"
+          find "$PROJ/.godot/imported" -type f | grep -q .
 
       - name: Render Blue Sea dual-human shot
         run: |
