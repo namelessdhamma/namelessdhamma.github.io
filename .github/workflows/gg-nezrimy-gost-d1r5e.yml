@@ -115,28 +115,7 @@ jobs:
           model,index,meta=ns['install_rvc_model']('awata-weak-rvc-v1.2','Original',work)
           guide=pathlib.Path('song/vocal/00_GUIDE_D1.wav').resolve()
           variants=[('p020',0.20),('p030',0.30),('p035',0.35),('p045',0.45)]
-          code="""import os,sys
-root,source,out,model,index,protect=sys.argv[1:7]
-os.chdir(root); sys.path.insert(0,root)
-from core import run_infer_script
-run_infer_script(
- input_path=source,output_path=out,pth_path=model,index_path=index,
- export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,
- volume_envelope=1.0,protect=float(protect),f0_method='fcpe',
- split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,
- proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,
- clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,
- post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,
- distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,
- delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,
- reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,
- pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,
- gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,
- chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,
- bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,
- compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,
- delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)
-"""
+          code="import os,sys; root,source,out,model,index,protect=sys.argv[1:7]; os.chdir(root); sys.path.insert(0,root); from core import run_infer_script; run_infer_script(input_path=source,output_path=out,pth_path=model,index_path=index,export_format='WAV',embedder_model='contentvec',pitch=0,index_rate=0.50,volume_envelope=1.0,protect=float(protect),f0_method='fcpe',split_audio=True,f0_autotune=False,f0_autotune_strength=1.0,proposed_pitch=False,proposed_pitch_threshold=155.0,clean_audio=False,clean_strength=0.5,formant_shifting=False,formant_qfrency=1.0,formant_timbre=1.0,post_process=False,reverb=False,pitch_shift=False,limiter=False,gain=False,distortion=False,chorus=False,bitcrush=False,clipping=False,compressor=False,delay=False,reverb_room_size=0.5,reverb_damping=0.5,reverb_wet_gain=0.33,reverb_dry_gain=0.4,reverb_width=1.0,reverb_freeze_mode=0.0,pitch_shift_semitones=0.0,limiter_threshold=-6.0,limiter_release_time=0.01,gain_db=0.0,distortion_gain=25.0,chorus_rate=1.0,chorus_depth=0.25,chorus_center_delay=7.0,chorus_feedback=0.0,chorus_mix=0.5,bitcrush_bit_depth=8,clipping_threshold=-6.0,compressor_threshold=0.0,compressor_ratio=1.0,compressor_attack=1.0,compressor_release=100.0,delay_seconds=0.5,delay_feedback=0.0,delay_mix=0.5,sid=0)"
           for label,protect in variants:
               out=pathlib.Path(f'song/vocal/D_{label}.wav').resolve()
               p=subprocess.run(
