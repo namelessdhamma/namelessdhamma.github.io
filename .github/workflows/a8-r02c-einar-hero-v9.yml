@@ -25,25 +25,29 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            /tmp/a8-einar-v9/src/einar.zip
-            /tmp/a8-einar-v9/src/blender.tar.xz
+            /tmp/a8-einar-v8/src/einar.zip
+            /tmp/a8-einar-v8/src/blender.tar.xz
           key: a8-einar-v1-blender-3.6.20-archives
 
       - name: Fetch official Einar and Blender 3.6 LTS
         run: |
           set -euxo pipefail
           EINAR='https://studio.blender.org/download-source/files/41/419e83fb75f30b989adf7920dec7a21c/419e83fb75f30b989adf7920dec7a21c.zip'
-          if [ ! -s /tmp/a8-einar-v9/src/einar.zip ]; then
-            curl -L --fail --retry 3 --retry-all-errors -A 'Mozilla/5.0' -e 'https://studio.blender.org/characters/einar/v1/' -o /tmp/a8-einar-v9/src/einar.zip "$EINAR"
+          CACHE=/tmp/a8-einar-v8/src
+          mkdir -p "$CACHE"
+          if [ ! -s "$CACHE/einar.zip" ]; then
+            curl -L --fail --retry 8 --retry-all-errors --retry-delay 5 --connect-timeout 20 -A 'Mozilla/5.0' -e 'https://studio.blender.org/characters/einar/v1/' -o "$CACHE/einar.zip" "$EINAR"
           fi
-          echo '3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7  /tmp/a8-einar-v9/src/einar.zip' | sha256sum -c -
+          echo '3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7  /tmp/a8-einar-v8/src/einar.zip' | sha256sum -c -
+          cp "$CACHE/einar.zip" /tmp/a8-einar-v9/src/einar.zip
           cd /tmp/a8-einar-v9/src
           rm -rf einar
           unzip -q einar.zip -d einar
           test -f einar/einar_release_v1.blend
-          if [ ! -s blender.tar.xz ]; then
-            curl -L --fail --retry 3 --retry-all-errors -o blender.tar.xz https://download.blender.org/release/Blender3.6/blender-3.6.20-linux-x64.tar.xz
+          if [ ! -s "$CACHE/blender.tar.xz" ]; then
+            curl -L --fail --retry 5 --retry-all-errors --retry-delay 3 -o "$CACHE/blender.tar.xz" https://download.blender.org/release/Blender3.6/blender-3.6.20-linux-x64.tar.xz
           fi
+          cp "$CACHE/blender.tar.xz" blender.tar.xz
           rm -rf /tmp/a8-einar-v9/bin/blender-3.6.20-linux-x64
           tar -xJf blender.tar.xz -C /tmp/a8-einar-v9/bin
           BLENDER=$(find /tmp/a8-einar-v9/bin -maxdepth 2 -type f -name blender | head -n1)
