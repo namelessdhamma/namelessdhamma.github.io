@@ -1,0 +1,140 @@
+name: GG Nezrimy Gost Guide Lab ASR Reuse
+
+on:
+  push:
+    branches:
+      - compute/gg-nezrimy-gost-guide-lab-20261007
+    paths:
+      - '.github/workflows/gg-nezrimy-gost-guide-lab-asr-reuse.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  asr-reuse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ASR runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q requests numpy scipy soundfile faster-whisper==1.1.1 jiwer==3.0.4
+
+      - name: Download preserved Run 3 guide artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-nezrimy-gost-guide-lab
+          path: guide-lab
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: namelessdhamma/namelessdhamma.github.io
+          run-id: 37553823429
+
+      - name: Phrase ASR and select profile winners
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,re,tempfile
+          import numpy as np
+          import soundfile as sf
+          from faster_whisper import WhisperModel
+          from jiwer import wer,cer
+
+          root=pathlib.Path('guide-lab')
+          score=json.loads((root/'score.json').read_text())
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          tpb=score['ticks_per_beat']; BAR=tpb*4; bpm=score['bpm']; tick_sec=60.0/bpm/tpb
+          profiles={}
+          for name in ['articulation','neutral']:
+              y,sr=sf.read(root/'guides'/f'{name}.wav')
+              if getattr(y,'ndim',1)>1:y=y.mean(axis=1)
+              profiles[name]=(np.asarray(y,dtype=np.float32),sr)
+
+          def norm(s):
+              s=s.lower().replace('ё','е')
+              s=re.sub(r'[^а-я0-9 ]+',' ',s)
+              return re.sub(r'\s+',' ',s).strip()
+          def target(ph): return ' '.join(w['text'] for w in ph['words'])
+          def bounds(ph,sr):
+              st=ph['bar']*BAR+ph['offset']; en=st
+              for w in ph['words']: en+=sum(w['durations'])+w['rest']
+              return max(0,int((st*tick_sec-.12)*sr)),min(len(next(iter(profiles.values()))[0]),int((en*tick_sec+.18)*sr))
+          td=pathlib.Path(tempfile.mkdtemp(prefix='gg-guide-lab-asr-'))
+          def tx(x,sr,fn):
+              sf.write(fn,x,sr)
+              segs,_=model.transcribe(str(fn),language='ru',beam_size=5,vad_filter=False,
+                                      condition_on_previous_text=False,temperature=0.0)
+              return ' '.join(s.text.strip() for s in list(segs)).strip()
+
+          rows=[]
+          for ph in score['phrases']:
+              trg=target(ph); nt=norm(trg); cand={}
+              for name,(y,sr) in profiles.items():
+                  a,b=bounds(ph,sr); text=tx(y[a:b],sr,td/f"{ph['id']}-{name}.wav")
+                  nr=norm(text)
+                  cand[name]={'transcript':text,'wer':float(wer(nt,nr)),'cer':float(cer(nt,nr))}
+              winner=min(cand,key=lambda n:(cand[n]['cer'],cand[n]['wer']))
+              rows.append({'id':ph['id'],'target':trg,'candidates':cand,'winner':winner,'best':cand[winner]})
+
+          base,sr=profiles['articulation']; best=base.copy()
+          for ph,row in zip(score['phrases'],rows):
+              winner=row['winner']
+              if winner=='articulation': continue
+              src,ssr=profiles[winner]
+              assert ssr==sr
+              a,b=bounds(ph,sr)
+              seg=src[a:b].copy()
+              fade=min(max(1,int(.06*sr)),max(1,(b-a)//4))
+              env=np.ones(b-a,dtype=np.float32)
+              if b-a>=2*fade:
+                  env[:fade]=np.linspace(0,1,fade,endpoint=False)
+                  env[-fade:]=np.linspace(1,0,fade,endpoint=False)
+              best[a:b]=best[a:b]*(1-env)+seg*env
+          sf.write(root/'best-of.wav',best,sr,subtype='PCM_24')
+
+          final=[]
+          for ph in score['phrases']:
+              trg=target(ph); nt=norm(trg); a,b=bounds(ph,sr)
+              text=tx(best[a:b],sr,td/f"{ph['id']}-best.wav")
+              nr=norm(text)
+              final.append({'id':ph['id'],'target':trg,'transcript':text,
+                            'wer':float(wer(nt,nr)),'cer':float(cer(nt,nr))})
+          blockers=[x for x in final if x['cer']>.20]
+          report={'threshold':.20,'profiles':rows,'final':final,'blockers':blockers,
+                  'status':'PASS' if not blockers else 'REJECT'}
+          (root/'guide-lab-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          (root/'winner-map.json').write_text(json.dumps({x['id']:x['winner'] for x in rows},ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gg-nezrimy-gost-guide-lab-asr-reuse
+          path: |
+            guide-lab/score.json
+            guide-lab/guides/*.wav
+            guide-lab/best-of.wav
+            guide-lab/guide-lab-report.json
+            guide-lab/winner-map.json
+          retention-days: 14
+
+      - name: Gate
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json,sys
+          j=json.load(open('guide-lab/guide-lab-report.json'))
+          print('GUIDE_LAB',j['status'])
+          print('BLOCKERS',[(x['id'],round(x['cer'],3),x['transcript']) for x in j['blockers']])
+          sys.exit(0 if j['status']=='PASS' else 2)
+          PY
