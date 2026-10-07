@@ -693,6 +693,16 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 // D1v4 flattened melody and is otherwise frozen.
                 ShiftPhone("былого", "ru/v", -60);
                 ShiftPhone("неизменным", "ru/z", -60);
+
+                // Bounded BRL1 diction lab. Negative offset starts the consonant earlier,
+                // lengthening it without changing canonical text or melody.
+                int brl1VOffsetTicks = 0;
+                int brl1GOffsetTicks = 0;
+                int.TryParse(Environment.GetEnvironmentVariable("GG_D1_BRL1_V_OFFSET_TICKS"), out brl1VOffsetTicks);
+                int.TryParse(Environment.GetEnvironmentVariable("GG_D1_BRL1_G_OFFSET_TICKS"), out brl1GOffsetTicks);
+                if (brl1VOffsetTicks != 0) ShiftPhone("взирали", "ru/v", brl1VOffsetTicks);
+                if (brl1GOffsetTicks != 0) ShiftPhone("год", "ru/g", brl1GOffsetTicks);
+
                 project.Validate(new ValidateOptions {
                     SkipTiming = true,
                     Part = part,
