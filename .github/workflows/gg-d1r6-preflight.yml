@@ -1,0 +1,49 @@
+name: GG D1R6 Preflight
+
+on:
+  push:
+    branches:
+      - compute/gg-nezrimy-gost-d1r6-prep-20261007
+    paths:
+      - '.github/workflows/gg-nezrimy-gost-d1r6.yml'
+      - '.github/workflows/gg-d1r6-preflight.yml'
+      - 'tools/gg_d1r6_*.py'
+      - 'docs/gg/songs/ne-s-nim-d1-full-v3.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q pyyaml
+          python -m py_compile \
+            tools/gg_d1r6_align_rvc.py \
+            tools/gg_d1r6_rvc_variant_select.py \
+            tools/gg_d1r6_vfs_select.py \
+            tools/gg_d1r6_asr_qa.py \
+            tools/gg_d1r6_critic.py
+          python - <<'PY'
+          import yaml,json,pathlib
+          wf=pathlib.Path('.github/workflows/gg-nezrimy-gost-d1r6.yml')
+          data=yaml.safe_load(wf.read_text())
+          assert data and 'jobs' in data and 'qualify' in data['jobs']
+          raw=wf.read_text()
+          assert 'workflow_dispatch:' in raw
+          assert 'push:' not in raw.split('permissions:')[0], 'full workflow must remain manual-only during prep'
+          s=json.loads(pathlib.Path('docs/gg/songs/ne-s-nim-d1-full-v3.json').read_text())
+          assert s.get('production_revision')=='D1R6'
+          assert s.get('bpm')==108 and 'tempo_map' not in s
+          print('D1R6_PREFLIGHT_PASS')
+          PY
