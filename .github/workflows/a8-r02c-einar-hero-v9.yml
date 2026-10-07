@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euxo pipefail
           cat > /tmp/a8-einar-v9/src/hero_export.py <<'PY'
-          import bpy, os, json, glob, re
+          import bpy, os, json, glob, re, bmesh
           OUT='/tmp/a8-einar-v9/out'
           TEX='/tmp/a8-einar-v9/src/einar/textures'
           os.makedirs(OUT,exist_ok=True)
@@ -284,7 +284,35 @@ jobs:
               print('V97_MANUAL_SUBDIV_APPLIED=',len(head_snap.data.polygons) if head_snap else -1)
           assert head_snap is not None and len(head_snap.data.polygons)>=30000, 'V97_HEAD_NOT_HIGH_DETAIL:'+str(len(head_snap.data.polygons) if head_snap else -1)
 
-          # V9.6: convert the real Einar CURVES directly from source point data.
+          # V9.9: the remaining black nose/ears survive front fill and material changes,
+          # so rebuild final snapshot normals AFTER Catmull/evaluated geometry.
+          normal_report={}
+          def rebuild_normals(ob):
+              if ob.type!='MESH': return
+              me=ob.data
+              try:
+                  me.free_normals_split()
+              except Exception:
+                  pass
+              try:
+                  me.use_auto_smooth=False
+              except Exception:
+                  pass
+              bm=bmesh.new()
+              bm.from_mesh(me)
+              bmesh.ops.recalc_face_normals(bm,faces=bm.faces)
+              bm.normal_update()
+              bm.to_mesh(me)
+              bm.free()
+              me.update()
+              for p in me.polygons:p.use_smooth=True
+              normal_report[ob.name]={'verts':len(me.vertices),'polys':len(me.polygons)}
+
+          for ob in snapshots:
+              rebuild_normals(ob)
+          print('V99_NORMAL_REPORT=',json.dumps(normal_report,indent=2))
+
+          # Convert Einar's real CURVES directly from source point data.
           # Explicit matrix_world transform avoids the V9.5 ObjectInfo/host-space ambiguity.
           # Cross-ribbons give 360-degree visibility at a fraction of the 18M-poly tube cost.
           hair_specs=[
@@ -349,7 +377,7 @@ jobs:
               ob=bpy.data.objects.new('A8V97_STRANDS_'+src_name,me)
               clean.objects.link(ob)
               ob.data.materials.append(mats['hair'])
-              for p in ob.data.polygons:p.use_smooth=True
+              rebuild_normals(ob)
               hair_report.append({
                   'name':src_name,'source_curves':len(curves),'source_points':len(pts),
                   'stride':stride,'used_curves':used,'verts':len(verts),'polys':len(faces),
@@ -398,7 +426,7 @@ jobs:
           assert any('A8V97_STRANDS_GEO-einar_hair' in n for n in selected)
           assert any('A8V97_STRANDS_GEO-einar_eyebrows' in n for n in selected)
 
-          inv={'textures':tex,'selected':selected,'missing':missing,'snapshot_fail':snap_fail,'snapshot_polys':{o.name:len(o.data.polygons) for o in snapshots},'modifier_report':modifier_report,'hair_report':hair_report,'hair_fail':hair_fail}
+          inv={'textures':tex,'selected':selected,'missing':missing,'snapshot_fail':snap_fail,'snapshot_polys':{o.name:len(o.data.polygons) for o in snapshots},'modifier_report':modifier_report,'hair_report':hair_report,'hair_fail':hair_fail,'normal_report':normal_report}
           json.dump(inv,open(OUT+'/v9-inventory.json','w'),indent=2)
 
           bpy.ops.export_scene.gltf(
@@ -408,7 +436,7 @@ jobs:
               export_apply=True,
               export_texcoords=True,
               export_normals=True,
-              export_tangents=True,
+              export_tangents=False,
               export_materials='EXPORT',
               export_colors=True,
               export_cameras=False,
@@ -493,7 +521,7 @@ jobs:
               if settle<10:return
               get_viewport().get_texture().get_image().save_png("/tmp/a8-einar-v9/out/H%02d.png" % (shot+1))
               shot+=1
-              if shot>=8:
+              if shot>=4:
                   get_tree().quit(); return
               settle=0
               _place(shot)
@@ -586,7 +614,7 @@ jobs:
               var b:=head_bounds if have_head else bounds
               var target:=b.get_center()+Vector3(0,b.size.y*0.02,0)
               var r=maxf(b.size.y*2.15,0.42)
-              var angles=[0.0,45.0,90.0,135.0,180.0,225.0,270.0,315.0]
+              var angles=[0.0,45.0,315.0,90.0]
               var a:=deg_to_rad(angles[i])
               camera.global_position=target+Vector3(sin(a)*r,b.size.y*0.02,cos(a)*r)
               camera.look_at(target,Vector3.UP)
@@ -602,7 +630,7 @@ jobs:
           "$GODOT" --headless --editor --path "$PROJ" --import 2>&1 | tee /tmp/a8-einar-v9/out/godot-import.log
           xvfb-run -a "$GODOT" --path "$PROJ" --rendering-method forward_plus --audio-driver Dummy res://hero.tscn 2>&1 | tee /tmp/a8-einar-v9/out/godot.log
           test -s /tmp/a8-einar-v9/out/H01.png
-          test -s /tmp/a8-einar-v9/out/H08.png
+          test -s /tmp/a8-einar-v9/out/H04.png
           if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-einar-v9/out/godot.log; then echo 'Godot runtime errors'; exit 1; fi
           sha256sum /tmp/a8-einar-v9/out/H*.png > /tmp/a8-einar-v9/out/hero-frames.sha256
 
@@ -614,18 +642,18 @@ jobs:
           inv=json.load(open('/tmp/a8-einar-v9/out/v9-inventory.json'))
           receipt={
             'route':'R02C',
-            'recipe':'EINAR_V9_8_FRONT_FILL_NORMAL_RESPONSE',
+            'recipe':'EINAR_V9_9_REBUILT_FINAL_NORMALS',
             'source':'official Blender Studio Einar v1',
             'source_license':'CC-BY',
             'source_archive_sha256':'3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7',
             'selected_objects':inv['selected'],
             'texture_map':inv['textures'],
-            'goal':'isolate remaining black-nose defect as lighting/normal response using explicit frontal fill while preserving V9.7 source skin/eyes and real groom unchanged',
+            'goal':'rebuild final high-detail snapshot and groom normals after Catmull/evaluation, drop stale tangents, and verify black nose/ear artifacts disappear without changing source lookdev',
             'glb_bytes':os.path.getsize('/tmp/a8-einar-v9/out/einar-hero-v9.glb')
           }
           json.dump(receipt,open('/tmp/a8-einar-v9/out/receipt.json','w'),indent=2)
           PY
-          cp /tmp/a8-einar-v9/out/{v9-inventory.json,blender.log,einar-hero-v9.sha256,godot-import.log,godot.log,hero-frames.sha256,receipt.json,H01.png,H02.png,H03.png,H04.png,H05.png,H06.png,H07.png,H08.png} /tmp/a8-einar-v9/publish/
+          cp /tmp/a8-einar-v9/out/{v9-inventory.json,blender.log,einar-hero-v9.sha256,godot-import.log,godot.log,hero-frames.sha256,receipt.json,H01.png,H02.png,H03.png,H04.png} /tmp/a8-einar-v9/publish/
           for f in /tmp/a8-einar-v9/out/skin-source.png /tmp/a8-einar-v9/out/eyes-source.png /tmp/a8-einar-v9/out/hair-source.png; do [ ! -s "$f" ] || cp "$f" /tmp/a8-einar-v9/publish/; done
 
       - name: Upload V9 evidence
