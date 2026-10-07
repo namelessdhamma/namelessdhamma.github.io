@@ -1,0 +1,75 @@
+name: A8 R02C Einar Official Inventory V7
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-einar-inventory-v7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  einar-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Fetch official Blender Studio Einar archive
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/a8-einar/out /tmp/a8-einar/src
+          URL='https://studio.blender.org/download-source/files/41/419e83fb75f30b989adf7920dec7a21c/419e83fb75f30b989adf7920dec7a21c.zip'
+          curl -L --fail --retry 3 --retry-all-errors             -A 'Mozilla/5.0'             -e 'https://studio.blender.org/characters/einar/v1/'             -o /tmp/a8-einar/src/einar.zip "$URL"
+          SIZE=$(stat -c%s /tmp/a8-einar/src/einar.zip)
+          echo "archive_size=$SIZE"
+          test "$SIZE" -gt 500000000
+          sha256sum /tmp/a8-einar/src/einar.zip | tee /tmp/a8-einar/out/archive.sha256
+
+      - name: Inventory archive
+        run: |
+          set -euxo pipefail
+          unzip -l /tmp/a8-einar/src/einar.zip > /tmp/a8-einar/out/unzip-list.txt
+          python3 - <<'PY'
+          import zipfile, json, os, hashlib
+          p='/tmp/a8-einar/src/einar.zip'
+          z=zipfile.ZipFile(p)
+          rows=[]
+          for i in z.infolist():
+              lo=i.filename.lower()
+              if lo.endswith(('.blend','.abc','.fbx','.gltf','.glb','.usd','.usdc','.usdz','.exr','.png','.jpg','.jpeg','.tif','.tiff','.tx')):
+                  rows.append({'name':i.filename,'size':i.file_size,'compressed':i.compress_size})
+          blends=[r for r in rows if r['name'].lower().endswith('.blend')]
+          out={
+            'source_url':'https://studio.blender.org/characters/einar/v1/',
+            'download_url':'https://studio.blender.org/download-source/files/41/419e83fb75f30b989adf7920dec7a21c/419e83fb75f30b989adf7920dec7a21c.zip',
+            'license':'CC-BY per official Blender Studio Einar page',
+            'required_credit':'Einar Rig (CC-BY) Blender Foundation | studio.blender.org',
+            'archive_bytes':os.path.getsize(p),
+            'member_count':len(z.infolist()),
+            'blend_files':blends,
+            'candidate_asset_count':len(rows)
+          }
+          open('/tmp/a8-einar/out/inventory.json','w').write(json.dumps(out,indent=2))
+          print(json.dumps(out,indent=2))
+          assert blends, 'No .blend files found'
+          PY
+
+      - name: Extract small metadata only
+        run: |
+          python3 - <<'PY'
+          import zipfile, os
+          z=zipfile.ZipFile('/tmp/a8-einar/src/einar.zip')
+          for n in z.namelist():
+              lo=n.lower()
+              if lo.endswith(('readme','readme.txt','readme.md','license','license.txt','license.md')):
+                  if z.getinfo(n).file_size <= 1000000:
+                      safe=n.replace('/','__')
+                      open('/tmp/a8-einar/out/'+safe,'wb').write(z.read(n))
+          PY
+
+      - name: Upload inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-einar-official-inventory-v7
+          path: /tmp/a8-einar/out
+          retention-days: 7
