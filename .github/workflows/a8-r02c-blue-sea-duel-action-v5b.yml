@@ -268,7 +268,6 @@ jobs:
               var hand:=skel.find_bone("mixamorig_RightHand")
               var ik:=SkeletonIK3D.new()
               ik.name="RightArmIK"
-              skel.add_child(ik)
               ik.root_bone=&"mixamorig_RightArm"
               ik.tip_bone=&"mixamorig_RightHand"
               ik.override_tip_basis=false
@@ -276,6 +275,7 @@ jobs:
               ik.max_iterations=18
               ik.min_distance=0.002
               ik.influence=1.0
+              skel.add_child(ik)
 
               var sword:=_make_sword(name+"Sword")
               return {
@@ -450,6 +450,49 @@ jobs:
               var n:=MeshInstance3D.new();var mesh:=CylinderMesh.new();mesh.top_radius=radius;mesh.bottom_radius=radius;mesh.height=height;n.mesh=mesh;n.position=pos;n.material_override=mat;parent.add_child(n);return n
           EOF
 
+          cat > "$PROJ/scenes/probe_vitruvian_skeleton.tscn" <<'EOF'
+          [gd_scene load_steps=2 format=3]
+
+          [ext_resource type="Script" path="res://scenes/probe_vitruvian_skeleton.gd" id="1"]
+
+          [node name="ProbeVitruvianSkeleton" type="Node"]
+          script = ExtResource("1")
+          EOF
+
+          cat > "$PROJ/scenes/probe_vitruvian_skeleton.gd" <<'EOF'
+          extends Node
+
+          func _find_skeleton(n:Node)->Skeleton3D:
+              if n is Skeleton3D:
+                  return n as Skeleton3D
+              for c in n.get_children():
+                  var r:=_find_skeleton(c)
+                  if r!=null:
+                      return r
+              return null
+
+          func _ready()->void:
+              var ps:=load("res://vitruvian_body.glb") as PackedScene
+              if ps==null:
+                  push_error("PROBE_BODY_LOAD_NULL")
+                  get_tree().quit(31)
+                  return
+              var body:=ps.instantiate()
+              add_child(body)
+              var skel:=_find_skeleton(body)
+              if skel==null:
+                  push_error("PROBE_SKELETON_NULL")
+                  get_tree().quit(32)
+                  return
+              print("PROBE_BONE_COUNT=",skel.get_bone_count())
+              for i in range(skel.get_bone_count()):
+                  print("PROBE_BONE|",i,"|",skel.get_bone_name(i),"|parent=",skel.get_bone_parent(i))
+              for n in ["mixamorig_RightShoulder","mixamorig_RightArm","mixamorig_RightForeArm","mixamorig_RightHand","mixamorig_LeftArm","mixamorig_Head"]:
+                  var idx:=skel.find_bone(n)
+                  print("PROBE_FIND|",n,"|idx=",idx,"|parent=",(skel.get_bone_parent(idx) if idx>=0 else -999))
+              get_tree().quit()
+          EOF
+
       - name: Import assets
         run: |
           GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
@@ -460,6 +503,17 @@ jobs:
           "$GODOT" --headless --editor --path "$PROJ" --import
           test -d "$PROJ/.godot/imported"
           find "$PROJ/.godot/imported" -type f | grep -q .
+
+      - name: Probe exact Vitruvian skeleton
+        run: |
+          GODOT=/tmp/a8-r02c-v6/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-r02c-v6/src/repo/godot_project
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          cd "$PROJ"
+          "$GODOT" --headless --path . scenes/probe_vitruvian_skeleton.tscn 2>&1 | tee /tmp/a8-r02c-v6/out/skeleton-probe.log
+          grep 'PROBE_FIND' /tmp/a8-r02c-v6/out/skeleton-probe.log
+          grep -q 'PROBE_FIND|mixamorig_RightArm|idx=' /tmp/a8-r02c-v6/out/skeleton-probe.log
+          grep -q 'PROBE_FIND|mixamorig_RightHand|idx=' /tmp/a8-r02c-v6/out/skeleton-probe.log
 
       - name: Render Blue Sea dual-human shot
         run: |
