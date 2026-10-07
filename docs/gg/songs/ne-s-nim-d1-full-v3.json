@@ -1,6 +1,6 @@
 {
   "version": "D1_FULL_V3",
-  "title": "Незримый гость — D1R5C production projection over authoritative D1 FULL v3",
+  "title": "Незримый гость — D1R5E production projection over authoritative D1 FULL v3",
   "bpm": 108,
   "ticks_per_beat": 480,
   "bars": 120,
@@ -2548,53 +2548,7 @@
     "voice_leading_repair": "new phrases only: nearest chord-tone correction <=3 semitones; accepted C3R1 gene and chorus untouched",
     "final_symbolic_repair": "finl3 одна resolves 64→67; removes unearned 7-semitone leap and lands on bar-104 G support"
   },
-  "production_revision": "D1R5C",
-  "tempo_map": [
-    {
-      "bar": 0,
-      "bpm": 106
-    },
-    {
-      "bar": 4,
-      "bpm": 108
-    },
-    {
-      "bar": 28,
-      "bpm": 110
-    },
-    {
-      "bar": 40,
-      "bpm": 106
-    },
-    {
-      "bar": 44,
-      "bpm": 108
-    },
-    {
-      "bar": 56,
-      "bpm": 110
-    },
-    {
-      "bar": 68,
-      "bpm": 106
-    },
-    {
-      "bar": 80,
-      "bpm": 112
-    },
-    {
-      "bar": 96,
-      "bpm": 108
-    },
-    {
-      "bar": 108,
-      "bpm": 103
-    },
-    {
-      "bar": 114,
-      "bpm": 100
-    }
-  ],
+  "production_revision": "D1R5E",
   "d1r5": {
     "preserve_composition_gene": true,
     "user_feedback_targets": [
@@ -2648,5 +2602,20 @@
       "brl2": "flattened intra-word melody, prior guide CER 0.0645 PASS",
       "brl4": "flattened intra-word melody + V60Z60 phone offsets, prior isolated guide CER 0.133 PASS"
     }
+  },
+  "d1r5e": {
+    "fixed_bpm": 108,
+    "preserve": [
+      "section-specific groove",
+      "audible low-mid riff",
+      "Voice-from-Silence post-RVC envelope",
+      "macro dynamic contrast"
+    ],
+    "repair": [
+      "clean guide before RVC",
+      "phrase-wise RVC selection",
+      "small instrumental-body lift",
+      "chorus-I lift"
+    ]
   }
 }
