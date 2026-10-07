@@ -49,7 +49,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             git unzip ffmpeg build-essential \
             libsndfile1 libportaudio2 patchelf libicu-dev
-          python -m pip install -q numpy scipy soundfile faster-whisper==1.1.1 jiwer==3.0.4 pyyaml
+          python -m pip install -q numpy scipy soundfile requests faster-whisper==1.1.1 jiwer==3.0.4 pyyaml
 
       - name: Build compact blocker score
         shell: bash
