@@ -26,21 +26,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Bootstrap action prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends curl ca-certificates
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
 
-      - name: Bootstrap
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install guide-lab runtime
         shell: bash
         run: |
           set -euo pipefail
           apt-get update
           apt-get install -y --no-install-recommends \
-            curl ca-certificates git unzip ffmpeg build-essential \
+            git unzip ffmpeg build-essential \
             libsndfile1 libportaudio2 patchelf libicu-dev
           python -m pip install -q numpy scipy soundfile faster-whisper==1.1.1 jiwer==3.0.4 pyyaml
 
