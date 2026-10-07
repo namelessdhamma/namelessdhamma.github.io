@@ -104,18 +104,8 @@ jobs:
           bpy.context.scene.render.engine='BLENDER_EEVEE'
           bpy.ops.file.find_missing_files(directory='/tmp/a8-einar-v8/src/einar/textures')
 
-          # Build a clean export copy in the current scene: only renderable geometry + armatures.
-          bpy.ops.object.select_all(action='DESELECT')
-          exportable=[]
-          for o in objs:
-              if o.type in {'MESH','ARMATURE','CURVE','CURVES'}:
-                  try:
-                      o.hide_viewport=False
-                      o.hide_render=False
-                      o.select_set(True)
-                      exportable.append(o)
-                  except Exception:
-                      pass
+          # Background-safe inventory. Avoid UI-dependent selection operators entirely.
+          exportable=[o for o in objs if o.type in {'MESH','ARMATURE','CURVE','CURVES'}]
           info['selected_exportable']=[{'name':o.name,'type':o.type} for o in exportable]
 
           # Bounding box in world space, useful for downstream auto-camera.
@@ -137,7 +127,7 @@ jobs:
           bpy.ops.export_scene.gltf(
               filepath=os.path.join(OUT,'einar-godot.glb'),
               export_format='GLB',
-              use_selection=True,
+              use_selection=False,
               export_apply=True,
               export_texcoords=True,
               export_normals=True,
@@ -158,7 +148,7 @@ jobs:
           PY
           BLENDER=$(find /tmp/a8-einar-v8/bin -maxdepth 2 -type f -name blender | head -n1)
           cd /tmp/a8-einar-v8/src/einar
-          "$BLENDER" --background einar_release_v1.blend --python /tmp/a8-einar-v8/src/inspect_export.py 2>&1 | tee /tmp/a8-einar-v8/out/blender.log
+          "$BLENDER" --background --enable-autoexec einar_release_v1.blend --python /tmp/a8-einar-v8/src/inspect_export.py 2>&1 | tee /tmp/a8-einar-v8/out/blender.log
           test $(stat -c%s /tmp/a8-einar-v8/out/einar-godot.glb) -gt 1000000
           sha256sum /tmp/a8-einar-v8/out/einar-godot.glb > /tmp/a8-einar-v8/out/einar-godot.sha256
 
@@ -183,8 +173,8 @@ jobs:
           window/size/viewport_width=768
           window/size/viewport_height=768
           [rendering]
-          renderer/rendering_method="gl_compatibility"
-          renderer/rendering_method.mobile="gl_compatibility"
+          renderer/rendering_method="forward_plus"
+          renderer/rendering_method.mobile="forward_plus"
           EOF
           cat > "$PROJ/probe.tscn" <<'EOF'
           [gd_scene load_steps=2 format=3]
@@ -290,8 +280,9 @@ jobs:
           set -euxo pipefail
           GODOT=/tmp/a8-einar-v8/bin/Godot_v4.6-stable_linux.x86_64
           PROJ=/tmp/a8-einar-v8/godot
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           "$GODOT" --headless --editor --path "$PROJ" --import
-          xvfb-run -a "$GODOT" --path "$PROJ" --rendering-method gl_compatibility res://probe.tscn 2>&1 | tee /tmp/a8-einar-v8/out/godot.log
+          xvfb-run -a "$GODOT" --path "$PROJ" --rendering-method forward_plus res://probe.tscn 2>&1 | tee /tmp/a8-einar-v8/out/godot.log
           test -s /tmp/a8-einar-v8/out/G01.png
           test -s /tmp/a8-einar-v8/out/G04.png
           if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-einar-v8/out/godot.log; then echo 'Godot runtime errors'; exit 1; fi
