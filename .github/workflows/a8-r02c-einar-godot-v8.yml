@@ -21,17 +21,31 @@ jobs:
           sudo apt-get install -y -qq xvfb ffmpeg unzip xz-utils libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
           mkdir -p /tmp/a8-einar-v8/{bin,src,out,godot}
 
+      - name: Restore immutable source archives
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/a8-einar-v8/src/einar.zip
+            /tmp/a8-einar-v8/src/blender.tar.xz
+          key: a8-einar-v1-blender-3.6.20-archives
+
       - name: Fetch official Einar and Blender 3.6 LTS
         run: |
           set -euxo pipefail
           EINAR='https://studio.blender.org/download-source/files/41/419e83fb75f30b989adf7920dec7a21c/419e83fb75f30b989adf7920dec7a21c.zip'
-          curl -L --fail --retry 3 --retry-all-errors -A 'Mozilla/5.0' -e 'https://studio.blender.org/characters/einar/v1/'             -o /tmp/a8-einar-v8/src/einar.zip "$EINAR"
+          if [ ! -s /tmp/a8-einar-v8/src/einar.zip ]; then
+            curl -L --fail --retry 3 --retry-all-errors -A 'Mozilla/5.0' -e 'https://studio.blender.org/characters/einar/v1/'               -o /tmp/a8-einar-v8/src/einar.zip "$EINAR"
+          fi
           echo '3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7  /tmp/a8-einar-v8/src/einar.zip' | sha256sum -c -
           cd /tmp/a8-einar-v8/src
+          rm -rf einar
           unzip -q einar.zip -d einar
           test -f einar/einar_release_v1.blend
 
-          curl -L --fail --retry 3 --retry-all-errors             -o /tmp/a8-einar-v8/src/blender.tar.xz             https://download.blender.org/release/Blender3.6/blender-3.6.20-linux-x64.tar.xz
+          if [ ! -s /tmp/a8-einar-v8/src/blender.tar.xz ]; then
+            curl -L --fail --retry 3 --retry-all-errors               -o /tmp/a8-einar-v8/src/blender.tar.xz               https://download.blender.org/release/Blender3.6/blender-3.6.20-linux-x64.tar.xz
+          fi
+          rm -rf /tmp/a8-einar-v8/bin/blender-3.6.20-linux-x64
           tar -xJf /tmp/a8-einar-v8/src/blender.tar.xz -C /tmp/a8-einar-v8/bin
           BLENDER=$(find /tmp/a8-einar-v8/bin -maxdepth 2 -type f -name blender | head -n1)
           test -x "$BLENDER"
@@ -395,7 +409,7 @@ jobs:
           PROJ=/tmp/a8-einar-v8/godot
           export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
           "$GODOT" --headless --editor --path "$PROJ" --import
-          xvfb-run -a "$GODOT" --path "$PROJ" --rendering-method forward_plus res://probe.tscn 2>&1 | tee /tmp/a8-einar-v8/out/godot.log
+          xvfb-run -a "$GODOT" --path "$PROJ" --rendering-method forward_plus --audio-driver Dummy res://probe.tscn 2>&1 | tee /tmp/a8-einar-v8/out/godot.log
           test -s /tmp/a8-einar-v8/out/G01.png
           test -s /tmp/a8-einar-v8/out/G04.png
           if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-einar-v8/out/godot.log; then echo 'Godot runtime errors'; exit 1; fi
