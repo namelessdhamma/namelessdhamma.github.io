@@ -689,10 +689,16 @@ namespace OpenUtau.Test.Core.DiffSinger {
                         && string.Equals(p.phoneme, phone, StringComparison.OrdinalIgnoreCase));
                     if (pp != null) pp.Parent!.GetPhonemeOverride(pp.index).offset = offset;
                 }
-                // Proven D1v5 brl4 repair only. brl2 uses the already accepted
-                // D1v4 flattened melody and is otherwise frozen.
+                // Proven D1v5 brl4 repair.
                 ShiftPhone("былого", "ru/v", -60);
                 ShiftPhone("неизменным", "ru/z", -60);
+
+                // BRL1 micro-lab: increase audibility of the phrase-initial /v/ in «взирали».
+                int brl1VOffsetTicks = 0;
+                int.TryParse(Environment.GetEnvironmentVariable("GG_BRL1_V_OFFSET_TICKS"), out brl1VOffsetTicks);
+                if (brl1VOffsetTicks != 0) {
+                    ShiftPhone("взирали", "ru/v", -Math.Abs(brl1VOffsetTicks));
+                }
                 project.Validate(new ValidateOptions {
                     SkipTiming = true,
                     Part = part,
@@ -761,6 +767,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     $"variant={variant}\n" +
                     $"guide_profile={Environment.GetEnvironmentVariable("GG_D1_GUIDE_PROFILE") ?? "full"}\n" +
                     $"ignore_tempo_map={Environment.GetEnvironmentVariable("GG_D1_IGNORE_TEMPO_MAP") ?? "0"}\n" +
+                    $"brl1_v_offset_ticks={Environment.GetEnvironmentVariable("GG_BRL1_V_OFFSET_TICKS") ?? "0"}\n" +
                     $"l_offset_ticks={lOffsetTicks}\n" +
                     $"render_steps={renderSteps}\n" +
                     $"vocoder_name={usedVocoder?.config?.name ?? "unknown"}\n" +
