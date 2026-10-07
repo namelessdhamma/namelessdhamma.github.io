@@ -693,11 +693,12 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 ShiftPhone("былого", "ru/v", -60);
                 ShiftPhone("неизменным", "ru/z", -60);
 
-                // BRL1 micro-lab: increase audibility of the phrase-initial /v/ in «взирали».
-                int brl1VOffsetTicks = 0;
-                int.TryParse(Environment.GetEnvironmentVariable("GG_BRL1_V_OFFSET_TICKS"), out brl1VOffsetTicks);
-                if (brl1VOffsetTicks != 0) {
-                    ShiftPhone("взирали", "ru/v", -Math.Abs(brl1VOffsetTicks));
+                // BRL1 micro-lab: lengthen phrase-initial /v/ safely by moving the
+                // following /z/ boundary later. Do not move the first phoneme before phrase start.
+                int brl1ZOffsetTicks = 0;
+                int.TryParse(Environment.GetEnvironmentVariable("GG_BRL1_Z_OFFSET_TICKS"), out brl1ZOffsetTicks);
+                if (brl1ZOffsetTicks != 0) {
+                    ShiftPhone("взирали", "ru/z", Math.Abs(brl1ZOffsetTicks));
                 }
                 project.Validate(new ValidateOptions {
                     SkipTiming = true,
@@ -767,7 +768,7 @@ namespace OpenUtau.Test.Core.DiffSinger {
                     $"variant={variant}\n" +
                     $"guide_profile={Environment.GetEnvironmentVariable("GG_D1_GUIDE_PROFILE") ?? "full"}\n" +
                     $"ignore_tempo_map={Environment.GetEnvironmentVariable("GG_D1_IGNORE_TEMPO_MAP") ?? "0"}\n" +
-                    $"brl1_v_offset_ticks={Environment.GetEnvironmentVariable("GG_BRL1_V_OFFSET_TICKS") ?? "0"}\n" +
+                    $"brl1_z_offset_ticks={Environment.GetEnvironmentVariable("GG_BRL1_Z_OFFSET_TICKS") ?? "0"}\n" +
                     $"l_offset_ticks={lOffsetTicks}\n" +
                     $"render_steps={renderSteps}\n" +
                     $"vocoder_name={usedVocoder?.config?.name ?? "unknown"}\n" +
