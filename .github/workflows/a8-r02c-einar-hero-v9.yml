@@ -1,0 +1,425 @@
+name: A8 R02C Einar Clean Hero V9
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-einar-hero-v9.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  einar-hero:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Install runtime dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb unzip xz-utils libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-einar-v9/{bin,src,out,godot,publish}
+
+      - name: Restore immutable source archives
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/a8-einar-v9/src/einar.zip
+            /tmp/a8-einar-v9/src/blender.tar.xz
+          key: a8-einar-v1-blender-3.6.20-archives
+
+      - name: Fetch official Einar and Blender 3.6 LTS
+        run: |
+          set -euxo pipefail
+          EINAR='https://studio.blender.org/download-source/files/41/419e83fb75f30b989adf7920dec7a21c/419e83fb75f30b989adf7920dec7a21c.zip'
+          if [ ! -s /tmp/a8-einar-v9/src/einar.zip ]; then
+            curl -L --fail --retry 3 --retry-all-errors -A 'Mozilla/5.0' -e 'https://studio.blender.org/characters/einar/v1/' -o /tmp/a8-einar-v9/src/einar.zip "$EINAR"
+          fi
+          echo '3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7  /tmp/a8-einar-v9/src/einar.zip' | sha256sum -c -
+          cd /tmp/a8-einar-v9/src
+          rm -rf einar
+          unzip -q einar.zip -d einar
+          test -f einar/einar_release_v1.blend
+          if [ ! -s blender.tar.xz ]; then
+            curl -L --fail --retry 3 --retry-all-errors -o blender.tar.xz https://download.blender.org/release/Blender3.6/blender-3.6.20-linux-x64.tar.xz
+          fi
+          rm -rf /tmp/a8-einar-v9/bin/blender-3.6.20-linux-x64
+          tar -xJf blender.tar.xz -C /tmp/a8-einar-v9/bin
+          BLENDER=$(find /tmp/a8-einar-v9/bin -maxdepth 2 -type f -name blender | head -n1)
+          "$BLENDER" --version | head -n2
+
+      - name: Build clean hero export in Blender
+        run: |
+          set -euxo pipefail
+          cat > /tmp/a8-einar-v9/src/hero_export.py <<'PY'
+          import bpy, os, json, glob, re
+          OUT='/tmp/a8-einar-v9/out'
+          TEX='/tmp/a8-einar-v9/src/einar/textures'
+          os.makedirs(OUT,exist_ok=True)
+          bpy.context.scene.render.engine='BLENDER_EEVEE'
+          try:
+              bpy.ops.file.find_missing_files(directory=TEX)
+          except Exception as e:
+              print('find_missing_files:',e)
+
+          all_files=[p for p in glob.glob(TEX+'/**/*',recursive=True) if os.path.isfile(p)]
+          lower={p.lower():p for p in all_files}
+
+          def pick(include, exclude=()):
+              c=[]
+              for p in all_files:
+                  s=p.lower()
+                  if all(x.lower() in s for x in include) and not any(x.lower() in s for x in exclude):
+                      if os.path.splitext(s)[1] in ('.png','.jpg','.jpeg','.tif','.tiff','.exr'):
+                          c.append(p)
+              c.sort(key=lambda p:(0 if '/face/' in p.lower() else 1,len(p),p))
+              return c[0] if c else None
+
+          tex={
+            'skin_color':pick(('skin','albedo')) or pick(('skin','color')),
+            'skin_rough':pick(('skin','rough')) or pick(('face','rough')),
+            'skin_normal':pick(('skin','normal')) or pick(('face','normal')),
+            'eye_color':pick(('eyes','albedo')) or pick(('eye','albedo')),
+            'hair_color':pick(('hair','color')),
+            'hair_rough':pick(('hair','rough')),
+            'cloth_color':pick(('clothing','color_base')) or pick(('sweater','color')),
+            'cloth_normal':pick(('clothing','normal_base')) or pick(('sweater','normal')),
+            'cloth_rough':pick(('clothing','rough')) or pick(('sweater','rough')),
+          }
+          print('V9_TEXTURE_MAP=',json.dumps(tex,indent=2))
+
+          def img(path, noncolor=False):
+              if not path or not os.path.exists(path): return None
+              im=bpy.data.images.load(path,check_existing=True)
+              if getattr(im,'source',None)=='TILED':
+                  print('SKIP_UDIM',path); return None
+              if noncolor:
+                  try: im.colorspace_settings.name='Non-Color'
+                  except: pass
+              return im
+
+          def pbr(name,base,rough,metal=0.0,color=None,roughmap=None,normal=None,alpha=False):
+              m=bpy.data.materials.get(name) or bpy.data.materials.new(name)
+              m.use_nodes=True
+              m.diffuse_color=base
+              if alpha:
+                  m.blend_method='HASHED'
+                  m.show_transparent_back=True
+              nt=m.node_tree; nt.nodes.clear()
+              out=nt.nodes.new('ShaderNodeOutputMaterial')
+              bs=nt.nodes.new('ShaderNodeBsdfPrincipled')
+              bs.inputs['Base Color'].default_value=base
+              bs.inputs['Roughness'].default_value=rough
+              bs.inputs['Metallic'].default_value=metal
+              if 'Subsurface' in bs.inputs:
+                  try: bs.inputs['Subsurface'].default_value=0.08 if 'SKIN' in name else 0.0
+                  except: pass
+              nt.links.new(bs.outputs['BSDF'],out.inputs['Surface'])
+              ci=img(color,False)
+              if ci:
+                  n=nt.nodes.new('ShaderNodeTexImage'); n.image=ci
+                  nt.links.new(n.outputs['Color'],bs.inputs['Base Color'])
+                  if alpha and 'Alpha' in n.outputs and 'Alpha' in bs.inputs:
+                      nt.links.new(n.outputs['Alpha'],bs.inputs['Alpha'])
+              ri=img(roughmap,True)
+              if ri:
+                  n=nt.nodes.new('ShaderNodeTexImage'); n.image=ri
+                  nt.links.new(n.outputs['Color'],bs.inputs['Roughness'])
+              ni=img(normal,True)
+              if ni:
+                  n=nt.nodes.new('ShaderNodeTexImage'); n.image=ni
+                  nm=nt.nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value=0.85
+                  nt.links.new(n.outputs['Color'],nm.inputs['Color'])
+                  nt.links.new(nm.outputs['Normal'],bs.inputs['Normal'])
+              return m
+
+          mats={
+            'skin':pbr('A8V9_SKIN',(0.72,0.50,0.40,1),0.42,color=tex['skin_color'],roughmap=tex['skin_rough'],normal=tex['skin_normal']),
+            'eye':pbr('A8V9_EYE',(0.38,0.26,0.15,1),0.16,color=tex['eye_color']),
+            'hair':pbr('A8V9_HAIR',(0.055,0.025,0.012,1),0.58,color=tex['hair_color'],roughmap=tex['hair_rough'],alpha=True),
+            'cloth':pbr('A8V9_CLOTH',(0.10,0.13,0.16,1),0.62,color=tex['cloth_color'],roughmap=tex['cloth_rough'],normal=tex['cloth_normal']),
+            'mouth':pbr('A8V9_MOUTH',(0.34,0.08,0.06,1),0.44),
+            'teeth':pbr('A8V9_TEETH',(0.72,0.67,0.56,1),0.34),
+            'dark':pbr('A8V9_DARK',(0.045,0.05,0.06,1),0.62),
+          }
+
+          names=[
+            'GEO-einar_head',
+            'GEO-eye.L','GEO-eye.R','GEO-eye.cornea.L','GEO-eye.cornea.R',
+            'GEO-eye.meniscus.L','GEO-eye.meniscus.R',
+            'GEO-eye.plica_semilunaris.L','GEO-eye.plica_semilunaris.R',
+            'GEO-einar_tongue','GEO-einar_teeth_upper','GEO-einar_teeth_lower',
+            'GEO-einar_hair_preview','GEO-einar_eyebrows_preview','GEO-einar_beard_preview','GEO-einar_stache_preview',
+            'GEO-einar_hat','GEO-einar_sweater','GEO-einar_jacket_main','GEO-einar_jacket_collar1','GEO-einar_jacket_collar2'
+          ]
+          chosen=[]
+          missing=[]
+          for n in names:
+              o=bpy.data.objects.get(n)
+              if o and o.type=='MESH':
+                  chosen.append(o)
+              else:
+                  missing.append(n)
+          print('V9_CHOSEN=',[o.name for o in chosen])
+          print('V9_MISSING=',missing)
+
+          for o in chosen:
+              key=o.name.lower()
+              old=[m.name if m else '' for m in o.data.materials]
+              if 'head' in key:
+                  mat=mats['skin']
+              elif 'eye.' in key or 'cornea' in key or 'meniscus' in key or 'plica' in key:
+                  mat=mats['eye']
+              elif any(k in key for k in ('hair_preview','eyebrows_preview','beard_preview','stache_preview')):
+                  mat=mats['hair']
+              elif 'tongue' in key:
+                  mat=mats['mouth']
+              elif 'teeth' in key:
+                  mat=mats['teeth']
+              elif any(k in key for k in ('sweater','jacket','hat')):
+                  mat=mats['cloth']
+              else:
+                  mat=mats['dark']
+              if len(o.data.materials)==0: o.data.materials.append(mat)
+              else:
+                  for i in range(len(o.data.materials)): o.data.materials[i]=mat
+              o.hide_viewport=False; o.hide_render=False
+              print('MAT',o.name,old,'=>',mat.name)
+
+          for o in bpy.context.view_layer.objects:
+              try:o.select_set(False)
+              except:pass
+          selected=[]
+          for o in chosen:
+              try:
+                  o.hide_set(False)
+                  o.select_set(True)
+                  selected.append(o.name)
+              except Exception as e:
+                  print('SELECT_FAIL',o.name,e)
+          assert 'GEO-einar_head' in selected
+          assert 'GEO-einar_hair_preview' in selected
+          assert 'GEO-einar_eyebrows_preview' in selected
+
+          inv={'textures':tex,'selected':selected,'missing':missing}
+          json.dump(inv,open(OUT+'/v9-inventory.json','w'),indent=2)
+
+          bpy.ops.export_scene.gltf(
+              filepath=OUT+'/einar-hero-v9.glb',
+              export_format='GLB',
+              use_selection=True,
+              export_apply=True,
+              export_texcoords=True,
+              export_normals=True,
+              export_tangents=True,
+              export_materials='EXPORT',
+              export_colors=True,
+              export_cameras=False,
+              export_lights=False,
+              export_skins=False,
+              export_morph=False,
+              export_animations=False,
+              export_yup=True,
+          )
+          p=OUT+'/einar-hero-v9.glb'
+          assert os.path.getsize(p)>500000
+          print('V9_GLB_BYTES=',os.path.getsize(p))
+          PY
+          BLENDER=$(find /tmp/a8-einar-v9/bin -maxdepth 2 -type f -name blender | head -n1)
+          cd /tmp/a8-einar-v9/src/einar
+          "$BLENDER" --background --enable-autoexec einar_release_v1.blend --python /tmp/a8-einar-v9/src/hero_export.py 2>&1 | tee /tmp/a8-einar-v9/out/blender.log
+          sha256sum /tmp/a8-einar-v9/out/einar-hero-v9.glb > /tmp/a8-einar-v9/out/einar-hero-v9.sha256
+
+      - name: Install Godot 4.6
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 -o /tmp/a8-einar-v9/src/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-einar-v9/src/godot.zip -d /tmp/a8-einar-v9/bin
+          chmod +x /tmp/a8-einar-v9/bin/Godot_v4.6-stable_linux.x86_64
+
+      - name: Build controlled Godot hero probe
+        run: |
+          set -euxo pipefail
+          PROJ=/tmp/a8-einar-v9/godot
+          cp /tmp/a8-einar-v9/out/einar-hero-v9.glb "$PROJ/einar-hero-v9.glb"
+          cat > "$PROJ/project.godot" <<'EOF'
+          config_version=5
+          [application]
+          config/name="A8 Einar Hero V9"
+          run/main_scene="res://hero.tscn"
+          [display]
+          window/size/viewport_width=896
+          window/size/viewport_height=896
+          [rendering]
+          renderer/rendering_method="forward_plus"
+          renderer/rendering_method.mobile="forward_plus"
+          EOF
+          cat > "$PROJ/hero.tscn" <<'EOF'
+          [gd_scene load_steps=2 format=3]
+          [ext_resource type="Script" path="res://hero.gd" id="1"]
+          [node name="Hero" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+          cat > "$PROJ/hero.gd" <<'EOF'
+          extends Node3D
+          var model:Node3D
+          var camera:Camera3D
+          var bounds:=AABB()
+          var have_bounds=false
+          var shot=0
+          var settle=0
+
+          func _ready():
+              var ps:=load("res://einar-hero-v9.glb") as PackedScene
+              if ps==null:
+                  push_error("V9_GLB_LOAD_NULL"); get_tree().quit(41); return
+              model=ps.instantiate() as Node3D
+              add_child(model)
+              _collect(model)
+              print("V9_BOUNDS=",bounds)
+              _tune_materials(model)
+              _env()
+              _lights()
+              camera=Camera3D.new()
+              camera.current=true
+              camera.fov=34.0
+              camera.near=0.01
+              camera.far=100.0
+              add_child(camera)
+              get_viewport().msaa_3d=Viewport.MSAA_4X
+              _place(0)
+
+          func _process(_d):
+              settle+=1
+              if settle<10:return
+              get_viewport().get_texture().get_image().save_png("/tmp/a8-einar-v9/out/H%02d.png" % (shot+1))
+              shot+=1
+              if shot>=4:
+                  get_tree().quit(); return
+              settle=0
+              _place(shot)
+
+          func _collect(n:Node):
+              if n is MeshInstance3D:
+                  var mi:=n as MeshInstance3D
+                  if mi.mesh:
+                      var a:=mi.global_transform * mi.get_aabb()
+                      if not have_bounds: bounds=a; have_bounds=true
+                      else: bounds=bounds.merge(a)
+              for c in n.get_children(): _collect(c)
+
+          func _tune_materials(n:Node):
+              if n is MeshInstance3D:
+                  var mi:=n as MeshInstance3D
+                  for i in range(mi.get_surface_override_material_count()):
+                      pass
+                  if mi.mesh:
+                      for i in range(mi.mesh.get_surface_count()):
+                          var m:=mi.get_active_material(i)
+                          if m is StandardMaterial3D:
+                              var sm:=m as StandardMaterial3D
+                              var nm:=sm.resource_name
+                              if "A8V9_SKIN" in nm:
+                                  sm.roughness=0.42
+                                  sm.set("subsurf_scatter_enabled",true)
+                                  sm.set("subsurf_scatter_strength",0.18)
+                              elif "A8V9_EYE" in nm:
+                                  sm.roughness=0.12
+                              elif "A8V9_HAIR" in nm:
+                                  sm.roughness=0.54
+                                  sm.cull_mode=BaseMaterial3D.CULL_DISABLED
+              for c in n.get_children(): _tune_materials(c)
+
+          func _env():
+              var sky_mat:=ProceduralSkyMaterial.new()
+              sky_mat.sky_top_color=Color(0.008,0.012,0.021)
+              sky_mat.sky_horizon_color=Color(0.035,0.045,0.065)
+              sky_mat.ground_horizon_color=Color(0.018,0.022,0.030)
+              sky_mat.ground_bottom_color=Color(0.004,0.005,0.008)
+              var sky:=Sky.new(); sky.sky_material=sky_mat
+              var env:=Environment.new()
+              env.background_mode=Environment.BG_SKY
+              env.sky=sky
+              env.ambient_light_source=Environment.AMBIENT_SOURCE_SKY
+              env.ambient_light_energy=0.22
+              env.tonemap_mode=Environment.TONE_MAPPER_AGX
+              env.tonemap_exposure=1.15
+              env.glow_enabled=true
+              env.glow_intensity=0.12
+              var we:=WorldEnvironment.new(); we.environment=env; add_child(we)
+
+          func _lights():
+              var key:=DirectionalLight3D.new()
+              key.light_color=Color(1.0,0.79,0.66)
+              key.light_energy=2.9
+              key.rotation_degrees=Vector3(-32,-48,0)
+              key.shadow_enabled=true
+              add_child(key)
+              var fill:=DirectionalLight3D.new()
+              fill.light_color=Color(0.34,0.48,0.72)
+              fill.light_energy=0.75
+              fill.rotation_degrees=Vector3(-15,55,0)
+              add_child(fill)
+              var rim:=DirectionalLight3D.new()
+              rim.light_color=Color(0.35,0.55,1.0)
+              rim.light_energy=1.9
+              rim.rotation_degrees=Vector3(-18,145,0)
+              add_child(rim)
+
+          func _place(i:int):
+              var c:=bounds.get_center()
+              var h=maxf(bounds.size.y,0.2)
+              var target:=Vector3(c.x,c.y+h*0.20,c.z)
+              var r=maxf(h*0.47,0.45)
+              if i==0:
+                  camera.global_position=target+Vector3(0,h*0.02,r)
+              elif i==1:
+                  camera.global_position=target+Vector3(r*0.55,h*0.02,r*0.86)
+              elif i==2:
+                  camera.global_position=target+Vector3(-r*0.55,h*0.02,r*0.86)
+              else:
+                  camera.global_position=target+Vector3(0,h*0.12,r*0.72)
+              camera.look_at(target,Vector3.UP)
+          EOF
+
+      - name: Import and render hero in Godot
+        run: |
+          set -euxo pipefail
+          GODOT=/tmp/a8-einar-v9/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-einar-v9/godot
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          "$GODOT" --headless --editor --path "$PROJ" --import 2>&1 | tee /tmp/a8-einar-v9/out/godot-import.log
+          xvfb-run -a "$GODOT" --path "$PROJ" --rendering-method forward_plus --audio-driver Dummy res://hero.tscn 2>&1 | tee /tmp/a8-einar-v9/out/godot.log
+          test -s /tmp/a8-einar-v9/out/H01.png
+          test -s /tmp/a8-einar-v9/out/H04.png
+          if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-einar-v9/out/godot.log; then echo 'Godot runtime errors'; exit 1; fi
+          sha256sum /tmp/a8-einar-v9/out/H*.png > /tmp/a8-einar-v9/out/hero-frames.sha256
+
+      - name: Receipt and bounded artifact
+        run: |
+          set -euxo pipefail
+          python3 - <<'PY'
+          import json,os
+          inv=json.load(open('/tmp/a8-einar-v9/out/v9-inventory.json'))
+          receipt={
+            'route':'R02C',
+            'recipe':'EINAR_V9_CLEAN_HERO_TRANSFER',
+            'source':'official Blender Studio Einar v1',
+            'source_license':'CC-BY',
+            'source_archive_sha256':'3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7',
+            'selected_objects':inv['selected'],
+            'texture_map':inv['textures'],
+            'goal':'preserve face/hair/PBR fidelity in a minimal Einar hero subset through glTF -> Godot Forward+',
+            'glb_bytes':os.path.getsize('/tmp/a8-einar-v9/out/einar-hero-v9.glb')
+          }
+          json.dump(receipt,open('/tmp/a8-einar-v9/out/receipt.json','w'),indent=2)
+          PY
+          cp /tmp/a8-einar-v9/out/{v9-inventory.json,blender.log,einar-hero-v9.sha256,godot-import.log,godot.log,hero-frames.sha256,receipt.json,H01.png,H02.png,H03.png,H04.png} /tmp/a8-einar-v9/publish/
+
+      - name: Upload V9 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-einar-clean-hero-v9
+          path: /tmp/a8-einar-v9/publish
+          retention-days: 7
