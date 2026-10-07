@@ -1,0 +1,194 @@
+name: A8 R02C Einar Head PBR V7C
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-einar-head-pbr-v7c.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  einar-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Install Blender and tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq blender python3-numpy ffmpeg unzip xvfb libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-r02c-v7c/einar /tmp/a8-r02c-v7c/out /tmp/a8-r02c-v7c/bin /tmp/a8-r02c-v7c/project/assets
+
+      - name: Download Einar and flatten head materials
+        run: |
+          curl -L --fail --retry 3 --retry-delay 5 -o /tmp/a8-r02c-v7c/einar.zip https://media.blenderstudio.cn/blender-studio-cn-folder/einar_v1.zip
+          unzip -q /tmp/a8-r02c-v7c/einar.zip -d /tmp/a8-r02c-v7c/einar
+          cat > /tmp/a8-r02c-v7c/head_export.py <<'PY'
+          import bpy, os, json
+          from mathutils import Vector
+
+          root="/tmp/a8-r02c-v7c/einar"
+          src=os.path.join(root,"einar_release_v1.blend")
+          out="/tmp/a8-r02c-v7c/out/einar-head.glb"
+          bpy.ops.wm.open_mainfile(filepath=src)
+
+          def image(path, noncolor=False):
+              img=bpy.data.images.load(os.path.join(root,path), check_existing=True)
+              if noncolor:
+                  try: img.colorspace_settings.name='Non-Color'
+                  except: pass
+              return img
+
+          skin_albedo=image("textures/face/einar_skin.albedo.tif")
+          skin_rough=image("textures/face/einar_skin.roughness.tif",True)
+          eyes_albedo=image("textures/face/eyes.albedo.tif")
+          hair_color=image("textures/einar.hair.color.tif")
+          cloth_color=image("textures/einar.clothing.color_base.tif")
+
+          def make_pbr(name, base_img=None, rough_img=None, base=(0.5,0.5,0.5,1), rough=0.5, metallic=0.0):
+              m=bpy.data.materials.get(name) or bpy.data.materials.new(name)
+              m.use_nodes=True
+              nt=m.node_tree; nt.nodes.clear()
+              outn=nt.nodes.new("ShaderNodeOutputMaterial")
+              bs=nt.nodes.new("ShaderNodeBsdfPrincipled")
+              bs.inputs["Base Color"].default_value=base
+              bs.inputs["Roughness"].default_value=rough
+              bs.inputs["Metallic"].default_value=metallic
+              nt.links.new(bs.outputs["BSDF"],outn.inputs["Surface"])
+              if base_img:
+                  tex=nt.nodes.new("ShaderNodeTexImage"); tex.image=base_img
+                  nt.links.new(tex.outputs["Color"],bs.inputs["Base Color"])
+              if rough_img:
+                  texr=nt.nodes.new("ShaderNodeTexImage"); texr.image=rough_img
+                  nt.links.new(texr.outputs["Color"],bs.inputs["Roughness"])
+              return m
+
+          mats={
+            "skin":make_pbr("A8_skin",skin_albedo,skin_rough,rough=0.46),
+            "eyes":make_pbr("A8_eyes",eyes_albedo,None,rough=0.20),
+            "hair":make_pbr("A8_hair",hair_color,None,base=(0.025,0.018,0.012,1),rough=0.65),
+            "hat":make_pbr("A8_hat",cloth_color,None,base=(0.025,0.020,0.018,1),rough=0.78),
+            "teeth":make_pbr("A8_teeth",None,None,base=(0.72,0.69,0.62,1),rough=0.38),
+            "mouth":make_pbr("A8_mouth",None,None,base=(0.16,0.035,0.03,1),rough=0.58),
+          }
+
+          def category(n):
+              l=n.lower()
+              if "eye" in l and "eyelash" not in l: return "eyes"
+              if any(k in l for k in ["hair","mustache","beard","eyelash","brow"]): return "hair"
+              if "hat" in l: return "hat"
+              if "teeth" in l: return "teeth"
+              if any(k in l for k in ["tongue","mouth"]): return "mouth"
+              return "skin"
+
+          keep=[]
+          keys=["head","eye","hair","mustache","beard","eyelash","brow","hat","teeth","tongue","mouth","plica","cornea"]
+          for o in bpy.context.scene.objects:
+              if o.type!="MESH": continue
+              ln=o.name.lower()
+              if not any(k in ln for k in keys): continue
+              # exclude helper/control meshes and surfdef proxies
+              if o.name.startswith("WGT-") or "surfdef" in ln or "proxy" in ln or "anim" in ln:
+                  continue
+              keep.append(o)
+
+          bpy.ops.object.select_all(action='DESELECT')
+          for o in keep:
+              o.hide_set(False); o.hide_render=False; o.select_set(True)
+              if len(o.data.materials)==0:
+                  o.data.materials.append(mats[category(o.name)])
+              else:
+                  for i in range(len(o.data.materials)):
+                      o.data.materials[i]=mats[category(o.name)]
+          if keep:
+              bpy.context.view_layer.objects.active=keep[0]
+
+          pts=[]
+          for o in keep:
+              for c in o.bound_box: pts.append(o.matrix_world @ Vector(c))
+          report={"objects":[o.name for o in keep],"count":len(keep)}
+          if pts:
+              mn=Vector((min(p.x for p in pts),min(p.y for p in pts),min(p.z for p in pts)))
+              mx=Vector((max(p.x for p in pts),max(p.y for p in pts),max(p.z for p in pts)))
+              report["bounds_min"]=list(mn);report["bounds_max"]=list(mx);report["bounds_size"]=list(mx-mn)
+
+          bpy.ops.export_scene.gltf(
+              filepath=out, export_format='GLB', use_selection=True,
+              export_cameras=False, export_lights=False, export_animations=False,
+              export_skins=False, export_materials='EXPORT', export_yup=True,
+              export_draco_mesh_compression_enable=False
+          )
+          report["glb_size"]=os.path.getsize(out)
+          with open("/tmp/a8-r02c-v7c/out/head-report.json","w") as f: json.dump(report,f,indent=2)
+          print(json.dumps(report,indent=2))
+          PY
+          blender --enable-autoexec --background --python /tmp/a8-r02c-v7c/head_export.py
+          test -s /tmp/a8-r02c-v7c/out/einar-head.glb
+
+      - name: Render Einar head in Godot Forward+
+        run: |
+          curl -L --fail --retry 3 -o /tmp/a8-r02c-v7c/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-r02c-v7c/godot.zip -d /tmp/a8-r02c-v7c/bin
+          chmod +x /tmp/a8-r02c-v7c/bin/Godot_v4.7.2-stable_linux.x86_64
+          cp /tmp/a8-r02c-v7c/out/einar-head.glb /tmp/a8-r02c-v7c/project/assets/einar-head.glb
+          cat > /tmp/a8-r02c-v7c/project/project.godot <<'EOF'
+          [application]
+          config/name="A8 Einar Head PBR"
+          run/main_scene="res://main.tscn"
+          [display]
+          window/size/viewport_width=768
+          window/size/viewport_height=768
+          [rendering]
+          renderer/rendering_method="forward_plus"
+          EOF
+          cat > /tmp/a8-r02c-v7c/project/main.tscn <<'EOF'
+          [gd_scene load_steps=2 format=3]
+          [ext_resource type="Script" path="res://main.gd" id="1"]
+          [node name="EinarHeadProbe" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+          cat > /tmp/a8-r02c-v7c/project/main.gd <<'EOF'
+          extends Node3D
+          var head:Node3D
+          func _ready():
+              head=(load("res://assets/einar-head.glb") as PackedScene).instantiate() as Node3D
+              add_child(head)
+              var we=WorldEnvironment.new()
+              var e=Environment.new()
+              e.background_mode=Environment.BG_COLOR
+              e.background_color=Color(0.003,0.005,0.009)
+              e.ambient_light_source=Environment.AMBIENT_SOURCE_COLOR
+              e.ambient_light_color=Color(0.12,0.16,0.24)
+              e.ambient_light_energy=0.45
+              e.tonemap_mode=Environment.TONE_MAPPER_AGX
+              e.tonemap_exposure=1.2
+              e.ssao_enabled=true;e.ssil_enabled=true;e.glow_enabled=true
+              we.environment=e;add_child(we)
+              var key=DirectionalLight3D.new()
+              key.light_color=Color(1.0,0.80,0.64);key.light_energy=2.8;key.rotation_degrees=Vector3(-35,-45,0);key.shadow_enabled=true;add_child(key)
+              var rim=DirectionalLight3D.new()
+              rim.light_color=Color(0.32,0.50,1.0);rim.light_energy=2.3;rim.rotation_degrees=Vector3(-20,145,0);add_child(rim)
+              var cam=Camera3D.new()
+              cam.fov=32.0;cam.position=Vector3(0,1.68,0.82);cam.current=true;add_child(cam)
+              cam.look_at(Vector3(0,1.68,0),Vector3.UP)
+          EOF
+          GODOT=/tmp/a8-r02c-v7c/bin/Godot_v4.7.2-stable_linux.x86_64
+          export VK_ICD_FILENAMES=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json | head -n1)
+          timeout 240 "$GODOT" --headless --editor --path /tmp/a8-r02c-v7c/project --quit
+          xvfb-run -a "$GODOT" --path /tmp/a8-r02c-v7c/project --rendering-method forward_plus --write-movie /tmp/a8-r02c-v7c/out/einar-head.avi --fixed-fps 24 --quit-after 24
+          ffmpeg -y -v error -i /tmp/a8-r02c-v7c/out/einar-head.avi -c:v libx264 -crf 14 -pix_fmt yuv420p /tmp/a8-r02c-v7c/out/einar-head.mp4
+          rm -f /tmp/a8-r02c-v7c/out/einar-head.avi
+          ffmpeg -y -v error -i /tmp/a8-r02c-v7c/out/einar-head.mp4 -vf "select='eq(n,12)'" -vframes 1 /tmp/a8-r02c-v7c/out/einar-head.png
+          sha256sum /tmp/a8-r02c-v7c/out/einar-head.glb /tmp/a8-r02c-v7c/out/einar-head.mp4 > /tmp/a8-r02c-v7c/out/sha256.txt
+
+      - name: Upload V7C evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-einar-head-pbr-v7c
+          path: |
+            /tmp/a8-r02c-v7c/out/head-report.json
+            /tmp/a8-r02c-v7c/out/einar-head.png
+            /tmp/a8-r02c-v7c/out/einar-head.mp4
+            /tmp/a8-r02c-v7c/out/sha256.txt
+          retention-days: 7
