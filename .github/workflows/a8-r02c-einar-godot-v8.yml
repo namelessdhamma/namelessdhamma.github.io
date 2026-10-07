@@ -1,0 +1,330 @@
+name: A8 R02C Einar Blender-to-Godot V8
+
+on:
+  push:
+    paths:
+      - '.github/workflows/a8-r02c-einar-godot-v8.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  einar-godot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Install runtime dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip xz-utils libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2 mesa-vulkan-drivers
+          mkdir -p /tmp/a8-einar-v8/{bin,src,out,godot}
+
+      - name: Fetch official Einar and Blender 3.6 LTS
+        run: |
+          set -euxo pipefail
+          EINAR='https://studio.blender.org/download-source/files/41/419e83fb75f30b989adf7920dec7a21c/419e83fb75f30b989adf7920dec7a21c.zip'
+          curl -L --fail --retry 3 --retry-all-errors -A 'Mozilla/5.0' -e 'https://studio.blender.org/characters/einar/v1/'             -o /tmp/a8-einar-v8/src/einar.zip "$EINAR"
+          echo '3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7  /tmp/a8-einar-v8/src/einar.zip' | sha256sum -c -
+          cd /tmp/a8-einar-v8/src
+          unzip -q einar.zip -d einar
+          test -f einar/einar_release_v1.blend
+
+          curl -L --fail --retry 3 --retry-all-errors             -o /tmp/a8-einar-v8/src/blender.tar.xz             https://download.blender.org/release/Blender3.6/blender-3.6.20-linux-x64.tar.xz
+          tar -xJf /tmp/a8-einar-v8/src/blender.tar.xz -C /tmp/a8-einar-v8/bin
+          BLENDER=$(find /tmp/a8-einar-v8/bin -maxdepth 2 -type f -name blender | head -n1)
+          test -x "$BLENDER"
+          "$BLENDER" --version | head -n2
+
+      - name: Inspect and export Einar in headless Blender
+        run: |
+          set -euxo pipefail
+          cat > /tmp/a8-einar-v8/src/inspect_export.py <<'PY'
+          import bpy, os, json, math, traceback
+          from mathutils import Vector
+
+          OUT='/tmp/a8-einar-v8/out'
+          os.makedirs(OUT,exist_ok=True)
+
+          def children_recursive(col):
+              out=[]
+              stack=[col]
+              seen=set()
+              while stack:
+                  c=stack.pop()
+                  if c.name in seen: continue
+                  seen.add(c.name)
+                  out.extend(list(c.objects))
+                  stack.extend(list(c.children))
+              # stable unique by object pointer/name
+              d={}
+              for o in out: d[o.name]=o
+              return list(d.values())
+
+          info={
+              'blend':bpy.data.filepath,
+              'blender':bpy.app.version_string,
+              'collections':[],
+              'objects_by_type':{},
+              'armatures':[],
+              'meshes':[],
+              'material_count':len(bpy.data.materials),
+              'image_count':len(bpy.data.images),
+              'actions':[],
+          }
+          for c in bpy.data.collections:
+              info['collections'].append({'name':c.name,'objects':len(c.objects),'children':[x.name for x in c.children]})
+          for o in bpy.data.objects:
+              info['objects_by_type'][o.type]=info['objects_by_type'].get(o.type,0)+1
+              if o.type=='ARMATURE':
+                  info['armatures'].append({'name':o.name,'bones':len(o.data.bones),'sample_bones':[b.name for b in list(o.data.bones)[:40]]})
+              if o.type=='MESH':
+                  info['meshes'].append({
+                    'name':o.name,'verts':len(o.data.vertices),'polys':len(o.data.polygons),
+                    'materials':[m.name if m else None for m in o.data.materials],
+                    'modifiers':[m.type for m in o.modifiers],
+                    'shape_keys':len(o.data.shape_keys.key_blocks) if o.data.shape_keys else 0
+                  })
+          for a in bpy.data.actions:
+              info['actions'].append({'name':a.name,'frame_range':[float(a.frame_range[0]),float(a.frame_range[1])]})
+
+          target=bpy.data.collections.get('CH-einar')
+          if target is None:
+              # tolerant fallback: choose the largest collection whose name contains einar
+              cs=[c for c in bpy.data.collections if 'einar' in c.name.lower()]
+              target=max(cs,key=lambda c:len(children_recursive(c))) if cs else bpy.context.scene.collection
+          objs=children_recursive(target)
+          info['target_collection']=target.name
+          info['target_object_count']=len(objs)
+          info['target_types']={}
+          for o in objs: info['target_types'][o.type]=info['target_types'].get(o.type,0)+1
+
+          # Resolve external textures relative to the official archive.
+          bpy.context.scene.render.engine='BLENDER_EEVEE'
+          bpy.ops.file.find_missing_files(directory='/tmp/a8-einar-v8/src/einar/textures')
+
+          # Build a clean export copy in the current scene: only renderable geometry + armatures.
+          bpy.ops.object.select_all(action='DESELECT')
+          exportable=[]
+          for o in objs:
+              if o.type in {'MESH','ARMATURE','CURVE','CURVES'}:
+                  try:
+                      o.hide_viewport=False
+                      o.hide_render=False
+                      o.select_set(True)
+                      exportable.append(o)
+                  except Exception:
+                      pass
+          info['selected_exportable']=[{'name':o.name,'type':o.type} for o in exportable]
+
+          # Bounding box in world space, useful for downstream auto-camera.
+          pts=[]
+          for o in exportable:
+              if o.type=='MESH':
+                  for co in o.bound_box:
+                      pts.append(o.matrix_world @ Vector(co))
+          if pts:
+              mn=Vector((min(p.x for p in pts),min(p.y for p in pts),min(p.z for p in pts)))
+              mx=Vector((max(p.x for p in pts),max(p.y for p in pts),max(p.z for p in pts)))
+              info['bounds_world']={'min':list(mn),'max':list(mx),'size':list(mx-mn),'center':list((mn+mx)*0.5)}
+
+          with open(os.path.join(OUT,'blender-inventory.json'),'w') as f:
+              json.dump(info,f,indent=2)
+
+          # Export. glTF cannot reproduce every Blender procedural shader/hair feature;
+          # that loss is itself part of this qualification.
+          bpy.ops.export_scene.gltf(
+              filepath=os.path.join(OUT,'einar-godot.glb'),
+              export_format='GLB',
+              use_selection=True,
+              export_apply=True,
+              export_texcoords=True,
+              export_normals=True,
+              export_tangents=True,
+              export_materials='EXPORT',
+              export_colors=True,
+              export_cameras=False,
+              export_lights=False,
+              export_skins=True,
+              export_morph=True,
+              export_animations=False,
+              export_yup=True,
+          )
+          glb=os.path.join(OUT,'einar-godot.glb')
+          assert os.path.exists(glb) and os.path.getsize(glb)>1000000
+          print('EINAR_EXPORT_BYTES=',os.path.getsize(glb))
+          print(json.dumps(info,indent=2)[:30000])
+          PY
+          BLENDER=$(find /tmp/a8-einar-v8/bin -maxdepth 2 -type f -name blender | head -n1)
+          cd /tmp/a8-einar-v8/src/einar
+          "$BLENDER" --background einar_release_v1.blend --python /tmp/a8-einar-v8/src/inspect_export.py 2>&1 | tee /tmp/a8-einar-v8/out/blender.log
+          test $(stat -c%s /tmp/a8-einar-v8/out/einar-godot.glb) -gt 1000000
+          sha256sum /tmp/a8-einar-v8/out/einar-godot.glb > /tmp/a8-einar-v8/out/einar-godot.sha256
+
+      - name: Install Godot 4.6
+        run: |
+          set -euxo pipefail
+          curl -L --fail --retry 3 -o /tmp/a8-einar-v8/src/godot.zip             https://github.com/godotengine/godot-builds/releases/download/4.6-stable/Godot_v4.6-stable_linux.x86_64.zip
+          unzip -q /tmp/a8-einar-v8/src/godot.zip -d /tmp/a8-einar-v8/bin
+          chmod +x /tmp/a8-einar-v8/bin/Godot_v4.6-stable_linux.x86_64
+
+      - name: Build isolated Godot closeup probe
+        run: |
+          set -euxo pipefail
+          PROJ=/tmp/a8-einar-v8/godot
+          cp /tmp/a8-einar-v8/out/einar-godot.glb "$PROJ/einar-godot.glb"
+          cat > "$PROJ/project.godot" <<'EOF'
+          config_version=5
+          [application]
+          config/name="A8 Einar Godot V8"
+          run/main_scene="res://probe.tscn"
+          [display]
+          window/size/viewport_width=768
+          window/size/viewport_height=768
+          [rendering]
+          renderer/rendering_method="gl_compatibility"
+          renderer/rendering_method.mobile="gl_compatibility"
+          EOF
+          cat > "$PROJ/probe.tscn" <<'EOF'
+          [gd_scene load_steps=2 format=3]
+          [ext_resource type="Script" path="res://probe.gd" id="1"]
+          [node name="Probe" type="Node3D"]
+          script = ExtResource("1")
+          EOF
+          cat > "$PROJ/probe.gd" <<'EOF'
+          extends Node3D
+
+          var model:Node3D
+          var camera:Camera3D
+          var bounds:=AABB()
+          var have_bounds:=false
+          var shot:=0
+          var settle:=0
+
+          func _ready()->void:
+              var ps:=load("res://einar-godot.glb") as PackedScene
+              if ps==null:
+                  push_error("EINAR_GLB_LOAD_NULL"); get_tree().quit(41); return
+              model=ps.instantiate() as Node3D
+              add_child(model)
+              _collect_bounds(model)
+              print("EINAR_GODOT_BOUNDS=",bounds)
+              _environment()
+              _lights()
+              camera=Camera3D.new()
+              camera.current=true
+              camera.fov=40.0
+              camera.near=0.02
+              camera.far=500.0
+              add_child(camera)
+              get_viewport().msaa_3d=Viewport.MSAA_4X
+              _place_camera(0)
+
+          func _process(_delta:float)->void:
+              settle+=1
+              if settle<8:return
+              var img:=get_viewport().get_texture().get_image()
+              img.save_png("/tmp/a8-einar-v8/out/G%02d.png" % (shot+1))
+              shot+=1
+              if shot>=4:
+                  get_tree().quit(); return
+              settle=0
+              _place_camera(shot)
+
+          func _collect_bounds(n:Node)->void:
+              if n is MeshInstance3D:
+                  var mi:=n as MeshInstance3D
+                  if mi.mesh:
+                      var a:=mi.global_transform * mi.get_aabb()
+                      if not have_bounds:
+                          bounds=a; have_bounds=true
+                      else:
+                          bounds=bounds.merge(a)
+              for c in n.get_children():_collect_bounds(c)
+
+          func _environment()->void:
+              var sky_mat:=ProceduralSkyMaterial.new()
+              sky_mat.sky_top_color=Color(0.012,0.018,0.03)
+              sky_mat.sky_horizon_color=Color(0.04,0.055,0.08)
+              sky_mat.ground_horizon_color=Color(0.02,0.025,0.035)
+              sky_mat.ground_bottom_color=Color(0.008,0.01,0.015)
+              var sky:=Sky.new();sky.sky_material=sky_mat
+              var env:=Environment.new()
+              env.background_mode=Environment.BG_SKY
+              env.sky=sky
+              env.ambient_light_source=Environment.AMBIENT_SOURCE_SKY
+              env.ambient_light_energy=0.35
+              env.tonemap_mode=Environment.TONE_MAPPER_AGX
+              env.tonemap_exposure=1.1
+              env.glow_enabled=true
+              env.glow_intensity=0.25
+              var we:=WorldEnvironment.new();we.environment=env;add_child(we)
+
+          func _lights()->void:
+              var key:=DirectionalLight3D.new()
+              key.light_color=Color(1.0,0.82,0.65)
+              key.light_energy=2.5
+              key.rotation_degrees=Vector3(-35,-55,0)
+              key.shadow_enabled=true
+              add_child(key)
+              var rim:=DirectionalLight3D.new()
+              rim.light_color=Color(0.35,0.55,1.0)
+              rim.light_energy=2.0
+              rim.rotation_degrees=Vector3(-20,135,0)
+              add_child(rim)
+
+          func _place_camera(i:int)->void:
+              var c:=bounds.get_center()
+              var s:=bounds.size
+              var h=maxf(s.y,0.1)
+              var target:=Vector3(c.x,c.y+s.y*0.20,c.z)
+              var r=maxf(h*0.58,0.5)
+              var dirs=[Vector3(0,0,1),Vector3(1,0,0),Vector3(0,0,-1),Vector3(-1,0,0)]
+              camera.global_position=target+dirs[i]*r+Vector3(0,s.y*0.03,0)
+              camera.look_at(target,Vector3.UP)
+          EOF
+
+      - name: Import and render Einar in Godot
+        run: |
+          set -euxo pipefail
+          GODOT=/tmp/a8-einar-v8/bin/Godot_v4.6-stable_linux.x86_64
+          PROJ=/tmp/a8-einar-v8/godot
+          "$GODOT" --headless --editor --path "$PROJ" --import
+          xvfb-run -a "$GODOT" --path "$PROJ" --rendering-method gl_compatibility res://probe.tscn 2>&1 | tee /tmp/a8-einar-v8/out/godot.log
+          test -s /tmp/a8-einar-v8/out/G01.png
+          test -s /tmp/a8-einar-v8/out/G04.png
+          if grep -E 'SCRIPT ERROR|ERROR:' /tmp/a8-einar-v8/out/godot.log; then echo 'Godot runtime errors'; exit 1; fi
+          sha256sum /tmp/a8-einar-v8/out/G*.png > /tmp/a8-einar-v8/out/godot-frames.sha256
+
+      - name: Write receipt and upload bounded artifact
+        run: |
+          python3 - <<'PY'
+          import os,json
+          inv=json.load(open('/tmp/a8-einar-v8/out/blender-inventory.json'))
+          receipt={
+            'route':'R02C',
+            'recipe':'EINAR_BLENDER_TO_GODOT_V8',
+            'source':'official Blender Studio Einar v1',
+            'source_license':'CC-BY',
+            'source_archive_sha256':'3cbb5a1dd9ffd3ca39edab420a83ea7f7db337b435a78ef27a0c87ff3e6977f7',
+            'blender':'3.6.20',
+            'godot':'4.6-stable',
+            'export_glb_bytes':os.path.getsize('/tmp/a8-einar-v8/out/einar-godot.glb'),
+            'target_collection':inv.get('target_collection'),
+            'target_object_count':inv.get('target_object_count'),
+            'goal':'measure realistic-character fidelity survival through official Einar .blend -> glTF -> Godot'
+          }
+          json.dump(receipt,open('/tmp/a8-einar-v8/out/receipt.json','w'),indent=2)
+          PY
+          # Keep the uploaded artifact bounded: evidence + logs + stills, not the potentially huge GLB.
+          mkdir -p /tmp/a8-einar-v8/publish
+          cp /tmp/a8-einar-v8/out/{blender-inventory.json,blender.log,einar-godot.sha256,godot.log,godot-frames.sha256,receipt.json,G01.png,G02.png,G03.png,G04.png} /tmp/a8-einar-v8/publish/
+        shell: bash
+
+      - name: Upload V8 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: a8-r02c-einar-blender-to-godot-v8
+          path: /tmp/a8-einar-v8/publish
+          retention-days: 7
