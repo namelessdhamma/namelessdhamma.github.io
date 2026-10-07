@@ -367,67 +367,30 @@ namespace OpenUtau.Test.Core.DiffSinger {
                 AddShapeCurve(DiffSingerUtils.PEXP, arcX,
                     new[] { 82, 91, 99, 86, 78, 88, 94, 100, 86, 75 });
             } else if (variant == "shared_d1") {
-                // D1R5: Voice-from-Silence is implemented as actual phrase-local
-                // dynamics/expression, not as a descriptive label.
+                // D1R5E: articulation-first guide. Keep lexical pitch, durations,
+                // stress and breath structure in OpenUtau; audible VFS emergence
+                // and semantic loudness accents are applied deterministically
+                // after RVC so they cannot erase consonant boundaries.
+                int bar = 1920;
                 AddFlatCurve(DiffSingerUtils.VELC, 121);
-                var semantic = new HashSet<string>(new[] {
-                    "тобой","тишине","пыль","позабыл","ним","собой","голос","свой",
-                    "незримый","гость","разлуки","смех","злость","руки","год",
-                    "незабвенным","прошлое","неизменным","память","одна","увидел"
-                }, StringComparer.OrdinalIgnoreCase);
-                var sectionFirst = new HashSet<string>(new[] {"v1l1","c1l1","v2l1","c2l1","brl1","finl1","codal1"},
-                    StringComparer.OrdinalIgnoreCase);
-                int BaseDyn(string sec) => sec switch {
-                    "chorus" => 6, "bridge" => -3, "final" => 4, "coda" => -11, "verse2" => -9, _ => -12
-                };
-                int BaseEnergy(string sec) => sec switch {
-                    "chorus" => 3, "bridge" => -2, "final" => 4, "coda" => -8, "verse2" => -5, _ => -7
-                };
-                var dyn = new SortedDictionary<int,int>();
-                var ene = new SortedDictionary<int,int>();
-                var ten = new SortedDictionary<int,int>();
-                var bre = new SortedDictionary<int,int>();
-                var voi = new SortedDictionary<int,int>();
-                var pex = new SortedDictionary<int,int>();
-                void Put(SortedDictionary<int,int> d,int x,int y) {
-                    x=Math.Clamp(x,0,part.Duration); d[x]=y;
-                }
-                foreach (var ph in scoreRoot.GetProperty("phrases").EnumerateArray()) {
-                    string id=ph.GetProperty("id").GetString() ?? "";
-                    string sec=ph.GetProperty("section").GetString() ?? "verse";
-                    int p=ph.GetProperty("bar").GetInt32()*Bar+ph.GetProperty("offset").GetInt32();
-                    int startP=p;
-                    int bd=BaseDyn(sec), be=BaseEnergy(sec);
-                    bool deep=sectionFirst.Contains(id);
-                    Put(dyn,startP-120,bd-8); Put(dyn,startP,bd-(deep?18:10)); Put(dyn,startP+180,bd-5); Put(dyn,startP+520,bd);
-                    Put(ene,startP,be-(deep?8:5)); Put(ene,startP+300,be-2); Put(ene,startP+650,be);
-                    Put(ten,startP,deep?-32:-24); Put(ten,startP+420,sec=="chorus"?-8:-16);
-                    Put(bre,startP,deep?18:13); Put(bre,startP+520,sec=="chorus"?7:10);
-                    Put(voi,startP,deep?93:95); Put(voi,startP+420,98);
-                    Put(pex,startP,deep?72:80); Put(pex,startP+520,sec=="chorus"?98:88);
-                    foreach (var word in ph.GetProperty("words").EnumerateArray()) {
-                        string lyric=word.GetProperty("text").GetString() ?? "";
-                        int stress=word.GetProperty("stress").GetInt32();
-                        var ds=word.GetProperty("durations").EnumerateArray().Select(x=>x.GetInt32()).ToArray();
-                        int stressP=p;
-                        for(int q=0;q<stress;q++) stressP+=ds[q];
-                        if (semantic.Contains(lyric)) {
-                            Put(dyn,stressP,bd+8);
-                            Put(ene,stressP,be+5);
-                            Put(pex,stressP,100);
-                            Put(ten,stressP,sec=="chorus"?-2:-8);
-                        }
-                        p+=ds.Sum()+word.GetProperty("rest").GetInt32();
-                    }
-                    Put(dyn,p-180,bd-2); Put(dyn,p,bd-9); Put(dyn,p+120,bd-12);
-                    Put(ene,p,be-6); Put(ten,p,-26); Put(bre,p,16); Put(voi,p,95); Put(pex,p,76);
-                }
-                AddShapeCurve(Ustx.DYN,dyn.Keys.ToArray(),dyn.Values.ToArray());
-                AddShapeCurve(DiffSingerUtils.ENE,ene.Keys.ToArray(),ene.Values.ToArray());
-                AddShapeCurve(Ustx.TENC,ten.Keys.ToArray(),ten.Values.ToArray());
-                AddShapeCurve(Ustx.BREC,bre.Keys.ToArray(),bre.Values.ToArray());
-                AddShapeCurve(Ustx.VOIC,voi.Keys.ToArray(),voi.Values.ToArray());
-                AddShapeCurve(DiffSingerUtils.PEXP,pex.Keys.ToArray(),pex.Values.ToArray());
+                AddShapeCurve(Ustx.DYN,
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
+                    new[] {-24,-10,5,-9,-7,6,-1,-11,9,-6,-14,-24});
+                AddShapeCurve(DiffSingerUtils.ENE,
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
+                    new[] {-11,-6,2,-6,-5,3,0,-8,5,-4,-9,-12});
+                AddShapeCurve(Ustx.TENC,
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
+                    new[] {-22,-14,-4,-13,-11,-3,-2,-14,5,-8,-17,-24});
+                AddShapeCurve(Ustx.BREC,
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
+                    new[] {11,8,5,9,8,5,5,9,4,8,11,13});
+                AddShapeCurve(Ustx.VOIC,
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
+                    new[] {96,98,100,98,99,100,100,98,100,99,97,96});
+                AddShapeCurve(DiffSingerUtils.PEXP,
+                    new[] {0,4*bar,28*bar,40*bar,44*bar,56*bar,68*bar,80*bar,96*bar,108*bar,114*bar,120*bar},
+                    new[] {82,88,98,86,88,98,95,84,100,89,82,78});
             } else if (variant == "rebuild_a") {
                 int bar = 1920;
                 AddFlatCurve(DiffSingerUtils.VELC, 120);
