@@ -13,7 +13,7 @@ replaceOne(
   'revision'
 );
 replaceOne(
-  "const PORFIRCHIK_SOURCE_COMMIT='bee65c80afe97ac2cd4f10dbbb4807d4ecade34f';",
+  "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
   "const PORFIRCHIK_SOURCE_COMMIT='4c1453183601fc3fabc6bbb807a6ef66153078b2';",
   'source_commit'
 );
