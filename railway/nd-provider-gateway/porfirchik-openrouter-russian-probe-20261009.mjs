@@ -1,20 +1,24 @@
-// Temporary synthetic-only OpenRouter free-model qualification. No VK or personal data.
-const candidates=['nvidia/nemotron-3-ultra-550b-a55b:free','nvidia/nemotron-3-super-120b-a12b:free'];
-async function qualify(){
+// Privacy-gated Russian qualification. Synthetic query, no actual VK content.
+async function run(){
  const key=String(process.env.OPENROUTER_API_KEY||'').trim();
- if(!key)return console.log('ND_OPENROUTER_NEW_FREE_QA',JSON.stringify({phase:'SKIP',reason:'no_key'}));
- for(const model of candidates){
-  const detail={model,synthetic:true,zero_price_model_slug:model.endsWith(':free')};
+ if(!key)return console.log('ND_OPENROUTER_PRIVACY_QA',JSON.stringify({result:'no_key'}));
+ const model='nvidia/nemotron-3-super-120b-a12b:free';
+ const candidate_modes=[
+  {data_collection:'deny',zdr:true},
+  {data_collection:'deny'}
+ ];
+ for(let i=0;i<candidate_modes.length;i++){
+  const result={candidate:model,mode:i===0?'deny_and_zdr':'deny_only',model_is_free:true};
   try{
-   const response=await fetch('https://openrouter.ai/api/v1/chat/completions',{
-    method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json','HTTP-Referer':'https://namelessdhamma.org','X-Title':'ND Porfirchik synthetic Russian route qualification'},
-    body:JSON.stringify({model,messages:[{role:'system',content:'Отвечай на русском языке. Только окончательный ответ, без рассуждений.'},{role:'user',content:'Напиши одно короткое предложение на русском языке о погоде, не упоминая никаких людей.'}],max_tokens:450,temperature:0.15}),signal:AbortSignal.timeout(35000)});
-   let body=await response.json().catch(()=>({}));
-   const answer=String(body?.choices?.[0]?.message?.content||'');
-   detail.http=response.status;detail.valid_russian_answer=response.ok&&/[А-Яа-яЁё]/.test(answer);detail.has_content=Boolean(answer.trim());
-   if(!response.ok){detail.error_code=body?.error?.code||null;detail.error_type=body?.error?.type||null}
-  }catch(e){detail.error_type=String(e?.name||'Error').slice(0,45)}
-  console.log('ND_OPENROUTER_NEW_FREE_QA',JSON.stringify(detail));
+   const resp=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json','HTTP-Referer':'https://namelessdhamma.org'},
+    body:JSON.stringify({model,provider:candidate_modes[i],messages:[{role:'system',content:'Отвечай коротко на русском языке.'},{role:'user',content:'Одно короткое русское предложение о падающем снеге.'}],max_tokens:450,temperature:0.1}),signal:AbortSignal.timeout(30000)});
+   const doc=await resp.json().catch(()=>({}));
+   const answer=String(doc?.choices?.[0]?.message?.content||'');
+   result.status=resp.status;result.russian=/[А-Яа-яЁё]/.test(answer);result.nonempty=answer.trim().length>0;
+   if(!resp.ok){result.error_code=doc?.error?.code||null;result.error_type=doc?.error?.type||null}
+  }catch(e){result.error_type=String(e?.name||'Error').slice(0,40)}
+  console.log('ND_OPENROUTER_PRIVACY_QA',JSON.stringify(result));
+  if(result.status===200&&result.russian&&result.nonempty)break;
  }
 }
-setTimeout(()=>{void qualify();},9000).unref();
+setTimeout(()=>void run(),9000).unref();
