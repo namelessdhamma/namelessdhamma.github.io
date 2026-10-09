@@ -1,0 +1,19 @@
+{
+  "task": "GG-VFS-F01 first-line source-level expressive singing repair",
+  "previous_candidate": "v0.8",
+  "previous_candidate_status": "REJECT_BY_USER",
+  "whisper": "DEFERRED_SEPARATE_EFFECT",
+  "golden_master_policy": "IMMUTABLE",
+  "singer_identity": "GG-VFS-F01",
+  "score": "D1_FULL_V3 v1l1 authentic 15 notes, do not flatten pitch/time",
+  "line": "Мы встретились с тобой, как люди видятся во сне",
+  "phonetic_failures": [
+    {"word":"мы","score_time_s":[9.166667,9.722222],"problem":"very weak onset","repair":"full clear naturally sung first vowel, gentle but audible attack"},
+    {"word":"встретились","score_time_s":[9.722222,10.555556],"pitch_midi":[64,64,62],"problem":"mechanical speech instead of melodic singing, source masked","repair":"full sung multi-syllable continuous word with real sustained voiced vowels and clean consonants"},
+    {"word":"видятся","score_time_s":[12.777778,13.611111],"pitch_midi":[64,64,62],"problem":"heard as видится despite context-conditioned ASR writing видятся","repair":"context and isolated adjudication for ви-дят-ся; correct syllabic vocal performance, not text correction"}
+  ],
+  "negative_gate": ["word audibility and onset","sustained melodic vowel vs spoken burst","syllable completeness","word identity in isolation and phrase", "continuity and persistent voice identity", "no double voice", "same backing separate clean stems"],
+  "machine_asr": "SCREENING_ONLY_CAN_NEVER_APPROVE_PHONETIC/NATURALNESS",
+  "must_have": ["source-level regenerated or verified better whole sung phrase", "independent critic evidence", "no unresolved high-impact defects", "human artistic acceptance before final master"],
+  "known_blocker": "No newly accepted naturally-sung corrected source yet"
+}
