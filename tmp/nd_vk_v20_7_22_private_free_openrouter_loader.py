@@ -124,6 +124,10 @@ def _call_candidate(provider,model,messages,max_tokens,temperature):
         if str(model)!=_STRONG_RU_TARGET['zai']:
             raise RuntimeError('zai_paid_or_unqualified_model_denied')
         synthetic=_v22_is_zai_startup_probe(messages)
+        # Never reuse startup evidence while a real request has opened the
+        # provider's rate/overload circuit in this process.
+        if _provider_blocked('zai'):
+            raise RuntimeError('zai_free_circuit_open_use_other_provider')
         # This cache is for exact hard-coded startup test questions ONLY.
         if synthetic and _v22_zai_probe_cache['answer'] and (
             time.time()-_v22_zai_probe_cache['at']<240):
@@ -133,8 +137,6 @@ def _call_candidate(provider,model,messages,max_tokens,temperature):
                 'actual_checked':_v22_zai_probe_cache['api_checks'],
             }),flush=True)
             return _v22_zai_probe_cache['answer']
-        if _provider_blocked('zai'):
-            raise RuntimeError('zai_free_circuit_open_use_other_provider')
         # Atomic non-blocking guard prevents overlapping Z.AI requests and
         # prevents Z.AI's own busy service from stalling every fallback.
         if not _v22_zai_lock.acquire(blocking=False):
