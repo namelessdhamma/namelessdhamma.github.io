@@ -4,13 +4,14 @@ sys.path.insert(0,str(Path(__file__).parent))
 from vocal_card import decide
 class Map(unittest.TestCase):
  def event(self,**kw):
-  e=dict(selected_identity='GG-VFS-F01',score_and_lyrics_verified=True,single_singer_isolated_vocal=True,
+  e=dict(selected_identity='GG-VFS-F01',source_rights_cleared=True,score_and_lyrics_verified=True,single_singer_isolated_vocal=True,
    source_lexical_pass=True,source_sings_melody=True,expressive_source_qualified=True,
    wants_rvc=False,post_rvc_passes=0,needs_actual_whisper=False,verified_actual_whisper=False,
    modified_candidate_lexical_pass=True,passed_perceptual_comparison=True,
    has_independent_backing=True,human_accepted=False)
   e.update(kw);return e
  def test_identity(self):self.assertEqual('REJECT',decide(self.event(selected_identity='a_different_voice'))['status'])
+ def test_rights_gate(self):self.assertIn('LICENSES',decide(self.event(source_rights_cleared=False))['next'])
  def test_lyrics_gate(self):self.assertIn('RU_PHONEMES',decide(self.event(score_and_lyrics_verified=False))['next'])
  def test_single_voice(self):self.assertIn('CONTINUOUS',decide(self.event(single_singer_isolated_vocal=False))['next'])
  def test_missing_ne(self):self.assertIn('UPSTREAM',decide(self.event(source_lexical_pass=False))['next'])
