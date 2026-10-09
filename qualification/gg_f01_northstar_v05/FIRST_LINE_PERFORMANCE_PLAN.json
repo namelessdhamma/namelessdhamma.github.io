@@ -1,0 +1,196 @@
+{
+  "source_git_blob_sha": "2491adff94ae4bfede8399d3f82e06c7db8ec3d6",
+  "source_version": "D1_FULL_V3",
+  "line": "мы встретились с тобой как люди видятся во сне",
+  "vocal_identity": "GG-VFS-F01",
+  "one_continuous_singer_performance": true,
+  "performance_design_status": "AUTHORITATIVE_NOTES_WITH_NONAUTHORITATIVE_ARTISTIC_EXPRESSION_HYPOTHESIS",
+  "midi_events": [
+    {
+      "word": "мы",
+      "midi_pitch": 64,
+      "start_seconds": 9.166667,
+      "duration_seconds": 0.555556,
+      "linguistic_stress_note": true
+    },
+    {
+      "word": "встретились",
+      "midi_pitch": 64,
+      "start_seconds": 9.722222,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": true
+    },
+    {
+      "word": "встретились",
+      "midi_pitch": 64,
+      "start_seconds": 10.0,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": false
+    },
+    {
+      "word": "встретились",
+      "midi_pitch": 62,
+      "start_seconds": 10.277778,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": false
+    },
+    {
+      "word": "с",
+      "midi_pitch": 64,
+      "start_seconds": 10.555556,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": true
+    },
+    {
+      "word": "тобой",
+      "midi_pitch": 67,
+      "start_seconds": 10.833333,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": false
+    },
+    {
+      "word": "тобой",
+      "midi_pitch": 69,
+      "start_seconds": 11.111111,
+      "duration_seconds": 0.555556,
+      "linguistic_stress_note": true
+    },
+    {
+      "word": "как",
+      "midi_pitch": 67,
+      "start_seconds": 11.944444,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": true
+    },
+    {
+      "word": "люди",
+      "midi_pitch": 67,
+      "start_seconds": 12.222222,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": true
+    },
+    {
+      "word": "люди",
+      "midi_pitch": 65,
+      "start_seconds": 12.5,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": false
+    },
+    {
+      "word": "видятся",
+      "midi_pitch": 64,
+      "start_seconds": 12.777778,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": true
+    },
+    {
+      "word": "видятся",
+      "midi_pitch": 64,
+      "start_seconds": 13.055556,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": false
+    },
+    {
+      "word": "видятся",
+      "midi_pitch": 62,
+      "start_seconds": 13.333333,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": false
+    },
+    {
+      "word": "во",
+      "midi_pitch": 62,
+      "start_seconds": 13.611111,
+      "duration_seconds": 0.277778,
+      "linguistic_stress_note": true
+    },
+    {
+      "word": "сне",
+      "midi_pitch": 64,
+      "start_seconds": 13.888889,
+      "duration_seconds": 0.833333,
+      "linguistic_stress_note": true
+    }
+  ],
+  "word_map": [
+    {
+      "word": "мы",
+      "start_seconds": 9.166667,
+      "end_seconds": 9.722222
+    },
+    {
+      "word": "встретились",
+      "start_seconds": 9.722222,
+      "end_seconds": 10.555556
+    },
+    {
+      "word": "с",
+      "start_seconds": 10.555556,
+      "end_seconds": 10.833333
+    },
+    {
+      "word": "тобой",
+      "start_seconds": 10.833333,
+      "end_seconds": 11.666667
+    },
+    {
+      "word": "как",
+      "start_seconds": 11.944444,
+      "end_seconds": 12.222222
+    },
+    {
+      "word": "люди",
+      "start_seconds": 12.222222,
+      "end_seconds": 12.777778
+    },
+    {
+      "word": "видятся",
+      "start_seconds": 12.777778,
+      "end_seconds": 13.611111
+    },
+    {
+      "word": "во",
+      "start_seconds": 13.611111,
+      "end_seconds": 13.888889
+    },
+    {
+      "word": "сне",
+      "start_seconds": 13.888889,
+      "end_seconds": 14.722222
+    }
+  ],
+  "semantic_focus": [
+    {
+      "word": "тобой",
+      "meaning": "recognition, personal emotional focus",
+      "expression_types": [
+        "subtle_anticipation",
+        "dynamic_support_without_consonant_masking"
+      ]
+    },
+    {
+      "word": "видятся",
+      "meaning": "dreamlike unfolding",
+      "expression_types": [
+        "legato",
+        "unforced_connected_vowels"
+      ]
+    },
+    {
+      "word": "сне",
+      "meaning": "song identity fully formed",
+      "expression_types": [
+        "stable_resonance",
+        "end_phrase_release"
+      ]
+    }
+  ],
+  "note_range": [
+    62,
+    69
+  ],
+  "requires_real_whisper_onset": true,
+  "actual_whisper_source_qualified": false,
+  "note_source_is_flattened": false,
+  "required_audio_gate": "actual sung F01 voice + same-voice continuity + independent Russian ASR + listening"
+}
