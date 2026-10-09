@@ -155,21 +155,9 @@ custom_minimum_size = Vector2(44, 44)
 layout_mode = 2
 text = "МЕНЮ"
 
-[node name="Cell00" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
-text = "⚓"
-custom_minimum_size = Vector2(44,44)
 
-[node name="Cell01" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
-text = "·"
-custom_minimum_size = Vector2(44,44)
 
-[node name="Cell10" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
-text = "·"
-custom_minimum_size = Vector2(44,44)
 
-[node name="Cell11" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
-text = "⛵"
-custom_minimum_size = Vector2(44,44)
 
 [node name="R00" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
@@ -243,8 +231,24 @@ text = "·"
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
+[node name="Cell00" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "⚓"
+custom_minimum_size = Vector2(44,44)
+
+[node name="Cell01" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "·"
+custom_minimum_size = Vector2(44,44)
+
 [node name="Cell02" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
 text = "·"
+custom_minimum_size = Vector2(44,44)
+
+[node name="Cell10" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "·"
+custom_minimum_size = Vector2(44,44)
+
+[node name="Cell11" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
+text = "⛵"
 custom_minimum_size = Vector2(44,44)
 
 [node name="Cell12" type="Button" parent="SafeArea/Landscape/Center/BoardAspect/Board"]
