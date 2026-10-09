@@ -9,6 +9,8 @@ def decide(event, profile=None):
  assert p['north_star'] and p['strict_song_duration_target'] is None
  if event.get('selected_identity') not in (None,p['voice_identity']['preferred_singer']):
   return {'status':'REJECT','next':'KEEP_GG_VFS_F01_OR_REQUEST_NEW_ARTISTIC_VOICE_QUALIFICATION','reason':'VOICE_IDENTITY_DRIFT'}
+ if not event.get('source_rights_cleared',False):
+  return {'status':'BLOCK','next':'VERIFY_SINGER_BANK_RVC_AND_PROMPT_AI_INPUT_LICENSES','reason':'MIMOSA_HISTORICAL_SOURCE_NOT_LICENSED_FOR_AUTOMATIC_SOULX_REUSE'}
  if not event.get('score_and_lyrics_verified'):
   return {'status':'BLOCK','next':'VERIFY_SCORE_RU_PHONEMES_AND_SYLLABLE_TIMING'}
  if not event.get('single_singer_isolated_vocal'):
