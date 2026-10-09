@@ -55,7 +55,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --break-system-packages faster-whisper==1.1.1 jiwer==3.0.4
+          python3 -m pip install --quiet --break-system-packages faster-whisper==1.1.1 jiwer==3.0.4 requests>=2.31
           python3 - <<'PY'
           import json,pathlib,re
           from faster_whisper import WhisperModel
