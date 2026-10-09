@@ -3,7 +3,7 @@
 import json,pathlib,re,unicodedata,math,os
 from faster_whisper import WhisperModel
 from rapidfuzz.distance import Levenshtein
-INPUT=pathlib.Path("z16_opening_out")
+INPUT=pathlib.Path(os.environ.get("GG_OPENING_ASR_DIR","z16_opening_out"))
 EXPECTED="мы встретились с тобой как люди видятся во сне"
 def norm(s):
  s=unicodedata.normalize("NFKC",s.lower().replace("ё","е"))
