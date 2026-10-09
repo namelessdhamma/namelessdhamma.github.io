@@ -44,7 +44,7 @@ jobs:
           GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
         run: |
           set -euo pipefail
-          python3 tools/gg_nezrimy_z11.py
+          python3 -m tools.gg_nezrimy_z11
       - name: Preserve review candidate and evidence
         if: always()
         uses: actions/upload-artifact@v4
