@@ -31,16 +31,15 @@ fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
 
-
-// ND_CLOUDFLARE_KV_PERMISSION_PROBE_20261009
-// Read-only inquiry into whether configured Cloudflare API token supports secure durable KV archives.
-try {
- const account=String(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
- const token=String(process.env.CLOUDFLARE_API_TOKEN||'').trim();
- if(account && token) {
-  const u='https://api.cloudflare.com/client/v4/accounts/'+encodeURIComponent(account)+'/storage/kv/namespaces?per_page=20';
-  const r=await fetch(u,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(8000)});
-  const o=await r.json();
-  console.log('ND_CLOUDFLARE_KV_READ_DIAG',JSON.stringify({http:r.status,success:!!o.success,error_codes:(o.errors||[]).map(x=>x.code),namespaces:(o.result||[]).map(x=>({id:x.id,title:x.title}))}));
- } else console.log('ND_CLOUDFLARE_KV_READ_DIAG',JSON.stringify({configured:false}));
-} catch(e){console.log('ND_CLOUDFLARE_KV_READ_DIAG',JSON.stringify({error_type:String(e?.name||'Error')}))}
+// ND_PORFIRCHIK_ARCHIVE_PUBLIC_KEY_20261009 — public identifier only, no secrets or backups sent.
+try{
+ const crypto=await import('node:crypto');
+ const tok=String(process.env.VK_GROUP_TOKEN||'').trim();
+ if(tok){
+  const seed=crypto.createHash('sha256').update('nd-porfirchik-archive-signing-v1:'+tok).digest();
+  const der=Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),seed]);
+  const priv=crypto.createPrivateKey({key:der,format:'der',type:'pkcs8'});
+  const pub=crypto.createPublicKey(priv).export({format:'der',type:'spki'}).toString('base64');
+  console.log('ND_PORFIRCHIK_ARCHIVE_PUBLIC_KEY',JSON.stringify({algorithm:'ed25519',spki_base64:pub}));
+ }
+}catch(e){console.log('ND_PORFIRCHIK_ARCHIVE_PUBLIC_KEY',JSON.stringify({error_type:e?.name||'Error'}))}
