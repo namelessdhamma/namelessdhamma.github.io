@@ -8,7 +8,7 @@ import argparse, hashlib, json, os, pathlib, re, shutil, subprocess, sys, time
 import numpy as np
 import soundfile as sf
 
-VERSION='0.1.0'
+VERSION='0.1.1'
 STAGES=('score','guide','diction','expression','timbre','vfs','mix','audio_qa','human_review')
 REJECTED={'REJECT','FAIL','FAILED','BLOCKED','ERROR','UNVERIFIED'}
 
@@ -97,6 +97,8 @@ def collect(recipe):
             reports[key]=readjson(f)
             report_files[key]={'path':str(f),'sha256':sha256(f),'status':find_report_status(reports[key])}
     defects=check_declared_lineage(p.get('lineage',{}))
+    if p.get('score_version_expected') and score.get('version')!=p['score_version_expected']:
+        defects.append('Score source mismatch: expected '+str(p['score_version_expected'])+' but found '+str(score.get('version'))+'; stale QA reports cannot approve a different score.')
     source_duration=files.get('guide',{}).get('duration_s',0)
     if source_duration and bounds[-1]['end']>source_duration+2:
         defects.append('Score final phrase extends beyond guide audio.')
