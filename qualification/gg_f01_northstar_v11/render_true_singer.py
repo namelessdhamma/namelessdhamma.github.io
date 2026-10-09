@@ -36,8 +36,8 @@ SYLLABLES=[
  ('лю', [['ru/ly','ru/l'],['ru/u']]),
  ('ди', [['ru/dy','ru/d'],['ru/i']]),
  ('ви', [['ru/vy','ru/v'],['ru/i']]),
- ('дят', [['ru/dy','ru/d'],['ru/a'],['ru/t']]),
- ('ся', [['ru/sy','ru/s'],['ru/a']]),
+ ('дя', [['ru/dy','ru/d'],['ru/a']]),
+ ('тся', [['ru/ts','ru/c','ru/t'],['ru/a']]),
  ('во', [['ru/v'],['ru/ax','ru/a']]),
  ('сне', [['ru/s'],['ru/ny','ru/n'],['ru/e','ru/ex']]),
 ]
@@ -46,7 +46,7 @@ assert len(SYLLABLES)==15
 # Two performance scores share same speaker, word order and PITCHES.
 # 'legato' reallocates 180ms from neighboring long vowels to phonetic complex, preserving total length.
 # Fixed deterministic changes, no random pitch jitter or tempo hacks.
-REALLOC={1:0.175,0:-0.110,2:0.035,3:0.035,4:-0.060,6:-0.035,7:-0.040}
+REALLOC={1:0.175,0:-0.110,2:0.035,3:0.035,4:-0.060,6:-0.035,7:0.050,14:-0.090}
 # sum modification should be zero
 assert abs(sum(REALLOC.values()))<1e-8
 VOCAB=json.loads((ROOT/'dsmain/phonemes.json').read_text())
@@ -60,11 +60,14 @@ for syll,phonealts in SYLLABLES:
   else:
    row.append(avail)
  selected.append(row)
+if 'ru/ts' not in VOCAB and 'ru/c' not in VOCAB:
+  # Use a two-consonant cluster when bank lacks a single /ts/ phoneme.
+  selected[12]=['ru/t','ru/s','ru/a']
 if missing:
  (OUT/'FAILED_MISSING_PHONEMES.json').write_text(json.dumps({'missing':missing,'vocab_ru':[x for x in VOCAB if x.startswith('ru/')]},ensure_ascii=False,indent=2))
  raise SystemExit('BANK_MISSING_REQUIRED_PHONEMES; inspect diagnostic')
 # phonemes that are essential to audibly distinguish "видятся" from "видится"
-assert selected[11][1]=='ru/a' and selected[12][1]=='ru/a'
+assert selected[11][1]=='ru/a' and selected[12][-1]=='ru/a'
 # No simplistic morphological PASS: human listening still required.
 
 sr=44100
@@ -76,6 +79,10 @@ vc=PredVocoder(VoiceBankReader.DSVocoder(ROOT/'dsvocoder/vocoder.yaml',preload_m
 def phones_duration(n,seconds,i,variant):
  """Allocate phoneme time to vowel nuclei vs consonants; every syllable fully phonated."""
  if n==1: return [seconds]
+ # Lexical rescue after v1.1 ASR found 'да' instead of 'как' and 'видят я' instead of 'видятся'.
+ if i==7 and n==3: return [0.062,seconds-0.117,0.055]
+ if i==12 and n==3: return [0.055,0.055,seconds-0.110]
+ if i==8 and n==2: return [0.071,seconds-0.071]
  vowel=[j for j,p in enumerate(selected[i]) if p.rsplit('/',1)[-1] in ('a','ax','e','ex','i','o','u','y','yy','ih')]
  if not vowel:  # consonant-only preposition 'с'
   return [seconds/n]*n
@@ -143,9 +150,9 @@ def make_ds(variant):
 # Only ONE speaker embedding, one voice identity for both variants.
 SINGER='embeds/5_mature'
 report={'source_score_git_blob':'2491adff94ae4bfede8399d3f82e06c7db8ec3d6',
- 'model':'Awata Weak DiffSinger v3','speaker':SINGER,'vocoder':'ezv v2.0',
+ 'model':'Awata Weak DiffSinger v3','speaker':SINGER,'vocoder':'ezv v2.0','vocab_ru':[k for k in VOCAB if k.startswith('ru/')],
  'lyrics':'Мы встретились с тобой, как люди видятся во сне',
- 'musical_notes':len(raw_notes),'variants':[],'vocabulary':selected,
+ 'musical_notes':len(raw_notes),'variants':[],'vocabulary':selected,'v11_diagnostic':'score_exact ASR: da lyudi vidyat ya; legato ASR: grudi vidyat tebya; both rejected',
  'artistic_status':'UNREVIEWED','whisper':'NOT_ATTEMPTED','new_sung_source':True}
 for variant in ('score_exact','legato'):
  ds,f0,events=make_ds(variant)
