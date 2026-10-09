@@ -105,24 +105,33 @@ def make_ds(variant):
  allnotes=[('rest',.100,[])]
  for idx,((note,_,_),seconds) in enumerate(zip(raw_notes,secs)):
   allnotes.append((['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][note%12]+str(note//12-1),seconds,selected[idx]))
+  if idx==6:  # D1_FULL_V3 explicitly places 240 score ticks after 'тобой'
+   allnotes.append(('rest',240/480*60/108,[]))
  allnotes.append(('rest',.24,[]))
  phone=['SP']; pdur=[0.100]; count=[1]
- for i,(_,dur,syllphones) in enumerate(allnotes[1:-1]):
-  lens=phones_duration(len(syllphones),dur,i,variant)
+ sung_idx=0
+ for label,dur,syllphones in allnotes[1:-1]:
+  if label=='rest':
+   phone.append('SP');pdur.append(dur);count.append(1)
+   continue
+  lens=phones_duration(len(syllphones),dur,sung_idx,variant)
   phone.extend(syllphones);pdur.extend(lens);count.append(len(syllphones))
+  sung_idx+=1
  phone.append('SP');pdur.append(.24);count.append(1)
+ assert sung_idx==15
  assert abs(sum(pdur)-sum(d for _,d,_ in allnotes))<1e-5
  # Smooth continuous F0. Original pitches unmodified; time-locked notes; no pseudo-human jitter.
  notes=allnotes;durations=[d for _,d,_ in allnotes]; f0=[]
  t=0
  events=[]
+ sung_idx=0
  for k,(label,dur,phones) in enumerate(notes):
   a=round(t/hop);t+=dur;b=round(t/hop)
   if label=='rest':
    f0.extend([0.0]*(b-a));continue
-  midi=raw_notes[k-1][0]
+  midi=raw_notes[sung_idx][0]
   hz=440*2**((midi-69)/12)
-  before=raw_notes[k-2][0] if k>1 else midi
+  before=raw_notes[sung_idx-1][0] if sung_idx>0 else midi
   for j in range(b-a):
    x=j*hop
    pitch=float(midi)
@@ -135,7 +144,9 @@ def make_ds(variant):
    if dur>.45 and x>.26 and x<dur-.05:
     vib=(0.060 if variant=='legato' else 0.025)*math.sin(2*math.pi*4.8*(x-.26))*min(1,(x-.26)/.14)
    f0.append(hz * 2**((pitch-midi+onset+vib)/12))
-  events.append({'syllable':SYLLABLES[k-1][0], 'pitch_midi':midi, 'duration_sec':dur,'phonemes':phones})
+  events.append({'syllable':SYLLABLES[sung_idx][0], 'pitch_midi':midi, 'duration_sec':dur,'phonemes':phones})
+  sung_idx+=1
+ assert sung_idx==15 and abs(sum(durations) - (sum(secs)+240/480*60/108+.100+.24))<1e-5
  ds={'offset':0.0,'text':'Мы встретились с тобой как люди видятся во сне',
   'ph_seq':' '.join(phone),'ph_dur':' '.join(f'{x:.6f}' for x in pdur),
   'ph_num':' '.join(map(str,count)),
