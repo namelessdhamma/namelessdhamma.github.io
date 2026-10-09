@@ -1,0 +1,100 @@
+name: GG F01 v1.5 — Clean Guide to Awata SoulX SVC (research only)
+on:
+  push:
+    branches: [experiment/gg-nezrimy-z11-20261009]
+    paths: [.github/workflows/gg-f01-v15-clean-guide-soulx-awata-svc.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  legal-awata-singer-transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore licensed voice-bank-generated prompt, NOT prohibited Mimosa
+        uses: actions/download-artifact@v4
+        with:
+          name: GG-F01-V14-SCORE-REST-RUBATO-ONE-SINGER
+          run-id: 37911071552
+          github-token: ${{ github.token }}
+          path: awata-prompt
+      - name: Prepare original clean Russian sung guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python -m pip install --quiet 'numpy<3' 'soundfile>=0.12' 'gradio_client>=1.7,<3' 'requests>=2.31'
+          mkdir -p qual
+          curl -fL --retry 2 --connect-timeout 20 --max-time 100 'https://cdn.creativeclaw.co/u/3ce53768/audio/32e3897e-4497-4fa9-b27d-ea420b9d597c.wav' -o qual/CLEAN_GUIDE_D1_FULL.wav
+          echo 'ea3f0798db4e60927e307467997ea00856bf807d7959a952aa66281182fbc14e  qual/CLEAN_GUIDE_D1_FULL.wav' | sha256sum -c -
+          ffmpeg -nostdin -hide_banner -loglevel error -y -ss 9.00 -t 5.80 -i qual/CLEAN_GUIDE_D1_FULL.wav -ac 1 -ar 44100 qual/EXACT_LINE_CLEAN_GUIDE.wav
+          test -s awata-prompt/F01_rubato_NEW_SINGING.wav
+          python - <<'PY'
+          import hashlib,json,pathlib,soundfile as sf
+          a=pathlib.Path('awata-prompt/F01_rubato_NEW_SINGING.wav')
+          b=pathlib.Path('qual/EXACT_LINE_CLEAN_GUIDE.wav')
+          voice,sr=sf.read(a);source,sr2=sf.read(b)
+          assert 6<len(voice)/sr<9 and len(source)/sr2>5
+          obj={'pipeline':'D1_CLEAN_GUIDE_to_SoulX_SVC_Awata_prompt','source_lyrics':'Мы встретились с тобой, как люди видятся во сне','source_sha256':hashlib.sha256(b.read_bytes()).hexdigest(),'voicebank':'Awata Weak DiffSinger v3 (commercial use allowed per creator)','prompt_sha256':hashlib.sha256(a.read_bytes()).hexdigest(),'mimosa_input':False,'original_production_master_mutated':False,'status':'RESEARCH_PENDING'}
+          pathlib.Path('qual/route_manifest.json').write_text(json.dumps(obj,ensure_ascii=False,indent=2))
+          PY
+      - name: One bounded SoulX SVC using lawful Awata-generated voice prompt
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=10s 480s python - <<'PY'
+          import json, pathlib, shutil, os
+          from gradio_client import Client,handle_file
+          root=pathlib.Path('qual')
+          c=Client('Soul-AILab/SoulX-Singer',verbose=False)
+          src=str(root/'EXACT_LINE_CLEAN_GUIDE.wav')
+          prompt='awata-prompt/F01_rubato_NEW_SINGING.wav'
+          c.predict(handle_file(prompt),handle_file(src),False,False,api_name='/_run_svc_preprocess')
+          result=c.predict(False,False,0,12,0.8,True,143,api_name='/_run_svc_convert')
+          p=result if isinstance(result,str) else result.get('path') if isinstance(result,dict) else getattr(result,'path',None)
+          if not p or not os.path.isfile(p): raise RuntimeError('SoulX returned no output: '+repr(result)[:400])
+          shutil.copy2(p,root/'F01_AWATA_SVC_COMPLETE_LINE_RESEARCH.wav')
+          print('NEW_SVC_BYTES',pathlib.Path(p).stat().st_size)
+          PY
+      - name: Independent Russian ASR — reject missing or changed words
+        shell: bash
+        if: success()
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet 'faster-whisper==1.1.1' 'jiwer==3.0.4'
+          python - <<'PY'
+          import json,pathlib,re
+          from faster_whisper import WhisperModel
+          from jiwer import cer
+          root=pathlib.Path('qual')
+          m=WhisperModel('small',device='cpu',compute_type='int8')
+          def norm(x):return ' '.join(re.sub('[^а-я0-9 ]',' ',x.lower().replace('ё','е')).split())
+          expected=norm('Мы встретились с тобой, как люди видятся во сне')
+          rows=[]
+          for name in ['EXACT_LINE_CLEAN_GUIDE.wav','F01_AWATA_SVC_COMPLETE_LINE_RESEARCH.wav']:
+            segments,_=m.transcribe(str(root/name),language='ru',beam_size=5,condition_on_previous_text=False,temperature=0.0)
+            heard=' '.join(s.text for s in list(segments))
+            rows.append({'file':name,'transcript':heard,'cer':float(cer(expected,norm(heard))),'strict_exact':norm(heard)==expected})
+          result={'status':'ARTISTIC_REVIEW_NOT_AUTOMATICALLY_PASSED','expected':expected,'transcripts':rows}
+          (root/'ASR_GATE.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          if not rows[1]['strict_exact']: print('PHONETIC_GATE_REJECT — no promotion')
+          PY
+      - name: Preserve diagnostic artifacts, no licensed voicebank binaries
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: GG-F01-V15-AWATA-SOULX-ONE-TIME-PHONETIC-EXPERIMENT
+          path: |
+            qual/F01_AWATA_SVC_COMPLETE_LINE_RESEARCH.wav
+            qual/EXACT_LINE_CLEAN_GUIDE.wav
+            qual/ASR_GATE.json
+            qual/route_manifest.json
+          retention-days: 7
+          if-no-files-found: warn
