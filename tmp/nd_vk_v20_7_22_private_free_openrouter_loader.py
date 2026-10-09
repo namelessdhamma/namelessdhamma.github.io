@@ -93,11 +93,73 @@ def openrouter_specific_chat(messages,model,max_tokens=1800,temperature=0.3):
         raise RuntimeError('openrouter_unqualified_model_denied')
     return _v22_private_openrouter(messages,max_tokens,temperature)
 
+# Z.AI GLM-4.7-Flash is free but shared capacity may overload (429/code 1305).
+# Multiple inherited startup probes previously hit Z.AI within seconds. Do one real
+# synthetic Cyrillic check, reuse only its proof for the remaining exact startup
+# probes, and never cache real user answers or queue/wait on the upstream service.
+import threading as _v22_threading
+_v22_zai_lock=_v22_threading.Lock()
+_v22_zai_probe_cache={'answer':None,'at':0.0,'api_checks':0,'reused':0}
+_v22_zai_probe_texts=frozenset((
+    'Reply exactly OK.',
+    'Ответь ровно одной короткой фразой: русский язык работает.',
+    'Ответь только одним словом: да',
+    'Ответь одним словом: да',
+))
+_v22_zai_cyrillic=_v22_re.compile(r'[А-Яа-яЁё]')
+def _v22_is_zai_startup_probe(messages):
+    if not isinstance(messages,list) or not (1<=len(messages)<=2):
+        return False
+    user=[m for m in messages if isinstance(m,dict) and m.get('role')=='user']
+    if len(user)!=1 or len(str(user[0].get('content') or ''))>110:
+        return False
+    return str(user[0].get('content') or '').strip() in _v22_zai_probe_texts
+
 def _call_candidate(provider,model,messages,max_tokens,temperature):
     if provider=='openrouter':
         if str(model)!=_V22_OPENROUTER_MODEL:
             raise RuntimeError('openrouter_unqualified_model_denied')
         return _v22_private_openrouter(messages,max_tokens,temperature)
+    if provider=='zai':
+        if str(model)!=_STRONG_RU_TARGET['zai']:
+            raise RuntimeError('zai_paid_or_unqualified_model_denied')
+        synthetic=_v22_is_zai_startup_probe(messages)
+        # This cache is for exact hard-coded startup test questions ONLY.
+        if synthetic and _v22_zai_probe_cache['answer'] and (
+            time.time()-_v22_zai_probe_cache['at']<240):
+            _v22_zai_probe_cache['reused']+=1
+            print('ZAI_STARTUP_PROBE_REUSED',_v22_json.dumps({
+                'calls_avoided':_v22_zai_probe_cache['reused'],
+                'actual_checked':_v22_zai_probe_cache['api_checks'],
+            }),flush=True)
+            return _v22_zai_probe_cache['answer']
+        if _provider_blocked('zai'):
+            raise RuntimeError('zai_free_circuit_open_use_other_provider')
+        # Atomic non-blocking guard prevents overlapping Z.AI requests and
+        # prevents Z.AI's own busy service from stalling every fallback.
+        if not _v22_zai_lock.acquire(blocking=False):
+            raise RuntimeError('zai_free_busy_use_other_provider')
+        try:
+            if synthetic:
+                # Use one short genuine Russian endpoint test and let other
+                # inherited health probes consume its *tested* result.
+                probe=[{'role':'system','content':'Ответь исключительно по-русски, коротко.'},
+                       {'role':'user','content':'Ответь по-русски: русский язык работает.'}]
+                out=_v22_previous_call(provider,model,probe,96,0.1)
+                _v22_zai_probe_cache['api_checks']+=1
+                if not str(out or '').strip() or not _v22_zai_cyrillic.search(str(out)):
+                    raise RuntimeError('zai_free_russian_probe_failed')
+                _v22_zai_probe_cache.update({'answer':str(out),'at':time.time()})
+                print('ZAI_SINGLE_RUSSIAN_PROBE_PASS',_v22_json.dumps({
+                    'model':model,'api_checks':_v22_zai_probe_cache['api_checks'],
+                    'thinking_disabled':True}),flush=True)
+                return out
+            # Real requests remain untouched, never cached; inherited client
+            # enforces thinking disabled, free model pin, token cap, and
+            # long-cooldown on 429/1305, falling onward in the route loop.
+            return _v22_previous_call(provider,model,messages,max_tokens,temperature)
+        finally:
+            _v22_zai_lock.release()
     return _v22_previous_call(provider,model,messages,max_tokens,temperature)
 
 for _v22_route in ('write','deep_research'):
@@ -181,6 +243,64 @@ def _v22_failover_qualification():
         {'cases':passed,'production_calls':0,'private_state':True,
          'normal_priority':['groq','cloudflare','zai','openrouter']},
         ensure_ascii=False),flush=True)
+
+# No network, no VK messages: test probe dedup, active-response isolation,
+# model free-pin and nonblocking congestion using cloned globals.
+def _v22_zai_resilience_selftest():
+    import types as _t
+    class Gate:
+        def __init__(self):self.held=False
+        def acquire(self,blocking=False):
+            if self.held:return False
+            self.held=True;return True
+        def release(self):self.held=False
+    now=time.time()
+    g=dict(_call_candidate.__globals__)
+    stats={'calls':0,'messages':[]}
+    def mock_zai(provider,model,msg,mt,tp):
+        stats['calls']+=1
+        stats['messages'].append(msg)
+        return 'Русский язык работает.'
+    cache={'answer':None,'at':0.0,'api_checks':0,'reused':0}
+    lock=Gate()
+    g.update({'_v22_previous_call':mock_zai,
+              '_v22_zai_probe_cache':cache,'_v22_zai_lock':lock,
+              '_provider_blocked':lambda name:False,'print':lambda *a,**kw:None})
+    fn=_t.FunctionType(_call_candidate.__code__,g)
+    model=_STRONG_RU_TARGET['zai']
+    short=[{'role':'user','content':'Reply exactly OK.'}]
+    ru=[{'role':'system','content':'Всегда отвечай на русском языке.'},
+        {'role':'user','content':'Ответь ровно одной короткой фразой: русский язык работает.'}]
+    assert fn('zai',model,short,96,0.1)
+    assert fn('zai',model,ru,360,0.1)
+    assert stats['calls']==1 and cache['reused']==1
+    normal=[{'role':'user','content':'Настоящий запрос, а не тест запуска.'}]
+    assert fn('zai',model,normal,600,0.2)
+    assert stats['calls']==2 and stats['messages'][-1]==normal
+    lock.held=True
+    try:fn('zai',model,normal,600,0.2);raise AssertionError('busy_guard_failed')
+    except RuntimeError as e:assert 'busy' in str(e)
+    lock.held=False
+    try:fn('zai','glm-4.6',normal,600,0.2);raise AssertionError('paid_model_pin_failed')
+    except RuntimeError as e:assert 'unqualified' in str(e)
+    g['_provider_blocked']=lambda name:name=='zai'
+    g['_v22_zai_probe_cache']={'answer':None,'at':0.0,'api_checks':0,'reused':0}
+    try:fn('zai',model,normal,600,0.2);raise AssertionError('overloaded_circuit_failed')
+    except RuntimeError as e:assert 'circuit' in str(e)
+    assert stats['calls']==2
+    state['zai_resilience_qa']={'ok':True,'cases':6,'real_api_calls':0}
+    print('ZAI_RESILIENCE_SELFTEST_PASS',_v22_json.dumps({
+      'cases':6,'real_api_calls':0,'startup_actual_probes_expected':1,
+      'paid_models_denied':True,'private_user_reply_cache':False}),flush=True)
+
+try:
+    _v22_zai_resilience_selftest()
+except Exception as _zai_selftest_error:
+    state['zai_resilience_qa']={'ok':False,'error':type(_zai_selftest_error).__name__}
+    print('ZAI_RESILIENCE_SELFTEST_FAILED',_v22_json.dumps({
+      'type':type(_zai_selftest_error).__name__,
+      'detail':str(_zai_selftest_error)[:140]}),flush=True)
+
 try:
     _v22_failover_qualification()
 except Exception as _v22_test_err:
