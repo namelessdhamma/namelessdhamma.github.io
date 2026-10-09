@@ -24,12 +24,14 @@ try:
  dst.commit()
  try: n=int(dst.execute('select count(*) from porfirchik_memory').fetchone()[0])
  except sqlite3.Error: n=0
+ try: h=int(dst.execute('select count(*) from porfirchik_vk_history').fetchone()[0])
+ except sqlite3.Error: h=0
  dst.close();src.close()
- if n<1:print(json.dumps({'skip':'empty','count':n}));sys.exit(0)
+ if n+h<1:print(json.dumps({'skip':'empty','count':n,'history_count':h}));sys.exit(0)
  raw=open(t,'rb').read()
  zipped=gzip.compress(raw,compresslevel=7)
  if len(zipped)>2100000:print(json.dumps({'skip':'oversized','compressed_bytes':len(zipped)}));sys.exit(0)
- print(json.dumps({'count':n,'zipped':base64.b64encode(zipped).decode('ascii')}))
+ print(json.dumps({'count':n,'history_count':h,'zipped':base64.b64encode(zipped).decode('ascii')}))
 finally:
  try:os.unlink(t)
  except OSError:pass`;
@@ -55,7 +57,7 @@ async function archive(){
   const result=await response.json().catch(()=>({}));
   if(response.status!==201||!result.ok||!result.verified_head||result.sha256!==envelope.sha256)throw Error('receiver_qualification_failed_'+response.status+'_'+String(result?.error||'unknown'));
   lastPlainHash=fingerprint;
-  console.log('ND_ARCHIVE_VERIFIED',JSON.stringify({records:obj.count,compressed_bytes:plain.length,sha256:envelope.sha256,stored:true,readback:true,storage:'vercel-private-blob'}));
+  console.log('ND_ARCHIVE_VERIFIED',JSON.stringify({records:obj.count,compressed_bytes:plain.length,history_records:obj.history_count||0,sha256:envelope.sha256,stored:true,readback:true,storage:'vercel-private-blob'}));
  }catch(e){console.log('ND_ARCHIVE_FAILED',JSON.stringify({type:e?.name||'Error',reason:String(e?.message||'').slice(0,140)}))}
  finally{busy=false}
 }
