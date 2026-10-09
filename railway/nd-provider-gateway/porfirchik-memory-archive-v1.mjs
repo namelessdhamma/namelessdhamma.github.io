@@ -10,7 +10,7 @@ const endpoint='https://nd-porfirchik-vk-gateway.vercel.app/api/archive';
 const seed=crypto.createHash('sha256').update('nd-porfirchik-archive-signing-v1:'+token).digest();
 const privateKey=token?crypto.createPrivateKey({key:Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),seed]),format:'der',type:'pkcs8'}):null;
 const aesKey=crypto.createHash('sha256').update('nd-porfirchik-archive-data-v1:'+token).digest();
-let busy=false,lastPlainHash='';
+let busy=false,lastPlainHash='',lastSkipReason='';
 const py=String.raw`import sqlite3, tempfile, os, gzip, base64, json, sys
 p=sys.argv[1]
 if not os.path.isfile(p):
@@ -39,7 +39,8 @@ async function archive(){
  try{
   const {stdout}=await run('python3',['-c',py,db],{timeout:16000,maxBuffer:3200000,env:{...process.env,PYTHONUNBUFFERED:'1'}});
   const obj=JSON.parse(stdout.trim());
-  if(obj.skip){console.log('ND_ARCHIVE_SKIP',JSON.stringify({reason:obj.skip,count:obj.count??null}));return}
+  if(obj.skip){if(lastSkipReason!==obj.skip)console.log('ND_ARCHIVE_SKIP',JSON.stringify({reason:obj.skip,count:obj.count??null}));lastSkipReason=obj.skip;return}
+  lastSkipReason='';
   const plain=Buffer.from(obj.zipped,'base64');
   const fingerprint=crypto.createHash('sha256').update(plain).digest('hex');
   if(fingerprint===lastPlainHash)return;
@@ -58,8 +59,23 @@ async function archive(){
  }catch(e){console.log('ND_ARCHIVE_FAILED',JSON.stringify({type:e?.name||'Error',reason:String(e?.message||'').slice(0,140)}))}
  finally{busy=false}
 }
+
+async function archiveSelftest(){
+ try{
+  const msg=Buffer.from('ND-PORFIRCHIK-ARCHIVE-PROBE-2026-10-09');
+  const nonce=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',aesKey,nonce);
+  const enc=Buffer.concat([cipher.update(msg),cipher.final()]),tag=cipher.getAuthTag();
+  const b={version:1,ts:Date.now(),sha256:crypto.createHash('sha256').update(enc).digest('hex'),nonce:nonce.toString('base64'),tag:tag.toString('base64'),ciphertext:enc.toString('base64')};
+  const canonical=[b.version,b.ts,b.sha256,b.nonce,b.tag,b.ciphertext].join('\n');
+  const sig=crypto.sign(null,Buffer.from(canonical),privateKey).toString('base64');
+  const resp=await fetch('https://nd-porfirchik-vk-gateway.vercel.app/api/archive-test',{method:'POST',headers:{'content-type':'application/json','x-nd-archive-sig':sig},body:JSON.stringify(b),signal:AbortSignal.timeout(12000)});
+  const reply=await resp.json().catch(()=>({}));
+  console.log('ND_ARCHIVE_REMOTE_SELFTEST',JSON.stringify({http:resp.status,signature_verified:!!reply.signature_verified,private_blob_readback:!!reply.private_blob_readback,synthetic_only:true,ok:resp.status===201&&reply.ok===true,error:reply.error||null}));
+ }catch(e){console.log('ND_ARCHIVE_REMOTE_SELFTEST',JSON.stringify({ok:false,error_type:e?.name||'Error'}))}
+}
 if(token){
- setTimeout(()=>void archive(),60000).unref();
- setInterval(()=>void archive(),7*60000).unref();
- console.log('ND_ARCHIVE_SCHEDULED',JSON.stringify({encrypted:true,receiver:'vercel_private_blob',period_minutes:7}));
+ setTimeout(()=>void archiveSelftest(),25000).unref();
+ setTimeout(()=>void archive(),8000).unref();
+ setInterval(()=>void archive(),20000).unref();
+ console.log('ND_ARCHIVE_SCHEDULED',JSON.stringify({encrypted:true,receiver:'vercel_private_blob',check_seconds:20,synthetic_selftest:true}));
 }else console.log('ND_ARCHIVE_DISABLED',JSON.stringify({reason:'vk_token_missing'}));
