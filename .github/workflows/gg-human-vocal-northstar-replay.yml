@@ -1,0 +1,84 @@
+name: GG Human Vocal North Star — Exact C-D Replay
+on:
+  push:
+    branches: [experiment/gg-nezrimy-z11-20261009]
+    paths: [.github/workflows/gg-human-vocal-northstar-replay.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore previously approved original voice source and direct A/B controls
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-applio-awata-ab
+          run-id: 37399761983
+          github-token: ${{ github.token }}
+          path: gg_northstar_replay_work/reference
+      - name: Restore pinned Applio cached runtime
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-applio-cache
+          key: gg-applio-cpu-v2-${{ runner.os }}-324f4d89
+      - name: Restore Awata Weak Original model
+        uses: actions/cache/restore@v4
+        with:
+          path: .gg-rvc-model-cache
+          key: gg-rvc-awata-v1.2-${{ runner.os }}
+      - name: Install bounded replay prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends ffmpeg curl ca-certificates python3 python3-pip git unzip gcc g++ build-essential libsndfile1 libportaudio2
+          python3 -m pip install --quiet --break-system-packages 'numpy>=1.26,<3' 'soundfile>=0.12'
+      - name: Exact source-verified rerender without new synthesis or FX
+        shell: bash
+        env:
+          GG_APPLIO_CACHE_DIR: ${{ github.workspace }}/.gg-applio-cache
+          GG_RVC_MODEL_CACHE_DIR: ${{ github.workspace }}/.gg-rvc-model-cache
+          GG_APPROVED_SOURCE_SHA256: 434bb2e766ba458689c8787ac9e4ce7ed52ca922f01fd517ee30a1c8242d3e43
+        run: |
+          set -euo pipefail
+          python3 -m tools.gg_northstar_replay
+      - name: Read back actual Russian phonemes independently
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --break-system-packages faster-whisper==1.1.1 jiwer==3.0.4
+          python3 - <<'PY'
+          import json,pathlib,re
+          from faster_whisper import WhisperModel
+          from jiwer import cer,wer
+          p=pathlib.Path('gg_northstar_replay_work/render')
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          files=sorted(p.glob('*.wav'))
+          def normalize(s):
+              return ' '.join(re.sub(r'[^а-я0-9 ]',' ',s.lower().replace('ё','е')).split())
+          rows=[]
+          for f in files:
+              segs,_=model.transcribe(str(f),language='ru',beam_size=5,condition_on_previous_text=False,temperature=0)
+              recognized=' '.join(s.text.strip() for s in list(segs))
+              rows.append({'file':f.name,'text':recognized,'normalized':normalize(recognized)})
+          obj={'status':'SCREENING_ONLY_NOT_ARTISTIC_ACCEPTANCE','expected_sample_lyric':'я говорил не с ним','transcripts':rows}
+          (p/'independent_russian_asr.json').write_text(json.dumps(obj,ensure_ascii=False,indent=2))
+          print(json.dumps(obj,ensure_ascii=False))
+          PY
+      - name: Publish auditable independent new C-D voice WAVs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: GG-HUMAN-VOCAL-NORTHSTAR-EXACT-REPLAY-CD
+          path: gg_northstar_replay_work/render/
+          retention-days: 7
+          if-no-files-found: warn
