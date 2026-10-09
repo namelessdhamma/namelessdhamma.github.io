@@ -2,6 +2,7 @@ extends Control
 
 const WorldVisuals = preload("res://scripts/world_visuals.gd")
 const AIOpponent = preload("res://scripts/ai_opponent.gd")
+const PerspectiveGeometry = preload("res://scripts/perspective_board_geometry.gd")
 var world_visuals = WorldVisuals.new()
 var ai_engine = AIOpponent.new()
 var current_world := 1
@@ -36,6 +37,7 @@ func _ready() -> void:
 	set_process(true)
 	_apply_requested_test_viewport()
 	_prepare_world_shell()
+	_create_perspective_layer()
 	for i in range(CELL_NAMES.size()):
 		var cell := get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + CELL_NAMES[i]) as Button
 		cell.pressed.connect(_on_cell_pressed.bind(i))
@@ -124,6 +126,7 @@ func _set_world(world: int) -> void:
 		for i in range(popup.item_count):
 			popup.set_item_checked(i, i == current_world)
 	_refresh_surface()
+	_refresh_perspective_layer()
 
 func _toggle_ai() -> void:
 	ai_enabled = not ai_enabled
@@ -218,7 +221,125 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_on_menu()
 			get_viewport().set_input_as_handled()
 
+
+# A5 interactive perspective layer: one shared live board, not a screenshot.
+# Native 3x3 buttons remain the semantic/test nodes; their visual layer is hidden.
+var perspective_plinth: Polygon2D
+var perspective_tiles: Array[Polygon2D] = []
+var perspective_icons: Array[TextureRect] = []
+var perspective_ranks: Array[Label] = []
+var perspective_rect := Rect2()
+
+func _create_perspective_layer() -> void:
+	var board := get_node("SafeArea/Landscape/Center/BoardAspect/Board") as GridContainer
+	for cell in board.get_children():
+		(cell as Button).modulate.a = 0.0
+		(cell as Button).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var topbar := get_node("SafeArea/Landscape/Center/TopBar") as Control
+	var dock := get_node("SafeArea/Landscape/Center/ReserveDock") as Control
+	topbar.z_index = 5
+	dock.z_index = 5
+	perspective_plinth = Polygon2D.new()
+	perspective_plinth.z_index = 1
+	add_child(perspective_plinth)
+	for i in range(9):
+		var tile := Polygon2D.new()
+		tile.z_index = 2
+		add_child(tile)
+		perspective_tiles.append(tile)
+		var icon := TextureRect.new()
+		icon.name = "PerspectivePiece%d" % i
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.z_index = 3
+		add_child(icon)
+		perspective_icons.append(icon)
+		var rank := Label.new()
+		rank.name = "PerspectiveRank%d" % i
+		rank.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rank.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		rank.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		rank.add_theme_font_size_override("font_size", 16)
+		rank.add_theme_color_override("font_color", Color("#fff9df"))
+		rank.add_theme_color_override("font_outline_color", Color("#142332"))
+		rank.add_theme_constant_override("outline_size", 4)
+		rank.z_index = 4
+		add_child(rank)
+		perspective_ranks.append(rank)
+	call_deferred("_refresh_perspective_layer")
+
+func _perspective_board_rect() -> Rect2:
+	var size := get_viewport_rect().size
+	var dock := get_node("SafeArea/Landscape/Center/ReserveDock") as Control
+	# Keep the nine playable cells above the active reserve at very low heights.
+	var height := minf(size.y, maxf(100.0, (dock.global_position.y - 5.0) / 0.80))
+	return Rect2(Vector2.ZERO, Vector2(size.x, height))
+
+func _refresh_perspective_layer() -> void:
+	if perspective_tiles.size() != 9:
+		return
+	perspective_rect = _perspective_board_rect()
+	var base := PerspectiveGeometry.board_quad(current_world, perspective_rect)
+	perspective_plinth.visible = current_world != 0
+	var backing := PackedVector2Array()
+	for p in base:
+		backing.append(p + Vector2(0.0, 9.0))
+	perspective_plinth.polygon = backing
+	perspective_plinth.color = WorldVisuals.BOARD_COLORS[current_world].darkened(0.47)
+	for i in range(9):
+		var quad := PerspectiveGeometry.cell_quad(current_world, i, perspective_rect)
+		var tile := perspective_tiles[i]
+		tile.polygon = quad
+		tile.color = WorldVisuals.BOARD_COLORS[current_world].lightened(0.06)
+		var source := get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + CELL_NAMES[i]) as Button
+		var art := source.get_node_or_null("WorldCellArt") as TextureRect
+		if art != null and art.visible and art.texture != null:
+			tile.texture = art.texture
+			var ts := art.texture.get_size()
+			tile.uv = PackedVector2Array([Vector2.ZERO, Vector2(ts.x, 0), ts, Vector2(0, ts.y)])
+			tile.color = Color.WHITE
+		else:
+			tile.texture = null
+		var center := PerspectiveGeometry.cell_center(current_world, i, perspective_rect)
+		var width := (quad[1] - quad[0]).length()
+		var height := (quad[3] - quad[0]).length()
+		var extent := minf(44.0, minf(width * 0.56, height * 0.88))
+		var rect := Rect2(center - Vector2.ONE * extent * 0.5, Vector2.ONE * extent)
+		var top := _top_piece(i)
+		var icon := perspective_icons[i]
+		var rank := perspective_ranks[i]
+		icon.position = rect.position
+		icon.size = rect.size
+		rank.position = rect.position
+		rank.size = rect.size
+		icon.visible = not top.is_empty()
+		rank.visible = not top.is_empty()
+		if not top.is_empty():
+			icon.texture = world_visuals.piece_texture(current_world, int(top.player), int(top.rank))
+			rank.text = str(int(top.rank))
+		else:
+			icon.texture = null
+			rank.text = ""
+
+func _input(event: InputEvent) -> void:
+	if perspective_tiles.size() != 9 or game_over:
+		return
+	var position := Vector2(-1, -1)
+	if event is InputEventScreenTouch and event.pressed:
+		position = event.position
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		position = event.position
+	if position.x < 0.0:
+		return
+	var index := PerspectiveGeometry.cell_at(current_world, position, perspective_rect)
+	if index >= 0:
+		_on_cell_pressed(index)
+		get_viewport().set_input_as_handled()
+
 func _process(_delta: float) -> void:
+	if perspective_tiles.size() == 9 and perspective_rect != _perspective_board_rect():
+		_refresh_perspective_layer()
 	var size := get_viewport_rect().size
 	var status := get_node("SafeArea/Landscape/Center/Status") as Label
 	var base := "R%d • P%d • score %d–%d • %d×%d • moves %d" % [round_number, turn, match_score[0], match_score[1], int(size.x), int(size.y), moves]
@@ -400,6 +521,7 @@ func _refresh_surface() -> void:
 			var piece := reserve.get_child(i) as Button
 			_set_piece_badge(piece, world_visuals.piece_texture(current_world, player, i + 1) if reserve_available[player - 1][i] else null, i + 1 if reserve_available[player - 1][i] else 0)
 			piece.disabled = game_over or player != turn or not reserve_available[player - 1][i]
+	_refresh_perspective_layer()
 
 func _update_status(event: String) -> void:
 	var status := get_node("SafeArea/Landscape/Center/Status") as Label
