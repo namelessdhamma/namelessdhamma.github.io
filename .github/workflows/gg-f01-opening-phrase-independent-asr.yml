@@ -42,6 +42,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import pathlib,json,re
+          import soundfile as sf
           from faster_whisper import WhisperModel
           from jiwer import cer
           root=pathlib.Path('/tmp/gg_f01/out')
@@ -51,7 +52,11 @@ jobs:
           rs=[]
           for name in ['golden_z10','gentle_emergence','airy_emergence']:
               audio=root/(name+'_DRY.wav')
-              segs,_=m.transcribe(str(audio),language='ru',beam_size=5,condition_on_previous_text=False,temperature=0)
+              y,sr=sf.read(audio)
+              strict=root/(name+'_STRICT_FIRST_LINE_ONLY.wav')
+              # Prior crop included first phoneme of NEXT line ('Узнай'); trim at 15.28s.
+              sf.write(strict,y[:int(round((15.28-7.70)*sr))],sr)
+              segs,_=m.transcribe(str(strict),language='ru',beam_size=5,condition_on_previous_text=False,temperature=0)
               text=' '.join(x.text for x in list(segs))
               e=float(cer(norm(expected),norm(text)))
               rs.append({'variant':name,'hypothesis':text,'normalized':norm(text),'cer':e,'strict_exact':e==0})
