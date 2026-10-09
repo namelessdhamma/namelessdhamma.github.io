@@ -43,7 +43,7 @@ def inference(root,vpy,model,index,source,k,label,indexrate):
  target=OUT/(k+"_"+label+".wav")
  cfg={"pitch":0,"index_rate":indexrate,"volume_envelope":1.0,"protect":.5,
       "f0_method":"fcpe","split_audio":False,"f0_autotune":False,"f0_autotune_strength":1.0,
-      "clean_audio":False,"formant_shifting":False,"post_process":False,
+      "proposed_pitch":False,"proposed_pitch_threshold":155.0,"clean_strength":0.5,\n      "clean_audio":False,"formant_shifting":False,"post_process":False,
       "reverb":False,"chorus":False,"distortion":False,"delay":False}
  p=TEMP/(k+"_"+label+"_cfg.json");p.write_text(json.dumps(cfg))
  s=TEMP/"rvc_single.py"
