@@ -30,3 +30,7 @@ replaceOne(
 fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
+
+// ND_MEMOS_ISOLATED_QA_20261009
+try { await import('./porfirchik-isolated-memos-qa-v1.mjs'); }
+catch(e){console.error('ND_MEMOS_ISOLATED_QA_STARTUP',String(e?.name||'Error'));}
