@@ -31,15 +31,6 @@ fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
 
-// ND_PORFIRCHIK_ARCHIVE_PUBLIC_KEY_20261009 — public identifier only, no secrets or backups sent.
-try{
- const crypto=await import('node:crypto');
- const tok=String(process.env.VK_GROUP_TOKEN||'').trim();
- if(tok){
-  const seed=crypto.createHash('sha256').update('nd-porfirchik-archive-signing-v1:'+tok).digest();
-  const der=Buffer.concat([Buffer.from('302e020100300506032b657004220420','hex'),seed]);
-  const priv=crypto.createPrivateKey({key:der,format:'der',type:'pkcs8'});
-  const pub=crypto.createPublicKey(priv).export({format:'der',type:'spki'}).toString('base64');
-  console.log('ND_PORFIRCHIK_ARCHIVE_PUBLIC_KEY',JSON.stringify({algorithm:'ed25519',spki_base64:pub}));
- }
-}catch(e){console.log('ND_PORFIRCHIK_ARCHIVE_PUBLIC_KEY',JSON.stringify({error_type:e?.name||'Error'}))}
+// Non-blocking encrypted archive sidecar; core VK traffic remains unchanged.
+try { await import('./porfirchik-memory-archive-v1.mjs'); }
+catch (e) { console.error('ND_ARCHIVE_SIDECAR_FAILED',String(e?.name||'Error')); }
