@@ -9,17 +9,17 @@ let s=fs.readFileSync(sourcePath,'utf8');
 const replaceOne=(from,to,label)=>{const n=s.split(from).length-1;if(n!==1)throw new Error('Porfirchik V20.7.21 activation anchor mismatch: '+label+' count='+n);s=s.replace(from,to);};
 replaceOne(
   "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.4-free-music-yandex-fallback-20260930';",
-  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.21-arbiter-fencing-20261002';",
+  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.22-private-free-openrouter-20261009';",
   'revision'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='4c1453183601fc3fabc6bbb807a6ef66153078b2';",
+  "const PORFIRCHIK_SOURCE_COMMIT='c5369e090a2d9b5c028aba60076d483412245dbe';",
   'source_commit'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_4_music_yandex_fallback_loader.py';",
-  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_21_arbiter_fencing_loader.py';",
+  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_22_private_free_openrouter_loader.py';",
   'source_path'
 );
 replaceOne(
@@ -30,5 +30,3 @@ replaceOne(
 fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
-// ND_FREE_ROUTER_INVENTORY_20261009
-await import(pathToFileURL(path.join(here,'porfirchik-free-router-inventory-20261009.mjs')).href);
