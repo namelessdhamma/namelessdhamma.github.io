@@ -9,12 +9,12 @@ let s=fs.readFileSync(sourcePath,'utf8');
 const replaceOne=(from,to,label)=>{const n=s.split(from).length-1;if(n!==1)throw new Error('Porfirchik V20.7.21 activation anchor mismatch: '+label+' count='+n);s=s.replace(from,to);};
 replaceOne(
   "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.4-free-music-yandex-fallback-20260930';",
-  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.23-circuit-failover-20261009';",
+  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.24-zai-probe-dedupe-20261009';",
   'revision'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='f90c9365fed376508a8d790494edf414284809aa';",
+  "const PORFIRCHIK_SOURCE_COMMIT='60c7c079248574529bf0805e06737caa11a58196';",
   'source_commit'
 );
 replaceOne(
