@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-09",
+  "experiment": "GG F01 v1.5: original D1 full-phrase guide -> SoulX SVC using legally distinct Awata v14 singer reference",
+  "workflow_run_id": 37912856434,
+  "artifact_id": 11607700697,
+  "workflow_conclusion": "success",
+  "audio_quality_decision": "REJECT_TEXT_CORRUPTION",
+  "target_line": "Мы встретились с тобой, как люди видятся во сне",
+  "source_asr": "Мы встретились с тобой, как люди видятся во сне.",
+  "source_cer": 0.0,
+  "output_asr": "Мы встретились с тобой, А крути видеться во сне.",
+  "output_cer": 0.17391304347826086,
+  "provider_result": "whole sung phrase successfully generated; words modified; cannot promote",
+  "prompt_model": "Awata Weak DiffSinger v3",
+  "whisper": "deferred",
+  "next_hypothesis": "Recover successful ACE-Step v1.5 native generative singing on free qualified GPU / independent provider; no manual phoneme-duration search; preserve same singer using previously tested HQ-SVC only after dry sung source is intelligible",
+  "production_master_changed": false,
+  "user_acceptance": "NOT_REQUESTED_FOR_REJECTED_CANDIDATE",
+  "mimosa_input": false
+}
