@@ -1,0 +1,42 @@
+name: GG Nezrimy Z17 Clean Guide Independent ASR Gate
+on:
+  push:
+    branches: [experiment/gg-nezrimy-z11-20261009]
+    paths: [.github/workflows/gg-nezrimy-z17-asr.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore historical Z16 actual vocal WAVs
+        uses: actions/download-artifact@v4
+        with:
+          name: GG-NEZRIMY-Z17-CLEAN-GUIDE-SINGLE-PASS-RVC
+          path: z17_opening_out
+          run-id: 37884759960
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Russian word-intelligibility assessor
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet faster-whisper rapidfuzz
+      - name: Read actual produced WAVs and independently transcribe Russian
+        shell: bash
+        run: |
+          python -m tools.gg_nezrimy_z16_asr_screen
+      - name: Preserve ASR independent evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GG-NEZRIMY-Z17-INDEPENDENT-ASR-QUALIFICATION
+          path: z17_opening_out/Z16_RUSSIAN_ASR_SCREEN.json
+          if-no-files-found: warn
+          retention-days: 8
