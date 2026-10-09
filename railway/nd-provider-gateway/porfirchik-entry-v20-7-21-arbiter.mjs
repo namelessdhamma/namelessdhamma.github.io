@@ -30,3 +30,6 @@ replaceOne(
 fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
+
+// ND_RENDER_TO_VERCEL_PROBE_V1 — read-only cold gateway probe, no authentication or writes.
+try { const probe=await fetch('https://nd-porfirchik-vk-gateway.vercel.app/api/health',{signal:AbortSignal.timeout(14000)}); const body=await probe.text(); console.log('ND_RENDER_TO_VERCEL_PROBE_V1',JSON.stringify({status:probe.status,body:body.slice(0,900)})); } catch(error) { console.warn('ND_RENDER_TO_VERCEL_PROBE_V1',JSON.stringify({error:String(error).slice(0,250)})); }
