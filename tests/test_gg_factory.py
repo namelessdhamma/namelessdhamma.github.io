@@ -1,6 +1,6 @@
 import json, tempfile, unittest, pathlib, sys, numpy as np, soundfile as sf
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]))
-from gg_factory import get_phrases, acoustic_report, check_declared_lineage, collect, audition, guarded_mix, savejson, sha256
+from tools.gg_factory import get_phrases, acoustic_report, check_declared_lineage, collect, audition, guarded_mix, savejson, sha256
 
 class FactoryTests(unittest.TestCase):
     def setUp(self):
