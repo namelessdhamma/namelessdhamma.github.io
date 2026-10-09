@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 MODE="TRUE_VISUAL_HUMAN_VOCAL"
-REV="0.2.0-qualification"
+REV="0.3.0-golden-song-provenance"
 STAGES=("SCORE", "RAW_GUIDE", "DICTATION", "EXPRESSIVE_SOURCE", "TIMBRE", "VFS", "MIX_REVIEW", "AUDIT", "HUMAN_REVIEW")
 ALLOWED_WORKERS={"openutau","diffsinger","soulx","applio","asr","vfs","ffmpeg","gg_factory","audio_qa"}
 
@@ -219,10 +219,51 @@ def execute_local_step(spec_path, state_path, *, permit_effect=False):
         raise
 
 
+
+
+def inspect_golden_lineage(registry:dict)->dict:
+    """Recovery-first song selection. Review-only variants MUST NOT supersede accepted M3.
+
+    Asset refs are metadata; no fake audio audition or acceptance is inferred from links.
+    """
+    nodes=registry.get('lineage')
+    if not isinstance(nodes,list) or not nodes:
+        return {'status':'BLOCKED','reason':'LINEAGE_MISSING'}
+    idmap={n.get('id'):n for n in nodes if isinstance(n,dict)}
+    if len(idmap)!=len(nodes):return {'status':'BLOCKED','reason':'DUPLICATE_OR_INVALID_NODE'}
+    golden=registry.get('golden_reference')
+    if golden not in idmap:return {'status':'BLOCKED','reason':'GOLDEN_REFERENCE_MISSING'}
+    if registry.get('constraints',{}).get('no_replacement_v3_1_by_unapproved_later_mixes') is not True:
+        return {'status':'BLOCKED','reason':'ACCEPTANCE_POLICY_MISSING'}
+    admissible={'LISTENER_PASS_GAIN_ONLY','LISTENER_QA_PASS'}
+    original=idmap[golden]
+    if original.get('status') not in admissible:
+        return {'status':'BLOCKED','reason':'GOLDEN_NOT_LISTENER_QUALIFIED'}
+    if not original.get('asset_id'):
+        return {'status':'BLOCKED','reason':'GOLDEN_ASSET_MISSING'}
+    ancestors=set();stack=list(original.get('parents',[]))
+    while stack:
+        k=stack.pop()
+        if k in ancestors:continue
+        if k not in idmap:return {'status':'BLOCKED','reason':'GOLDEN_PARENT_MISSING','node':k}
+        ancestors.add(k);stack.extend(idmap[k].get('parents',[]))
+    if 'V3_M3' not in ancestors or 'V3_VOCAL' not in ancestors or 'INSTRUMENTAL_REAL_V2' not in ancestors:
+        return {'status':'BLOCKED','reason':'GOLDEN_SONG_LINEAGE_UNVERIFIED'}
+    unsafe=[{'id':n['id'],'status':n['status']} for n in nodes if n['id']!=golden and
+             n.get('kind') in ('review_master','vocal') and n.get('status') in
+             ('INTERNAL_UNAPPROVED','INTERNAL_LOCAL_REPAIR','PENDING_USER_ARTISTIC_REVIEW',
+              'REVIEW_NO_FINAL_ARTISTIC_ACCEPT')]
+    return {'status':'GOLDEN_BASELINE_RECOVERED','reference':golden,
+            'asset_id':original['asset_id'],'parents':sorted(ancestors),
+            'quarantined_candidates':unsafe,'decision':'PRESERVE_GOLDEN_BASELINE',
+            'allowed_next':'COMPARE_LATER_CANDIDATES_AT_MATCHED_LEVEL_WITH_LISTENING',
+            'released_new_song':False}
+
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
     sub=ap.add_subparsers(dest='action',required=True)
     p=sub.add_parser('plan');p.add_argument('project');p.add_argument('--out')
+    g=sub.add_parser('golden');g.add_argument('lineage');g.add_argument('--out')
     v=sub.add_parser('step');v.add_argument('spec');v.add_argument('--state',required=True);v.add_argument('--execute',action='store_true')
     a=ap.parse_args()
     if a.action=='plan':
@@ -232,6 +273,11 @@ def main():
         if a.out:jwrite(a.out,answer)
         print(json.dumps(answer,ensure_ascii=False,indent=2))
         return 0 if answer['status'] in ('READY_TO_MIX_REVIEW','READY_FOR_ARTISTIC_REVIEW') else 2
+    if a.action=='golden':
+        result=inspect_golden_lineage(jread(a.lineage))
+        if a.out:jwrite(a.out,result)
+        print(json.dumps(result,ensure_ascii=False,indent=2))
+        return 0 if result['status']=='GOLDEN_BASELINE_RECOVERED' else 2
     if a.action=='step':
         x=execute_local_step(a.spec,a.state,permit_effect=a.execute)
         print(json.dumps(x,ensure_ascii=False,indent=2));return 0
