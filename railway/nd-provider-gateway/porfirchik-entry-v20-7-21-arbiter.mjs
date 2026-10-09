@@ -53,3 +53,13 @@ try {
 } catch (error) {
   console.log('ND_VK_DIAG_ERROR',JSON.stringify({type:error?.name||'Error'}));
 }
+
+
+// ND_VK_CONVERSATION_IDS_ONLY_DIAG — authorized community conversations, numeric peer IDs only.
+try {
+ const req=new URLSearchParams({access_token:String(process.env.VK_GROUP_TOKEN||''),v:'5.199',count:'30'});
+ const result=await fetch('https://api.vk.com/method/messages.getConversations',{method:'POST',body:req,signal:AbortSignal.timeout(9000)});
+ const data=await result.json();
+ const items=data?.response?.items||[];
+ console.log('ND_VK_PEER_ID_DIAG',JSON.stringify({http:result.status,error:data?.error?{code:data.error.error_code,message:String(data.error.error_msg||'').slice(0,100)}:null,count:data?.response?.count||0,peer_ids:items.map(x=>x?.conversation?.peer?.id).filter(x=>Number.isInteger(x)&&x>0)}));
+} catch(e) {console.log('ND_VK_PEER_ID_DIAG',JSON.stringify({error:e?.name||'Error'}))}
