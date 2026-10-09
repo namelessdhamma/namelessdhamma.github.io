@@ -30,3 +30,6 @@ replaceOne(
 fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
+
+// ND_OPENROUTER_SYNTHETIC_QA_20261009
+await import(pathToFileURL(path.join(here,'porfirchik-openrouter-russian-probe-20261009.mjs')).href);
