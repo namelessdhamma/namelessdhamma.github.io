@@ -66,3 +66,20 @@ try {
 } catch(e) {
  console.log('ND_VK_CUTOVER_GUARD',JSON.stringify({error:String(e?.message||e).slice(0,150)}));
 }
+
+
+// ND_VK_OUTBOUND_SINGLE_TEST_20261009 — one bounded migration test to own operator account, never to father.
+// No message text, tokens, or recipient names from private VK histories are logged.
+try {
+ if(Date.now()<Date.parse('2026-10-09T00:50:00Z')){
+  const token=String(process.env.VK_GROUP_TOKEN||'').trim();
+  const ask=async(method,p)=>{let q=new URLSearchParams({...p,access_token:token,v:'5.199'});let r=await fetch('https://api.vk.com/method/'+method,{method:'POST',body:q,signal:AbortSignal.timeout(9000)});return await r.json();};
+  const users=await ask('users.get',{user_ids:'452972559,691392544'});
+  const savva=(users.response||[]).filter(x=>/^(savva|савва)$/i.test(String(x.first_name||'')));
+  console.log('ND_VK_OPERATOR_IDENTIFY',JSON.stringify({http_ok:!users.error,error_code:users.error?.error_code||null,operator_candidates:savva.map(x=>x.id),total:(users.response||[]).length}));
+  if(savva.length===1){
+   const test=await ask('messages.send',{user_id:String(savva[0].id),random_id:'20261009',message:'Техническая проверка Порфирчика: отправка сообщений через новую инфраструктуру Render. Действий не требуется.'});
+   console.log('ND_VK_OPERATOR_OUTBOUND_TEST',JSON.stringify({ok:typeof test.response==='number',error_code:test.error?.error_code||null,message_sent_id:typeof test.response==='number'?test.response:null}));
+  }
+ }
+} catch(e){console.log('ND_VK_OPERATOR_OUTBOUND_TEST',JSON.stringify({error_type:e?.name||'Error'}))}
