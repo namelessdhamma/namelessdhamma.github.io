@@ -30,3 +30,17 @@ replaceOne(
 fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
+
+
+// ND_CLOUDFLARE_KV_PERMISSION_PROBE_20261009
+// Read-only inquiry into whether configured Cloudflare API token supports secure durable KV archives.
+try {
+ const account=String(process.env.CLOUDFLARE_ACCOUNT_ID||'').trim();
+ const token=String(process.env.CLOUDFLARE_API_TOKEN||'').trim();
+ if(account && token) {
+  const u='https://api.cloudflare.com/client/v4/accounts/'+encodeURIComponent(account)+'/storage/kv/namespaces?per_page=20';
+  const r=await fetch(u,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(8000)});
+  const o=await r.json();
+  console.log('ND_CLOUDFLARE_KV_READ_DIAG',JSON.stringify({http:r.status,success:!!o.success,error_codes:(o.errors||[]).map(x=>x.code),namespaces:(o.result||[]).map(x=>({id:x.id,title:x.title}))}));
+ } else console.log('ND_CLOUDFLARE_KV_READ_DIAG',JSON.stringify({configured:false}));
+} catch(e){console.log('ND_CLOUDFLARE_KV_READ_DIAG',JSON.stringify({error_type:String(e?.name||'Error')}))}
