@@ -1,0 +1,27 @@
+{
+  "authority": {
+    "revision": "D1_FULL_V3",
+    "repository": "namelessdhamma/namelessdhamma.github.io",
+    "source_branch": "compute/gg-nezrimy-gost-d1r5e-20261007",
+    "source_path": "docs/gg/songs/ne-s-nim-d1-full-v3.json",
+    "source_git_blob_sha": "2491adff94ae4bfede8399d3f82e06c7db8ec3d6",
+    "recovered_at": "2026-10-09",
+    "correction": "REPLACES_NONAUTHORITATIVE_FLATTENED_FORENSIC_FIXTURE"
+  },
+  "bpm": 108,
+  "ticks_per_beat": 480,
+  "phrase": {
+    "id": "v1l1", "bar": 4, "offset": 240, "section": "verse",
+    "words": [
+      {"text":"мы","stress":0,"pitches":[64],"durations":[480],"rest":0},
+      {"text":"встретились","stress":0,"pitches":[64,64,62],"durations":[240,240,240],"rest":0},
+      {"text":"с","stress":0,"pitches":[64],"durations":[240],"rest":0},
+      {"text":"тобой","stress":1,"pitches":[67,69],"durations":[240,480],"rest":240},
+      {"text":"как","stress":0,"pitches":[67],"durations":[240],"rest":0},
+      {"text":"люди","stress":0,"pitches":[67,65],"durations":[240,240],"rest":0},
+      {"text":"видятся","stress":0,"pitches":[64,64,62],"durations":[240,240,240],"rest":0},
+      {"text":"во","stress":0,"pitches":[62],"durations":[240],"rest":0},
+      {"text":"сне","stress":0,"pitches":[64],"durations":[720],"rest":0}
+    ]
+  }
+}
