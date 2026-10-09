@@ -1,0 +1,172 @@
+{
+  "status": "ARTISTIC_REVIEW_ONLY",
+  "base": "full-song v1.2 single vowel D donor, not golden master",
+  "base_sha256": "4a3146f222c1428946d9b5e8c3e7d22169c59c207a9eb8eef1597a7e060a3b55",
+  "new_song_sha256": "aafb428df2f530fe9789eb61664f98764b1fa0238b896694f5e762eb180e6827",
+  "new_pcm_wav_sha256": "59edad19d9f7bbba83f71e03e5f217b0fa5e8b1aa9664500c71d160e6040439b",
+  "no_whisper": true,
+  "no_second_voice": true,
+  "source_v3_sha256": "1e5c87284d410d6dca090025388a95d75f0cd6dd0cb7211248bdef548c91d82a",
+  "guide_sha256": "ea3f0798db4e60927e307467997ea00856bf807d7959a952aa66281182fbc14e",
+  "regions": {
+    "с тобой": {
+      "interval": [
+        10.555556,
+        10.833333
+      ],
+      "technique": "shortened and moved consonant toward following word",
+      "qa": {
+        "slot_s": [
+          10.555556,
+          10.833333
+        ],
+        "original_ticks": 240,
+        "new_sound_ms": 54,
+        "consonant_anchored_before_next_word_s": 0.003,
+        "source_rms": 0.2214185804191586,
+        "output_rms": 0.11055190864917594
+      }
+    },
+    "в тишине": {
+      "interval": [
+        25.0,
+        25.277778
+      ],
+      "technique": "shortened and moved consonant toward following word",
+      "qa": {
+        "slot_s": [
+          25.0,
+          25.277778
+        ],
+        "original_ticks": 240,
+        "new_sound_ms": 64,
+        "consonant_anchored_before_next_word_s": 0.003,
+        "source_rms": 0.18757316976207342,
+        "output_rms": 0.09925321299354835
+      }
+    },
+    "люди": {
+      "interval": [
+        12.232,
+        12.475
+      ],
+      "technique": "local replacement from authentic D1 sung guide with timbre match/crossfade",
+      "qa": {
+        "window": [
+          12.232,
+          12.475
+        ],
+        "max_source_donor_weight": 0.9,
+        "alignment_samples": 14,
+        "phase_corr": 0.9243837824061846,
+        "donor_rms_gain": 1.0986203934290448,
+        "changed_rms": 0.025500785105300402
+      }
+    },
+    "две тропы": {
+      "interval": [
+        30.035,
+        30.445
+      ],
+      "technique": "local replacement from authentic D1 sung guide with timbre match/crossfade",
+      "qa": {
+        "window": [
+          30.035,
+          30.445
+        ],
+        "max_source_donor_weight": 0.86,
+        "alignment_samples": -35,
+        "phase_corr": 0.888423179908605,
+        "donor_rms_gain": 0.8561993842863429,
+        "changed_rms": 0.06958640963655582
+      }
+    },
+    "до разлуки": {
+      "interval": [
+        108.49,
+        108.915
+      ],
+      "technique": "local replacement from authentic D1 sung guide with timbre match/crossfade",
+      "qa": {
+        "window": [
+          108.49,
+          108.915
+        ],
+        "max_source_donor_weight": 0.9,
+        "alignment_samples": 21,
+        "phase_corr": 0.11030796706616207,
+        "donor_rms_gain": 1.6062057077631058,
+        "changed_rms": 0.0463866290522836
+      }
+    },
+    "незабвенным": {
+      "interval": [
+        162.23,
+        162.498
+      ],
+      "technique": "local replacement from authentic D1 sung guide with timbre match/crossfade",
+      "qa": {
+        "window": [
+          162.23,
+          162.498
+        ],
+        "max_source_donor_weight": 0.88,
+        "alignment_samples": 56,
+        "phase_corr": 0.7149797768142799,
+        "donor_rms_gain": 1.559364551640526,
+        "changed_rms": 0.10162366896783302
+      }
+    }
+  },
+  "local_peak_controls": {
+    "с тобой": {
+      "old_peak": 0.880448043346405,
+      "input_peak": 1.3105523586273193,
+      "output_peak": 0.9790526969181883,
+      "gain_min": 0.7453573346138
+    },
+    "в тишине": {
+      "old_peak": 0.9989794492721558,
+      "input_peak": 1.5194061994552612,
+      "output_peak": 0.9875731492067317,
+      "gain_min": 0.649813175201416
+    },
+    "люди": {
+      "old_peak": 0.5324278473854065,
+      "input_peak": 0.6261184811592102,
+      "gain_min": 1.0
+    },
+    "две тропы": {
+      "old_peak": 0.5908052921295166,
+      "input_peak": 0.8317636251449585,
+      "gain_min": 1.0
+    },
+    "до разлуки": {
+      "old_peak": 0.7645739912986755,
+      "input_peak": 0.9449213743209839,
+      "gain_min": 1.0
+    },
+    "незабвенным": {
+      "old_peak": 0.9348624348640442,
+      "input_peak": 1.4638267755508423,
+      "output_peak": 0.9804262621088355,
+      "gain_min": 0.6688364744186401
+    }
+  },
+  "global_uniform_listening_gain": 1.0,
+  "raw_float_peak": 1.0082896947860718,
+  "changed_frames": 91270,
+  "changed_ratio": 0.006993304372711631,
+  "patch_scaling_for_peak_safety": {
+    "с тобой": 1.0,
+    "в тишине": 1.0,
+    "люди": 1.0,
+    "две тропы": 1.0,
+    "до разлуки": 1.0,
+    "незабвенным": 1.0
+  },
+  "max_peak": 1.0082896947860718,
+  "unchanged_excluding_six_windows": true,
+  "preserved_prior_v12_phenome_window": true,
+  "limitations": "Source guide phonetic fidelity and artistic naturalness not independently hearing accepted. Pitched fragment edits can introduce timbral seams. Do not promote automatically."
+}
