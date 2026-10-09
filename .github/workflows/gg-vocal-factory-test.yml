@@ -1,0 +1,31 @@
+name: GG Vocal Factory V0.1 Qualification Tests
+on:
+  push:
+    branches: [experiment/gg-nezrimy-z11-20261009]
+    paths:
+      - .github/workflows/gg-vocal-factory-test.yml
+      - tools/gg_factory.py
+      - tests/test_gg_factory.py
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check ffmpeg is available
+        shell: bash
+        run: |
+          command -v ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+      - name: Install lightweight audio QC dependencies
+        run: python -m pip install --quiet 'numpy>=1.26,<3' 'soundfile>=0.12' 'scipy>=1.11'
+      - name: Run safety and operational unit tests
+        run: python -m unittest tests/test_gg_factory.py -v
+      - name: Check factory entrypoint
+        run: |
+          python tools/gg_factory.py --help
