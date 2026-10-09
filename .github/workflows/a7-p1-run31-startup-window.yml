@@ -1,0 +1,83 @@
+name: A7 P1 isolated startup window qualification
+on:
+  push:
+    branches:
+      - qualify/a7-p1-run31-startup-window-20261009
+    paths:
+      - .github/workflows/a7-p1-run31-startup-window.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  startup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container:
+      image: debian:sid
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install free Ardour runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends ardour python3 xvfb dbus-x11 xauth xdotool x11-utils curl
+      - name: Qualify startup and native MCP endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p a7-p1-run31-evidence /tmp/a7home/.config/ardour9 /tmp/a7proj
+          export HOME=/tmp/a7home DISPLAY=:99 LANG=C.UTF-8 USER=root LOGNAME=root ARDOUR_TRY_AUTOSTART_ENGINE=1
+          touch "$HOME/.config/ardour9/.a9"
+          cat >"$HOME/.config/ardour9/config" <<'XML'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Ardour><Config><Option name="try-autostart-engine" value="1"/><Option name="hide-dummy-backend" value="0"/><Option name="discover-plugins-on-start" value="0"/></Config><Metadata/><Extra><AudioMIDISetup><EngineStates><State backend="None (Dummy)" driver="Normal Speed" device="Silence" input-device="" output-device="" sample-rate="48000" buffer-size="1024" n-periods="0" input-latency="0" output-latency="0" active="1" use-buffered-io="0" midi-option="No MIDI I/O" lru="1"><MIDIDevices/></State></EngineStates></AudioMIDISetup></Extra></Ardour>
+          XML
+          Xvfb :99 -screen 0 1280x800x24 >a7-p1-run31-evidence/xvfb.log 2>&1 &
+          sleep 2
+          ardour9-new_session -s 48000 -m 2 /tmp/a7proj/A7Test A7Test >a7-p1-run31-evidence/new_session.log 2>&1
+          python3 - <<'PY'
+          import xml.etree.ElementTree as E
+          p='/tmp/a7proj/A7Test/A7Test.ardour'
+          t=E.parse(p); r=t.getroot()
+          cp=r.find('ControlProtocols')
+          if cp is None: cp=E.SubElement(r,'ControlProtocols')
+          E.SubElement(cp,'Protocol',{'name':'MCP HTTP Server (Experimental)','active':'yes','port':'4820','debug-level':'1','config':''})
+          t.write(p,encoding='UTF-8',xml_declaration=True)
+          PY
+          dbus-run-session -- /usr/bin/ardour -a -n -P /tmp/a7proj/A7Test/A7Test.ardour >a7-p1-run31-evidence/ardour.log 2>&1 &
+          pid=$!
+          echo "pid=$pid" >a7-p1-run31-evidence/state.txt
+          ready=0
+          for i in $(seq 1 85); do
+            xwininfo -root -tree >a7-p1-run31-evidence/windows.txt 2>&1 || true
+            while read -r wid; do
+              geom="$(xdotool getwindowgeometry --shell "$wid" 2>/dev/null || true)"
+              if echo "$geom" | grep -q 'WIDTH=444' && echo "$geom" | grep -q 'HEIGHT=192'; then
+                echo "tick=$i dismissed_444x192=$wid" >>a7-p1-run31-evidence/state.txt
+                xdotool key --window "$wid" Return 2>/dev/null || true
+              fi
+            done < <(xdotool search --onlyvisible --class 'ardour' 2>/dev/null || true)
+            if curl -fsS --max-time 2 -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"a7-p1-startup-qualifier","version":"1"}}}' http://127.0.0.1:4820/mcp >a7-p1-run31-evidence/initialize.json 2>/dev/null; then
+              ready=1; break
+            fi
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 1
+          done
+          echo "endpoint_ready=$ready" >>a7-p1-run31-evidence/state.txt
+          if [ "$ready" -eq 1 ]; then
+            grep -q 'ardour-mcp-http' a7-p1-run31-evidence/initialize.json
+            echo 'A7_P1_LIVE_STARTUP=PASS'
+          else
+            echo 'A7_P1_LIVE_STARTUP=FAIL_NO_ENDPOINT'
+            exit 41
+          fi
+      - name: Preserve isolated evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a7-p1-run31-startup
+          path: a7-p1-run31-evidence/
+          if-no-files-found: warn
+          retention-days: 7
