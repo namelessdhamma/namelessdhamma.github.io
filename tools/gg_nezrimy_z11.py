@@ -40,8 +40,8 @@ def convert(vocal, start, stop, idx, prot, model, index, root, vpy, tag):
  run(["ffmpeg","-nostdin","-y","-v","error","-f","f32le","-ar",str(SR),"-ac","1","-i",str(ff),"-c:a","pcm_s16le",str(src)])
  output=TMP/(tag+"_rvc.wav")
  cfg={"pitch":0,"index_rate":idx,"volume_envelope":1.0,"protect":prot,
-      "f0_method":"fcpe","split_audio":False,"f0_autotune":False,
-      "clean_audio":False,"formant_shifting":False,"post_process":False,
+      "f0_method":"fcpe","split_audio":False,"f0_autotune":False,\n      "f0_autotune_strength":1.0,"proposed_pitch":False,"proposed_pitch_threshold":155.0,
+      "clean_audio":False,"clean_strength":0.5,"formant_shifting":False,"post_process":False,
       "reverb":False,"chorus":False,"distortion":False,"delay":False}
  config=TMP/(tag+"_cfg.json");config.write_text(json.dumps(cfg))
  runner=TMP/(tag+"_infer.py")
