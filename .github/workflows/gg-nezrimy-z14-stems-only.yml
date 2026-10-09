@@ -1,0 +1,29 @@
+name: GG Nezrimy Z14 Retrieve Original Unmixed WAV Sources
+on:
+  push:
+    branches: [experiment/gg-nezrimy-z11-20261009]
+    paths: [.github/workflows/gg-nezrimy-z14-stems-only.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Fetch original unmixed music and original M3 vocal take
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p z14_source
+          curl -fLsS --retry 2 --max-time 120 'https://cdn.creativeclaw.co/u/3ce53768/audio/2896e5ed-5a37-4b1d-b8de-5b3b1b213cea.mp3' -o z14_source/INSTRUMENTAL_REAL_V2.mp3
+          curl -fLsS --retry 2 --max-time 120 'https://cdn.creativeclaw.co/u/3ce53768/audio/fac458b5-dad1-4220-8b04-c5b433722a0b.mp3' -o z14_source/VOCAL_REPAIRED_V3.mp3
+          curl -fLsS --retry 2 --max-time 120 'https://cdn.creativeclaw.co/u/3ce53768/audio/71c131f5-ab77-40c0-b795-f64607ac1e4c.mp3' -o z14_source/M3_REVIEW_V3.mp3
+          for f in z14_source/*.mp3; do test $(stat -c%s "$f") -gt 1000000; done
+          sha256sum z14_source/*.mp3 > z14_source/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GG-NEZRIMY-Z14-TRUE-SEPARATE-M3-SOURCES
+          path: z14_source/
+          retention-days: 7
+          if-no-files-found: error
