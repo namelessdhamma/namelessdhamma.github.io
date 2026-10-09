@@ -45,7 +45,7 @@
   },
   "validated_routes": {
     "notes_and_ru_diction": "OpenUtau + DiffSinger official Russian phonemizer, exact approved score",
-    "expressive_source_candidate": "Mimosa Dark human/singer native variants, SoulX only with qualified genuine prompt; historical Human-B source expired",
+    "expressive_source_candidate": "Awata Weak native DiffSinger using creator-approved terms; SoulX only with a rights-cleared expressive reference. Historical Mimosa Dark / Human-B is provenance-only until AI-input permission is resolved.",
     "identity_and_timbre": "Applio pinned commit 324f4d89c3e0e8dc0e555a3d53784e3282c16e09, Awata Weak Original, pitch0, FCPE, index 0.30 or 0.50, protect0.50, no extra effects on already-converted audio",
     "postprocessing": "Only if pre/post lexical and artistic evidence is improved; no double RVC",
     "song_mix": "One isolated vocal + one independent instrumental; accepted V3/M3 approximately 1.252 vocal / 1.057 music with latency 5ms is forensic estimate, NOT canonical mixer setting"
@@ -57,12 +57,18 @@
     "require_genuine_whisper_if_requested": true,
     "require_independent_audio_asr_for_modified_audio": true,
     "require_human_artistic_listening": true,
-    "do_not_auto_promote_experiments": true
+    "do_not_auto_promote_experiments": true,
+    "rights_clear_for_all_neural_inputs_required": true
   },
   "governance": {
     "root": "NAM-143 -> NAM-262",
     "present_studio_owner": "NAM-141 True Visual -> NAM-897 ND Music Studio",
     "future_owner_after_qualified_migration": "True Sound",
     "golden_song_must_not_be_overwritten": true
+  },
+  "rights": {
+    "Awata_Weak_creator_status": "Creator README permits commercial use of voicebank and character; check model-specific terms and attribution before release.",
+    "Mimosa_official_policy": "Utau France says Mimosa samples or art may not be used as input for AI usage. Do not reuse Mimosa/Human-B historical samples as SoulX training or inference input without explicit authorization; scope of synthesized outputs needs clarification.",
+    "historical_SoulX_checkpoint": "Keep as sealed comparison/provenance. Cannot generalize the route to new songs while underlying input license remains unresolved."
   }
 }
