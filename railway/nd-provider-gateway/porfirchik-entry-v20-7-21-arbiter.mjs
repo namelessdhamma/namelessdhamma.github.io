@@ -28,5 +28,17 @@ replaceOne(
   'restore_historical_free_provider_env'
 );
 fs.writeFileSync(runtimePath,s);
+// ND_MEMOS_IDENTITY_CONFIGURATION_CHECK_20261009
+console.log('ND_MEMOS_IDENTITY_CONFIG_CHECK', JSON.stringify({
+  api_key_present: Boolean(process.env.MEMOS_API_KEY),
+  user_salt_present: Boolean(process.env.MEMOS_USER_SALT),
+  user_prefix_configured: Boolean(process.env.MEMOS_USER_PREFIX),
+  agent_id_configured: Boolean(process.env.MEMOS_AGENT_ID),
+  app_id_configured: Boolean(process.env.MEMOS_APP_ID),
+  cloud_url_configured: Boolean(process.env.MEMOS_CLOUD_URL),
+  // For migration continuity, compare with the historical Railway variable *names*; no secret values logged.
+  values_redacted: true
+}));
+
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
