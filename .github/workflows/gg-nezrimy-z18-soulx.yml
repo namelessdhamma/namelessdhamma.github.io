@@ -1,0 +1,101 @@
+name: GG Nezrimy Z18 Proven SoulX Vocal Expressivity Qualification
+on:
+  push:
+    branches: [experiment/gg-nezrimy-z11-20261009]
+    paths: [.github/workflows/gg-nezrimy-z18-soulx.yml]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  natural:
+    runs-on: macos-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Restore actual previously qualified SoulX singing prompt
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-applio-awata-ab
+          run-id: 37399761983
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: prior_soulx
+      - name: Restore exact original D1 clean vocal guide
+        uses: actions/download-artifact@v4
+        with:
+          name: gg-nezrimy-gost-d1r5e
+          run-id: 37559783736
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: d1_guide
+      - name: Prepare bounded original six-second singing phrase without post-RVC
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q soundfile numpy gradio_client
+          mkdir -p z18_soulx_out
+          python - <<'PY'
+          import soundfile as sf
+          from pathlib import Path
+          source=Path("d1_guide/vocal/00_GUIDE_D1.wav")
+          prompt=Path("prior_soulx/00_SOURCE_SoulX_NorthStar_Candidate.wav")
+          if not source.exists() or not prompt.exists():raise RuntimeError("Historical qualified source missing")
+          x,sr=sf.read(source)
+          if x.ndim>1:x=x.mean(axis=1)
+          a=int(round(8.58*sr));b=int(round(15.35*sr))
+          sf.write("z18_soulx_out/D1_CLEAN_GUIDE_EXCERPT.wav",x[a:b],sr)
+          print("SOUlX_ORIGINAL_GUIDE",len(x[a:b])/sr)
+          PY
+      - name: Reproduce the previously accepted SoulX musical phrasing conversion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,shutil,subprocess,json
+          from pathlib import Path
+          from gradio_client import Client,handle_file
+          output=Path("z18_soulx_out")
+          prompt="prior_soulx/00_SOURCE_SoulX_NorthStar_Candidate.wav"
+          target="z18_soulx_out/D1_CLEAN_GUIDE_EXCERPT.wav"
+          c=Client("Soul-AILab/SoulX-Singer",verbose=False)
+          c.predict(handle_file(prompt),handle_file(target),False,False,api_name="/_run_svc_preprocess")
+          result=c.predict(False,False,0,8,0.55,True,314,api_name="/_run_svc_convert")
+          p=result if isinstance(result,str) else (result.get("path") if isinstance(result,dict) else getattr(result,"path",None))
+          if not p or not os.path.exists(p):raise RuntimeError("no SoulX original workflow output")
+          dst=output/"Z18_SOULX_AUTHENTIC_OPENING.wav"
+          shutil.copy2(p,dst)
+          print("Z18_ORIGINAL_SOULX_REPRODUCED",dst.stat().st_size,flush=True)
+          PY
+      - name: Verify actual lyric intelligibility before exposing any candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -q faster-whisper rapidfuzz
+          python - <<'PY'
+          import json,re,unicodedata
+          from pathlib import Path
+          from faster_whisper import WhisperModel
+          from rapidfuzz.distance import Levenshtein
+          model=WhisperModel("small",device="cpu",compute_type="int8",cpu_threads=4)
+          target="мы встретились с тобой как люди видятся во сне"
+          results=[]
+          for label,p in [("D1_CLEAN_GUIDE","z18_soulx_out/D1_CLEAN_GUIDE_EXCERPT.wav"),
+                          ("SOULX_SINGLE_CONVERSION","z18_soulx_out/Z18_SOULX_AUTHENTIC_OPENING.wav")]:
+           segs,info=model.transcribe(p,language="ru",beam_size=3,temperature=0,condition_on_previous_text=False,vad_filter=False)
+           text=" ".join(s.text for s in segs)
+           clean=" ".join(re.sub(r"[^а-я ]"," ",text.lower().replace("ё","е")).split())
+           cer=Levenshtein.distance(clean,target)/len(target)
+           results.append(dict(label=label,text=text,CER=cer))
+          out={"expected":target,"results":results,
+                "gate":"REVIEW_ONLY if SoulX worsens D1 intelligibility; never auto-accept audio"}
+          Path("z18_soulx_out/Z18_ASR_QA.json").write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          print(json.dumps(out,ensure_ascii=False),flush=True)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: GG-NEZRIMY-Z18-ORIGINAL-SOULX-CLEAN-GUIDE-CANDIDATE
+          path: z18_soulx_out/
+          retention-days: 8
+          if-no-files-found: warn
