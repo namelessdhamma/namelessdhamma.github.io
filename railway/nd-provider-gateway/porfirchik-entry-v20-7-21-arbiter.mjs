@@ -38,3 +38,7 @@ catch (e) { console.error('ND_ARCHIVE_SIDECAR_FAILED',String(e?.name||'Error'));
 // Historical VK transcripts enter separate local SQLite table; never alter bot replies.
 try { await import('./porfirchik-vk-history-backfill-v1.mjs'); }
 catch (e) { console.error('ND_VK_HISTORY_BACKFILL_MODULE',String(e?.name||'Error')); }
+
+// Nonblocking encrypted archive restore (merge only, no deletion).
+try { await import('./porfirchik-memory-restore-v1.mjs'); }
+catch (e) { console.error('ND_ARCHIVE_RESTORE_MODULE',String(e?.name||'Error')); }
