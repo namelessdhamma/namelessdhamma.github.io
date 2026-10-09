@@ -4,7 +4,7 @@
 This is a *rejection gate*, never an automated aesthetic acceptance decision.
 It does not modify a master or hallucinate acoustic improvement from ASR success.
 """
-import argparse, hashlib, json, pathlib, subprocess
+import argparse, hashlib, json, os, pathlib, subprocess
 import numpy as np
 
 EXPECTED={
@@ -12,7 +12,7 @@ EXPECTED={
  'v3':'1e5c87284d410d6dca090025388a95d75f0cd6dd0cb7211248bdef548c91d82a',
  'music':'9e8636e031ee4d29bbb4258aa9d81a0f6833405ed06d8a5c3ad15401633f1ff7',
 }
-ROOT=pathlib.Path('/mnt/data/gg_northstar_v2/golden')
+ROOT=pathlib.Path(os.getenv('GG_GOLDEN_ROOT', '/mnt/data/gg_northstar_v2/golden'))
 PATHS={'z10':ROOT/'NEZRIMY_GOST_Z10_VOCAL_SOURCE.mp3','v3':ROOT/'VOCAL_REPAIRED_V3.mp3','music':ROOT/'INSTRUMENTAL_REAL_V2.mp3'}
 START, END, SR=8.8,15.25,24000
 WORD_TIMES=[('мы',9.1667,9.7222),('встретились',9.7222,10.5556),('с',10.5556,10.8333),('тобой',10.8333,11.6667),('как',11.9444,12.2222),('люди',12.2222,12.7778),('видятся',12.7778,13.6111),('во',13.6111,13.8889),('сне',13.8889,14.7222)]
@@ -79,8 +79,12 @@ def decide(rows, feedback=OBSERVED_USER_FEEDBACK, asr_result='EXACT'):
    'notes':'Word windows are SCORE-derived, not forced alignment. For precise localization, independently align acoustic onsets and evaluate with focused A/B. Orthographic ASR can normalize or linguistically infer a word from its context; lexical naturalness needs direct scrutiny.'}
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--out',default='/mnt/data/gg_f01_perceptual_gate_v09/REJECT_V08_REPORT.json');a=ap.parse_args()
- rows=inspect_signal();report=decide(rows);report['per_word_acoustics']=rows
+ ap=argparse.ArgumentParser()
+ ap.add_argument('--golden-root',type=pathlib.Path,default=ROOT,help='Directory holding immutable source Z10, V3 and REAL V2 MP3s')
+ ap.add_argument('--out',default='GG_F01_V08_REJECT_SIGNAL_EVIDENCE.json')
+ a=ap.parse_args()
+ paths={k:a.golden_root/v.name for k,v in PATHS.items()}
+ rows=inspect_signal(paths);report=decide(rows);report['per_word_acoustics']=rows
  p=pathlib.Path(a.out);p.parent.mkdir(exist_ok=True,parents=True);p.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf8')
  print(json.dumps({'status':report['status'],'failures':report['failures']},ensure_ascii=False,indent=2))
 if __name__=='__main__':main()
