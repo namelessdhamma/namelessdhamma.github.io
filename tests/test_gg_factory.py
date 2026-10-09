@@ -46,6 +46,13 @@ class FactoryTests(unittest.TestCase):
         self.assertGreater(rendered.stat().st_size,1000)
         self.assertTrue(rendered.with_suffix('.manifest.json').exists())
 
+    def test_reject_stale_score_from_different_revision(self):
+        self.recipe['score_version_expected']='D1_FULL_V3'
+        savejson(self.r/'recipe.json',self.recipe)
+        audit=collect(self.r/'recipe.json')
+        self.assertEqual(audit['machine_gate'],'REJECT')
+        self.assertTrue(any('Score source mismatch' in item for item in audit['lineage_blockers']))
+
     def test_reject_one_lexical_failure(self):
         savejson(self.r/'post_vfs_asr.json',{'status':'REJECT','blockers':[{'id':'v1l1','cer':.5}]})
         r=collect(self.r/'recipe.json');self.assertEqual(r['machine_gate'],'REJECT')
