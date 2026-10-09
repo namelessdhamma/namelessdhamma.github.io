@@ -31,6 +31,10 @@ class Check(unittest.TestCase):
  def test_consonant_repair(self):
   self.assertIn("selected[12]=['ru/t','ru/s','ru/a']",raw)
   self.assertIn("selected[11][1]=='ru/a'",raw)
+ def test_preserved_musical_rest(self):
+  self.assertIn("if idx==6:",raw)
+  self.assertIn("allnotes.append(('rest',240/480*60/108,[]))",raw)
+  self.assertIn("if label=='rest':",raw)
  def test_no_gimmicks(self):
   self.assertNotIn('librosa.effects.pitch_shift',raw)
   self.assertNotIn('random.uniform',raw)
