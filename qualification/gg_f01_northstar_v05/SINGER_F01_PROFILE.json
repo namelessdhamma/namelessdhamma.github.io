@@ -1,0 +1,68 @@
+{
+  "profile_id": "GG-VFS-F01-NORTHSTAR-CANDIDATE-20261009",
+  "profile_status": "REUSABLE_REFERENCE_AND_ROUTE_PROFILE_NOT_MULTI_SONG_QUALIFIED",
+  "north_star": "A consistent recognizable expressive female singer performing melodic Russian lyrics with natural articulation, breath and phrase continuity across songs",
+  "strict_song_duration_target": null,
+  "voice_identity": {
+    "preferred_singer": "GG-VFS-F01",
+    "proven_user_listener_reference": "NEZRIMY_GOST_MASTER_V3_1",
+    "frozen_source_vocal": "NEZRIMY_GOST_VOCAL_REPAIRED_V3",
+    "historical_target_RVC_model": "Awata_Weak_Original.pth + matching .index / Awata Weak RVC v1.2",
+    "profile_continuity_policy": "Pin a model, reference performance and version across songs; change performer only with A/B listener acceptance",
+    "original_vocal_reference_sha256": "1e5c87284d410d6dca090025388a95d75f0cd6dd0cb7211248bdef548c91d82a",
+    "expected_perception": "one female Russian singing voice, warm resonant timbre, no speech substitute, no detached phoneme bursts"
+  },
+  "expression": {
+    "interpretation_not_identity": true,
+    "semantic_arc_first_line": [
+      {
+        "word": "Мы",
+        "intent": "fragile recognition, audible near-silence"
+      },
+      {
+        "word": "встретились",
+        "intent": "continuously voiced discovery"
+      },
+      {
+        "word": "с тобой",
+        "intent": "personal focus without clipping consonants"
+      },
+      {
+        "word": "как люди",
+        "intent": "intimate gradual awakening"
+      },
+      {
+        "word": "видятся",
+        "intent": "legato dreamlike melodic contour"
+      },
+      {
+        "word": "во сне",
+        "intent": "fully established singing, no remaining whisper"
+      }
+    ],
+    "phonemic_stress_is_independent_of_semantic_accent": true,
+    "disallowed_shortcut": "pitch randomness, compressor or gain fade alone cannot claim human emotion or physiological whisper"
+  },
+  "validated_routes": {
+    "notes_and_ru_diction": "OpenUtau + DiffSinger official Russian phonemizer, exact approved score",
+    "expressive_source_candidate": "Mimosa Dark human/singer native variants, SoulX only with qualified genuine prompt; historical Human-B source expired",
+    "identity_and_timbre": "Applio pinned commit 324f4d89c3e0e8dc0e555a3d53784e3282c16e09, Awata Weak Original, pitch0, FCPE, index 0.30 or 0.50, protect0.50, no extra effects on already-converted audio",
+    "postprocessing": "Only if pre/post lexical and artistic evidence is improved; no double RVC",
+    "song_mix": "One isolated vocal + one independent instrumental; accepted V3/M3 approximately 1.252 vocal / 1.057 music with latency 5ms is forensic estimate, NOT canonical mixer setting"
+  },
+  "acceptance": {
+    "require_real_sung_not_spoken": true,
+    "require_correct_lyrics": true,
+    "require_same_voice_across_songs": true,
+    "require_genuine_whisper_if_requested": true,
+    "require_independent_audio_asr_for_modified_audio": true,
+    "require_human_artistic_listening": true,
+    "do_not_auto_promote_experiments": true
+  },
+  "governance": {
+    "root": "NAM-143 -> NAM-262",
+    "present_studio_owner": "NAM-141 True Visual -> NAM-897 ND Music Studio",
+    "future_owner_after_qualified_migration": "True Sound",
+    "golden_song_must_not_be_overwritten": true
+  }
+}
