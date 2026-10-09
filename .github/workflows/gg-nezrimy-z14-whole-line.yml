@@ -1,0 +1,42 @@
+name: GG Nezrimy Z14 Whole Line Single-Voice Rebuild
+on:
+  push:
+    branches:
+      - experiment/gg-nezrimy-z11-20261009
+    paths:
+      - '.github/workflows/gg-nezrimy-z14-whole-line.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  phoneme:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache/restore@v4
+        with:
+          path: .gg-awata-ds-cache
+          key: gg-awata-diffsinger-source-v3-${{ runner.os }}
+      - name: Install system dependencies for direct Russian DiffSinger phoneme rendering
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg patchelf libsndfile1
+          python -m pip install --disable-pip-version-check numpy==1.26.4 scipy==1.13.1 pyyaml
+          mkdir -p z13_vocoder_work
+      - name: Regenerate the explicitly correct vowel and consonant sequences
+        run: |
+          set -euo pipefail
+          python -m py_compile tools/gg_nezrimy_z14_whole_lines.py
+          python -m tools.gg_nezrimy_z14_whole_lines
+      - name: Preserve reproducible source notes and new rendered WAVs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GG-NEZRIMY-Z14-WHOLE-LINE-DIRECT-VOICE
+          path: z14_whole_lines_out/
+          if-no-files-found: warn
+          retention-days: 10
