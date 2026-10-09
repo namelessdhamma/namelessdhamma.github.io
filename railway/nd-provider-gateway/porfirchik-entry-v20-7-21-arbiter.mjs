@@ -33,3 +33,23 @@ await import(pathToFileURL(runtimePath).href);
 
 // ND_RENDER_TO_VERCEL_PROBE_V1 — read-only cold gateway probe, no authentication or writes.
 try { const probe=await fetch('https://nd-porfirchik-vk-gateway.vercel.app/api/health',{signal:AbortSignal.timeout(14000)}); const body=await probe.text(); console.log('ND_RENDER_TO_VERCEL_PROBE_V1',JSON.stringify({status:probe.status,body:body.slice(0,900)})); const test=await fetch('https://nd-porfirchik-vk-gateway.vercel.app/api/selftest',{signal:AbortSignal.timeout(14000)}); console.log('ND_RENDER_TO_VERCEL_SYNTHETIC_TEST',JSON.stringify({status:test.status,body:(await test.text()).slice(0,1200)})); } catch(error) { console.warn('ND_RENDER_TO_VERCEL_PROBE_V1',JSON.stringify({error:String(error).slice(0,250)})); }
+
+
+// ND_VK_READONLY_QUALIFY_20261009 — bounded API probe, no mutations, keys, or private messages output.
+try {
+  const access=String(process.env.VK_GROUP_TOKEN||'').trim();
+  async function vkRead(method,params={}) {
+    const q=new URLSearchParams({...params,access_token:access,v:'5.199'});
+    const response=await fetch('https://api.vk.com/method/'+method,{method:'POST',body:q,signal:AbortSignal.timeout(8500)});
+    const data=await response.json();
+    return {http:response.status,error:data.error?{code:data.error.error_code,message:String(data.error.error_msg||'').slice(0,120)}:null,response:data.response};
+  }
+  const identity=await vkRead('groups.getById',{group_ids:'228330620'});
+  const gr=Array.isArray(identity.response)?identity.response[0]:identity.response?.groups?.[0]??identity.response;
+  console.log('ND_VK_IDENTITY_DIAG',JSON.stringify({http:identity.http,error:identity.error,group_id:gr?.id??null,group_name:gr?.name??null}));
+  const callbacks=await vkRead('groups.getCallbackServers',{group_id:'228330620'});
+  const servers=Array.isArray(callbacks.response)?callbacks.response:callbacks.response?.items||[];
+  console.log('ND_VK_CALLBACK_DIAG',JSON.stringify({http:callbacks.http,error:callbacks.error,server_count:callbacks.response?.count??servers.length,servers:servers.map(s=>({id:s.id,title:s.title,status:s.status,url:String(s.url||'').replace(/[0-9a-f]{32}/g,'[PATH-REDACTED]')}))}));
+} catch (error) {
+  console.log('ND_VK_DIAG_ERROR',JSON.stringify({type:error?.name||'Error'}));
+}
