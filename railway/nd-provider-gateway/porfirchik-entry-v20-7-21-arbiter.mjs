@@ -35,31 +35,34 @@ await import(pathToFileURL(runtimePath).href);
 try { const probe=await fetch('https://nd-porfirchik-vk-gateway.vercel.app/api/health',{signal:AbortSignal.timeout(14000)}); const body=await probe.text(); console.log('ND_RENDER_TO_VERCEL_PROBE_V1',JSON.stringify({status:probe.status,body:body.slice(0,900)})); const test=await fetch('https://nd-porfirchik-vk-gateway.vercel.app/api/selftest',{signal:AbortSignal.timeout(14000)}); console.log('ND_RENDER_TO_VERCEL_SYNTHETIC_TEST',JSON.stringify({status:test.status,body:(await test.text()).slice(0,1200)})); } catch(error) { console.warn('ND_RENDER_TO_VERCEL_PROBE_V1',JSON.stringify({error:String(error).slice(0,250)})); }
 
 
-// ND_VK_READONLY_QUALIFY_20261009 — bounded API probe, no mutations, keys, or private messages output.
+
+// ND_VK_CALLBACK_CUTOVER_VERIFY_V1 — idempotent, provider-verified retiring of offline Railway callback.
 try {
-  const access=String(process.env.VK_GROUP_TOKEN||'').trim();
-  async function vkRead(method,params={}) {
-    const q=new URLSearchParams({...params,access_token:access,v:'5.199'});
-    const response=await fetch('https://api.vk.com/method/'+method,{method:'POST',body:q,signal:AbortSignal.timeout(8500)});
-    const data=await response.json();
-    return {http:response.status,error:data.error?{code:data.error.error_code,message:String(data.error.error_msg||'').slice(0,120)}:null,response:data.response};
-  }
-  const identity=await vkRead('groups.getById',{group_ids:'228330620'});
-  const gr=Array.isArray(identity.response)?identity.response[0]:identity.response?.groups?.[0]??identity.response;
-  console.log('ND_VK_IDENTITY_DIAG',JSON.stringify({http:identity.http,error:identity.error,group_id:gr?.id??null,group_name:gr?.name??null}));
-  const callbacks=await vkRead('groups.getCallbackServers',{group_id:'228330620'});
-  const servers=Array.isArray(callbacks.response)?callbacks.response:callbacks.response?.items||[];
-  console.log('ND_VK_CALLBACK_DIAG',JSON.stringify({http:callbacks.http,error:callbacks.error,server_count:callbacks.response?.count??servers.length,servers:servers.map(s=>({id:s.id,title:s.title,status:s.status,url:String(s.url||'').replace(/[0-9a-f]{32}/g,'[PATH-REDACTED]')}))}));
-} catch (error) {
-  console.log('ND_VK_DIAG_ERROR',JSON.stringify({type:error?.name||'Error'}));
+ const token=String(process.env.VK_GROUP_TOKEN||'').trim();
+ async function api(method,params){
+  const q=new URLSearchParams({...params,access_token:token,v:'5.199'});
+  const r=await fetch('https://api.vk.com/method/'+method,{method:'POST',body:q,signal:AbortSignal.timeout(9000)});
+  const x=await r.json();
+  if(!r.ok||x.error)throw Error(method+':'+(x.error?.error_code||r.status));
+  return x.response;
+ }
+ const serversBefore=await api('groups.getCallbackServers',{group_id:'228330620'});
+ const list=serversBefore.items||[];
+ const current=list.find(x=>x.id===4 && x.status==='ok' && String(x.url||'').startsWith('https://nd-porfirchik-cold.onrender.com/vk/callback/'));
+ const old=list.find(x=>x.id===3 && String(x.url||'').startsWith('https://nd-yandex-n8n-gateway-production.up.railway.app/'));
+ let eventEnabled=false;
+ if(current){
+  const settings=await api('groups.getCallbackSettings',{group_id:'228330620',server_id:'4'});
+  eventEnabled=Boolean(settings?.events?.message_new||settings?.events?.message_reply);
+  console.log('ND_VK_CUTOVER_EVENTS',JSON.stringify({new_server:4,active:current.status,events_message_new:Boolean(settings?.events?.message_new),events_message_reply:Boolean(settings?.events?.message_reply)}));
+ }
+ let retired=false;
+ if(current&&eventEnabled&&old) {
+  await api('groups.deleteCallbackServer',{group_id:'228330620',server_id:'3'});
+  retired=true;
+ }
+ const after=await api('groups.getCallbackServers',{group_id:'228330620'});
+ console.log('ND_VK_CUTOVER_RESULT',JSON.stringify({new_active:!!current,events_enabled:eventEnabled,old_retired:retired,server_ids:(after?.items||[]).map(x=>({id:x.id,status:x.status,location:String(x.url||'').includes('onrender.com')?'render':String(x.url||'').includes('railway.app')?'railway':'other'}))}));
+} catch(e) {
+ console.log('ND_VK_CUTOVER_GUARD',JSON.stringify({error:String(e?.message||e).slice(0,150)}));
 }
-
-
-// ND_VK_CONVERSATION_IDS_ONLY_DIAG — authorized community conversations, numeric peer IDs only.
-try {
- const req=new URLSearchParams({access_token:String(process.env.VK_GROUP_TOKEN||''),v:'5.199',count:'30'});
- const result=await fetch('https://api.vk.com/method/messages.getConversations',{method:'POST',body:req,signal:AbortSignal.timeout(9000)});
- const data=await result.json();
- const items=data?.response?.items||[];
- console.log('ND_VK_PEER_ID_DIAG',JSON.stringify({http:result.status,error:data?.error?{code:data.error.error_code,message:String(data.error.error_msg||'').slice(0,100)}:null,count:data?.response?.count||0,peer_ids:items.map(x=>x?.conversation?.peer?.id).filter(x=>Number.isInteger(x)&&x>0)}));
-} catch(e) {console.log('ND_VK_PEER_ID_DIAG',JSON.stringify({error:e?.name||'Error'}))}
