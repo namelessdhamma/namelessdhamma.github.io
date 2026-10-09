@@ -1,21 +1,21 @@
-// Synthetic/metadata-only audit of existing free route and provider env presence. No user messages or credentials logged.
-async function audit(){
- const flags={zai:Boolean(process.env.ZAI_API_KEY),cerebras:Boolean(process.env.CEREBRAS_API_KEY),mistral:Boolean(process.env.MISTRAL_API_KEY),openrouter:Boolean(process.env.OPENROUTER_API_KEY)};
- console.log("ND_PROVIDER_PARENT_ENV_PRESENCE",JSON.stringify(flags));
- if(!flags.openrouter)return;
- const hdr={Authorization:"Bearer "+process.env.OPENROUTER_API_KEY};
- for(const [name,url] of [['zdr','https://openrouter.ai/api/v1/endpoints/zdr'],['models_zdr','https://openrouter.ai/api/v1/models?zdr=true']]){
+// Synthetic Russian evaluation of no-charge, no-retention, no-data-collection OpenRouter endpoint. Never log prompt or content.
+async function probe(){
+ const key=String(process.env.OPENROUTER_API_KEY||"");if(!key)return;
+ const model="inclusionai/ling-3.1-flash";
+ const hdr={Authorization:"Bearer "+key,"Content-Type":"application/json","HTTP-Referer":"https://namelessdhamma.org"};
+ const prompts=["Ответь ровно одним русским предложением: как отличить облако от тумана?","Дай короткий ответ на русском языке: зачем сохранять запись после перезапуска сервера?"];
+ for(let i=0;i<prompts.length;i++){
+  let out={model,attempt:i+1,private_routing:true,max_usd_per_million_tokens:0};
   try{
-   const r=await fetch(url,{headers:hdr,signal:AbortSignal.timeout(12000)});
-   const obj=await r.json().catch(()=>({}));
-   const arr=Array.isArray(obj.data)?obj.data:[];
-   const free=arr.filter(x=>{
-    const id=String(x.model_id||x.id||"");
-    const p=x.pricing||{};
-    return id.endsWith(":free")||((p.prompt==="0"||p.prompt===0)&&(p.completion==="0"||p.completion===0));
-   }).map(x=>String(x.model_id||x.id||""));
-   console.log("ND_OPENROUTER_ZDR_INVENTORY",JSON.stringify({source:name,http:r.status,total:arr.length,free_models:free.slice(0,45),count:free.length}));
-  }catch(e){console.log("ND_OPENROUTER_ZDR_INVENTORY",JSON.stringify({source:name,error_type:String(e?.name||"Error")}))}
+   const r=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:hdr,
+    body:JSON.stringify({model,provider:{zdr:true,data_collection:"deny",max_price:{prompt:0,completion:0}},messages:[{role:"system",content:"Ты русскоязычный помощник. Дай ясный ответ без внутренних рассуждений."},{role:"user",content:prompts[i]}],max_tokens:500,temperature:0.15}),signal:AbortSignal.timeout(28000)});
+   const j=await r.json().catch(()=>({}));
+   const answer=String(j?.choices?.[0]?.message?.content||"");
+   out.http=r.status;out.cyrillic=/[А-Яа-яЁё]/.test(answer);out.has_answer=Boolean(answer.trim());out.length=answer.length;
+   if(!r.ok)out.error_code=j?.error?.code||null;
+  }catch(e){out.error_type=String(e?.name||"Error").slice(0,48)}
+  console.log("ND_STRICT_PRIVACY_FREE_ROUTER_QA",JSON.stringify(out));
+  if(out.http!==200||!out.cyrillic)break;
  }
 }
-setTimeout(()=>void audit(),6500).unref();
+setTimeout(()=>void probe(),7000).unref();
