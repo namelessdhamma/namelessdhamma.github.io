@@ -1,0 +1,30 @@
+name: GG Nezrimy Z10 Frozen Source Handoff
+on:
+  push:
+    branches:
+      - experiment/gg-nezrimy-z11-20261009
+    paths:
+      - '.github/workflows/gg-nezrimy-source-handoff.yml'
+permissions:
+  contents: read
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Recover immutable Creative Claw Z10 sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p source
+          curl -fL --retry 2 --max-time 90 'https://cdn.creativeclaw.co/u/3ce53768/audio/973beaaf-5131-472c-b685-92717052a036.mp3' -o source/NEZRIMY_GOST_Z10_M3_SOURCE.mp3
+          curl -fL --retry 2 --max-time 90 'https://cdn.creativeclaw.co/u/3ce53768/audio/faaf78a6-b533-4894-8ee4-9c80b0eebdee.mp3' -o source/NEZRIMY_GOST_Z10_VOCAL_SOURCE.mp3
+          test "$(wc -c < source/NEZRIMY_GOST_Z10_M3_SOURCE.mp3)" -gt 1000000
+          test "$(wc -c < source/NEZRIMY_GOST_Z10_VOCAL_SOURCE.mp3)" -gt 1000000
+          sha256sum source/*.mp3 > source/SHA256SUMS.txt
+      - name: Preserve immutable source handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: GG-NEZRIMY-Z10-SOURCE-FROZEN
+          path: source/
+          retention-days: 7
