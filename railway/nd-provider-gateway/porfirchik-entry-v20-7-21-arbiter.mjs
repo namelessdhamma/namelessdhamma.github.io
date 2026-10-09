@@ -34,3 +34,15 @@ await import(pathToFileURL(runtimePath).href);
 // Non-blocking encrypted archive sidecar; core VK traffic remains unchanged.
 try { await import('./porfirchik-memory-archive-v1.mjs'); }
 catch (e) { console.error('ND_ARCHIVE_SIDECAR_FAILED',String(e?.name||'Error')); }
+
+
+// ND_VK_RESTORE_HISTORY_COUNTS_20261009 — read-only metadata counts, no message text.
+try{
+ const t=String(process.env.VK_GROUP_TOKEN||'').trim();
+ for (const peer of [452972559,691392544]) {
+  const q=new URLSearchParams({access_token:t,v:'5.199',peer_id:String(peer),count:'1'});
+  const res=await fetch('https://api.vk.com/method/messages.getHistory',{method:'POST',body:q,signal:AbortSignal.timeout(7000)});
+  const d=await res.json();
+  console.log('ND_VK_HISTORY_COUNT',JSON.stringify({peer_id:peer,http:res.status,error:d.error?.error_code||null,count:d.response?.count??null,items:d.response?.items?.length??0}));
+ }
+}catch(e){console.log('ND_VK_HISTORY_COUNT',JSON.stringify({error_type:e?.name||'Error'}))}
