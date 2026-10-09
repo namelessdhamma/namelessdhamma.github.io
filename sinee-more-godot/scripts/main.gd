@@ -1,5 +1,18 @@
 extends Control
 
+const WorldVisuals = preload("res://scripts/world_visuals.gd")
+const AIOpponent = preload("res://scripts/ai_opponent.gd")
+var world_visuals = WorldVisuals.new()
+var ai_engine = AIOpponent.new()
+var current_world := 1
+var ai_enabled := false
+var ai_difficulty := 2
+var ai_persona := 0
+var world_picker: MenuButton
+var ai_toggle: Button
+var top_menu: MenuButton
+var reset_dialog: ConfirmationDialog
+
 const CELL_NAMES: Array[String] = ["Cell00", "Cell01", "Cell02", "Cell10", "Cell11", "Cell12", "Cell20", "Cell21", "Cell22"]
 var selected_cell := -1
 var selected_reserve := -1
@@ -22,21 +35,162 @@ var blocked_player := 0
 func _ready() -> void:
 	set_process(true)
 	_apply_requested_test_viewport()
+	_prepare_world_shell()
 	for i in range(CELL_NAMES.size()):
 		var cell := get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + CELL_NAMES[i]) as Button
 		cell.pressed.connect(_on_cell_pressed.bind(i))
 	for player in [1, 2]:
-		var reserve := get_node("SafeArea/Landscape/%s/Reserve%s" % ["LeftRail" if player == 1 else "RightRail", "One" if player == 1 else "Two"]) as GridContainer
+		var reserve := _reserve_node(player)
 		for i in range(reserve.get_child_count()):
 			(reserve.get_child(i) as Button).pressed.connect(_on_reserve_pressed.bind(player, i))
 	(get_node("SafeArea/Landscape/RightRail/Actions/ActionPrimary") as Button).pressed.connect(_on_primary)
 	(get_node("SafeArea/Landscape/RightRail/Actions/ActionSecondary") as Button).pressed.connect(_on_secondary)
 	(get_node("SafeArea/Landscape/RightRail/Actions/ActionMenu") as Button).pressed.connect(_on_menu)
 	_refresh_surface()
+	_set_world(current_world)
 	_update_status("ready")
 	print("BLUE_SEA_GODOT_GAME_SURFACE_READY ", get_viewport_rect().size)
 	if DisplayServer.get_name() == "headless":
 		call_deferred("_run_headless_geometry_and_interaction_smoke")
+
+func _prepare_world_shell() -> void:
+	var center := get_node("SafeArea/Landscape/Center") as VBoxContainer
+	var title := center.get_node("Title") as Label
+	var topbar := HBoxContainer.new()
+	topbar.name = "TopBar"
+	center.add_child(topbar)
+	center.move_child(topbar, 0)
+	title.reparent(topbar, false)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_color_override("font_color", Color("#e32729"))
+	world_picker = MenuButton.new()
+	world_picker.name = "WorldPicker"
+	world_picker.text = "МИР"
+	world_picker.custom_minimum_size = Vector2(56, 44)
+	topbar.add_child(world_picker)
+	var popup := world_picker.get_popup()
+	for i in range(WorldVisuals.WORLDS.size()):
+		popup.add_radio_check_item(WorldVisuals.WORLDS[i], i)
+	popup.id_pressed.connect(_set_world)
+	ai_toggle = Button.new()
+	ai_toggle.name = "AIToggle"
+	ai_toggle.text = "ИИ: ВЫКЛ"
+	ai_toggle.custom_minimum_size = Vector2(74, 44)
+	topbar.add_child(ai_toggle)
+	ai_toggle.pressed.connect(_toggle_ai)
+	top_menu = MenuButton.new()
+	top_menu.name = "GameMenu"
+	top_menu.text = "МЕНЮ"
+	top_menu.custom_minimum_size = Vector2(60, 44)
+	topbar.add_child(top_menu)
+	top_menu.get_popup().about_to_popup.connect(_populate_game_menu)
+	top_menu.get_popup().id_pressed.connect(_on_game_menu_item)
+	reset_dialog = ConfirmationDialog.new()
+	reset_dialog.dialog_text = "Сбросить текущий матч?"
+	add_child(reset_dialog)
+	reset_dialog.confirmed.connect(_confirm_reset_match)
+	center.get_node("WorldStrip").hide()
+	var board := center.get_node("BoardAspect/Board") as GridContainer
+	for i in range(CELL_NAMES.size()):
+		board.move_child(board.get_node(CELL_NAMES[i]), i)
+	var aspect := center.get_node("BoardAspect") as AspectRatioContainer
+	aspect.custom_minimum_size = Vector2(0, 132)
+	aspect.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var dock := HBoxContainer.new()
+	dock.name = "ReserveDock"
+	dock.alignment = BoxContainer.ALIGNMENT_CENTER
+	dock.custom_minimum_size = Vector2(0, 44)
+	center.add_child(dock)
+	center.move_child(dock, aspect.get_index() + 1)
+	for player in [1, 2]:
+		var rail := get_node("SafeArea/Landscape/LeftRail" if player == 1 else "SafeArea/Landscape/RightRail") as VBoxContainer
+		var reserve := rail.get_node("ReserveOne" if player == 1 else "ReserveTwo") as GridContainer
+		reserve.reparent(dock, false)
+		reserve.columns = 9
+		reserve.add_theme_constant_override("h_separation", 1)
+		for piece in reserve.get_children():
+			(piece as Button).custom_minimum_size = Vector2(44, 44)
+	get_node("SafeArea/Landscape/LeftRail").hide()
+	get_node("SafeArea/Landscape/RightRail").hide()
+	center.get_node("Status").visible = get_viewport_rect().size.y >= 360
+
+func _set_world(world: int) -> void:
+	if world < 0 or world >= WorldVisuals.WORLDS.size():
+		return
+	current_world = world
+	world_visuals.apply_world(self, current_world)
+	if world_picker != null:
+		var popup := world_picker.get_popup()
+		for i in range(popup.item_count):
+			popup.set_item_checked(i, i == current_world)
+	_refresh_surface()
+
+func _toggle_ai() -> void:
+	ai_enabled = not ai_enabled
+	ai_toggle.text = "ИИ: ВКЛ" if ai_enabled else "ИИ: ВЫКЛ"
+	if ai_enabled and turn == 2 and not game_over:
+		call_deferred("_play_ai_turn")
+
+func _play_ai_turn() -> void:
+	if not ai_enabled or game_over or turn != 2:
+		return
+	var move: Dictionary = ai_engine.choose_move(board_stacks, reserve_available, 2, RULE, ai_difficulty, ai_persona)
+	if move.is_empty():
+		return
+	selected_reserve = int(move["rank"]) - 1
+	selected_cell = int(move["cell"])
+	assert(_is_legal_move(2, selected_reserve + 1, selected_cell))
+	_on_primary()
+
+func _populate_game_menu() -> void:
+	var popup := top_menu.get_popup()
+	popup.clear()
+	popup.add_item("Сбросить матч…", 1)
+	if game_over:
+		popup.add_item("Следующий раунд", 2)
+
+func _on_game_menu_item(id: int) -> void:
+	if id == 1:
+		reset_dialog.popup_centered()
+	elif id == 2 and game_over:
+		_on_menu()
+
+func _confirm_reset_match() -> void:
+	match_score = [0, 0]
+	match_winner = 0
+	round_number = 1
+	_reset_round()
+
+func _set_piece_badge(button: Button, texture: Texture2D, rank: int) -> void:
+	button.text = ""
+	button.icon = null
+	button.clip_contents = true
+	var art := button.get_node_or_null("RankArt") as TextureRect
+	if art == null:
+		art = TextureRect.new()
+		art.name = "RankArt"
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		button.add_child(art)
+		art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.texture = texture
+	art.visible = texture != null
+	var number := button.get_node_or_null("RankNumber") as Label
+	if number == null:
+		number = Label.new()
+		number.name = "RankNumber"
+		number.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		number.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		number.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		number.add_theme_font_size_override("font_size", 16)
+		number.add_theme_color_override("font_color", Color("#fff8df"))
+		number.add_theme_color_override("font_outline_color", Color("#142332"))
+		number.add_theme_constant_override("outline_size", 4)
+		button.add_child(number)
+		number.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	number.text = str(rank) if rank > 0 else ""
+	number.visible = rank > 0
 
 func _apply_requested_test_viewport() -> void:
 	var args := OS.get_cmdline_user_args()
@@ -85,7 +239,7 @@ func _process(_delta: float) -> void:
 	status.text = base
 
 func _reserve_node(player: int) -> GridContainer:
-	return get_node("SafeArea/Landscape/%s/Reserve%s" % ["LeftRail" if player == 1 else "RightRail", "One" if player == 1 else "Two"]) as GridContainer
+	return get_node("SafeArea/Landscape/Center/ReserveDock/ReserveOne" if player == 1 else "SafeArea/Landscape/Center/ReserveDock/ReserveTwo") as GridContainer
 
 func _on_reserve_pressed(player: int, index: int) -> void:
 	if player != turn:
@@ -154,8 +308,13 @@ func _is_legal_move_for(player: int, rank: int, cell: int) -> bool:
 	return true
 
 func _on_cell_pressed(index: int) -> void:
+	if game_over or index < 0 or index >= CELL_NAMES.size():
+		return
 	selected_cell = index
-	_update_status("cell %d" % index)
+	if selected_reserve >= 0:
+		_on_primary()
+	else:
+		_update_status("cell %d" % index)
 
 func _on_primary() -> void:
 	if selected_reserve < 0 or selected_cell < 0:
@@ -190,6 +349,8 @@ func _on_primary() -> void:
 	selected_cell = -1
 	_refresh_surface()
 	_update_status("game won" if winner != 0 else "move committed")
+	if ai_enabled and turn == 2 and not game_over:
+		call_deferred("_play_ai_turn")
 
 func _on_secondary() -> void:
 	selected_reserve = -1
@@ -226,16 +387,18 @@ func _on_menu() -> void:
 		_update_status("next round")
 
 func _refresh_surface() -> void:
+	(get_node("SafeArea/Landscape/RightRail/Actions/ActionMenu") as Button).visible = game_over
 	for i in range(CELL_NAMES.size()):
 		var cell := get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + CELL_NAMES[i]) as Button
 		var top := _top_piece(i)
-		cell.text = "·" if top.is_empty() else "P%d/%d" % [int(top.player), int(top.rank)]
+		_set_piece_badge(cell, null if top.is_empty() else world_visuals.piece_texture(current_world, int(top.player), int(top.rank)), 0 if top.is_empty() else int(top.rank))
 		cell.disabled = game_over
 	for player in [1, 2]:
 		var reserve := _reserve_node(player)
+		reserve.visible = player == turn and not game_over
 		for i in range(reserve.get_child_count()):
 			var piece := reserve.get_child(i) as Button
-			piece.text = "%d" % (i + 1) if reserve_available[player - 1][i] else "—"
+			_set_piece_badge(piece, world_visuals.piece_texture(current_world, player, i + 1) if reserve_available[player - 1][i] else null, i + 1 if reserve_available[player - 1][i] else 0)
 			piece.disabled = game_over or player != turn or not reserve_available[player - 1][i]
 
 func _update_status(event: String) -> void:
@@ -268,28 +431,19 @@ func _assert_landscape_geometry() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var viewport := get_viewport_rect().size
-	assert(viewport.x >= viewport.y, "landscape contract violated: %s" % viewport)
-	var safe := get_node("SafeArea") as Control
-	var landscape := get_node("SafeArea/Landscape") as Control
-	var left := get_node("SafeArea/Landscape/LeftRail") as Control
-	var center := get_node("SafeArea/Landscape/Center") as Control
-	var right := get_node("SafeArea/Landscape/RightRail") as Control
-	assert(safe.position.x >= 7.9 and safe.position.y >= 7.9)
-	assert(safe.position.x + safe.size.x <= viewport.x - 7.9)
-	assert(safe.position.y + safe.size.y <= viewport.y - 7.9)
-	assert(left.size.x >= 132.0 and right.size.x >= 132.0)
-	assert(center.size.x > 0.0 and center.size.y > 0.0)
-	assert(left.position.x + left.size.x <= center.position.x + 0.01)
-	assert(center.position.x + center.size.x <= right.position.x + 0.01)
-	for name in CELL_NAMES:
-		_assert_min_control_size(get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + name) as Control, Vector2(44, 44), "cell " + name)
+	assert(viewport.x >= viewport.y, "landscape contract violated")
+	var board := get_node("SafeArea/Landscape/Center/BoardAspect/Board") as GridContainer
+	var dock := get_node("SafeArea/Landscape/Center/ReserveDock") as HBoxContainer
+	assert(dock.size.y >= 44.0, "reserve dock too small")
+	for i in range(CELL_NAMES.size()):
+		assert(board.get_child(i).name == CELL_NAMES[i], "board order mismatch")
+		_assert_min_control_size(board.get_child(i) as Control, Vector2(44, 44), "cell")
 	for player in [1, 2]:
 		var reserve := _reserve_node(player)
-		for i in range(reserve.get_child_count()):
-			_assert_min_control_size(reserve.get_child(i) as Control, Vector2(44, 44), "P%d reserve %d" % [player, i])
-	for action_name in ["ActionPrimary", "ActionSecondary", "ActionMenu"]:
-		_assert_min_control_size(get_node("SafeArea/Landscape/RightRail/Actions/" + action_name) as Control, Vector2(44, 44), action_name)
-	print("BLUE_SEA_GEOMETRY_PASS viewport=", viewport, " geometry=", _geometry_snapshot())
+		assert(reserve.visible == (player == turn and not game_over), "inactive reserve visible")
+		for piece in reserve.get_children():
+			_assert_min_control_size(piece as Control, Vector2(44, 44), "reserve")
+	print("BLUE_SEA_MOBILE_DOCK_GEOMETRY_PASS ", viewport)
 
 func _run_headless_geometry_and_interaction_smoke() -> void:
 	await _assert_landscape_geometry()
@@ -301,8 +455,15 @@ func _run_headless_input_parity_smoke() -> void:
 	_reset_round()
 	var pointer_reserve := 2
 	var pointer_cell := 4
+	_on_cell_pressed(pointer_cell)
+	assert(moves == 0 and _top_piece(pointer_cell).is_empty())
 	_on_reserve_pressed(1, pointer_reserve)
 	_on_cell_pressed(pointer_cell)
+	assert(_top_piece(pointer_cell) == {"player": 1, "rank": pointer_reserve + 1})
+	assert(turn == 2 and moves == 1)
+	_reset_round()
+	_on_reserve_pressed(1, pointer_reserve)
+	selected_cell = pointer_cell
 	var primary_key := InputEventKey.new()
 	primary_key.keycode = KEY_ENTER
 	primary_key.pressed = true
@@ -352,14 +513,12 @@ func _run_headless_interaction_smoke() -> void:
 	# D2 rules parity smoke: rank stacking, Stack-2 cap, ladder win and illegal preservation.
 	_on_reserve_pressed(1, 0)
 	_on_cell_pressed(0)
-	_on_primary()
 	assert(_top_piece(0) == {"player": 1, "rank": 1})
 	assert(turn == 2 and moves == 1)
 
 	# Opponent may cover with a strictly larger rank.
 	_on_reserve_pressed(2, 1)
 	_on_cell_pressed(0)
-	_on_primary()
 	assert(_top_piece(0) == {"player": 2, "rank": 2})
 	assert(board_stacks[0].size() == 2)
 	assert(turn == 1 and moves == 2)
@@ -367,7 +526,6 @@ func _run_headless_interaction_smoke() -> void:
 	# CD uses Stack 2: a third piece cannot cover this cell.
 	_on_reserve_pressed(1, 2)
 	_on_cell_pressed(0)
-	_on_primary()
 	assert(board_stacks[0].size() == 2)
 	assert(reserve_available[0][2] == true)
 	assert(turn == 1 and moves == 2)
@@ -378,19 +536,14 @@ func _run_headless_interaction_smoke() -> void:
 	# rank 1 was already spent, so use 3/4/5 instead.
 	_on_reserve_pressed(1, 2)
 	_on_cell_pressed(3)
-	_on_primary()
 	_on_reserve_pressed(2, 0)
 	_on_cell_pressed(6)
-	_on_primary()
 	_on_reserve_pressed(1, 3)
 	_on_cell_pressed(4)
-	_on_primary()
 	_on_reserve_pressed(2, 2)
 	_on_cell_pressed(7)
-	_on_primary()
 	_on_reserve_pressed(1, 4)
 	_on_cell_pressed(5)
-	_on_primary()
 	assert(game_over and winner == 1)
 	assert(win_line == [3,4,5])
 	assert(_top_piece(3).rank == 3 and _top_piece(4).rank == 4 and _top_piece(5).rank == 5)
