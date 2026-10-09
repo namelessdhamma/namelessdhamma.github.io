@@ -99,8 +99,13 @@ def phones_duration(n,seconds,i,variant):
 
 def make_ds(variant):
  secs=[d/480*60/108 for _,d,_ in raw_notes]
- if variant=='legato':secs=[s+REALLOC.get(i,0.0) for i,s in enumerate(secs)]
- assert abs(sum(secs)-sum(d/480*60/108 for _,d,_ in raw_notes))<0.00001
+ if variant in ('legato','rubato'):secs=[s+REALLOC.get(i,0.0) for i,s in enumerate(secs)]
+ if variant=='rubato':
+  # Whole-line expressive tempo freedom: GIVE vowels real sung space, instead of clipping consonants.
+  # The other song layers must be re-timed separately if this variant is ever accepted.
+  RUBATO={7:.150,8:.140,9:.080,10:.140,11:.170,12:.180,13:.060,14:.150}
+  secs=[s+RUBATO.get(i,0.0) for i,s in enumerate(secs)]
+ assert abs(sum(secs)-sum(d/480*60/108 for _,d,_ in raw_notes)-(1.070 if variant=='rubato' else 0))<0.00001
  assert all(s>.17 for s in secs),secs
  allnotes=[('rest',.100,[])]
  for idx,((note,_,_),seconds) in enumerate(zip(raw_notes,secs)):
@@ -135,14 +140,14 @@ def make_ds(variant):
   for j in range(b-a):
    x=j*hop
    pitch=float(midi)
-   if before!=midi and x<0.060 and variant=='legato':
+   if before!=midi and x<0.060 and variant!='score_exact':
     # preserve target pitch after onset, smooth through continuous previous note.
     pitch=before+(midi-before)*min(1.0,x/.060)
    # controlled onset and gentle vibrato on true sustained vowels only
-   onset=-0.035*math.exp(-x/0.08) if variant=='legato' else 0
+   onset=-0.035*math.exp(-x/0.08) if variant!='score_exact' else 0
    vib=0
    if dur>.45 and x>.26 and x<dur-.05:
-    vib=(0.060 if variant=='legato' else 0.025)*math.sin(2*math.pi*4.8*(x-.26))*min(1,(x-.26)/.14)
+    vib=(0.060 if variant!='score_exact' else 0.025)*math.sin(2*math.pi*4.8*(x-.26))*min(1,(x-.26)/.14)
    f0.append(hz * 2**((pitch-midi+onset+vib)/12))
   events.append({'syllable':SYLLABLES[sung_idx][0], 'pitch_midi':midi, 'duration_sec':dur,'phonemes':phones})
   sung_idx+=1
@@ -163,9 +168,9 @@ SINGER='embeds/5_mature'
 report={'source_score_git_blob':'2491adff94ae4bfede8399d3f82e06c7db8ec3d6',
  'model':'Awata Weak DiffSinger v3','speaker':SINGER,'vocoder':'ezv v2.0','vocab_ru':[k for k in VOCAB if k.startswith('ru/')],
  'lyrics':'Мы встретились с тобой, как люди видятся во сне',
- 'musical_notes':len(raw_notes),'variants':[],'vocabulary':selected,'v11_diagnostic':'score_exact ASR: da lyudi vidyat ya; legato ASR: grudi vidyat tebya; both rejected',
+ 'musical_notes':len(raw_notes),'variants':[],'vocabulary':selected,'prior_ASR_failures':'v1.1/v1.2/v1.3 full new line rejected on suffix; rubato trials allow vowel durations and fixed voice without asserting score time invariance',
  'artistic_status':'UNREVIEWED','whisper':'NOT_ATTEMPTED','new_sung_source':True}
-for variant in ('score_exact','legato'):
+for variant in ('score_exact','legato','rubato'):
  ds,f0,events=make_ds(variant)
  (OUT/f'F01_{variant}.ds').write_text(json.dumps([ds],ensure_ascii=False,indent=2))
  print('RENDER',variant,'notes',len(events),'phonemes',len(ds['ph_seq'].split()),flush=True)
