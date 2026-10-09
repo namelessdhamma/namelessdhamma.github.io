@@ -26,8 +26,11 @@ class Check(unittest.TestCase):
   self.assertIn('ac.predict(',raw)
   self.assertIn('vc.predict(',raw)
  def test_first_line_phone(self):
-  self.assertIn("('дят'",raw)
-  self.assertIn("('ся'",raw)
+  self.assertIn("('дя'",raw)
+  self.assertIn("('тся'",raw)
+ def test_consonant_repair(self):
+  self.assertIn("selected[12]=['ru/t','ru/s','ru/a']",raw)
+  self.assertIn("selected[11][1]=='ru/a'",raw)
  def test_no_gimmicks(self):
   self.assertNotIn('librosa.effects.pitch_shift',raw)
   self.assertNotIn('random.uniform',raw)
