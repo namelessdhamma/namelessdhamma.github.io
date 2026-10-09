@@ -1,0 +1,71 @@
+name: GG F01 Original D1 Opening — Independent Russian ASR
+on:
+  push:
+    branches: [experiment/gg-nezrimy-z11-20261009]
+    paths: [.github/workflows/gg-f01-opening-phrase-independent-asr.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  qualify-open-phrase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install ffmpeg and exact candidate/ASR dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          python -m pip install -q 'numpy<3' 'scipy<2' 'soundfile>=0.12' 'faster-whisper==1.1.1' 'jiwer==3.0.4'
+      - name: Recover and hash-verify immutable single-singer Z10 and independent music
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gg_f01
+          curl -fL --retry 3 --max-time 120 'https://cdn.creativeclaw.co/u/3ce53768/audio/faaf78a6-b533-4894-8ee4-9c80b0eebdee.mp3' -o /tmp/gg_f01/voice.mp3
+          curl -fL --retry 3 --max-time 120 'https://cdn.creativeclaw.co/u/3ce53768/audio/2896e5ed-5a37-4b1d-b8de-5b3b1b213cea.mp3' -o /tmp/gg_f01/music.mp3
+          echo 'ee7261383a99f7ea055eb0ac0dcd1ab73472c18882fdf7004df423e65dfc8dfd  /tmp/gg_f01/voice.mp3' | sha256sum -c -
+          echo '9e8636e031ee4d29bbb4258aa9d81a0f6833405ed06d8a5c3ad15401633f1ff7  /tmp/gg_f01/music.mp3' | sha256sum -c -
+      - name: Rebuild three single-take versions without resynthesis
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qualification/gg_f01_northstar_v05/human_vocal_opening.py --vocal /tmp/gg_f01/voice.mp3 --instrumental /tmp/gg_f01/music.mp3 --out /tmp/gg_f01/out
+      - name: Independently transcribe intact vs gentle vs airy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib,json,re
+          from faster_whisper import WhisperModel
+          from jiwer import cer
+          root=pathlib.Path('/tmp/gg_f01/out')
+          m=WhisperModel('small',device='cpu',compute_type='int8')
+          expected='мы встретились с тобой как люди видятся во сне'
+          def norm(s): return ' '.join(re.sub(r'[^а-я0-9 ]',' ',s.lower().replace('ё','е')).split())
+          rs=[]
+          for name in ['golden_z10','gentle_emergence','airy_emergence']:
+              audio=root/(name+'_DRY.wav')
+              segs,_=m.transcribe(str(audio),language='ru',beam_size=5,condition_on_previous_text=False,temperature=0)
+              text=' '.join(x.text for x in list(segs))
+              e=float(cer(norm(expected),norm(text)))
+              rs.append({'variant':name,'hypothesis':text,'normalized':norm(text),'cer':e,'strict_exact':e==0})
+          o={'source_sha256':'ee7261383a99f7ea055eb0ac0dcd1ab73472c18882fdf7004df423e65dfc8dfd','status':'ASR_ONLY_NOT_ARTISTIC_ACCEPTANCE','results':rs}
+          (root/'INDEPENDENT_RUSSIAN_ASR.json').write_text(json.dumps(o,ensure_ascii=False,indent=2))
+          print(json.dumps(o,ensure_ascii=False))
+          if not rs[0]['strict_exact']:
+              raise SystemExit('Source failed original strict ASR baseline; no candidate can supersede')
+          PY
+      - name: Retain independently checked WAVs and reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: GG-F01-OPENING-REAL-WAV-ASR-CANDIDATES
+          path: /tmp/gg_f01/out/
+          if-no-files-found: warn
+          retention-days: 7
