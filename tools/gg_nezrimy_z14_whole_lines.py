@@ -29,7 +29,7 @@ T=[
     [["d","v","a"],["g","o"],["l","o"],["s","a"],["b","l","u","zh"],
      ["d","a"],["ly","i"],["v"],["ty","i"],["sh","i"],["ny","e"]],10),
 ]
-CONSONANTS={"b","v","vy","t","ty","s","sy","z","zh","sh","ch","k","g","d","dy","p","r","ry","l","ly","m","my","n","ny","f"}
+CONSONANTS={"b","j","v","vy","t","ty","s","sy","z","zh","sh","ch","k","g","d","dy","p","r","ry","l","ly","m","my","n","ny","f"}
 def nname(midi):
  names=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"]
  return "rest" if midi == 0 else names[midi%12]+str(midi//12-1)
