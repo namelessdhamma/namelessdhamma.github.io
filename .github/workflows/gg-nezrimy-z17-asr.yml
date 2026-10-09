@@ -30,6 +30,8 @@ jobs:
           python -m pip install --quiet faster-whisper rapidfuzz
       - name: Read actual produced WAVs and independently transcribe Russian
         shell: bash
+        env:
+          GG_OPENING_ASR_DIR: z17_opening_out
         run: |
           python -m tools.gg_nezrimy_z16_asr_screen
       - name: Preserve ASR independent evidence
