@@ -1,0 +1,95 @@
+name: GG F01 — True Awata Singing First Line v1.1
+on:
+  push:
+    branches: [experiment/gg-nezrimy-z11-20261009]
+    paths: [.github/workflows/gg-f01-v11-real-awata-score-singer.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  original-singer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Independent preflight score tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qualification/gg_f01_northstar_v11/test_score.py -v
+      - name: Install known-good CPU-only native DiffSinger and ezv runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq unzip ffmpeg libsndfile1
+          python -m pip install --disable-pip-version-check --quiet 'torch==2.8.0' --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install --disable-pip-version-check --quiet 'numpy==1.26.4' 'scipy==1.13.1' 'librosa==0.9.2' 'onnxruntime==1.16.3' 'pyyaml>=6' 'pypinyin>=0.50' 'requests>=2.31' soundfile tqdm
+          python -m pip install --disable-pip-version-check --quiet --no-deps diffsinger-utau==0.3.8
+      - name: Recover genuine creator bank and commercially permissible output vocoder
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 --connect-timeout 20 --max-time 400 -o awata-v3.zip https://github.com/hhskt/Awata_Weak/releases/download/diffsinger_v3.0/Awata_Weak_DS_v3.zip
+          unzip -tqq awata-v3.zip
+          mkdir -p awata
+          unzip -q awata-v3.zip -d awata
+          curl -fsSL --retry 2 --connect-timeout 20 --max-time 200 -o ezv.oudep https://github.com/matax2bi/ezv-for-diffsinger/releases/download/v2.0.0/ezv_for_diffsinger.oudep
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import yaml
+          dst=Path('awata/Awata_Weak_DS_v3/dsvocoder');dst.mkdir(parents=True,exist_ok=True)
+          with ZipFile('ezv.oudep') as z:
+            names={n.replace('\\','/'):n for n in z.namelist()}
+            cfgs=[n for n in names if n.endswith('/vocoder.yaml') or n=='vocoder.yaml']
+            assert cfgs,'missing vocoder config'
+            cfg=z.read(names[cfgs[0]])
+            ref=yaml.safe_load(cfg)['model']
+            models=[n for n in names if n.rsplit('/',1)[-1]==ref]
+            assert models,'missing vocoder model'
+            (dst/'vocoder.yaml').write_bytes(cfg)
+            with z.open(names[models[0]]) as src,(dst/ref).open('wb') as out:
+              while chunk:=src.read(1024*1024):out.write(chunk)
+          print('Downloaded original bank / temporary unmodified ezv vocoder')
+          PY
+      - name: Native score-driven full first-line singing by ONE pinned voice ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          python qualification/gg_f01_northstar_v11/render_true_singer.py
+      - name: Acoustic and phonetic QA (advisory, never human acceptance)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet 'faster-whisper==1.1.1' 'jiwer==3.0.4'
+          python - <<'PY'
+          import pathlib,json,soundfile as sf, numpy as np
+          from faster_whisper import WhisperModel
+          root=pathlib.Path('gg-f01-new-singer')
+          result={'status':'ARTISTIC_AUDITION_PENDING','whisper':False,'voices':1,'readouts':[]}
+          for name in ('score_exact','legato'):
+            p=root/f'F01_{name}_NEW_SINGING.wav'
+            x,sr=sf.read(p)
+            assert len(x)>int(4.9*sr) and len(x)<int(7.2*sr)
+            assert np.max(np.abs(x))<1.0
+            # Require sustained voiced energy: non-speech guarantee needs actual listening.
+            result['readouts'].append({'variant':name,'duration_s':len(x)/sr,'peak':float(np.max(np.abs(x)))})
+          model=WhisperModel('small',device='cpu',compute_type='int8')
+          for row in result['readouts']:
+            seg,_=model.transcribe(str(root/f"F01_{row['variant']}_NEW_SINGING.wav"),language='ru',beam_size=5,temperature=0,condition_on_previous_text=False)
+            row['asr']=' '.join(s.text.strip() for s in list(seg))
+          (root/'INDEPENDENT_ASR_AUDITION.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+      - name: Preserve new real sung WAVs, no proprietary model weights
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GG-F01-V11-NEW-AWATA-SINGING-SCORE-AND-LEGATO
+          path: gg-f01-new-singer/
+          retention-days: 7
+          if-no-files-found: warn
