@@ -30,15 +30,3 @@ replaceOne(
 fs.writeFileSync(runtimePath,s);
 console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
 await import(pathToFileURL(runtimePath).href);
-
-// Non-blocking encrypted archive sidecar; core VK traffic remains unchanged.
-try { await import('./porfirchik-memory-archive-v1.mjs'); }
-catch (e) { console.error('ND_ARCHIVE_SIDECAR_FAILED',String(e?.name||'Error')); }
-
-// Historical VK transcripts enter separate local SQLite table; never alter bot replies.
-try { await import('./porfirchik-vk-history-backfill-v1.mjs'); }
-catch (e) { console.error('ND_VK_HISTORY_BACKFILL_MODULE',String(e?.name||'Error')); }
-
-// Nonblocking encrypted archive restore (merge only, no deletion).
-try { await import('./porfirchik-memory-restore-v1.mjs'); }
-catch (e) { console.error('ND_ARCHIVE_RESTORE_MODULE',String(e?.name||'Error')); }
