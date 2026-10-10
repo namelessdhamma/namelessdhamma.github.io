@@ -13,7 +13,10 @@ import hmac
 import os
 import asyncio
 
-from fastmcp import Client
+from fastmcp import Client, Context
+from notebooklm._app.serialize import to_jsonable
+from notebooklm.mcp._context import get_client
+from notebooklm.mcp._resolve import resolve_notebook, resolve_source
 
 from notebooklm.mcp.server import create_server
 from starlette.applications import Starlette
@@ -39,6 +42,49 @@ native_mcp = create_server(
     client_factory=client_factory,
     file_transfer=None,
 )
+# Keep full parity with the three ND-specific Vercel extension tools.
+# These run in the Render process with its own provider credentials.
+@native_mcp.tool
+async def source_check_freshness(ctx: Context, notebook: str, source: str) -> object:
+    """Check provider freshness for a NotebookLM source (Render execution)."""
+    client = get_client(ctx)
+    nb_id = await resolve_notebook(client, notebook)
+    src_id = await resolve_source(client, nb_id, source)
+    return {
+        "notebook_id": nb_id,
+        "source_id": src_id,
+        "freshness": to_jsonable(await client.sources.check_freshness(nb_id, src_id)),
+        "provider_specific": True,
+        "executed_by": "render-private",
+    }
+
+
+@native_mcp.tool
+async def source_refresh(ctx: Context, notebook: str, source: str) -> object:
+    """Refresh a NotebookLM source in Render; no second replay on ambiguity."""
+    client = get_client(ctx)
+    nb_id = await resolve_notebook(client, notebook)
+    src_id = await resolve_source(client, nb_id, source)
+    await client.sources.refresh(nb_id, src_id)
+    return {
+        "ok": True,
+        "notebook_id": nb_id,
+        "source_id": src_id,
+        "provider_specific": True,
+        "executed_by": "render-private",
+    }
+
+
+@native_mcp.tool
+def nd_ping_secure() -> dict:
+    """Authenticated Render MCP capability heartbeat without private source data."""
+    return {
+        "ok": True, "service": "nd-notebooklm-render-app",
+        "runtime": "render-private", "file_transfer": "none",
+        "provider": "NotebookLM",
+    }
+
+
 native_asgi = native_mcp.http_app(
     path="/mcp",
     stateless_http=True,
