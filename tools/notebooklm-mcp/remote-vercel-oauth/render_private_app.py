@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import hmac
 import os
+import asyncio
+
+from fastmcp import Client
 
 from notebooklm.mcp.server import create_server
 from starlette.applications import Starlette
@@ -92,6 +95,41 @@ async def native_catalog(request):
     })
 
 
+async def native_read_qualification(request):
+    """OIDC-only actual native notebook_list tool call, returning counts only."""
+    if verify_oidc(request) is None:
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    try:
+        async with Client(native_mcp) as client:
+            result = await asyncio.wait_for(
+                client.call_tool("notebook_list", {}), timeout=55
+            )
+        value = result.data
+        if not isinstance(value, dict):
+            return JSONResponse(
+                {"ok": False, "error": "unexpected_provider_shape"},
+                status_code=502,
+            )
+        notebooks = value.get("notebooks", [])
+        count = value.get("total", value.get("count"))
+        if not isinstance(count, int) and isinstance(notebooks, list):
+            count = len(notebooks)
+        verified = not result.is_error and isinstance(count, int) and count > 0
+        return JSONResponse({
+            "ok": verified,
+            "provider": "NotebookLM",
+            "route": "render-private-native-mcp",
+            "operation": "notebook_list",
+            "notebook_count": count if verified else None,
+            "readback": "native_mcp_tool_call",
+        }, status_code=200 if verified else 502)
+    except Exception as exc:
+        return JSONResponse({
+            "ok": False, "error_type": type(exc).__name__,
+            "route": "render-private-native-mcp",
+        }, status_code=502)
+
+
 app = Starlette(
     routes=[
         Route("/health", health, methods=["GET"]),
@@ -99,6 +137,7 @@ app = Starlette(
         Route("/chatgpt/mcp/health", plugin_mcp_health, methods=["GET"]),
         Route("/github", github, methods=["POST"]),
         Route("/github/native-catalog", native_catalog, methods=["GET"]),
+        Route("/github/native-read-check", native_read_qualification, methods=["GET"]),
         Route("/chatgpt/mcp", plugin_mcp, methods=["GET", "POST"]),
         Mount("/native", app=HeaderGuard(native_asgi)),
     ],
