@@ -41,20 +41,6 @@ grow_vertical = 2
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="LeftRail" type="VBoxContainer" parent="SafeArea/Landscape"]
-custom_minimum_size = Vector2(132, 0)
-layout_mode = 2
-
-[node name="PlayerOne" type="Label" parent="SafeArea/Landscape/LeftRail"]
-layout_mode = 2
-text = "ИГРОК 1"
-horizontal_alignment = 1
-
-[node name="ReserveOne" type="GridContainer" parent="SafeArea/Landscape/LeftRail"]
-layout_mode = 2
-size_flags_vertical = 3
-columns = 3
-
 [node name="Center" type="VBoxContainer" parent="SafeArea/Landscape"]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -71,6 +57,16 @@ layout_mode = 2
 size_flags_vertical = 3
 ratio = 1.0
 stretch_mode = 2
+
+[node name="ReserveOne" type="GridContainer" parent="SafeArea/Landscape/Center"]
+layout_mode = 2
+columns = 9
+visible = true
+
+[node name="ReserveTwo" type="GridContainer" parent="SafeArea/Landscape/Center"]
+layout_mode = 2
+columns = 9
+visible = false
 
 [node name="Board" type="GridContainer" parent="SafeArea/Landscape/Center/BoardAspect"]
 layout_mode = 2
@@ -124,18 +120,8 @@ layout_mode = 2
 text = "F"
 
 [node name="RightRail" type="VBoxContainer" parent="SafeArea/Landscape"]
-custom_minimum_size = Vector2(132, 0)
+custom_minimum_size = Vector2(88, 0)
 layout_mode = 2
-
-[node name="PlayerTwo" type="Label" parent="SafeArea/Landscape/RightRail"]
-layout_mode = 2
-text = "ИГРОК 2"
-horizontal_alignment = 1
-
-[node name="ReserveTwo" type="GridContainer" parent="SafeArea/Landscape/RightRail"]
-layout_mode = 2
-size_flags_vertical = 3
-columns = 3
 
 [node name="Actions" type="VBoxContainer" parent="SafeArea/Landscape/RightRail"]
 layout_mode = 2
@@ -171,75 +157,75 @@ custom_minimum_size = Vector2(44,44)
 text = "⛵"
 custom_minimum_size = Vector2(44,44)
 
-[node name="R00" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R00" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R01" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R01" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R02" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R02" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R10" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R10" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R11" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R11" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R12" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R12" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R20" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R20" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R21" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R21" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R22" type="Button" parent="SafeArea/Landscape/LeftRail/ReserveOne"]
+[node name="R22" type="Button" parent="SafeArea/Landscape/Center/ReserveOne"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R00" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R00" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R01" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R01" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R02" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R02" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R10" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R10" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R11" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R11" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R12" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R12" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R20" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R20" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R21" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R21" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 
-[node name="R22" type="Button" parent="SafeArea/Landscape/RightRail/ReserveTwo"]
+[node name="R22" type="Button" parent="SafeArea/Landscape/Center/ReserveTwo"]
 custom_minimum_size = Vector2(44, 44)
 text = "·"
 

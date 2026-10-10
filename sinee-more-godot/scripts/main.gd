@@ -26,7 +26,7 @@ func _ready() -> void:
 		var cell := get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + CELL_NAMES[i]) as Button
 		cell.pressed.connect(_on_cell_pressed.bind(i))
 	for player in [1, 2]:
-		var reserve := get_node("SafeArea/Landscape/%s/Reserve%s" % ["LeftRail" if player == 1 else "RightRail", "One" if player == 1 else "Two"]) as GridContainer
+		var reserve := get_node("SafeArea/Landscape/Center/Reserve%s" % ["One" if player == 1 else "Two"]) as GridContainer
 		for i in range(reserve.get_child_count()):
 			(reserve.get_child(i) as Button).pressed.connect(_on_reserve_pressed.bind(player, i))
 	(get_node("SafeArea/Landscape/RightRail/Actions/ActionPrimary") as Button).pressed.connect(_on_primary)
@@ -85,7 +85,7 @@ func _process(_delta: float) -> void:
 	status.text = base
 
 func _reserve_node(player: int) -> GridContainer:
-	return get_node("SafeArea/Landscape/%s/Reserve%s" % ["LeftRail" if player == 1 else "RightRail", "One" if player == 1 else "Two"]) as GridContainer
+	return get_node("SafeArea/Landscape/Center/Reserve%s" % ["One" if player == 1 else "Two"]) as GridContainer
 
 func _on_reserve_pressed(player: int, index: int) -> void:
 	if player != turn:
@@ -237,6 +237,7 @@ func _refresh_surface() -> void:
 			var piece := reserve.get_child(i) as Button
 			piece.text = "%d" % (i + 1) if reserve_available[player - 1][i] else "—"
 			piece.disabled = game_over or player != turn or not reserve_available[player - 1][i]
+		reserve.visible = not game_over and player == turn
 
 func _update_status(event: String) -> void:
 	var status := get_node("SafeArea/Landscape/Center/Status") as Label
@@ -246,12 +247,11 @@ func _geometry_snapshot() -> Dictionary:
 	var paths := {
 		"safe": "SafeArea",
 		"landscape": "SafeArea/Landscape",
-		"left": "SafeArea/Landscape/LeftRail",
 		"center": "SafeArea/Landscape/Center",
 		"board": "SafeArea/Landscape/Center/BoardAspect/Board",
 		"right": "SafeArea/Landscape/RightRail",
-		"reserve1": "SafeArea/Landscape/LeftRail/ReserveOne",
-		"reserve2": "SafeArea/Landscape/RightRail/ReserveTwo",
+		"reserve1": "SafeArea/Landscape/Center/ReserveOne",
+		"reserve2": "SafeArea/Landscape/Center/ReserveTwo",
 		"actions": "SafeArea/Landscape/RightRail/Actions"
 	}
 	var out := {}
@@ -271,15 +271,13 @@ func _assert_landscape_geometry() -> void:
 	assert(viewport.x >= viewport.y, "landscape contract violated: %s" % viewport)
 	var safe := get_node("SafeArea") as Control
 	var landscape := get_node("SafeArea/Landscape") as Control
-	var left := get_node("SafeArea/Landscape/LeftRail") as Control
 	var center := get_node("SafeArea/Landscape/Center") as Control
 	var right := get_node("SafeArea/Landscape/RightRail") as Control
 	assert(safe.position.x >= 7.9 and safe.position.y >= 7.9)
 	assert(safe.position.x + safe.size.x <= viewport.x - 7.9)
 	assert(safe.position.y + safe.size.y <= viewport.y - 7.9)
-	assert(left.size.x >= 132.0 and right.size.x >= 132.0)
+	assert(right.size.x >= 88.0)
 	assert(center.size.x > 0.0 and center.size.y > 0.0)
-	assert(left.position.x + left.size.x <= center.position.x + 0.01)
 	assert(center.position.x + center.size.x <= right.position.x + 0.01)
 	for name in CELL_NAMES:
 		_assert_min_control_size(get_node("SafeArea/Landscape/Center/BoardAspect/Board/" + name) as Control, Vector2(44, 44), "cell " + name)
@@ -287,6 +285,8 @@ func _assert_landscape_geometry() -> void:
 		var reserve := _reserve_node(player)
 		for i in range(reserve.get_child_count()):
 			_assert_min_control_size(reserve.get_child(i) as Control, Vector2(44, 44), "P%d reserve %d" % [player, i])
+	assert(_reserve_node(turn).visible)
+	assert(not _reserve_node(2 if turn == 1 else 1).visible)
 	for action_name in ["ActionPrimary", "ActionSecondary", "ActionMenu"]:
 		_assert_min_control_size(get_node("SafeArea/Landscape/RightRail/Actions/" + action_name) as Control, Vector2(44, 44), action_name)
 	print("BLUE_SEA_GEOMETRY_PASS viewport=", viewport, " geometry=", _geometry_snapshot())
