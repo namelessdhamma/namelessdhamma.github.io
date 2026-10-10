@@ -6,6 +6,7 @@ from pathlib import Path
 from fastmcp import Context
 from notebooklm._app.serialize import to_jsonable
 from notebooklm.mcp._context import get_client
+from notebooklm.mcp._filelink import FileTransferConfig
 from notebooklm.mcp._resolve import resolve_notebook, resolve_source
 from notebooklm.mcp.server import ClientFactory, create_server
 
@@ -21,6 +22,7 @@ def create_full_mcp(
     registry_store: OAuthStateStore,
     transient_store: OAuthStateStore,
     client_factory: ClientFactory | None = None,
+    file_transfer: FileTransferConfig | None = None,
     trust_proxy: bool = False,
 ):
     """Compose notebooklm-py's complete tool surface with durable OAuth.
@@ -41,6 +43,7 @@ def create_full_mcp(
         profile="default",
         backend="android",
         client_factory=client_factory,
+        file_transfer=file_transfer,
         auth=auth,
     )
 
@@ -51,7 +54,7 @@ def create_full_mcp(
         source: str,
     ) -> object:
         """Provider-specific NotebookLM freshness check for one source."""
-        client = await get_client(ctx)
+        client = get_client(ctx)
         nb_id = await resolve_notebook(client, notebook)
         src_id = await resolve_source(client, nb_id, source)
         result = await client.sources.check_freshness(nb_id, src_id)
@@ -69,7 +72,7 @@ def create_full_mcp(
         source: str,
     ) -> object:
         """Provider-specific NotebookLM refresh; success means no exception."""
-        client = await get_client(ctx)
+        client = get_client(ctx)
         nb_id = await resolve_notebook(client, notebook)
         src_id = await resolve_source(client, nb_id, source)
         await client.sources.refresh(nb_id, src_id)
