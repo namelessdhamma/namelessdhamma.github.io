@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import hmac
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
+
+from notebooklm.mcp._filelink import FileLinkSigner, FileTransferConfig
 
 from .blob_state import BlobOAuthStateStore
 from .full_server import create_full_mcp
@@ -68,6 +72,17 @@ def build_mcp(
     transient_store = transient_store or BlobOAuthStateStore(
         "nd-notebooklm/oauth-transient.json"
     )
+    # A domain-separated, stable key supports signed links across serverless workers.
+    # Never log or persist the key; rotation follows the protected OAuth secret.
+    file_link_key = hmac.new(
+        config.oauth_password.encode("utf-8"),
+        b"nd-notebooklm-file-link/v1",
+        hashlib.sha256,
+    ).digest()
+    transfer = FileTransferConfig(
+        signer=FileLinkSigner(file_link_key),
+        base_url=config.base_url,
+    )
     return create_full_mcp(
         password=config.oauth_password,
         base_url=config.base_url,
@@ -75,6 +90,7 @@ def build_mcp(
         registry_store=registry_store,
         transient_store=transient_store,
         client_factory=client_factory,
+        file_transfer=transfer,
         trust_proxy=True,
     )
 
