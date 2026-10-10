@@ -1,0 +1,80 @@
+name: ND NotebookLM Render App Sealed Bootstrap
+on:
+  push:
+    branches:
+      - nd-notebooklm-render-private-20261010
+    paths:
+      - tools/notebooklm-mcp/remote-vercel-oauth/.render-private-seed-trigger
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: nd-notebooklm-render-private-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  sealed-bootstrap:
+    if: github.actor == 'namelessdhamma'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nd-notebooklm-render-private-20261010
+      - name: Mint ephemeral OIDC for qualified Vercel sealed exporter
+        id: oidc
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl -fsSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=nd-notebooklm")"
+          token="$(python3 -c 'import json,sys;print(json.load(sys.stdin)["value"])' <<<"$response")"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+      - name: Export directly into Render recipient public key
+        shell: bash
+        env:
+          VERCEL_OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          set -euo pipefail
+          root="tools/notebooklm-mcp/remote-vercel-oauth"
+          curl --fail --silent --show-error --retry 3 --retry-delay 8 --max-time 45 \
+            "https://nd-notebooklm-render-app.onrender.com/bootstrap/public-key" > /tmp/nd-recipient.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/nd-recipient.json'))
+          assert d.get('ok') is True and d.get('algorithm')=='X25519+HKDF-SHA256+AESGCM'
+          json.dump({'recipient_public_key_b64':d['public_key_b64']},open('/tmp/nd-request.json','w'))
+          PY
+          curl --fail --silent --show-error --retry 2 --max-time 70 \
+            -H "Authorization: Bearer $VERCEL_OIDC_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/nd-request.json \
+            "https://nd-notebooklm-oauth-mcp.vercel.app/doctor/bootstrap/export-sealed" > /tmp/nd-sealed.json
+          python3 - <<'PY'
+          import json,datetime
+          from pathlib import Path
+          sealed=json.load(open('/tmp/nd-sealed.json'))
+          assert sealed.get('ok') is True and sealed.get('algorithm')=='X25519+HKDF-SHA256+AESGCM'
+          envelope={k:sealed[k] for k in ('ephemeral_public_key_b64','nonce_b64','ciphertext_b64')}
+          out={'format':'nd-notebooklm-x25519-sealed-v1',
+               'target':'render-private-app',
+               'source':'vercel-primary-github-oidc',
+               'recovery_key_binding':'NOTEBOOKLM_MCP_OAUTH_PASSWORD-derived-X25519',
+               'captured_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               'envelope':envelope}
+          Path('tools/notebooklm-mcp/remote-vercel-oauth/render_recovery_envelope.json').write_text(json.dumps(out,indent=2)+'\n')
+          print('Sealed credential obtained and stored as ciphertext only; no plaintext saved')
+          PY
+      - name: Commit ciphertext on dedicated Render branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'nd-render-private-bootstrap'
+          git config user.email 'namelessdhamma@gmail.com'
+          git add tools/notebooklm-mcp/remote-vercel-oauth/render_recovery_envelope.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'recovery(notebooklm): refresh encrypted Render-private credential'
+            git push origin HEAD:nd-notebooklm-render-private-20261010
+          fi
