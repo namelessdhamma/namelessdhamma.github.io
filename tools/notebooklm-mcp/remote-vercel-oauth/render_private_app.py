@@ -15,7 +15,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from resilience_direct_app import (
-    bootstrap_public_key, plugin_mcp, plugin_mcp_health, _load_master_token_b64,
+    bootstrap_public_key, plugin_mcp, plugin_mcp_health, github, _load_master_token_b64,
 )
 
 async def health(request):
@@ -39,5 +39,6 @@ app = Starlette(routes=[
     Route("/health", health, methods=["GET"]),
     Route("/bootstrap/public-key", bootstrap_public_key, methods=["GET"]),
     Route("/chatgpt/mcp/health", plugin_mcp_health, methods=["GET"]),
+    Route("/github", github, methods=["POST"]),
     Route("/chatgpt/mcp", plugin_mcp, methods=["GET","POST"]),
 ])
