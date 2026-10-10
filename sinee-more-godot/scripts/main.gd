@@ -131,6 +131,8 @@ func _set_world(world: int) -> void:
 func _toggle_ai() -> void:
 	ai_enabled = not ai_enabled
 	ai_toggle.text = "ИИ: ВКЛ" if ai_enabled else "ИИ: ВЫКЛ"
+	# Opponent reserve must disappear immediately when AI control is enabled.
+	_refresh_surface()
 	if ai_enabled and turn == 2 and not game_over:
 		call_deferred("_play_ai_turn")
 
@@ -363,6 +365,9 @@ func _reserve_node(player: int) -> GridContainer:
 	return get_node("SafeArea/Landscape/Center/ReserveDock/ReserveOne" if player == 1 else "SafeArea/Landscape/Center/ReserveDock/ReserveTwo") as GridContainer
 
 func _on_reserve_pressed(player: int, index: int) -> void:
+	if ai_enabled and player == 2:
+		_update_status("AI reserve is not human-controllable")
+		return
 	if player != turn:
 		_update_status("wrong player reserve")
 		return
@@ -516,11 +521,11 @@ func _refresh_surface() -> void:
 		cell.disabled = game_over
 	for player in [1, 2]:
 		var reserve := _reserve_node(player)
-		reserve.visible = player == turn and not game_over
+		reserve.visible = player == turn and not game_over and (not ai_enabled or player == 1)
 		for i in range(reserve.get_child_count()):
 			var piece := reserve.get_child(i) as Button
 			_set_piece_badge(piece, world_visuals.piece_texture(current_world, player, i + 1) if reserve_available[player - 1][i] else null, i + 1 if reserve_available[player - 1][i] else 0)
-			piece.disabled = game_over or player != turn or not reserve_available[player - 1][i]
+			piece.disabled = game_over or player != turn or (ai_enabled and player == 2) or not reserve_available[player - 1][i]
 	_refresh_perspective_layer()
 
 func _update_status(event: String) -> void:
