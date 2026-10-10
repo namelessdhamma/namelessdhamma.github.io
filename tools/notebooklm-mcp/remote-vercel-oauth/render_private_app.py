@@ -84,8 +84,8 @@ async def native_catalog(request):
     """OIDC-only, non-sensitive readback of registered native tools."""
     if verify_oidc(request) is None:
         return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
-    result = await native_mcp.get_tools()
-    names = sorted(result.keys())
+    result = await native_mcp.list_tools()
+    names = sorted(tool.name for tool in result)
     return JSONResponse({
         "ok": True, "count": len(names), "tools": names,
         "external_file_transfer": False,
