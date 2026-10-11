@@ -19,6 +19,7 @@ from notebooklm.mcp._context import get_client
 from notebooklm.mcp._resolve import resolve_notebook, resolve_source
 
 from notebooklm.mcp.server import create_server
+from nd_linkless_studio import install as install_linkless_studio
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
@@ -84,6 +85,9 @@ def nd_ping_secure() -> dict:
         "provider": "NotebookLM",
     }
 
+
+# Replace upstream remote Studio download with authenticated inline export.
+install_linkless_studio(native_mcp)
 
 native_asgi = native_mcp.http_app(
     path="/mcp",
