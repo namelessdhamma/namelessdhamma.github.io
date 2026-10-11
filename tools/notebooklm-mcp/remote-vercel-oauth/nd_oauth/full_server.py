@@ -54,10 +54,12 @@ def create_full_mcp(
             render_proxy_url,
             headers={"x-nd-notebooklm-plugin-key": render_proxy_key},
         )
-        remote = create_proxy(
-            ProxyClient(transport, forward_incoming_headers=False),
-            name="ND-NotebookLM-Render",
-        )
+        backend = ProxyClient(transport)
+        remote = create_proxy(backend, name="ND-NotebookLM-Render")
+        # FastMCP 3.4.2 unconditionally enables incoming-header forwarding
+        # in ProxyClient and create_proxy; explicitly disable it AFTER both
+        # constructors to prevent ChatGPT bearer tokens leaking to Render.
+        backend.transport.forward_incoming_headers = False
         mcp = FastMCP(
             "ND NotebookLM OAuth Edge",
             auth=auth,
