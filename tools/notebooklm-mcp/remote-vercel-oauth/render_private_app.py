@@ -103,7 +103,10 @@ class HeaderGuard:
         if scope["type"] == "http":
             supplied = dict(scope.get("headers", [])).get(_KEY_HEADER, b"")
             secret = os.environ.get(_KEY_ENV, "").encode("utf-8")
-            if len(secret) < 24 or not supplied or not hmac.compare_digest(secret, supplied):
+            proxy_secret = os.environ.get("ND_NOTEBOOKLM_RENDER_PROXY_SHARED_KEY", "").encode("utf-8")
+            private_key_ok = len(secret) >= 24 and bool(supplied) and hmac.compare_digest(secret, supplied)
+            proxy_key_ok = len(proxy_secret) >= 40 and bool(supplied) and hmac.compare_digest(proxy_secret, supplied)
+            if not (private_key_ok or proxy_key_ok):
                 response = JSONResponse(
                     {"ok": False, "error": "unauthorized"}, status_code=401
                 )
