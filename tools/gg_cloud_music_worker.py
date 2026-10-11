@@ -408,7 +408,7 @@ function factory (params) return function ()
   print("A7_EDITOR_IMPORT_ACTION=PASS")
 end end
 ''' % lua_path)
-    bindings=work/"a7-editor-import.bindings"
+    bindings=work/"a7-editor-import.keys"
     bindings.write_text('''<?xml version="1.0" encoding="UTF-8"?>
 <BindingSet name="A7 Editor Import">
  <Bindings name="Editor"><Press>
