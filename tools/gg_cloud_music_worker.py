@@ -226,7 +226,8 @@ def apply_ardour_calls(sf, home, work, calls):
         if ((save.get("result") or {}).get("structuredContent") or {}).get("saved") is not True:
             raise RuntimeError(f"MCP session_save did not confirm saved=true: {save}")
         stop_proc(proc); proc=None
-        return {"engine":"ardour-native-mcp","initialize":init,"tool_count":len(tools.get("result",{}).get("tools",[])),"responses":responses,"save":save}
+        tool_defs=tools.get("result",{}).get("tools",[])
+        return {"engine":"ardour-native-mcp","initialize":init,"tool_count":len(tool_defs),"tool_names":[str(t.get("name")) for t in tool_defs],"responses":responses,"save":save}
     finally:
         stop_proc(proc); stop_proc(xv)
         if log: log.close()
