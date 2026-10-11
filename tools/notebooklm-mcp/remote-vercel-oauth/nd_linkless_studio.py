@@ -167,11 +167,21 @@ def install(mcp) -> None:
         artifact_id: str | None = None,
     ) -> dict:
         """Export an artifact inline (no link). For large results use studio_export_chunk."""
-        # 'path' is intentionally ignored on remote services: NEVER write to
-        # an arbitrary server-host path supplied by a client.
+        # Backward-compatible chunk paging for clients whose tool catalog was
+        # cached before studio_export_chunk appeared. This is NOT a filesystem
+        # path: the sole accepted control format is nd-inline-chunk:<offset>.
+        # Ordinary paths remain ignored; never write to a client-provided path.
+        offset = 0
+        if path is not None and path.startswith("nd-inline-chunk:"):
+            value = path[len("nd-inline-chunk:"):]
+            if not value.isascii() or not value.isdecimal() or (
+                len(value) > 1 and value.startswith("0")
+            ) or len(value) > 12:
+                raise ValidationError("Invalid inline chunk offset")
+            offset = int(value)
         return await fetch_chunk(
             ctx, notebook, artifact, artifact_type, artifact_id, output_format,
-            0, DEFAULT_BYTES,
+            offset, DEFAULT_BYTES,
         )
 
     @mcp.tool
