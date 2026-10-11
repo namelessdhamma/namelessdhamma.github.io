@@ -411,6 +411,7 @@ end end
     bindings=work/"a7-editor-import.keys"
     bindings.write_text('''<?xml version="1.0" encoding="UTF-8"?>
 <BindingSet name="A7 Editor Import">
+ <Bindings name="Global"><Press></Press></Bindings>
  <Bindings name="Editor"><Press>
   <Binding key="F12" action="LuaAction/script-1" group="A7"/>
  </Press></Bindings>
