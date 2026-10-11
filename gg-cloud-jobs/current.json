@@ -1,15 +1,10 @@
 {
   "bootstrap": {
-    "operation": "ardour_batch",
+    "operation": "editor_import_qualification",
     "payload": {
-      "calls": [
-        {
-          "name": "tracks_list",
-          "arguments": {}
-        }
-      ]
+      "seconds": 2.0
     }
   },
-  "qualification": "A7-RUN78-live-mcp-inventory-for-pcm-region-route",
+  "qualification": "A7-RUN79-authentic-ardour-editor-pcm-import-cold-reopen-export",
   "created": "2026-10-12"
 }
