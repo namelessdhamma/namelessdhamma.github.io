@@ -409,14 +409,15 @@ function factory (params) return function ()
 end end
 ''' % lua_path)
     bindings=work/"a7-editor-import.keys"
-    bindings.write_text('''<?xml version="1.0" encoding="UTF-8"?>
-<BindingSet name="A7 Editor Import">
- <Bindings name="Global"><Press></Press></Bindings>
- <Bindings name="Editor"><Press>
-  <Binding key="F12" action="LuaAction/script-1" group="A7"/>
- </Press></Bindings>
-</BindingSet>
-''')
+    default_bindings=pathlib.Path("/etc/ardour9/ardour.keys")
+    if not default_bindings.exists(): raise RuntimeError("installed Ardour default keymap is missing")
+    keytree=ET.parse(default_bindings); keyroot=keytree.getroot()
+    editor_bindings=next((x for x in keyroot.findall("Bindings") if x.get("name")=="Editor"),None)
+    if editor_bindings is None: raise RuntimeError("installed Ardour keymap has no Editor binding set")
+    press=editor_bindings.find("Press")
+    if press is None: press=ET.SubElement(editor_bindings,"Press")
+    ET.SubElement(press,"Binding",{"key":"F12","action":"LuaAction/script-1","group":"A7"})
+    keytree.write(bindings,encoding="UTF-8",xml_declaration=True)
 
     proc=xv=log=xvlog=None
     try:
