@@ -412,6 +412,10 @@ end end
     default_bindings=pathlib.Path("/etc/ardour9/ardour.keys")
     if not default_bindings.exists(): raise RuntimeError("installed Ardour default keymap is missing")
     keytree=ET.parse(default_bindings); keyroot=keytree.getroot()
+    for binding_set in keyroot.findall("Bindings"):
+        for press_set in binding_set.findall("Press"):
+            for binding in list(press_set.findall("Binding")):
+                if binding.get("key")=="F12": press_set.remove(binding)
     editor_bindings=next((x for x in keyroot.findall("Bindings") if x.get("name")=="Editor"),None)
     if editor_bindings is None: raise RuntimeError("installed Ardour keymap has no Editor binding set")
     press=editor_bindings.find("Press")
