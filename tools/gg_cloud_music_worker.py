@@ -421,8 +421,15 @@ end end
     try:
         proc,xv,log,xvlog,init=start_ardour(sf,home,work,bindings)
         env=os.environ.copy(); env.update({"HOME":str(home),"DISPLAY":":99","LANG":"C.UTF-8"})
-        active=subprocess.check_output(["xdotool","getactivewindow"],env=env,text=True,stderr=subprocess.STDOUT).strip()
-        subprocess.run(["xdotool","key","--window",active,"F12"],env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        wins=subprocess.check_output(["xdotool","search","--onlyvisible","--class","Ardour"],env=env,text=True,stderr=subprocess.STDOUT).splitlines()
+        sized=[]
+        for wid in wins:
+            geom=subprocess.check_output(["xdotool","getwindowgeometry","--shell",wid],env=env,text=True,stderr=subprocess.STDOUT)
+            vals=dict(line.split("=",1) for line in geom.splitlines() if "=" in line)
+            sized.append((int(vals.get("WIDTH",0))*int(vals.get("HEIGHT",0)),wid))
+        if not sized: raise RuntimeError("no visible Ardour window available for Editor action")
+        editor_window=max(sized)[1]
+        subprocess.run(["xdotool","key","--window",editor_window,"F12"],env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         observed=[]
         deadline=time.time()+45
         while time.time()<deadline:
