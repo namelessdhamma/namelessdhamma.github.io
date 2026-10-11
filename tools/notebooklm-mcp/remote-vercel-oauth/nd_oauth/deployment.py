@@ -83,6 +83,11 @@ def build_mcp(
         signer=FileLinkSigner(file_link_key),
         base_url=config.base_url,
     )
+    if os.environ.get("ND_NOTEBOOKLM_BACKEND_ROUTE", "").strip() == "render":
+        if not os.environ.get("ND_NOTEBOOKLM_RENDER_PROXY_URL", "").startswith("https://"):
+            raise RuntimeError("Render proxy requires HTTPS endpoint")
+        if len(os.environ.get("ND_NOTEBOOKLM_RENDER_PROXY_KEY", "")) < 40:
+            raise RuntimeError("Render proxy credential missing or too short")
     return create_full_mcp(
         password=config.oauth_password,
         base_url=config.base_url,
@@ -92,6 +97,16 @@ def build_mcp(
         client_factory=client_factory,
         file_transfer=transfer,
         trust_proxy=True,
+        render_proxy_url=(
+            os.environ.get("ND_NOTEBOOKLM_RENDER_PROXY_URL", "").strip()
+            if os.environ.get("ND_NOTEBOOKLM_BACKEND_ROUTE", "").strip() == "render"
+            else None
+        ),
+        render_proxy_key=(
+            os.environ.get("ND_NOTEBOOKLM_RENDER_PROXY_KEY", "").strip()
+            if os.environ.get("ND_NOTEBOOKLM_BACKEND_ROUTE", "").strip() == "render"
+            else None
+        ),
     )
 
 
