@@ -218,7 +218,13 @@ def apply_ardour_calls(sf, home, work, calls):
             responses.append({"name":name,"response":res})
             if "error" in res:
                 raise RuntimeError(f"MCP call failed {name}: {res['error']}")
+            if (res.get("result") or {}).get("isError") is True:
+                raise RuntimeError(f"MCP call returned isError=true {name}: {res['result']}")
         save=mcp_post({"jsonrpc":"2.0","id":999,"method":"tools/call","params":{"name":"session_save","arguments":{}}},30)
+        if "error" in save or (save.get("result") or {}).get("isError") is True:
+            raise RuntimeError(f"MCP session_save failed: {save}")
+        if ((save.get("result") or {}).get("structuredContent") or {}).get("saved") is not True:
+            raise RuntimeError(f"MCP session_save did not confirm saved=true: {save}")
         stop_proc(proc); proc=None
         return {"engine":"ardour-native-mcp","initialize":init,"tool_count":len(tools.get("result",{}).get("tools",[])),"responses":responses,"save":save}
     finally:
@@ -261,6 +267,31 @@ def verify_strict_io_postcondition(sf, calls, responses):
         raise RuntimeError("STRICT_IO_POSTCONDITION_FAILED "+json.dumps(verdict,sort_keys=True))
     return verdict
 
+def verify_cold_reopen_postcondition(calls, responses, cold_responses):
+    created=[]
+    for call,wrapped in zip(calls or [],responses or []):
+        if call.get("name")!="tracks_add": continue
+        body=(wrapped.get("response") or {}).get("result") or {}
+        routes=((body.get("structuredContent") or {}).get("created") or {}).get("routes") or []
+        created.extend({"id":str(r.get("id")),"name":r.get("name")} for r in routes)
+    if not created:
+        raise RuntimeError("COLD_REOPEN_POSTCONDITION_FAILED no created routes")
+    listed=[]
+    for wrapped in cold_responses or []:
+        if wrapped.get("name")!="tracks_list": continue
+        body=(wrapped.get("response") or {}).get("result") or {}
+        listed.extend((body.get("structuredContent") or {}).get("tracks") or [])
+    by_id={str(r.get("id")):r for r in listed}
+    checked=[]
+    for item in created:
+        observed=by_id.get(item["id"])
+        ok=observed is not None and observed.get("name")==item["name"]
+        checked.append({**item,"reopenedName":None if observed is None else observed.get("name"),"verified":ok})
+    verdict={"verified":all(x["verified"] for x in checked),"routes":checked,"listedCount":len(listed)}
+    if not verdict["verified"]:
+        raise RuntimeError("COLD_REOPEN_POSTCONDITION_FAILED "+json.dumps(verdict,sort_keys=True))
+    return verdict
+
 def archive_project(project, archive):
     with tarfile.open(archive,"w:gz") as t:
         for p in project.iterdir():
@@ -279,6 +310,14 @@ def ardour_batch(payload, job, job_id, token, work):
         (evidence/"strict-io-postcondition.json").write_text(json.dumps({"verified":False,"error":str(e)},indent=2,sort_keys=True))
         raise
     result["strict_io_postcondition"]=strict_io
+    cold_calls=payload.get("coldReopenCalls") or []
+    if cold_calls:
+        cold=apply_ardour_calls(sf,home,work,cold_calls)
+        cold_verdict=verify_cold_reopen_postcondition(payload.get("calls",[]),result.get("responses",[]),cold.get("responses",[]))
+        result["cold_reopen"]={"execution":cold,"postcondition":cold_verdict}
+        evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work)
+        evidence.mkdir(parents=True,exist_ok=True)
+        (evidence/"cold-reopen-postcondition.json").write_text(json.dumps(cold_verdict,indent=2,sort_keys=True))
     archive=work/"session.tar.gz"; archive_project(project,archive)
     upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
     result.update({"session_file":str(sf.relative_to(project)),"artifact":"session.tar.gz","artifact_bytes":archive.stat().st_size})
