@@ -429,7 +429,8 @@ end end
             sized.append((int(vals.get("WIDTH",0))*int(vals.get("HEIGHT",0)),wid))
         if not sized: raise RuntimeError("no visible Ardour window available for Editor action")
         editor_window=max(sized)[1]
-        subprocess.run(["xdotool","key","--window",editor_window,"F12"],env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        subprocess.run(["xdotool","windowfocus","--sync",editor_window],env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        subprocess.run(["xdotool","key","F12"],env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         observed=[]
         deadline=time.time()+45
         while time.time()<deadline:
@@ -438,7 +439,14 @@ end end
             observed=((res.get("result") or {}).get("structuredContent") or {}).get("tracks") or []
             if any(str(t.get("name","")).startswith("a7-reference") for t in observed): break
         else:
-            raise RuntimeError("EDITOR_IMPORT_POSTCONDITION_FAILED tracks="+json.dumps(observed,sort_keys=True))
+            try:
+                log.flush()
+                diagnostics=(work/"ardour.log").read_text(errors="replace")[-10000:]
+            except Exception as e:
+                diagnostics="unable to read Ardour log: "+str(e)
+            evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
+            (evidence/"editor-import-failure.json").write_text(json.dumps({"tracks":observed,"ardour_log_tail":diagnostics},indent=2,sort_keys=True))
+            raise RuntimeError("EDITOR_IMPORT_POSTCONDITION_FAILED tracks="+json.dumps(observed,sort_keys=True)+"\nARDOUR_LOG_TAIL:\n"+diagnostics)
         saved=mcp_post({"jsonrpc":"2.0","id":401,"method":"tools/call","params":{"name":"session_save","arguments":{}}},30)
         if ((saved.get("result") or {}).get("structuredContent") or {}).get("saved") is not True:
             raise RuntimeError("post-import session_save failed: "+json.dumps(saved,sort_keys=True))
