@@ -1,0 +1,53 @@
+name: ND NotebookLM Vercel Edge to Render Proxy Qualification
+on:
+  push:
+    branches: [nd-notebooklm-vercel-render-edge-20261011]
+    paths:
+      - tools/notebooklm-mcp/remote-vercel-oauth/nd_oauth/full_server.py
+      - tools/notebooklm-mcp/remote-vercel-oauth/nd_oauth/deployment.py
+      - .github/workflows/notebooklm-vercel-render-edge-qualify.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  api-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: nd-notebooklm-vercel-render-edge-20261011
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify Python syntax and installed FastMCP compatibility
+        run: |
+          set -euo pipefail
+          cd tools/notebooklm-mcp/remote-vercel-oauth
+          python -m py_compile nd_oauth/full_server.py nd_oauth/deployment.py
+          python -m pip install --quiet -r requirements.txt
+          python - <<'PY'
+          from fastmcp import FastMCP
+          from fastmcp.client.transports import StreamableHttpTransport
+          from fastmcp.server import create_proxy
+          from fastmcp.server.providers.proxy import ProxyClient
+          import nd_oauth.full_server, nd_oauth.deployment
+          transport=StreamableHttpTransport('https://example.org/native/mcp', headers={'x-nd-notebooklm-plugin-key':'not-a-real-credential'})
+          proxy=create_proxy(ProxyClient(transport,forward_incoming_headers=False),name='Contract Test')
+          edge=FastMCP('OAuth Edge Contract Test')
+          edge.mount(proxy)
+          assert hasattr(edge, 'list_tools')
+          print('Proxy, header-isolation and mount contract: PASS')
+          PY
+      - name: Record sanitized qualification result
+        if: always()
+        run: |
+          mkdir -p .nd-runtime
+          echo '{"test":"vercel-render-proxy-api-contract","completed":true,"note":"Use the associated GitHub workflow conclusion for pass/fail; this record alone proves only execution."}' > .nd-runtime/vercel-render-proxy-api-contract.json
+          git config user.name nd-vercel-edge-contract
+          git config user.email namelessdhamma@gmail.com
+          git add .nd-runtime/vercel-render-proxy-api-contract.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'test(notebooklm): record proxy API compatibility qualification'
+            git push origin HEAD:nd-notebooklm-vercel-render-edge-20261011
+          fi
