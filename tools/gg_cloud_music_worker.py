@@ -329,6 +329,8 @@ def ardour_batch(payload, job, job_id, token, work):
     return result
 
 def project_render(payload, job, job_id, token, work):
+    if payload.get("editor_import_qualification") is True:
+        return editor_import_qualification(payload,job,job_id,token,work)
     home=work/"home"; home.mkdir(); seed_config(home)
     project=work/"project"; project.mkdir()
     sf=restore_session(project,job,job_id,token,home)
