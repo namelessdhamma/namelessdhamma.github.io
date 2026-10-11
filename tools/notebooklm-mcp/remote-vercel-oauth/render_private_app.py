@@ -134,7 +134,7 @@ async def health(request):
         "file_transfer": "inline-json; no automatic ResourceLinks",
         "native_mcp_available": True,
         "native_tool_count": public_tool_count,
-        "connection_state": "backend-only; ChatGPT App not rebound",
+        "connection_state": "ChatGPT Vercel OAuth ingress with Render native MCP execution",
     })
 
 
