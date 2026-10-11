@@ -14,7 +14,7 @@
           "arguments": {
             "type": "audio",
             "count": 1,
-            "name": "A7_REAL_TRACK_RUN74",
+            "name": "A7_STRICT_IO_GUARD_RUN75",
             "inputChannels": 2,
             "outputChannels": 2,
             "strictIo": true,
@@ -30,6 +30,6 @@
       ]
     }
   },
-  "qualification": "A7-RUN74-authentic-tracks-add-save",
+  "qualification": "A7-RUN75-authentic-strict-io-fail-closed-guard",
   "created": "2026-10-11"
 }
