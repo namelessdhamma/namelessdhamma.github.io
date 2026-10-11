@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from fastmcp import FastMCP
+from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.server import create_proxy
+from fastmcp.server.providers.proxy import ProxyClient
+
 from fastmcp import Context
 from notebooklm._app.serialize import to_jsonable
 from notebooklm.mcp._context import get_client
@@ -24,6 +29,8 @@ def create_full_mcp(
     client_factory: ClientFactory | None = None,
     file_transfer: FileTransferConfig | None = None,
     trust_proxy: bool = False,
+    render_proxy_url: str | None = None,
+    render_proxy_key: str | None = None,
 ):
     """Compose notebooklm-py's complete tool surface with durable OAuth.
 
@@ -39,6 +46,25 @@ def create_full_mcp(
         pending_store=transient_store,
         trust_proxy=trust_proxy,
     )
+    if render_proxy_url and render_proxy_key:
+        # Keep the SAME durable OAuth provider and ChatGPT App identity.
+        # Only execution goes to private Render; never forward caller bearer tokens
+        # or cookies to the backend. Render requires its independent service key.
+        transport = StreamableHttpTransport(
+            render_proxy_url,
+            headers={"x-nd-notebooklm-plugin-key": render_proxy_key},
+        )
+        remote = create_proxy(
+            ProxyClient(transport, forward_incoming_headers=False),
+            name="ND-NotebookLM-Render",
+        )
+        mcp = FastMCP(
+            "ND NotebookLM OAuth Edge",
+            auth=auth,
+        )
+        mcp.mount(remote)
+        # Native Render owns the 41 tool schemas; no Vercel-side file links.
+        return mcp
     mcp = create_server(
         profile="default",
         backend="android",
