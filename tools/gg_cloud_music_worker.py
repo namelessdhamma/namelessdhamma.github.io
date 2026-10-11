@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, json, mimetypes, os, pathlib, shutil, subprocess, sys, tarfile, tempfile, time, urllib.request, urllib.error, urllib.parse, zipfile
+import argparse, base64, hashlib, json, mimetypes, os, pathlib, shutil, subprocess, sys, tarfile, tempfile, time, urllib.request, urllib.error, urllib.parse, zipfile
 from xml.etree import ElementTree as ET
 
 RELAY="https://gg-cloud-music-studio.onrender.com"
@@ -426,6 +426,40 @@ end end
     proc=xv=log=xvlog=None
     try:
         proc,xv,log,xvlog,init=start_ardour(sf,home,work,bindings)
+        # Ardour serializes the actually registered EditorAction slots to this
+        # file. Inspect it before key dispatch so the qualification separates a
+        # wrong pre-seeded slot from a later GTK/X11 delivery failure.
+        ui_scripts=home/".config/ardour9/ui_scripts"
+        for _ in range(50):
+            if ui_scripts.exists() and ui_scripts.stat().st_size:
+                break
+            time.sleep(0.1)
+        decoded=b""
+        decode_error=None
+        try:
+            ui_root=ET.parse(ui_scripts).getroot()
+            state_node=ui_root.find("ActionScript")
+            if state_node is None or not (state_node.text or "").strip():
+                raise RuntimeError("ActionScript state is absent")
+            decoded=base64.b64decode((state_node.text or "").strip(),validate=True)
+        except Exception as e:
+            decode_error=str(e)
+        marker_present=b"A7_EDITOR_IMPORT_ACTION=PASS" in decoded
+        source_present=str(action).encode() in decoded
+        state_evidence={
+            "ui_scripts_exists":ui_scripts.exists(),
+            "ui_scripts_bytes":ui_scripts.stat().st_size if ui_scripts.exists() else 0,
+            "decoded_bytes":len(decoded),
+            "decoded_sha256":hashlib.sha256(decoded).hexdigest() if decoded else None,
+            "a7_marker_present":marker_present,
+            "a7_source_path_present":source_present,
+            "decode_error":decode_error,
+            "decoded_strings":[x.decode("utf-8","replace") for x in decoded.split(b"\\x00") if b"Mixer Screenshot" in x or b"A7_EDITOR_IMPORT" in x or b"mixer_screenshot" in x][-20:],
+        }
+        evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
+        (evidence/"ui-script-state.json").write_text(json.dumps(state_evidence,indent=2,sort_keys=True))
+        if not marker_present:
+            raise RuntimeError("EDITOR_ACTION_SLOT_NOT_A7 "+json.dumps(state_evidence,sort_keys=True))
         env=os.environ.copy(); env.update({"HOME":str(home),"DISPLAY":":99","LANG":"C.UTF-8"})
         wins=subprocess.check_output(["xdotool","search","--onlyvisible","--class","Ardour"],env=env,text=True,stderr=subprocess.STDOUT).splitlines()
         sized=[]
