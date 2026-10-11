@@ -1,13 +1,15 @@
 {
   "bootstrap": {
-    "operation": "project_render",
+    "operation": "ardour_batch",
     "payload": {
-      "lua_script": "local tl = Session:new_audio_track(1, 2, ARDOUR.RouteGroup(), 1, \"A7_SINE_EXPORT_RUN77\", -1, ARDOUR.TrackMode.Normal, true)\nassert(not tl:empty(), \"failed to create export track\")\nlocal r = tl:front()\nassert(not r:isnil(), \"export route nil\")\nlocal p = ARDOUR.LuaAPI.new_luaproc(Session, \"SinGen\")\nassert(not p:isnil(), \"SinGen unavailable\")\nr:add_processor_by_index(p, 0, nil, true)\nassert(ARDOUR.LuaAPI.set_processor_param(p, 0, 440), \"failed frequency\")\nassert(ARDOUR.LuaAPI.set_processor_param(p, 1, -12), \"failed gain\")\nSession:set_session_range_is_free(false)\nSession:set_session_extents(Temporal.timepos_t(0), Temporal.timepos_t(96000))\nprint(\"A7_SINGEN_ROUTE=\" .. r:name())\nprint(\"A7_SESSION_END=\" .. tostring(Session:current_end_sample()))",
-      "bitdepth": 24,
-      "sample_rate": 48000,
-      "normalize": false
+      "calls": [
+        {
+          "name": "tracks_list",
+          "arguments": {}
+        }
+      ]
     }
   },
-  "qualification": "A7-RUN77-authentic-deterministic-audio-export",
-  "created": "2026-10-11"
+  "qualification": "A7-RUN78-live-mcp-inventory-for-pcm-region-route",
+  "created": "2026-10-12"
 }
