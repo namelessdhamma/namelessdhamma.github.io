@@ -123,10 +123,14 @@ def mcp_post(obj, timeout=10):
         raw=[x[5:].strip() for x in raw.splitlines() if x.startswith("data:")][-1]
     return json.loads(raw) if raw else {}
 
-def start_ardour(sf, home, work):
+def start_ardour(sf, home, work, keybindings=None):
     env=os.environ.copy(); env.update({"HOME":str(home),"DISPLAY":":99","LANG":"C.UTF-8","USER":"root","LOGNAME":"root","ARDOUR_TRY_AUTOSTART_ENGINE":"1"})
     xvlog=open(work/"xvfb.log","wb"); xv=subprocess.Popen(["Xvfb",":99","-screen","0","1280x800x24"],stdout=xvlog,stderr=subprocess.STDOUT,env=env); time.sleep(1)
-    log=open(work/"ardour.log","wb"); proc=subprocess.Popen(["dbus-run-session","--","/usr/bin/ardour","-a","-n","-P",str(sf)],stdout=log,stderr=subprocess.STDOUT,env=env)
+    ardour_cmd=["/usr/bin/ardour","-a","-n","-P"]
+    if keybindings:
+        ardour_cmd += ["-k",str(keybindings)]
+    ardour_cmd.append(str(sf))
+    log=open(work/"ardour.log","wb"); proc=subprocess.Popen(["dbus-run-session","--",*ardour_cmd],stdout=log,stderr=subprocess.STDOUT,env=env)
     setup_accepted=False
     memory_warning_accepted=False
     for _ in range(90):
@@ -363,6 +367,110 @@ def project_render(payload, job, job_id, token, work):
             try: duration=float(q.stdout.strip())
             except Exception: pass
     return {"engine":"ardour-session-utils-export","export_rc":cp.returncode,"master_bytes":out.stat().st_size,"mp3_bytes":mp3.stat().st_size if mp3 else 0,"session_bytes":archive.stat().st_size,"duration_seconds":duration,"edit":edit_result,"artifacts":["master.wav"]+(["master.mp3"] if mp3 else [])+["session.tar.gz"],"log_tail":cp.stdout[-4000:]}
+
+def _decoded_s32(path, work, label):
+    raw=work/(label+".s32le")
+    cp=subprocess.run(["ffmpeg","-y","-v","error","-i",str(path),"-map","0:a:0","-c:a","pcm_s32le","-f","s32le",str(raw)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    if cp.returncode or not raw.exists():
+        raise RuntimeError("PCM decode failed for %s:\n%s"%(path,cp.stdout[-4000:]))
+    import array
+    samples=array.array("i"); samples.frombytes(raw.read_bytes())
+    if sys.byteorder != "little": samples.byteswap()
+    return samples
+
+def editor_import_qualification(payload, job, job_id, token, work):
+    """Qualify an authentic Ardour Editor import, persistence, and cold export."""
+    home=work/"home"; home.mkdir(); seed_config(home)
+    project=work/"project"; project.mkdir()
+    sf=restore_session(project,job,job_id,token,home); enable_mcp(sf)
+    reference=work/"a7-reference.wav"
+    seconds=float(payload.get("seconds",2.0))
+    if not 0.25 <= seconds <= 10.0: raise RuntimeError("seconds must be in [0.25, 10.0]")
+    # Deliberately distinct channels make swaps, mono collapse, and routing loss observable.
+    expr="0.32*sin(2*PI*440*t)|0.23*sin(2*PI*659.2551138257*t)"
+    cp=subprocess.run(["ffmpeg","-y","-v","error","-f","lavfi","-i",f"aevalsrc={expr}:s=48000:d={seconds}","-c:a","pcm_s24le",str(reference)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    if cp.returncode or not reference.exists(): raise RuntimeError("reference synthesis failed:\n"+cp.stdout[-4000:])
+
+    scripts=home/".config/ardour9/scripts"; scripts.mkdir(parents=True,exist_ok=True)
+    action=scripts/"a7_editor_import.lua"
+    lua_path=str(reference).replace("\\","\\\\").replace('"','\\"')
+    action.write_text('''ardour { ["type"] = "EditorAction", name = "Mixer Screenshot", author = "A7", license = "MIT", description = "A7 bounded Editor import qualification" }
+function factory (params) return function ()
+  local files = C.StringVector()
+  files:push_back("%s")
+  local pos = Temporal.timepos_t(0)
+  Editor:do_import(files, Editing.ImportDistinctFiles, Editing.ImportAsTrack, ARDOUR.SrcQuality.SrcBest,
+    ARDOUR.MidiTrackNameSource.SMFFileAndTrackName, ARDOUR.MidiTempoMapDisposition.SMFTempoIgnore,
+    pos, ARDOUR.PluginInfo(), ARDOUR.Track(), false)
+  Session:save_state("")
+  print("A7_EDITOR_IMPORT_ACTION=PASS")
+end end
+''' % lua_path)
+    bindings=work/"a7-editor-import.bindings"
+    bindings.write_text('''<?xml version="1.0" encoding="UTF-8"?>
+<BindingSet name="A7 Editor Import">
+ <Bindings name="Editor"><Press>
+  <Binding key="F12" action="LuaAction/script-1" group="A7"/>
+ </Press></Bindings>
+</BindingSet>
+''')
+
+    proc=xv=log=xvlog=None
+    try:
+        proc,xv,log,xvlog,init=start_ardour(sf,home,work,bindings)
+        env=os.environ.copy(); env.update({"HOME":str(home),"DISPLAY":":99","LANG":"C.UTF-8"})
+        active=subprocess.check_output(["xdotool","getactivewindow"],env=env,text=True,stderr=subprocess.STDOUT).strip()
+        subprocess.run(["xdotool","key","--window",active,"F12"],env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        observed=[]
+        deadline=time.time()+45
+        while time.time()<deadline:
+            time.sleep(1)
+            res=mcp_post({"jsonrpc":"2.0","id":400,"method":"tools/call","params":{"name":"tracks_list","arguments":{}}},10)
+            observed=((res.get("result") or {}).get("structuredContent") or {}).get("tracks") or []
+            if any(str(t.get("name","")).startswith("a7-reference") for t in observed): break
+        else:
+            raise RuntimeError("EDITOR_IMPORT_POSTCONDITION_FAILED tracks="+json.dumps(observed,sort_keys=True))
+        saved=mcp_post({"jsonrpc":"2.0","id":401,"method":"tools/call","params":{"name":"session_save","arguments":{}}},30)
+        if ((saved.get("result") or {}).get("structuredContent") or {}).get("saved") is not True:
+            raise RuntimeError("post-import session_save failed: "+json.dumps(saved,sort_keys=True))
+        stop_proc(proc); proc=None
+    finally:
+        stop_proc(proc); stop_proc(xv)
+        if log: log.close()
+        if xvlog: xvlog.close()
+
+    cold=apply_ardour_calls(sf,home,work,[{"name":"tracks_list","arguments":{}}])
+    cold_tracks=[]
+    for wrapped in cold.get("responses",[]):
+        if wrapped.get("name")=="tracks_list":
+            cold_tracks=((wrapped.get("response",{}).get("result") or {}).get("structuredContent") or {}).get("tracks") or []
+    if not any(str(t.get("name","")).startswith("a7-reference") for t in cold_tracks):
+        raise RuntimeError("COLD_REOPEN_IMPORTED_TRACK_MISSING tracks="+json.dumps(cold_tracks,sort_keys=True))
+
+    master=work/"master.wav"
+    export_bin=shutil.which("ardour9-export") or shutil.which("ardour8-export") or shutil.which("ardour7-export")
+    env=os.environ.copy(); env.update({"HOME":str(home),"LANG":"C.UTF-8"})
+    cp=subprocess.run([export_bin,"-b","24","-s","48000","-o",str(master),str(sf.parent),sf.stem],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    if cp.returncode or not master.exists() or master.stat().st_size==0:
+        raise RuntimeError("cold export failed (rc=%s):\n%s"%(cp.returncode,cp.stdout[-12000:]))
+    ref_samples=_decoded_s32(reference,work,"reference")
+    out_samples=_decoded_s32(master,work,"master")
+    compared=min(len(ref_samples),len(out_samples))
+    diffs=[abs(ref_samples[i]-out_samples[i]) for i in range(compared)]
+    max_abs=max(diffs) if diffs else None
+    pcm={"reference_samples":len(ref_samples),"master_samples":len(out_samples),"compared_samples":compared,
+         "sample_count_equal":len(ref_samples)==len(out_samples),"max_abs_s32_difference":max_abs,
+         "exact_sample_matches":sum(1 for x in diffs if x==0),"channels":2,"sample_rate":48000}
+    # 24-bit values decoded to s32 are left-shifted by 8; one 24-bit LSB is 256.
+    pcm["verified"]=bool(pcm["sample_count_equal"] and max_abs is not None and max_abs<=256)
+    evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
+    (evidence/"editor-import-postcondition.json").write_text(json.dumps({"hot_tracks":observed,"cold_tracks":cold_tracks,"pcm":pcm},indent=2,sort_keys=True))
+    for name,path,mime in (("reference.wav",reference,"audio/wav"),("master.wav",master,"audio/wav")):
+        upload_artifact(job_id,name,path,token,mime)
+    archive=work/"session.tar.gz"; archive_project(project,archive); upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
+    return {"engine":"ardour-editor-action-import+cold-export","initialize":init,"hot_tracks":observed,"cold_tracks":cold_tracks,
+            "pcm":pcm,"export_rc":cp.returncode,"artifacts":["reference.wav","master.wav","session.tar.gz","editor-import-postcondition.json"],
+            "log_tail":cp.stdout[-4000:]}
 
 def probe():
     def out(cmd):
@@ -854,6 +962,7 @@ def main():
         elif op=="ardour_batch": result=ardour_batch(payload,job,a.job_id,a.oidc_token,work)
         elif op=="ardour_lua": result=ardour_lua(payload,job,a.job_id,a.oidc_token,work)
         elif op=="project_render": result=project_render(payload,job,a.job_id,a.oidc_token,work)
+        elif op=="editor_import_qualification": result=editor_import_qualification(payload,job,a.job_id,a.oidc_token,work)
         elif op=="vocal_render": result=vocal_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="song_render": result=song_render(payload,job,a.job_id,a.oidc_token,work)
         elif op=="vocal_mutate": result=vocal_mutate(payload,job,a.job_id,a.oidc_token,work)
