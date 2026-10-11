@@ -1,10 +1,11 @@
 {
   "bootstrap": {
-    "operation": "editor_import_qualification",
+    "operation": "project_render",
     "payload": {
+      "editor_import_qualification": true,
       "seconds": 2.0
     }
   },
-  "qualification": "A7-RUN79-authentic-ardour-editor-pcm-import-cold-reopen-export",
+  "qualification": "A7-RUN79-authentic-ardour-editor-pcm-import-cold-reopen-export-retry1",
   "created": "2026-10-12"
 }
