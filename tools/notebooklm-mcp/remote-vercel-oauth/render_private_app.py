@@ -113,6 +113,7 @@ class HeaderGuard:
 
 
 async def health(request):
+    public_tool_count = len(await native_mcp.list_tools())
     try:
         configured = bool(_load_master_token_b64())
     except Exception:
@@ -125,6 +126,7 @@ async def health(request):
         "oauth_login_required": False,
         "file_transfer": "inline-json; no automatic ResourceLinks",
         "native_mcp_available": True,
+        "native_tool_count": public_tool_count,
         "connection_state": "backend-only; ChatGPT App not rebound",
     })
 
