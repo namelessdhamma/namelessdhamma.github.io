@@ -14,10 +14,9 @@
           "arguments": {
             "type": "audio",
             "count": 1,
-            "name": "A7_STRICT_IO_GUARD_RUN75",
+            "name": "A7_COLD_REOPEN_RUN76",
             "inputChannels": 2,
             "outputChannels": 2,
-            "strictIo": true,
             "insert": "end"
           }
         },
@@ -27,9 +26,17 @@
             "includeHidden": true
           }
         }
+      ],
+      "coldReopenCalls": [
+        {
+          "name": "tracks_list",
+          "arguments": {
+            "includeHidden": true
+          }
+        }
       ]
     }
   },
-  "qualification": "A7-RUN75-authentic-strict-io-fail-closed-guard",
+  "qualification": "A7-RUN76-authentic-track-cold-reopen",
   "created": "2026-10-11"
 }
