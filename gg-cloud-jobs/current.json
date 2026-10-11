@@ -3,9 +3,9 @@
     "operation": "project_render",
     "payload": {
       "editor_import_qualification": true,
-      "seconds": 2.0
+      "seconds": 2
     }
   },
-  "qualification": "A7-RUN79-authentic-ardour-editor-pcm-import-cold-reopen-export-retry7",
+  "qualification": "A7-RUN80-ardour-editor-action-slot-state",
   "created": "2026-10-12"
 }
