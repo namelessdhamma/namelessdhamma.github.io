@@ -408,6 +408,14 @@ function factory (params) return function ()
   print("A7_EDITOR_IMPORT_ACTION=PASS")
 end end
 ''' % lua_path)
+    # Ardour hard-codes pre-seeding by the built-in name "Mixer Screenshot".
+    # Replace that script only inside this disposable qualification container;
+    # the serialized UIScripts state below proves exactly what was registered.
+    system_seed=pathlib.Path("/usr/share/ardour9/scripts/mixer_screenshot.lua")
+    if not system_seed.exists(): raise RuntimeError("Ardour Mixer Screenshot seed is missing")
+    system_seed_original_sha256=hashlib.sha256(system_seed.read_bytes()).hexdigest()
+    shutil.copy2(action,system_seed)
+    system_seed_replacement_sha256=hashlib.sha256(system_seed.read_bytes()).hexdigest()
     bindings=work/"a7-editor-import.keys"
     default_bindings=pathlib.Path("/etc/ardour9/ardour.keys")
     if not default_bindings.exists(): raise RuntimeError("installed Ardour default keymap is missing")
@@ -445,7 +453,7 @@ end end
         except Exception as e:
             decode_error=str(e)
         marker_present=b"A7_EDITOR_IMPORT_ACTION=PASS" in decoded
-        source_present=str(action).encode() in decoded
+        source_present=str(system_seed).encode() in decoded
         state_evidence={
             "ui_scripts_exists":ui_scripts.exists(),
             "ui_scripts_bytes":ui_scripts.stat().st_size if ui_scripts.exists() else 0,
@@ -453,6 +461,8 @@ end end
             "decoded_sha256":hashlib.sha256(decoded).hexdigest() if decoded else None,
             "a7_marker_present":marker_present,
             "a7_source_path_present":source_present,
+            "system_seed_original_sha256":system_seed_original_sha256,
+            "system_seed_replacement_sha256":system_seed_replacement_sha256,
             "decode_error":decode_error,
             "decoded_strings":[x.decode("utf-8","replace") for x in decoded.split(b"\\x00") if b"Mixer Screenshot" in x or b"A7_EDITOR_IMPORT" in x or b"mixer_screenshot" in x][-20:],
         }
