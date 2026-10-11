@@ -226,6 +226,41 @@ def apply_ardour_calls(sf, home, work, calls):
         if log: log.close()
         if xvlog: xvlog.close()
 
+def verify_strict_io_postcondition(sf, calls, responses):
+    """Fail closed when tracks_add(strictIo=true) is not persisted by Ardour.
+
+    The Ardour MCP response reports resolved channel counts but does not report
+    the persisted Route strict-io flag, so the saved session XML is the
+    authoritative postcondition for this request.
+    """
+    requested=[]
+    for call,wrapped in zip(calls or [],responses or []):
+        args=call.get("arguments") or {}
+        if call.get("name")!="tracks_add" or args.get("strictIo") is not True:
+            continue
+        body=(wrapped.get("response") or {}).get("result") or {}
+        if body.get("isError") is True:
+            raise RuntimeError("MCP tracks_add returned isError=true")
+        routes=((body.get("structuredContent") or {}).get("created") or {}).get("routes") or []
+        if not routes:
+            raise RuntimeError("strictIo tracks_add returned no created routes")
+        requested.extend({"id":str(r.get("id")),"name":r.get("name")} for r in routes)
+    if not requested:
+        return {"requested":False,"verified":True,"routes":[]}
+
+    root=ET.parse(sf).getroot()
+    by_id={str(node.get("id")):node for node in root.iter() if node.tag.split("}")[-1]=="Route"}
+    checked=[]
+    for item in requested:
+        node=by_id.get(item["id"])
+        actual=None if node is None else node.get("strict-io")
+        ok=node is not None and str(actual).lower() in {"1","true","yes"}
+        checked.append({**item,"persistedStrictIo":actual,"verified":ok})
+    verdict={"requested":True,"verified":all(x["verified"] for x in checked),"routes":checked}
+    if not verdict["verified"]:
+        raise RuntimeError("STRICT_IO_POSTCONDITION_FAILED "+json.dumps(verdict,sort_keys=True))
+    return verdict
+
 def archive_project(project, archive):
     with tarfile.open(archive,"w:gz") as t:
         for p in project.iterdir():
@@ -236,6 +271,14 @@ def ardour_batch(payload, job, job_id, token, work):
     project=work/"project"; project.mkdir()
     sf=restore_session(project,job,job_id,token,home); enable_mcp(sf)
     result=apply_ardour_calls(sf,home,work,payload.get("calls",[]))
+    try:
+        strict_io=verify_strict_io_postcondition(sf,payload.get("calls",[]),result.get("responses",[]))
+    except Exception as e:
+        evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work)
+        evidence.mkdir(parents=True,exist_ok=True)
+        (evidence/"strict-io-postcondition.json").write_text(json.dumps({"verified":False,"error":str(e)},indent=2,sort_keys=True))
+        raise
+    result["strict_io_postcondition"]=strict_io
     archive=work/"session.tar.gz"; archive_project(project,archive)
     upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
     result.update({"session_file":str(sf.relative_to(project)),"artifact":"session.tar.gz","artifact_bytes":archive.stat().st_size})
