@@ -431,6 +431,9 @@ def editor_import_qualification(payload, job, job_id, token, work):
     identity_marker_lua_path=str(identity_marker).replace("\\","\\\\").replace('"','\\"')
     action.write_text('''ardour { ["type"] = "EditorAction", name = "Mixer Screenshot", author = "A7", license = "MIT", description = "A7 bounded Editor import qualification" }
 function factory (params) return function ()
+  local phase_marker = assert(io.open("%s", "w"))
+  phase_marker:write("phase=start", string.char(10))
+  phase_marker:flush()
   local pos = Temporal.timepos_t(0)
   local control_files = C.StringVector()
   control_files:push_back("%s")
@@ -459,6 +462,8 @@ function factory (params) return function ()
   end
 
   local control_count, control_active = control_fades()
+  phase_marker:write("phase=control;count=" .. control_count .. ";active=" .. control_active, string.char(10))
+  phase_marker:flush()
   assert(control_count > 0 and control_active == control_count, "A7 control region baseline fades are not active")
   Session:save_state("")
 
@@ -497,14 +502,16 @@ function factory (params) return function ()
         for region in track:playlist():region_list():iter() do
           local audio = region:to_audioregion()
           if not audio:isnil() then
-            local source = audio:audio_source(0)
-            local source_name = source:name()
-            table.insert(observed_source_names, id .. ":" .. source_name)
-            local normalized_source_name = string.gsub(source_name, "%%.[Ww][Aa][Vv]$", "")
-            normalized_source_name = string.gsub(normalized_source_name, "%%-[LR]$", "")
-            if normalized_source_name == "a7-reference" then
-              route_is_target = true
-              target_source_matches = target_source_matches + 1
+            local source_names = audio:master_source_names()
+            for si = 0, source_names:size() - 1 do
+              local source_name = source_names:at(si)
+              table.insert(observed_source_names, id .. ":" .. source_name)
+              local normalized_source_name = string.gsub(source_name, "%%.[Ww][Aa][Vv]$", "")
+              normalized_source_name = string.gsub(normalized_source_name, "%%-[LR]$", "")
+              if normalized_source_name == "a7-reference" then
+                route_is_target = true
+                target_source_matches = target_source_matches + 1
+              end
             end
           end
         end
@@ -531,7 +538,9 @@ function factory (params) return function ()
     end
   end
   local post_count, post_active = control_fades()
-  local marker = assert(io.open("%s", "w"))
+  phase_marker:write("phase=selected", string.char(10))
+  phase_marker:close()
+  local marker = assert(io.open("%s", "a"))
   marker:write("before_routes=" .. before_count, string.char(10))
   marker:write("new_routes=" .. new_routes, string.char(10))
   marker:write("new_route_ids=" .. table.concat(new_ids, ","), string.char(10))
@@ -557,7 +566,7 @@ function factory (params) return function ()
   print("A7_EDITOR_IMPORT_DISABLED_EDGE_FADES=" .. disabled)
   print("A7_EDITOR_IMPORT_ACTION=PASS")
 end end
-''' % (control_lua_path,distractor_lua_path,lua_path,lua_path,identity_marker_lua_path))
+''' % (identity_marker_lua_path,control_lua_path,distractor_lua_path,lua_path,lua_path,identity_marker_lua_path))
     # Ardour hard-codes pre-seeding by the built-in name "Mixer Screenshot".
     # Replace that script only inside this disposable qualification container;
     # the serialized UIScripts state below proves exactly what was registered.
