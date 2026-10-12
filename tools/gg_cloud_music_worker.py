@@ -485,9 +485,7 @@ function factory (params) return function ()
   local target_ids = {}
   local target_source_matches = 0
   local distractor_regions_preserved = 0
-  local function basename(path)
-    return string.match(path or "", "([^/]+)$") or (path or "")
-  end
+  local observed_source_names = {}
   for route in Session:get_tracks():iter() do
     local id = route:to_stateful():id():to_s()
     if not before[id] then
@@ -501,12 +499,10 @@ function factory (params) return function ()
           if not audio:isnil() then
             local source = audio:audio_source(0)
             local source_name = source:name()
-            local fs = source:to_filesource()
-            local origin = ""
-            if not fs:isnil() then origin = fs:origin() end
-            local origin_name = basename(origin)
-            if origin == target_origin or origin_name == "a7-reference.wav"
-              or source_name == "a7-reference" or source_name == "a7-reference-L" or source_name == "a7-reference-R" then
+            table.insert(observed_source_names, id .. ":" .. source_name)
+            local normalized_source_name = string.gsub(source_name, "%.[Ww][Aa][Vv]$", "")
+            normalized_source_name = string.gsub(normalized_source_name, "%-[LR]$", "")
+            if normalized_source_name == "a7-reference" then
               route_is_target = true
               target_source_matches = target_source_matches + 1
             end
@@ -534,13 +530,7 @@ function factory (params) return function ()
       end
     end
   end
-  assert(new_routes == 2, "A7 dual import did not create exactly two new routes")
-  assert(target_routes == 1, "A7 source fingerprint did not select exactly one target route")
-  assert(disabled > 0, "A7 target source audio region not available for fade control")
-  assert(distractor_regions_preserved > 0, "A7 source-bound fade control changed the new distractor region")
   local post_count, post_active = control_fades()
-  assert(post_count == control_count and post_active == post_count, "A7 identity-scoped fade control changed the adversarial control region")
-
   local marker = assert(io.open("%s", "w"))
   marker:write("before_routes=" .. before_count, string.char(10))
   marker:write("new_routes=" .. new_routes, string.char(10))
@@ -548,10 +538,17 @@ function factory (params) return function ()
   marker:write("target_routes=" .. target_routes, string.char(10))
   marker:write("target_route_ids=" .. table.concat(target_ids, ","), string.char(10))
   marker:write("target_source_matches=" .. target_source_matches, string.char(10))
+  marker:write("observed_source_names=" .. table.concat(observed_source_names, ","), string.char(10))
   marker:write("target_regions_disabled=" .. disabled, string.char(10))
   marker:write("distractor_regions_preserved=" .. distractor_regions_preserved, string.char(10))
   marker:write("control_regions_preserved=" .. post_active, string.char(10))
   marker:close()
+
+  assert(new_routes == 2, "A7 dual import did not create exactly two new routes")
+  assert(target_routes == 1, "A7 source fingerprint did not select exactly one target route")
+  assert(disabled > 0, "A7 target source audio region not available for fade control")
+  assert(distractor_regions_preserved > 0, "A7 source-bound fade control changed the new distractor region")
+  assert(post_count == control_count and post_active == post_count, "A7 identity-scoped fade control changed the adversarial control region")
 
   Session:save_state("")
   print("A7_EDITOR_IMPORT_IDENTITY_NEW_ROUTES=" .. new_routes)
