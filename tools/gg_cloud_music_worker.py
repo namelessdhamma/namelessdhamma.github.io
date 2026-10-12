@@ -409,21 +409,55 @@ def editor_import_qualification(payload, job, job_id, token, work):
     project=work/"project"; project.mkdir()
     sf=restore_session(project,job,job_id,token,home); enable_mcp(sf); enable_osc(sf)
     reference=work/"a7-reference.wav"
+    control=work/"a7-control.wav"
     seconds=float(payload.get("seconds",2.0))
     if not 0.25 <= seconds <= 10.0: raise RuntimeError("seconds must be in [0.25, 10.0]")
     # Deliberately distinct channels make swaps, mono collapse, and routing loss observable.
     expr="0.32*sin(2*PI*440*t)|0.23*sin(2*PI*659.2551138257*t)"
     cp=subprocess.run(["ffmpeg","-y","-v","error","-f","lavfi","-i",f"aevalsrc={expr}:s=48000:d={seconds}","-c:a","pcm_s24le",str(reference)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
     if cp.returncode or not reference.exists(): raise RuntimeError("reference synthesis failed:\n"+cp.stdout[-4000:])
+    cp=subprocess.run(["ffmpeg","-y","-v","error","-f","lavfi","-i",f"anullsrc=r=48000:cl=stereo:d={seconds}","-c:a","pcm_s24le",str(control)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    if cp.returncode or not control.exists(): raise RuntimeError("control synthesis failed:\n"+cp.stdout[-4000:])
 
     scripts=home/".config/ardour9/scripts"; scripts.mkdir(parents=True,exist_ok=True)
     action=scripts/"a7_editor_import.lua"
     lua_path=str(reference).replace("\\","\\\\").replace('"','\\"')
+    control_lua_path=str(control).replace("\\","\\\\").replace('"','\\"')
     action.write_text('''ardour { ["type"] = "EditorAction", name = "Mixer Screenshot", author = "A7", license = "MIT", description = "A7 bounded Editor import qualification" }
 function factory (params) return function ()
+  local pos = Temporal.timepos_t(0)
+  local control_files = C.StringVector()
+  control_files:push_back("%s")
+  Editor:do_import(control_files, Editing.ImportDistinctFiles, Editing.ImportAsTrack, ARDOUR.SrcQuality.SrcBest,
+    ARDOUR.MidiTrackNameSource.SMFFileAndTrackName, ARDOUR.MidiTempoMapDisposition.SMFTempoIgnore,
+    pos, ARDOUR.PluginInfo(), ARDOUR.Track(), false)
+
+  local function control_fades()
+    local count = 0
+    local active = 0
+    for route in Session:get_tracks():iter() do
+      if string.sub(route:name(), 1, 10) == "a7-control" then
+        local track = route:to_track()
+        if not track:isnil() then
+          for region in track:playlist():region_list():iter() do
+            local audio = region:to_audioregion()
+            if not audio:isnil() then
+              count = count + 1
+              if audio:fade_in_active() and audio:fade_out_active() then active = active + 1 end
+            end
+          end
+        end
+      end
+    end
+    return count, active
+  end
+
+  local control_count, control_active = control_fades()
+  assert(control_count > 0 and control_active == control_count, "A7 control region baseline fades are not active")
+  Session:save_state("")
+
   local files = C.StringVector()
   files:push_back("%s")
-  local pos = Temporal.timepos_t(0)
   Editor:do_import(files, Editing.ImportDistinctFiles, Editing.ImportAsTrack, ARDOUR.SrcQuality.SrcBest,
     ARDOUR.MidiTrackNameSource.SMFFileAndTrackName, ARDOUR.MidiTempoMapDisposition.SMFTempoIgnore,
     pos, ARDOUR.PluginInfo(), ARDOUR.Track(), false)
@@ -444,11 +478,14 @@ function factory (params) return function ()
     end
   end
   assert(disabled > 0, "A7 imported audio region not available for fade control")
+  local post_count, post_active = control_fades()
+  assert(post_count == control_count and post_active == post_count, "A7 target fade control changed the unrelated control region")
   Session:save_state("")
+  print("A7_EDITOR_IMPORT_CONTROL_REGIONS=" .. post_count)
   print("A7_EDITOR_IMPORT_DISABLED_EDGE_FADES=" .. disabled)
   print("A7_EDITOR_IMPORT_ACTION=PASS")
 end end
-''' % lua_path)
+''' % (control_lua_path,lua_path))
     # Ardour hard-codes pre-seeding by the built-in name "Mixer Screenshot".
     # Replace that script only inside this disposable qualification container;
     # the serialized UIScripts state below proves exactly what was registered.
@@ -547,6 +584,33 @@ end end
             cold_tracks=((wrapped.get("response",{}).get("result") or {}).get("structuredContent") or {}).get("tracks") or []
     if not any(str(t.get("name","")).startswith("a7-reference") for t in cold_tracks):
         raise RuntimeError("COLD_REOPEN_IMPORTED_TRACK_MISSING tracks="+json.dumps(cold_tracks,sort_keys=True))
+    if not any(str(t.get("name","")).startswith("a7-control") for t in cold_tracks):
+        raise RuntimeError("COLD_REOPEN_CONTROL_TRACK_MISSING tracks="+json.dumps(cold_tracks,sort_keys=True))
+
+    session_root=ET.parse(sf).getroot()
+    fade_rows=[]
+    for playlist in session_root.iter("Playlist"):
+        pname=str(playlist.get("name") or "")
+        if not (pname.startswith("a7-reference") or pname.startswith("a7-control")):
+            continue
+        for region in playlist.findall("Region"):
+            fade_rows.append({"playlist":pname,"region":region.get("name"),
+                              "fade_in_active":region.get("fade-in-active"),
+                              "fade_out_active":region.get("fade-out-active")})
+    target_rows=[x for x in fade_rows if x["playlist"].startswith("a7-reference")]
+    control_rows=[x for x in fade_rows if x["playlist"].startswith("a7-control")]
+    false_values={"0","false","no"}; true_values={"1","true","yes"}
+    fade_isolation={
+        "target_regions":target_rows,
+        "control_regions":control_rows,
+        "target_fades_disabled":bool(target_rows) and all(str(x["fade_in_active"]).lower() in false_values and str(x["fade_out_active"]).lower() in false_values for x in target_rows),
+        "control_fades_preserved":bool(control_rows) and all(str(x["fade_in_active"]).lower() in true_values and str(x["fade_out_active"]).lower() in true_values for x in control_rows),
+    }
+    fade_isolation["verified"]=bool(fade_isolation["target_fades_disabled"] and fade_isolation["control_fades_preserved"])
+    evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
+    (evidence/"fade-isolation-postcondition.json").write_text(json.dumps(fade_isolation,indent=2,sort_keys=True))
+    if not fade_isolation["verified"]:
+        raise RuntimeError("EDITOR_IMPORT_FADE_ISOLATION_FAILED "+json.dumps(fade_isolation,sort_keys=True))
 
     master=work/"master.wav"
     export_bin=shutil.which("ardour9-export") or shutil.which("ardour8-export") or shutil.which("ardour7-export")
@@ -565,14 +629,15 @@ end end
     # 24-bit values decoded to s32 are left-shifted by 8; one 24-bit LSB is 256.
     pcm["verified"]=bool(pcm["sample_count_equal"] and max_abs is not None and max_abs<=256)
     evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
-    (evidence/"editor-import-postcondition.json").write_text(json.dumps({"hot_tracks":observed,"cold_tracks":cold_tracks,"pcm":pcm},indent=2,sort_keys=True))
+    (evidence/"editor-import-postcondition.json").write_text(json.dumps({"hot_tracks":observed,"cold_tracks":cold_tracks,"fade_isolation":fade_isolation,"pcm":pcm},indent=2,sort_keys=True))
     if not pcm["verified"]:
         raise RuntimeError("EDITOR_IMPORT_PCM_POSTCONDITION_FAILED "+json.dumps(pcm,sort_keys=True))
-    for name,path,mime in (("reference.wav",reference,"audio/wav"),("master.wav",master,"audio/wav")):
+    for name,path,mime in (("reference.wav",reference,"audio/wav"),("control.wav",control,"audio/wav"),("master.wav",master,"audio/wav")):
         upload_artifact(job_id,name,path,token,mime)
     archive=work/"session.tar.gz"; archive_project(project,archive); upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
     return {"engine":"ardour-editor-action-import+cold-export","initialize":init,"hot_tracks":observed,"cold_tracks":cold_tracks,
-            "pcm":pcm,"export_rc":cp.returncode,"artifacts":["reference.wav","master.wav","session.tar.gz","editor-import-postcondition.json"],
+            "fade_isolation":fade_isolation,"pcm":pcm,"export_rc":cp.returncode,
+            "artifacts":["reference.wav","control.wav","master.wav","session.tar.gz","fade-isolation-postcondition.json","editor-import-postcondition.json"],
             "log_tail":cp.stdout[-4000:]}
 
 def probe():
