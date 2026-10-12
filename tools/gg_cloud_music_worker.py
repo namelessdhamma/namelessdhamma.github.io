@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, base64, hashlib, json, mimetypes, os, pathlib, shutil, subprocess, sys, tarfile, tempfile, time, urllib.request, urllib.error, urllib.parse, zipfile
+import argparse, base64, hashlib, json, mimetypes, os, pathlib, shutil, socket, subprocess, sys, tarfile, tempfile, time, urllib.request, urllib.error, urllib.parse, zipfile
 from xml.etree import ElementTree as ET
 
 RELAY="https://gg-cloud-music-studio.onrender.com"
@@ -115,6 +115,29 @@ def enable_mcp(sf):
     if target is None: target=ET.SubElement(cps,"Protocol")
     target.attrib.update({"name":"MCP HTTP Server (Experimental)","active":"yes","port":"4820","debug-level":"1","config":""})
     tree.write(sf,encoding="UTF-8",xml_declaration=True)
+
+def enable_osc(sf):
+    """Enable Ardour\'s native OSC control surface for action-manager calls."""
+    tree=ET.parse(sf); root=tree.getroot(); cps=root.find("ControlProtocols")
+    if cps is None: cps=ET.SubElement(root,"ControlProtocols")
+    target=next((x for x in cps.findall("Protocol") if x.get("name")=="Open Sound Control (OSC)"),None)
+    if target is None: target=ET.SubElement(cps,"Protocol")
+    target.attrib.update({"name":"Open Sound Control (OSC)","active":"yes","config":""})
+    tree.write(sf,encoding="UTF-8",xml_declaration=True)
+
+def osc_access_action(action, host="127.0.0.1", port=3819):
+    """Invoke an Ardour action through its native OSC /access_action endpoint."""
+    if not isinstance(action,str) or "/" not in action or "\\x00" in action:
+        raise RuntimeError("invalid Ardour action path")
+    def osc_string(value):
+        raw=value.encode("utf-8")+b"\\x00"
+        return raw+(b"\\x00"*((-len(raw))%4))
+    packet=osc_string("/access_action")+osc_string(",s")+osc_string(action)
+    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sock:
+        sent=sock.sendto(packet,(host,int(port)))
+    if sent != len(packet):
+        raise RuntimeError("incomplete OSC action datagram")
+    return {"endpoint":"/access_action","action":action,"host":host,"port":int(port),"bytes":sent}
 
 def mcp_post(obj, timeout=10):
     req=urllib.request.Request("http://127.0.0.1:4820/mcp",data=json.dumps(obj).encode(),headers={"content-type":"application/json","accept":"application/json, text/event-stream"},method="POST")
@@ -384,7 +407,7 @@ def editor_import_qualification(payload, job, job_id, token, work):
     """Qualify an authentic Ardour Editor import, persistence, and cold export."""
     home=work/"home"; home.mkdir(); seed_config(home)
     project=work/"project"; project.mkdir()
-    sf=restore_session(project,job,job_id,token,home); enable_mcp(sf)
+    sf=restore_session(project,job,job_id,token,home); enable_mcp(sf); enable_osc(sf)
     reference=work/"a7-reference.wav"
     seconds=float(payload.get("seconds",2.0))
     if not 0.25 <= seconds <= 10.0: raise RuntimeError("seconds must be in [0.25, 10.0]")
@@ -470,17 +493,10 @@ end end
         (evidence/"ui-script-state.json").write_text(json.dumps(state_evidence,indent=2,sort_keys=True))
         if not marker_present:
             raise RuntimeError("EDITOR_ACTION_SLOT_NOT_A7 "+json.dumps(state_evidence,sort_keys=True))
-        env=os.environ.copy(); env.update({"HOME":str(home),"DISPLAY":":99","LANG":"C.UTF-8"})
-        wins=subprocess.check_output(["xdotool","search","--onlyvisible","--class","Ardour"],env=env,text=True,stderr=subprocess.STDOUT).splitlines()
-        sized=[]
-        for wid in wins:
-            geom=subprocess.check_output(["xdotool","getwindowgeometry","--shell",wid],env=env,text=True,stderr=subprocess.STDOUT)
-            vals=dict(line.split("=",1) for line in geom.splitlines() if "=" in line)
-            sized.append((int(vals.get("WIDTH",0))*int(vals.get("HEIGHT",0)),wid))
-        if not sized: raise RuntimeError("no visible Ardour window available for Editor action")
-        editor_window=max(sized)[1]
-        subprocess.run(["xdotool","windowfocus","--sync",editor_window],env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
-        subprocess.run(["xdotool","key","F12"],env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        # Invoke the registered slot through Ardour\'s own action manager. This
+        # bypasses GTK focus/key dispatch while exercising the same LuaAction.
+        dispatch=osc_access_action("LuaAction/script-1")
+        (evidence/"osc-action-dispatch.json").write_text(json.dumps(dispatch,indent=2,sort_keys=True))
         observed=[]
         deadline=time.time()+45
         while time.time()<deadline:
