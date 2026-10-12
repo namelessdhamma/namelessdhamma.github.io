@@ -127,11 +127,11 @@ def enable_osc(sf):
 
 def osc_access_action(action, host="127.0.0.1", port=3819):
     """Invoke an Ardour action through its native OSC /access_action endpoint."""
-    if not isinstance(action,str) or "/" not in action or "\\x00" in action:
+    if not isinstance(action,str) or "/" not in action or "\x00" in action:
         raise RuntimeError("invalid Ardour action path")
     def osc_string(value):
-        raw=value.encode("utf-8")+b"\\x00"
-        return raw+(b"\\x00"*((-len(raw))%4))
+        raw=value.encode("utf-8")+b"\x00"
+        return raw+(b"\x00"*((-len(raw))%4))
     packet=osc_string("/access_action")+osc_string(",s")+osc_string(action)
     with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sock:
         sent=sock.sendto(packet,(host,int(port)))
@@ -487,7 +487,7 @@ end end
             "system_seed_original_sha256":system_seed_original_sha256,
             "system_seed_replacement_sha256":system_seed_replacement_sha256,
             "decode_error":decode_error,
-            "decoded_strings":[x.decode("utf-8","replace") for x in decoded.split(b"\\x00") if b"Mixer Screenshot" in x or b"A7_EDITOR_IMPORT" in x or b"mixer_screenshot" in x][-20:],
+            "decoded_strings":[x.decode("utf-8","replace") for x in decoded.split(b"\x00") if b"Mixer Screenshot" in x or b"A7_EDITOR_IMPORT" in x or b"mixer_screenshot" in x][-20:],
         }
         evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
         (evidence/"ui-script-state.json").write_text(json.dumps(state_evidence,indent=2,sort_keys=True))
