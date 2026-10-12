@@ -500,8 +500,8 @@ function factory (params) return function ()
             local source = audio:audio_source(0)
             local source_name = source:name()
             table.insert(observed_source_names, id .. ":" .. source_name)
-            local normalized_source_name = string.gsub(source_name, "%.[Ww][Aa][Vv]$", "")
-            normalized_source_name = string.gsub(normalized_source_name, "%-[LR]$", "")
+            local normalized_source_name = string.gsub(source_name, "%%.[Ww][Aa][Vv]$", "")
+            normalized_source_name = string.gsub(normalized_source_name, "%%-[LR]$", "")
             if normalized_source_name == "a7-reference" then
               route_is_target = true
               target_source_matches = target_source_matches + 1
