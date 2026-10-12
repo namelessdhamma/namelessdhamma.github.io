@@ -410,6 +410,7 @@ def editor_import_qualification(payload, job, job_id, token, work):
     sf=restore_session(project,job,job_id,token,home); enable_mcp(sf); enable_osc(sf)
     reference=work/"a7-reference.wav"
     control=work/"a7-reference-existing.wav"
+    distractor=work/"a7-reference-decoy.wav"
     seconds=float(payload.get("seconds",2.0))
     if not 0.25 <= seconds <= 10.0: raise RuntimeError("seconds must be in [0.25, 10.0]")
     # Deliberately distinct channels make swaps, mono collapse, and routing loss observable.
@@ -418,11 +419,14 @@ def editor_import_qualification(payload, job, job_id, token, work):
     if cp.returncode or not reference.exists(): raise RuntimeError("reference synthesis failed:\n"+cp.stdout[-4000:])
     cp=subprocess.run(["ffmpeg","-y","-v","error","-f","lavfi","-i",f"anullsrc=r=48000:cl=stereo:d={seconds}","-c:a","pcm_s24le",str(control)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
     if cp.returncode or not control.exists(): raise RuntimeError("control synthesis failed:\n"+cp.stdout[-4000:])
+    cp=subprocess.run(["ffmpeg","-y","-v","error","-f","lavfi","-i",f"anullsrc=r=48000:cl=stereo:d={seconds}","-c:a","pcm_s24le",str(distractor)],text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+    if cp.returncode or not distractor.exists(): raise RuntimeError("distractor synthesis failed:\n"+cp.stdout[-4000:])
 
     scripts=home/".config/ardour9/scripts"; scripts.mkdir(parents=True,exist_ok=True)
     action=scripts/"a7_editor_import.lua"
     lua_path=str(reference).replace("\\","\\\\").replace('"','\\"')
     control_lua_path=str(control).replace("\\","\\\\").replace('"','\\"')
+    distractor_lua_path=str(distractor).replace("\\","\\\\").replace('"','\\"')
     identity_marker=work/"identity-selector-runtime.txt"
     identity_marker_lua_path=str(identity_marker).replace("\\","\\\\").replace('"','\\"')
     action.write_text('''ardour { ["type"] = "EditorAction", name = "Mixer Screenshot", author = "A7", license = "MIT", description = "A7 bounded Editor import qualification" }
@@ -468,6 +472,8 @@ function factory (params) return function ()
 
   local files = C.StringVector()
   files:push_back("%s")
+  files:push_back("%s")
+  local target_origin = "%s"
   Editor:do_import(files, Editing.ImportDistinctFiles, Editing.ImportAsTrack, ARDOUR.SrcQuality.SrcBest,
     ARDOUR.MidiTrackNameSource.SMFFileAndTrackName, ARDOUR.MidiTempoMapDisposition.SMFTempoIgnore,
     pos, ARDOUR.PluginInfo(), ARDOUR.Track(), false)
@@ -475,6 +481,13 @@ function factory (params) return function ()
   local disabled = 0
   local new_routes = 0
   local new_ids = {}
+  local target_routes = 0
+  local target_ids = {}
+  local target_source_matches = 0
+  local distractor_regions_preserved = 0
+  local function basename(path)
+    return string.match(path or "", "([^/]+)$") or (path or "")
+  end
   for route in Session:get_tracks():iter() do
     local id = route:to_stateful():id():to_s()
     if not before[id] then
@@ -482,19 +495,49 @@ function factory (params) return function ()
       table.insert(new_ids, id)
       local track = route:to_track()
       if not track:isnil() then
+        local route_is_target = false
         for region in track:playlist():region_list():iter() do
           local audio = region:to_audioregion()
           if not audio:isnil() then
-            audio:set_fade_in_active(false)
-            audio:set_fade_out_active(false)
-            disabled = disabled + 1
+            local source = audio:audio_source(0)
+            local source_name = source:name()
+            local fs = source:to_filesource()
+            local origin = ""
+            if not fs:isnil() then origin = fs:origin() end
+            local origin_name = basename(origin)
+            if origin == target_origin or origin_name == "a7-reference.wav"
+              or source_name == "a7-reference" or source_name == "a7-reference-L" or source_name == "a7-reference-R" then
+              route_is_target = true
+              target_source_matches = target_source_matches + 1
+            end
+          end
+        end
+        if route_is_target then
+          target_routes = target_routes + 1
+          table.insert(target_ids, id)
+          for region in track:playlist():region_list():iter() do
+            local audio = region:to_audioregion()
+            if not audio:isnil() then
+              audio:set_fade_in_active(false)
+              audio:set_fade_out_active(false)
+              disabled = disabled + 1
+            end
+          end
+        else
+          for region in track:playlist():region_list():iter() do
+            local audio = region:to_audioregion()
+            if not audio:isnil() and audio:fade_in_active() and audio:fade_out_active() then
+              distractor_regions_preserved = distractor_regions_preserved + 1
+            end
           end
         end
       end
     end
   end
-  assert(new_routes == 1, "A7 target import did not create exactly one new route")
-  assert(disabled > 0, "A7 newly imported audio region not available for fade control")
+  assert(new_routes == 2, "A7 dual import did not create exactly two new routes")
+  assert(target_routes == 1, "A7 source fingerprint did not select exactly one target route")
+  assert(disabled > 0, "A7 target source audio region not available for fade control")
+  assert(distractor_regions_preserved > 0, "A7 source-bound fade control changed the new distractor region")
   local post_count, post_active = control_fades()
   assert(post_count == control_count and post_active == post_count, "A7 identity-scoped fade control changed the adversarial control region")
 
@@ -502,17 +545,22 @@ function factory (params) return function ()
   marker:write("before_routes=" .. before_count, string.char(10))
   marker:write("new_routes=" .. new_routes, string.char(10))
   marker:write("new_route_ids=" .. table.concat(new_ids, ","), string.char(10))
+  marker:write("target_routes=" .. target_routes, string.char(10))
+  marker:write("target_route_ids=" .. table.concat(target_ids, ","), string.char(10))
+  marker:write("target_source_matches=" .. target_source_matches, string.char(10))
   marker:write("target_regions_disabled=" .. disabled, string.char(10))
+  marker:write("distractor_regions_preserved=" .. distractor_regions_preserved, string.char(10))
   marker:write("control_regions_preserved=" .. post_active, string.char(10))
   marker:close()
 
   Session:save_state("")
   print("A7_EDITOR_IMPORT_IDENTITY_NEW_ROUTES=" .. new_routes)
+  print("A7_EDITOR_IMPORT_SOURCE_TARGET_ROUTES=" .. target_routes)
   print("A7_EDITOR_IMPORT_CONTROL_REGIONS=" .. post_count)
   print("A7_EDITOR_IMPORT_DISABLED_EDGE_FADES=" .. disabled)
   print("A7_EDITOR_IMPORT_ACTION=PASS")
 end end
-''' % (control_lua_path,lua_path,identity_marker_lua_path))
+''' % (control_lua_path,distractor_lua_path,lua_path,lua_path,identity_marker_lua_path))
     # Ardour hard-codes pre-seeding by the built-in name "Mixer Screenshot".
     # Replace that script only inside this disposable qualification container;
     # the serialized UIScripts state below proves exactly what was registered.
@@ -585,7 +633,7 @@ end end
             time.sleep(1)
             res=mcp_post({"jsonrpc":"2.0","id":400,"method":"tools/call","params":{"name":"tracks_list","arguments":{}}},10)
             observed=((res.get("result") or {}).get("structuredContent") or {}).get("tracks") or []
-            if any(str(t.get("name",""))=="a7-reference" for t in observed) and any(str(t.get("name",""))=="a7-reference-existing" for t in observed): break
+            if all(any(str(t.get("name",""))==name for t in observed) for name in ("a7-reference","a7-reference-decoy","a7-reference-existing")): break
         else:
             try:
                 log.flush()
@@ -613,6 +661,8 @@ end end
         raise RuntimeError("COLD_REOPEN_IMPORTED_TRACK_MISSING tracks="+json.dumps(cold_tracks,sort_keys=True))
     if not any(str(t.get("name",""))=="a7-reference-existing" for t in cold_tracks):
         raise RuntimeError("COLD_REOPEN_CONTROL_TRACK_MISSING tracks="+json.dumps(cold_tracks,sort_keys=True))
+    if not any(str(t.get("name",""))=="a7-reference-decoy" for t in cold_tracks):
+        raise RuntimeError("COLD_REOPEN_DISTRACTOR_TRACK_MISSING tracks="+json.dumps(cold_tracks,sort_keys=True))
 
     if not identity_marker.exists():
         raise RuntimeError("IDENTITY_SELECTOR_RUNTIME_EVIDENCE_MISSING")
@@ -620,7 +670,7 @@ end end
     for line in identity_marker.read_text().splitlines():
         if "=" in line:
             key,value=line.split("=",1); identity_runtime[key]=value
-    identity_runtime["verified"]=bool(identity_runtime.get("new_routes")=="1" and identity_runtime.get("target_regions_disabled")=="1" and identity_runtime.get("control_regions_preserved")=="1" and identity_runtime.get("new_route_ids"))
+    identity_runtime["verified"]=bool(identity_runtime.get("new_routes")=="2" and identity_runtime.get("target_routes")=="1" and identity_runtime.get("target_regions_disabled")=="1" and identity_runtime.get("distractor_regions_preserved")=="1" and identity_runtime.get("control_regions_preserved")=="1" and identity_runtime.get("target_route_ids"))
     evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
     (evidence/"identity-selector-runtime.json").write_text(json.dumps(identity_runtime,indent=2,sort_keys=True))
     if not identity_runtime["verified"]:
@@ -630,7 +680,7 @@ end end
     fade_rows=[]
     for playlist in session_root.iter("Playlist"):
         pname=str(playlist.get("name") or "")
-        if pname not in {"a7-reference","a7-reference-existing"}:
+        if pname not in {"a7-reference","a7-reference-decoy","a7-reference-existing"}:
             continue
         for region in playlist.findall("Region"):
             fade_rows.append({"playlist":pname,"region":region.get("name"),
@@ -638,14 +688,17 @@ end end
                               "fade_out_active":region.get("fade-out-active")})
     target_rows=[x for x in fade_rows if x["playlist"]=="a7-reference"]
     control_rows=[x for x in fade_rows if x["playlist"]=="a7-reference-existing"]
+    distractor_rows=[x for x in fade_rows if x["playlist"]=="a7-reference-decoy"]
     false_values={"0","false","no"}; true_values={"1","true","yes"}
     fade_isolation={
         "target_regions":target_rows,
         "control_regions":control_rows,
+        "distractor_regions":distractor_rows,
         "target_fades_disabled":bool(target_rows) and all(str(x["fade_in_active"]).lower() in false_values and str(x["fade_out_active"]).lower() in false_values for x in target_rows),
         "control_fades_preserved":bool(control_rows) and all(str(x["fade_in_active"]).lower() in true_values and str(x["fade_out_active"]).lower() in true_values for x in control_rows),
+        "distractor_fades_preserved":bool(distractor_rows) and all(str(x["fade_in_active"]).lower() in true_values and str(x["fade_out_active"]).lower() in true_values for x in distractor_rows),
     }
-    fade_isolation["verified"]=bool(fade_isolation["target_fades_disabled"] and fade_isolation["control_fades_preserved"])
+    fade_isolation["verified"]=bool(fade_isolation["target_fades_disabled"] and fade_isolation["control_fades_preserved"] and fade_isolation["distractor_fades_preserved"])
     evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
     (evidence/"fade-isolation-postcondition.json").write_text(json.dumps(fade_isolation,indent=2,sort_keys=True))
     if not fade_isolation["verified"]:
@@ -671,13 +724,13 @@ end end
     (evidence/"editor-import-postcondition.json").write_text(json.dumps({"hot_tracks":observed,"cold_tracks":cold_tracks,"identity_runtime":identity_runtime,"fade_isolation":fade_isolation,"pcm":pcm},indent=2,sort_keys=True))
     if not pcm["verified"]:
         raise RuntimeError("EDITOR_IMPORT_PCM_POSTCONDITION_FAILED "+json.dumps(pcm,sort_keys=True))
-    for name,path,mime in (("reference.wav",reference,"audio/wav"),("control.wav",control,"audio/wav"),("master.wav",master,"audio/wav")):
+    for name,path,mime in (("reference.wav",reference,"audio/wav"),("control.wav",control,"audio/wav"),("distractor.wav",distractor,"audio/wav"),("master.wav",master,"audio/wav")):
         upload_artifact(job_id,name,path,token,mime)
     archive=work/"session.tar.gz"; archive_project(project,archive); upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
     return {"engine":"ardour-editor-action-import+cold-export","initialize":init,"hot_tracks":observed,"cold_tracks":cold_tracks,
             "fade_isolation":fade_isolation,"pcm":pcm,"export_rc":cp.returncode,
             "identity_selector":identity_runtime,
-            "artifacts":["reference.wav","control.wav","master.wav","session.tar.gz","identity-selector-runtime.json","fade-isolation-postcondition.json","editor-import-postcondition.json"],
+            "artifacts":["reference.wav","control.wav","distractor.wav","master.wav","session.tar.gz","identity-selector-runtime.json","fade-isolation-postcondition.json","editor-import-postcondition.json"],
             "log_tail":cp.stdout[-4000:]}
 
 def probe():
