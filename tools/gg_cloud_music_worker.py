@@ -427,7 +427,25 @@ function factory (params) return function ()
   Editor:do_import(files, Editing.ImportDistinctFiles, Editing.ImportAsTrack, ARDOUR.SrcQuality.SrcBest,
     ARDOUR.MidiTrackNameSource.SMFFileAndTrackName, ARDOUR.MidiTempoMapDisposition.SMFTempoIgnore,
     pos, ARDOUR.PluginInfo(), ARDOUR.Track(), false)
+  local disabled = 0
+  for route in Session:get_tracks():iter() do
+    if string.sub(route:name(), 1, 12) == "a7-reference" then
+      local track = route:to_track()
+      if not track:isnil() then
+        for region in track:playlist():region_list():iter() do
+          local audio = region:to_audioregion()
+          if not audio:isnil() then
+            audio:set_fade_in_active(false)
+            audio:set_fade_out_active(false)
+            disabled = disabled + 1
+          end
+        end
+      end
+    end
+  end
+  assert(disabled > 0, "A7 imported audio region not available for fade control")
   Session:save_state("")
+  print("A7_EDITOR_IMPORT_DISABLED_EDGE_FADES=" .. disabled)
   print("A7_EDITOR_IMPORT_ACTION=PASS")
 end end
 ''' % lua_path)
@@ -548,6 +566,8 @@ end end
     pcm["verified"]=bool(pcm["sample_count_equal"] and max_abs is not None and max_abs<=256)
     evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
     (evidence/"editor-import-postcondition.json").write_text(json.dumps({"hot_tracks":observed,"cold_tracks":cold_tracks,"pcm":pcm},indent=2,sort_keys=True))
+    if not pcm["verified"]:
+        raise RuntimeError("EDITOR_IMPORT_PCM_POSTCONDITION_FAILED "+json.dumps(pcm,sort_keys=True))
     for name,path,mime in (("reference.wav",reference,"audio/wav"),("master.wav",master,"audio/wav")):
         upload_artifact(job_id,name,path,token,mime)
     archive=work/"session.tar.gz"; archive_project(project,archive); upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
