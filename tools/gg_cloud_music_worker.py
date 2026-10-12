@@ -409,7 +409,7 @@ def editor_import_qualification(payload, job, job_id, token, work):
     project=work/"project"; project.mkdir()
     sf=restore_session(project,job,job_id,token,home); enable_mcp(sf); enable_osc(sf)
     reference=work/"a7-reference.wav"
-    control=work/"a7-control.wav"
+    control=work/"a7-reference-existing.wav"
     seconds=float(payload.get("seconds",2.0))
     if not 0.25 <= seconds <= 10.0: raise RuntimeError("seconds must be in [0.25, 10.0]")
     # Deliberately distinct channels make swaps, mono collapse, and routing loss observable.
@@ -423,6 +423,8 @@ def editor_import_qualification(payload, job, job_id, token, work):
     action=scripts/"a7_editor_import.lua"
     lua_path=str(reference).replace("\\","\\\\").replace('"','\\"')
     control_lua_path=str(control).replace("\\","\\\\").replace('"','\\"')
+    identity_marker=work/"identity-selector-runtime.txt"
+    identity_marker_lua_path=str(identity_marker).replace("\\","\\\\").replace('"','\\"')
     action.write_text('''ardour { ["type"] = "EditorAction", name = "Mixer Screenshot", author = "A7", license = "MIT", description = "A7 bounded Editor import qualification" }
 function factory (params) return function ()
   local pos = Temporal.timepos_t(0)
@@ -436,7 +438,7 @@ function factory (params) return function ()
     local count = 0
     local active = 0
     for route in Session:get_tracks():iter() do
-      if string.sub(route:name(), 1, 10) == "a7-control" then
+      if route:name() == "a7-reference-existing" then
         local track = route:to_track()
         if not track:isnil() then
           for region in track:playlist():region_list():iter() do
@@ -456,14 +458,28 @@ function factory (params) return function ()
   assert(control_count > 0 and control_active == control_count, "A7 control region baseline fades are not active")
   Session:save_state("")
 
+  local before = {}
+  local before_count = 0
+  for route in Session:get_tracks():iter() do
+    local id = route:to_stateful():id():to_s()
+    before[id] = true
+    before_count = before_count + 1
+  end
+
   local files = C.StringVector()
   files:push_back("%s")
   Editor:do_import(files, Editing.ImportDistinctFiles, Editing.ImportAsTrack, ARDOUR.SrcQuality.SrcBest,
     ARDOUR.MidiTrackNameSource.SMFFileAndTrackName, ARDOUR.MidiTempoMapDisposition.SMFTempoIgnore,
     pos, ARDOUR.PluginInfo(), ARDOUR.Track(), false)
+
   local disabled = 0
+  local new_routes = 0
+  local new_ids = {}
   for route in Session:get_tracks():iter() do
-    if string.sub(route:name(), 1, 12) == "a7-reference" then
+    local id = route:to_stateful():id():to_s()
+    if not before[id] then
+      new_routes = new_routes + 1
+      table.insert(new_ids, id)
       local track = route:to_track()
       if not track:isnil() then
         for region in track:playlist():region_list():iter() do
@@ -477,15 +493,26 @@ function factory (params) return function ()
       end
     end
   end
-  assert(disabled > 0, "A7 imported audio region not available for fade control")
+  assert(new_routes == 1, "A7 target import did not create exactly one new route")
+  assert(disabled > 0, "A7 newly imported audio region not available for fade control")
   local post_count, post_active = control_fades()
-  assert(post_count == control_count and post_active == post_count, "A7 target fade control changed the unrelated control region")
+  assert(post_count == control_count and post_active == post_count, "A7 identity-scoped fade control changed the adversarial control region")
+
+  local marker = assert(io.open("%s", "w"))
+  marker:write("before_routes=" .. before_count, string.char(10))
+  marker:write("new_routes=" .. new_routes, string.char(10))
+  marker:write("new_route_ids=" .. table.concat(new_ids, ","), string.char(10))
+  marker:write("target_regions_disabled=" .. disabled, string.char(10))
+  marker:write("control_regions_preserved=" .. post_active, string.char(10))
+  marker:close()
+
   Session:save_state("")
+  print("A7_EDITOR_IMPORT_IDENTITY_NEW_ROUTES=" .. new_routes)
   print("A7_EDITOR_IMPORT_CONTROL_REGIONS=" .. post_count)
   print("A7_EDITOR_IMPORT_DISABLED_EDGE_FADES=" .. disabled)
   print("A7_EDITOR_IMPORT_ACTION=PASS")
 end end
-''' % (control_lua_path,lua_path))
+''' % (control_lua_path,lua_path,identity_marker_lua_path))
     # Ardour hard-codes pre-seeding by the built-in name "Mixer Screenshot".
     # Replace that script only inside this disposable qualification container;
     # the serialized UIScripts state below proves exactly what was registered.
@@ -558,7 +585,7 @@ end end
             time.sleep(1)
             res=mcp_post({"jsonrpc":"2.0","id":400,"method":"tools/call","params":{"name":"tracks_list","arguments":{}}},10)
             observed=((res.get("result") or {}).get("structuredContent") or {}).get("tracks") or []
-            if any(str(t.get("name","")).startswith("a7-reference") for t in observed): break
+            if any(str(t.get("name",""))=="a7-reference" for t in observed) and any(str(t.get("name",""))=="a7-reference-existing" for t in observed): break
         else:
             try:
                 log.flush()
@@ -582,23 +609,35 @@ end end
     for wrapped in cold.get("responses",[]):
         if wrapped.get("name")=="tracks_list":
             cold_tracks=((wrapped.get("response",{}).get("result") or {}).get("structuredContent") or {}).get("tracks") or []
-    if not any(str(t.get("name","")).startswith("a7-reference") for t in cold_tracks):
+    if not any(str(t.get("name",""))=="a7-reference" for t in cold_tracks):
         raise RuntimeError("COLD_REOPEN_IMPORTED_TRACK_MISSING tracks="+json.dumps(cold_tracks,sort_keys=True))
-    if not any(str(t.get("name","")).startswith("a7-control") for t in cold_tracks):
+    if not any(str(t.get("name",""))=="a7-reference-existing" for t in cold_tracks):
         raise RuntimeError("COLD_REOPEN_CONTROL_TRACK_MISSING tracks="+json.dumps(cold_tracks,sort_keys=True))
+
+    if not identity_marker.exists():
+        raise RuntimeError("IDENTITY_SELECTOR_RUNTIME_EVIDENCE_MISSING")
+    identity_runtime={}
+    for line in identity_marker.read_text().splitlines():
+        if "=" in line:
+            key,value=line.split("=",1); identity_runtime[key]=value
+    identity_runtime["verified"]=bool(identity_runtime.get("new_routes")=="1" and identity_runtime.get("target_regions_disabled")=="1" and identity_runtime.get("control_regions_preserved")=="1" and identity_runtime.get("new_route_ids"))
+    evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
+    (evidence/"identity-selector-runtime.json").write_text(json.dumps(identity_runtime,indent=2,sort_keys=True))
+    if not identity_runtime["verified"]:
+        raise RuntimeError("IDENTITY_SELECTOR_RUNTIME_FAILED "+json.dumps(identity_runtime,sort_keys=True))
 
     session_root=ET.parse(sf).getroot()
     fade_rows=[]
     for playlist in session_root.iter("Playlist"):
         pname=str(playlist.get("name") or "")
-        if not (pname.startswith("a7-reference") or pname.startswith("a7-control")):
+        if pname not in {"a7-reference","a7-reference-existing"}:
             continue
         for region in playlist.findall("Region"):
             fade_rows.append({"playlist":pname,"region":region.get("name"),
                               "fade_in_active":region.get("fade-in-active"),
                               "fade_out_active":region.get("fade-out-active")})
-    target_rows=[x for x in fade_rows if x["playlist"].startswith("a7-reference")]
-    control_rows=[x for x in fade_rows if x["playlist"].startswith("a7-control")]
+    target_rows=[x for x in fade_rows if x["playlist"]=="a7-reference"]
+    control_rows=[x for x in fade_rows if x["playlist"]=="a7-reference-existing"]
     false_values={"0","false","no"}; true_values={"1","true","yes"}
     fade_isolation={
         "target_regions":target_rows,
@@ -629,7 +668,7 @@ end end
     # 24-bit values decoded to s32 are left-shifted by 8; one 24-bit LSB is 256.
     pcm["verified"]=bool(pcm["sample_count_equal"] and max_abs is not None and max_abs<=256)
     evidence=pathlib.Path(os.environ.get("GG_EVIDENCE_DIR") or work); evidence.mkdir(parents=True,exist_ok=True)
-    (evidence/"editor-import-postcondition.json").write_text(json.dumps({"hot_tracks":observed,"cold_tracks":cold_tracks,"fade_isolation":fade_isolation,"pcm":pcm},indent=2,sort_keys=True))
+    (evidence/"editor-import-postcondition.json").write_text(json.dumps({"hot_tracks":observed,"cold_tracks":cold_tracks,"identity_runtime":identity_runtime,"fade_isolation":fade_isolation,"pcm":pcm},indent=2,sort_keys=True))
     if not pcm["verified"]:
         raise RuntimeError("EDITOR_IMPORT_PCM_POSTCONDITION_FAILED "+json.dumps(pcm,sort_keys=True))
     for name,path,mime in (("reference.wav",reference,"audio/wav"),("control.wav",control,"audio/wav"),("master.wav",master,"audio/wav")):
@@ -637,7 +676,8 @@ end end
     archive=work/"session.tar.gz"; archive_project(project,archive); upload_artifact(job_id,"session.tar.gz",archive,token,"application/gzip")
     return {"engine":"ardour-editor-action-import+cold-export","initialize":init,"hot_tracks":observed,"cold_tracks":cold_tracks,
             "fade_isolation":fade_isolation,"pcm":pcm,"export_rc":cp.returncode,
-            "artifacts":["reference.wav","control.wav","master.wav","session.tar.gz","fade-isolation-postcondition.json","editor-import-postcondition.json"],
+            "identity_selector":identity_runtime,
+            "artifacts":["reference.wav","control.wav","master.wav","session.tar.gz","identity-selector-runtime.json","fade-isolation-postcondition.json","editor-import-postcondition.json"],
             "log_tail":cp.stdout[-4000:]}
 
 def probe():
