@@ -1,0 +1,52 @@
+name: Niti Godot Visual Study Smoke
+on:
+  push:
+    branches: [niti/godot-visual-study-20261014]
+    paths:
+      - 'niti-godot/**'
+      - '.github/workflows/niti-godot-visual-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  godot-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static contract
+        run: python niti-godot/tools/test_contract.py
+      - name: Install Godot and video tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb ffmpeg unzip libgl1 libx11-6 libxcursor1 libxinerama1 libxi6 libxrandr2
+          curl -L --fail --retry 3 -o /tmp/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip
+          unzip -q /tmp/godot.zip -d /tmp
+          chmod +x /tmp/Godot_v4.7.2-stable_linux.x86_64
+          /tmp/Godot_v4.7.2-stable_linux.x86_64 --version
+      - name: Import and validate Godot scene
+        run: |
+          GODOT=/tmp/Godot_v4.7.2-stable_linux.x86_64
+          "$GODOT" --headless --path niti-godot --editor --quit 2>&1 | tee /tmp/niti-import.log
+          if grep -E 'SCRIPT ERROR|Parse Error|ERROR:.*res://scripts/' /tmp/niti-import.log; then exit 1; fi
+          "$GODOT" --headless --path niti-godot --quit-after 24 2>&1 | tee /tmp/niti-run.log
+          if grep -E 'SCRIPT ERROR|Parse Error|ERROR:.*res://scripts/' /tmp/niti-run.log; then exit 1; fi
+      - name: Render fear and relief without song audio
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/niti-out
+          GODOT=/tmp/Godot_v4.7.2-stable_linux.x86_64
+          NITI_RENDER_PREVIEW=1 xvfb-run -a "$GODOT" --path niti-godot --rendering-method gl_compatibility --write-movie /tmp/niti-out/fear.avi --fixed-fps 24 --quit-after 72 2>&1 | tee /tmp/niti-fear.log
+          NITI_RENDER_PREVIEW=1 NITI_PREVIEW_RELIEF=1 xvfb-run -a "$GODOT" --path niti-godot --rendering-method gl_compatibility --write-movie /tmp/niti-out/relief.avi --fixed-fps 24 --quit-after 72 2>&1 | tee /tmp/niti-relief.log
+          if grep -E 'SCRIPT ERROR|Parse Error|ERROR:.*res://scripts/' /tmp/niti-fear.log /tmp/niti-relief.log; then exit 1; fi
+          ffmpeg -y -v error -i /tmp/niti-out/fear.avi -c:v libx264 -pix_fmt yuv420p /tmp/niti-out/fear.mp4
+          ffmpeg -y -v error -i /tmp/niti-out/relief.avi -c:v libx264 -pix_fmt yuv420p /tmp/niti-out/relief.mp4
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate -show_entries format=duration -of json /tmp/niti-out/fear.mp4 > /tmp/niti-out/fear.ffprobe.json
+          ffprobe -v error -show_entries stream=codec_name,width,height,avg_frame_rate -show_entries format=duration -of json /tmp/niti-out/relief.mp4 > /tmp/niti-out/relief.ffprobe.json
+          sha256sum /tmp/niti-out/*.mp4 > /tmp/niti-out/sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: niti-godot-visual-study
+          path: /tmp/niti-out/*
+          retention-days: 7
