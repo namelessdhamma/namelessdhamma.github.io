@@ -5,7 +5,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 // ND Music Studio: private Kaggle GPU bridge. Render holds no GPU, no job database,
 // no lyrics, and no persistent files. Kaggle's private kernels are the job ledger.
-const VERSION='0.1.2-durable-p0';
+const VERSION='0.1.3-admission-truth';
 const MAX_BODY=300_000;
 const TMO=22_000;
 const TOTAL_CONTROL_BUDGET=45_000;
@@ -109,7 +109,7 @@ export function createServer(config={}){
   try{
    deadlineScope.enterWith(Date.now()+TOTAL_CONTROL_BUDGET);
    const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);
-   if(url.pathname==='/health'&&req.method==='GET')return response(res,200,{ok:true,service:'nd-kaggle-music-bridge',version:VERSION,configured:!!(kaggleToken&&bridgeToken),free_only:true});
+   if(url.pathname==='/health'&&req.method==='GET')return response(res,200,{ok:true,service:'nd-kaggle-music-bridge',version:VERSION,configured:!!(kaggleToken&&bridgeToken&&(!ledgerRequired||ledgerUrl.startsWith('https://'))),durable_admission_required:ledgerRequired,durable_admission_endpoint_configured:!!(ledgerUrl&&ledgerUrl.startsWith('https://')),durable_admission_live_qualified:false,free_only:true});
    if(!bridgeToken||!safeEqual(req.headers.authorization||'',`Bearer ${bridgeToken}`))return response(res,401,{ok:false,error:'UNAUTHORIZED'});
    if(url.pathname==='/mcp'&&req.method==='POST'){
      const msg=await readBody(req);
@@ -134,13 +134,14 @@ export function createServer(config={}){
      return response(res,200,{jsonrpc:'2.0',id:msg.id??null,error:{code:-32601,message:'METHOD_NOT_FOUND'}});
    }
    if(url.pathname==='/v1/preflight'&&req.method==='GET'){
-    const usr=await identity(),q=await quota();return response(res,200,{ok:true,provider:'kaggle',username:usr,gpu:q,free_only:true,submit_ready:q.seconds_remaining>=1200});
+    const usr=await identity(),q=await quota(),quotaReady=q.seconds_remaining>=1200;return response(res,200,{ok:true,provider:'kaggle',username:usr,gpu:q,free_only:true,quota_ready:quotaReady,submit_ready:quotaReady&&(!ledgerRequired||ledgerUrl.startsWith('https://')),preflight_proves_live_admission:false,durable_admission_required:ledgerRequired,durable_admission_live_qualified:false});
    }
    if(url.pathname==='/v1/submit'&&req.method==='POST'){
     const b=await readBody(req),key=b.idempotency_key,script=b.python_source;
     if(typeof key!=='string'||!/^[a-zA-Z0-9_.:-]{3,90}$/.test(key))throw error('idempotency_key invalid');
     if(typeof script!=='string'||!script.trim()||Buffer.byteLength(script)>150000)throw error('python_source size invalid');
     if(b.confirm_private!==true)throw error('confirm_private=true required');
+    if(ledgerRequired&&!ledgerUrl.startsWith('https://'))return response(res,503,{ok:false,state:'LEDGER_UNAVAILABLE',safe_to_resubmit:false,nonblocking:true});
     const slug=slugFor(key,script);const usr=await identity();
     const prior=inFlight.get(slug);
     if(prior){const out=await prior;return response(res,out.code,{...out.body,reused_existing:out.body.ok?true:false,concurrent_replay:true});}
