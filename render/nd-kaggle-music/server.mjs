@@ -5,7 +5,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 // ND Music Studio: private Kaggle GPU bridge. Render holds no GPU, no job database,
 // no lyrics, and no persistent files. Kaggle's private kernels are the job ledger.
-const VERSION='0.1.3-admission-truth';
+const VERSION='0.1.4-video-readonly-admission';
 const MAX_BODY=300_000;
 const TMO=22_000;
 const TOTAL_CONTROL_BUDGET=45_000;
@@ -70,6 +70,31 @@ export function createServer(config={}){
  }
  async function identity(){const r=await rpc('security.OAuthService','IntrospectToken',{token:kaggleToken});if(!r.active||!r.username)throw error('KAGGLE_TOKEN_INACTIVE',503);if(username&&r.username!==username)throw error('KAGGLE_USERNAME_MISMATCH',503);return r.username;}
  async function quota(){const r=await rpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});const g=r.gpuQuota||r.gpu_quota||{};const total=secs(g.totalTimeAllowed??g.total_time_allowed),used=secs(g.timeUsed??g.time_used),reserved=secs(g.timeReserved??g.time_reserved);return {total_hours:+(total/3600).toFixed(2),remaining_hours:+(Math.max(0,total-used-reserved)/3600).toFixed(2),refresh_at:r.quotaRefreshTime||null,seconds_remaining:Math.max(0,total-used-reserved)};}
+ // Non-invasive one-sided admission: music must not consume shared Kaggle GPU while
+ // a known LTX video session is active or provider visibility is insufficient.
+ // This does NOT qualify bidirectional scheduling and MUST NOT edit closed video R01.
+ async function videoGpuAdmission(usr){
+   try{
+     const data=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:'nd-ltx2b',pageSize:50});
+     if(!Array.isArray(data.kernels))return {ok:false,reason:'VIDEO_LIST_UNVERIFIED'};
+     const kernels=data.kernels.filter(k=>{
+       const slug=String(k.slug||'').split('/').pop().toLowerCase();
+       return /^nd-ltx2b-(?:direct-)?[a-z0-9-]+$/.test(slug) &&
+         (!k.ref||String(k.ref).toLowerCase()===usr.toLowerCase()+'/'+slug);
+     });
+     // Exhaustiveness is not established if the response is full or control scan is too costly.
+     if(data.kernels.length>=50||kernels.length>12)return {ok:false,reason:'VIDEO_SCAN_INCOMPLETE'};
+     for(const k of kernels){
+       const slug=String(k.slug).split('/').pop();
+       const version=Number(k.currentVersionNumber||k.current_version_number||0);
+       if(!Number.isSafeInteger(version)||version<1)return {ok:false,reason:'VIDEO_VERSION_UNKNOWN'};
+       const status=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});
+       const state=stateOf(status.status);
+       if(!['COMPLETED','FAILED','CANCELLED'].includes(state))return {ok:false,reason:'VIDEO_GPU_ACTIVE_OR_UNKNOWN'};
+     }
+     return {ok:true,inspected:kernels.length};
+   }catch{return {ok:false,reason:'VIDEO_PROVIDER_UNAVAILABLE'};}
+ }
  async function find(usr,slug){const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,pageSize:50});const a=(q.kernels||[]).filter(k=>String(k.slug||'').split('/').pop().toLowerCase()===slug&&(!k.ref||String(k.ref).toLowerCase()===usr.toLowerCase()+'/'+slug));if(a.length>1)throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);if(!a.length)return null;return Number(a[0].currentVersionNumber||a[0].current_version_number||0)||null;}
  async function getStatus(usr,slug,version){
   try{const r=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});return {state:stateOf(r.status),provider_status:r.status??null,failure_message:r.failureMessage||null};}
@@ -85,6 +110,8 @@ export function createServer(config={}){
   if(outcomeUnknown.has(slug))return {code:409,body:{ok:false,state:'OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,nonblocking:true,error_code:'RECONCILE_REQUIRED'}};
   const q=await quota();
   if(q.seconds_remaining<1200)return {code:409,body:{ok:false,state:'CAPACITY_BLOCKED',free_only:true,gpu:q,nonblocking:true}};
+  const videoAdmission=await videoGpuAdmission(usr);
+  if(!videoAdmission.ok)return {code:409,body:{ok:false,state:'SHARED_GPU_ADMISSION_BLOCKED',reason:videoAdmission.reason,slug,free_only:true,safe_to_resubmit:false,nonblocking:true}};
   // Durable INSERT / unique effect claim must succeed BEFORE SaveKernel.
   // A prior reservation, even after Render restart, is never replay authority.
   let claimNonce=null;
