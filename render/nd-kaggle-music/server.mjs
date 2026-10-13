@@ -1,0 +1,98 @@
+import http from 'node:http';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+// ND Music Studio: private Kaggle GPU bridge. Render holds no GPU, no job database,
+// no lyrics, and no persistent files. Kaggle's private kernels are the job ledger.
+const VERSION='0.1.0';
+const MAX_BODY=300_000;
+const TMO=22_000;
+const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
+const slugFor=(key,script)=>'nd-ace15-'+sha(String(key)+'\n'+sha(script)).slice(0,22);
+const states={0:'QUEUED',1:'RUNNING',2:'COMPLETED',3:'FAILED',4:'CANCELLED',5:'CANCELLED'};
+const stateOf=x=>states[Number(x)]||String(x||'QUEUED').toUpperCase();
+const secs=v=>typeof v==='number'?v:typeof v==='string'?Number(v.replace(/s$/,''))||0:v&&typeof v==='object'?Number(v.seconds||0)+Number(v.nanos||0)/1e9:0;
+const isAsciiSlug=s=>typeof s==='string'&&/^[a-z0-9][a-z0-9-]{4,100}$/.test(s);
+function response(res,status,data){const b=JSON.stringify(data);res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','content-length':Buffer.byteLength(b),'x-content-type-options':'nosniff'});res.end(b);}
+function error(m,status=400){const e=new Error(m);e.status=status;return e;}
+function safeEqual(a,b){const x=Buffer.from(String(a)),y=Buffer.from(String(b));return x.length===y.length&&crypto.timingSafeEqual(x,y);}
+function readBody(req){return new Promise((resolve,reject)=>{const chunks=[];let size=0;req.on('data',x=>{size+=x.length;if(size>MAX_BODY){reject(error('body too large',413));req.destroy();return;}chunks.push(x);});req.on('end',()=>{try{resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}'));}catch{reject(error('invalid JSON'));}});req.on('error',reject);});}
+export function createServer(config={}){
+ const kaggleToken=String(config.kaggleToken??process.env.KAGGLE_API_TOKEN??'').trim();
+ const username=String(config.username??process.env.KAGGLE_USERNAME_SLUG??'').trim();
+ const bridgeToken=String(config.bridgeToken??process.env.ND_KAGGLE_BRIDGE_TOKEN??'').trim();
+ async function rpc(service,method,body={}){
+   if(!kaggleToken)throw error('KAGGLE_TOKEN_NOT_CONFIGURED',503);
+   const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),TMO);
+   try{
+    const res=await fetch(`https://api.kaggle.com/v1/${service}/${method}`,{method:'POST',headers:{authorization:`Bearer ${kaggleToken}`,accept:'application/json','content-type':'application/json','user-agent':'nd-ace15-render-music/0.1'},body:JSON.stringify(body),signal:ac.signal,redirect:'manual'});
+    const raw=(await res.text()).slice(0,1000000);let data={};try{data=raw?JSON.parse(raw):{}}catch{data={message:'provider returned non-JSON'}}
+    if(!res.ok)throw error('KAGGLE_HTTP_'+res.status+': '+String(data.message||data.error||'provider failure').slice(0,600),res.status===401||res.status===403?502:503);
+    return data;
+   }catch(e){if(e.name==='AbortError')throw error('KAGGLE_CONTROL_TIMEOUT_OUTCOME_UNKNOWN',504);throw e;}finally{clearTimeout(timer);}
+ }
+ async function signedOutput(usr,slug,version,file){
+  if(!kaggleToken)throw error('KAGGLE_TOKEN_NOT_CONFIGURED',503);
+  const ac=new AbortController(), timer=setTimeout(()=>ac.abort(),TMO);
+  try{
+   const res=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput',{
+     method:'POST',redirect:'manual',signal:ac.signal,
+     headers:{authorization:'Bearer '+kaggleToken,accept:'application/json','content-type':'application/json','user-agent':'nd-ace15-render-music/0.1'},
+     body:JSON.stringify({ownerSlug:usr,kernelSlug:slug,filePath:file,versionNumber:version})});
+   if(res.status>=300&&res.status<400){const loc=res.headers.get('location');if(loc?.startsWith('https://'))return loc;}
+   const txt=(await res.text()).slice(0,8000);let d={};try{d=JSON.parse(txt)}catch{}
+   if(!res.ok)throw error('KAGGLE_OUTPUT_HTTP_'+res.status,502);
+   const u=d.url||d.redirectUrl||d.redirect_url||d.downloadUrl||d.download_url;
+   if(typeof u!=='string'||!u.startsWith('https://'))throw error('PROVIDER_DOWNLOAD_URL_UNAVAILABLE',502);
+   return u;
+  }finally{clearTimeout(timer);}
+ }
+ async function identity(){const r=await rpc('security.OAuthService','IntrospectToken',{token:kaggleToken});if(!r.active||!r.username)throw error('KAGGLE_TOKEN_INACTIVE',503);if(username&&r.username!==username)throw error('KAGGLE_USERNAME_MISMATCH',503);return r.username;}
+ async function quota(){const r=await rpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});const g=r.gpuQuota||r.gpu_quota||{};const total=secs(g.totalTimeAllowed??g.total_time_allowed),used=secs(g.timeUsed??g.time_used),reserved=secs(g.timeReserved??g.time_reserved);return {total_hours:+(total/3600).toFixed(2),remaining_hours:+(Math.max(0,total-used-reserved)/3600).toFixed(2),refresh_at:r.quotaRefreshTime||null,seconds_remaining:Math.max(0,total-used-reserved)};}
+ async function find(usr,slug){const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,pageSize:50});const a=(q.kernels||[]).filter(k=>String(k.slug||'').split('/').pop().toLowerCase()===slug&&(!k.ref||String(k.ref).toLowerCase()===usr.toLowerCase()+'/'+slug));if(a.length>1)throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);if(!a.length)return null;return Number(a[0].currentVersionNumber||a[0].current_version_number||0)||null;}
+ async function getStatus(usr,slug,version){const r=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});return {state:stateOf(r.status),provider_status:r.status??null,failure_message:r.failureMessage||null};}
+ return http.createServer(async(req,res)=>{
+  try{
+   const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);
+   if(url.pathname==='/health'&&req.method==='GET')return response(res,200,{ok:true,service:'nd-kaggle-music-bridge',version:VERSION,configured:!!(kaggleToken&&bridgeToken),free_only:true});
+   if(!bridgeToken||!safeEqual(req.headers.authorization||'',`Bearer ${bridgeToken}`))return response(res,401,{ok:false,error:'UNAUTHORIZED'});
+   if(url.pathname==='/v1/preflight'&&req.method==='GET'){
+    const usr=await identity(),q=await quota();return response(res,200,{ok:true,provider:'kaggle',username:usr,gpu:q,free_only:true,submit_ready:q.seconds_remaining>=1200});
+   }
+   if(url.pathname==='/v1/submit'&&req.method==='POST'){
+    const b=await readBody(req),key=b.idempotency_key,script=b.python_source;
+    if(typeof key!=='string'||!/^[a-zA-Z0-9_.:-]{3,90}$/.test(key))throw error('idempotency_key invalid');
+    if(typeof script!=='string'||!script.trim()||Buffer.byteLength(script)>150000)throw error('python_source size invalid');
+    if(b.confirm_private!==true)throw error('confirm_private=true required');
+    const slug=slugFor(key,script);const usr=await identity();const version=await find(usr,slug);
+    if(version){const st=await getStatus(usr,slug,version);return response(res,200,{ok:true,reused_existing:true,job_id:slug+'-v'+version,slug,provider_ref:usr+'/'+slug+'/'+version,...st});}
+    const q=await quota();if(q.seconds_remaining<1200)return response(res,409,{ok:false,state:'CAPACITY_BLOCKED',free_only:true,gpu:q});
+    const body={slug:usr+'/'+slug,newTitle:'ND private ACE-Step music '+slug,text:script,language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,kernelExecutionType:'SaveAndRunAll',machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:3600};
+    try{
+     const saved=await rpc('kernels.KernelsApiService','SaveKernel',body);const v=Number(saved.versionNumber||saved.version_number||0);if(!v)throw error('KAGGLE_SUBMIT_UNVERIFIED_CHECK_SAME_SLUG',503);
+     return response(res,202,{ok:true,state:'SUBMITTED',reused_existing:false,job_id:slug+'-v'+v,slug,provider_ref:usr+'/'+slug+'/'+v,free_only:true,gpu:q});
+    }catch(e){return response(res,503,{ok:false,state:'SUBMIT_OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,error:String(e.message).slice(0,220)});}
+   }
+   if(url.pathname==='/v1/reconcile'&&req.method==='POST'){
+    const b=await readBody(req),key=b.idempotency_key,sourceHash=b.source_sha256;
+    if(typeof key!=='string'||!/^[a-zA-Z0-9_.:-]{3,90}$/.test(key)||typeof sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(sourceHash))throw error('invalid reconcile args');
+    const slug='nd-ace15-'+sha(key+'\n'+sourceHash).slice(0,22);const usr=await identity(),v=await find(usr,slug);
+    if(!v)return response(res,200,{ok:false,state:'OUTCOME_UNKNOWN',slug,safe_to_resubmit:false});
+    return response(res,200,{ok:true,job_id:slug+'-v'+v,slug,provider_ref:usr+'/'+slug+'/'+v,...await getStatus(usr,slug,v)});
+   }
+   if((url.pathname==='/v1/status'||url.pathname==='/v1/result')&&req.method==='POST'){
+    const b=await readBody(req),m=String(b.job_id||'').match(/^(nd-ace15-[a-f0-9]{22})-v(\d+)$/);if(!m)throw error('invalid job_id');
+    const [_,slug,version]=m,usr=await identity(),st=await getStatus(usr,slug,Number(version));
+    if(url.pathname==='/v1/status')return response(res,200,{ok:true,job_id:b.job_id,...st});
+    if(st.state!=='COMPLETED')return response(res,200,{ok:false,job_id:b.job,...st});
+    const file=String(b.file_name||'result.wav');if(!/^[A-Za-z0-9_.-]{1,90}$/.test(file)||file.includes('..'))throw error('invalid output filename');
+    const downloadUrl=await signedOutput(usr,slug,Number(version),file);
+    return response(res,200,{ok:true,job_id:b.job_id,file_name:file,url:downloadUrl,expires_with_provider:true});
+   }
+   return response(res,404,{ok:false,error:'NOT_FOUND'});
+  }catch(e){return response(res,e.status&&e.status>=400&&e.status<=599?e.status:500,{ok:false,error:String(e.message||e).slice(0,650)});}
+ });
+}
+if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
+}
