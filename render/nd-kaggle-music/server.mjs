@@ -5,7 +5,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 // ND Music Studio: private Kaggle GPU bridge. Render holds no GPU, no job database,
 // no lyrics, and no persistent files. Kaggle's private kernels are the job ledger.
-const VERSION='0.1.1-p0';
+const VERSION='0.1.2-durable-p0';
 const MAX_BODY=300_000;
 const TMO=22_000;
 const TOTAL_CONTROL_BUDGET=45_000;
@@ -25,6 +25,20 @@ export function createServer(config={}){
  const kaggleToken=String(config.kaggleToken??process.env.KAGGLE_API_TOKEN??'').trim();
  const username=String(config.username??process.env.KAGGLE_USERNAME_SLUG??'').trim();
  const bridgeToken=String(config.bridgeToken??process.env.ND_KAGGLE_BRIDGE_TOKEN??'').trim();
+ const ledgerUrl=String(config.ledgerUrl??(config.kaggleToken===undefined?process.env.ND_KAGGLE_LEDGER_URL:'')??'').trim();
+ const ledgerRequired=Boolean(config.ledgerRequired??(config.kaggleToken===undefined&&process.env.ND_KAGGLE_LEDGER_REQUIRED==='true'));
+ async function ledger(op,args){
+   if(!ledgerUrl){if(ledgerRequired)throw error('DURABLE_LEDGER_NOT_CONFIGURED',503);return null;}
+   if(!ledgerUrl.startsWith('https://'))throw error('DURABLE_LEDGER_URL_INVALID',503);
+   const ms=controlBudget();const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),Math.min(ms,8000));
+   try{
+     const response=await fetch(ledgerUrl,{method:'POST',redirect:'manual',signal:ac.signal,headers:{authorization:'Bearer '+bridgeToken,'content-type':'application/json'},body:JSON.stringify({op,...args})});
+     let data={};try{data=await response.json();}catch{}
+     if(!response.ok||data.ok!==true)throw error('DURABLE_LEDGER_NOT_READY',503);
+     return data;
+   }catch(e){throw error('DURABLE_LEDGER_UNAVAILABLE',503);}finally{clearTimeout(timer);}
+ }
+
  // Single-flight safety applies to this process only. Never claim cross-instance locking.
  const inFlight=new Map();
  const outcomeUnknown=new Set();
@@ -71,11 +85,24 @@ export function createServer(config={}){
   if(outcomeUnknown.has(slug))return {code:409,body:{ok:false,state:'OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,nonblocking:true,error_code:'RECONCILE_REQUIRED'}};
   const q=await quota();
   if(q.seconds_remaining<1200)return {code:409,body:{ok:false,state:'CAPACITY_BLOCKED',free_only:true,gpu:q,nonblocking:true}};
+  // Durable INSERT / unique effect claim must succeed BEFORE SaveKernel.
+  // A prior reservation, even after Render restart, is never replay authority.
+  let claimNonce=null;
+  if(ledgerRequired||ledgerUrl){
+    claimNonce=crypto.randomUUID();
+    let admitted;
+    try{admitted=await ledger('acquire',{effect_key:slug,source_sha256:sha(script),slug,claim_nonce:claimNonce});}
+    catch{return {code:503,body:{ok:false,state:'LEDGER_UNAVAILABLE',slug,safe_to_resubmit:false,nonblocking:true}};}
+    if(!admitted||!admitted.granted){
+      return {code:409,body:{ok:false,state:'OUTCOME_UNKNOWN',error_code:'DURABLE_EFFECT_ALREADY_CLAIMED',slug,safe_to_resubmit:false,nonblocking:true}};
+    }
+  }
   const body={slug:usr+'/'+slug,newTitle:'ND private ACE-Step music '+slug,text:script,language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,kernelExecutionType:'SaveAndRunAll',machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:3600};
   try{
    const saved=await rpc('kernels.KernelsApiService','SaveKernel',body);const v=Number(saved.versionNumber||saved.version_number||0);if(!v)throw error('KAGGLE_SUBMIT_UNVERIFIED_CHECK_SAME_SLUG',503);
+   if(claimNonce)try{await ledger('touch',{effect_key:slug,claim_nonce:claimNonce,status:'SUBMITTED',provider_ref:usr+'/'+slug+'/'+v});}catch{/* RESERVATION persists: no replay */}
    return {code:202,body:{ok:true,state:'SUBMITTED',reused_existing:false,job_id:slug+'-v'+v,slug,provider_ref:usr+'/'+slug+'/'+v,free_only:true,gpu:q,nonblocking:true}};
-  }catch(e){outcomeUnknown.add(slug);return {code:503,body:{ok:false,state:'SUBMIT_OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,nonblocking:true,error_code:'RECONCILE_REQUIRED'}};}
+  }catch(e){outcomeUnknown.add(slug);if(claimNonce)try{await ledger('touch',{effect_key:slug,claim_nonce:claimNonce,status:'SUBMIT_OUTCOME_UNKNOWN'});}catch{/* retain RESERVED */}return {code:503,body:{ok:false,state:'SUBMIT_OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,nonblocking:true,error_code:'RECONCILE_REQUIRED'}};}
  }
 
  return http.createServer(async(req,res)=>{
