@@ -18,6 +18,23 @@ try{
  j=await r.json();assert.equal(j.result.tools.length,5);
  console.log('BRIDGE_STATIC_HTTP_CONTRACT=PASS');
 }finally{await new Promise(resolve=>server.close(resolve));}
+// Isolated NO-GPU admission-truth gate: missing durable endpoint fails closed BEFORE any provider access.
+const guarded=createServer({kaggleToken:'mock-not-real',username:'user',bridgeToken:'local-only-test-token',ledgerRequired:true,ledgerUrl:''});
+await new Promise(resolve=>guarded.listen(0,'127.0.0.1',resolve));
+const guardedUrl=`http://127.0.0.1:${guarded.address().port}`;
+try{
+ let r=await fetch(guardedUrl+'/health');let j=await r.json();
+ assert.equal(j.configured,false);
+ assert.equal(j.durable_admission_required,true);
+ assert.equal(j.durable_admission_endpoint_configured,false);
+ assert.equal(j.durable_admission_live_qualified,false);
+ r=await fetch(guardedUrl+'/v1/submit',{method:'POST',
+  headers:{authorization:'Bearer local-only-test-token','content-type':'application/json'},
+  body:JSON.stringify({idempotency_key:'test-guarded-admission',python_source:'print(1)',confirm_private:true})});
+ j=await r.json();
+ assert.equal(r.status,503);assert.equal(j.state,'LEDGER_UNAVAILABLE');assert.equal(j.safe_to_resubmit,false);
+ console.log('DURABLE_ADMISSION_FAIL_CLOSED_NO_GPU=PASS');
+}finally{await new Promise(resolve=>guarded.close(resolve));}
 // Every Render build must enforce the music P0 regression and adversarial safety gates.
 await import('./qualification_regression.mjs');
 await import('./qualification_adversarial.mjs');
