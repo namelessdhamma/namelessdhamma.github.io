@@ -125,7 +125,7 @@ async function readBody(req){if(req.body!==undefined&&req.body!==null)return typ
 async function youtubeMcp(req,res){
   let msg;try{msg=JSON.parse(await readBody(req)||"{}");}catch{return j(res,400,{jsonrpc:"2.0",id:null,error:{code:-32700,message:"parse error"}});}
   const id=msg.id,method=String(msg.method||"");
-  if(method==="notifications/initialized"){res.writeHead(204);return res.end();}
+  if(method==="notifications/initialized"){res.writeHead(202,{"cache-control":"no-store"});return res.end();}
   if(method==="initialize")return j(res,200,{jsonrpc:"2.0",id,result:{protocolVersion:"2025-06-18",capabilities:{tools:{}},serverInfo:{name:"nd-youtube-full-mcp",version:"1.0.0"},instructions:"Nameless Dhamma YouTube MCP with full read/write access. Destructive deletes require explicit confirm=true."}});
   if(method==="ping")return j(res,200,{jsonrpc:"2.0",id,result:{}});
   if(method==="tools/list")return j(res,200,{jsonrpc:"2.0",id,result:{tools:YT_TOOLS}});
