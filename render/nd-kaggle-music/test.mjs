@@ -18,3 +18,6 @@ try{
  j=await r.json();assert.equal(j.result.tools.length,5);
  console.log('BRIDGE_STATIC_HTTP_CONTRACT=PASS');
 }finally{await new Promise(resolve=>server.close(resolve));}
+// Every Render build must enforce the music P0 regression and adversarial safety gates.
+await import('./qualification_regression.mjs');
+await import('./qualification_adversarial.mjs');
