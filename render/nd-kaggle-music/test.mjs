@@ -11,5 +11,10 @@ try{
  const sha=x=>crypto.createHash('sha256').update(x).digest('hex');const script='print(1)';const originalKey='niti-ace15-pilot-v3';
  const expected='nd-ace15-'+sha(originalKey+'\n'+sha(script)).slice(0,22);
  assert.match(expected,/^nd-ace15-[0-9a-f]{22}$/);
+ const mcpBase={jsonrpc:'2.0',id:7};
+ r=await fetch(base+'/mcp',{method:'POST',headers:{authorization:'Bearer secret-test-token','content-type':'application/json'},body:JSON.stringify({...mcpBase,method:'initialize',params:{}})});
+ assert.equal(r.status,200);j=await r.json();assert.equal(j.result.serverInfo.name,'nd-kaggle-music-bridge');
+ r=await fetch(base+'/mcp',{method:'POST',headers:{authorization:'Bearer secret-test-token','content-type':'application/json'},body:JSON.stringify({...mcpBase,method:'tools/list'})});
+ j=await r.json();assert.equal(j.result.tools.length,5);
  console.log('BRIDGE_STATIC_HTTP_CONTRACT=PASS');
 }finally{await new Promise(resolve=>server.close(resolve));}
