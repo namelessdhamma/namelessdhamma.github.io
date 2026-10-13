@@ -1,12 +1,16 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 // ND Music Studio: private Kaggle GPU bridge. Render holds no GPU, no job database,
 // no lyrics, and no persistent files. Kaggle's private kernels are the job ledger.
-const VERSION='0.1.0';
+const VERSION='0.1.1-p0';
 const MAX_BODY=300_000;
 const TMO=22_000;
+const TOTAL_CONTROL_BUDGET=45_000;
+const deadlineScope=new AsyncLocalStorage();
+function controlBudget(){const d=deadlineScope.getStore();const remain=d===undefined?TMO:d-Date.now();if(remain<=0)throw error('CONTROL_DEADLINE_OUTCOME_UNKNOWN',504);return Math.min(remain,TMO);}
 const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
 const slugFor=(key,script)=>'nd-ace15-'+sha(String(key)+'\n'+sha(script)).slice(0,22);
 const states={0:'QUEUED',1:'RUNNING',2:'COMPLETED',3:'FAILED',4:'CANCELLED',5:'CANCELLED'};
@@ -21,9 +25,12 @@ export function createServer(config={}){
  const kaggleToken=String(config.kaggleToken??process.env.KAGGLE_API_TOKEN??'').trim();
  const username=String(config.username??process.env.KAGGLE_USERNAME_SLUG??'').trim();
  const bridgeToken=String(config.bridgeToken??process.env.ND_KAGGLE_BRIDGE_TOKEN??'').trim();
+ // Single-flight safety applies to this process only. Never claim cross-instance locking.
+ const inFlight=new Map();
+ const outcomeUnknown=new Set();
  async function rpc(service,method,body={}){
    if(!kaggleToken)throw error('KAGGLE_TOKEN_NOT_CONFIGURED',503);
-   const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),TMO);
+   const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),controlBudget());
    try{
     const res=await fetch(`https://api.kaggle.com/v1/${service}/${method}`,{method:'POST',headers:{authorization:`Bearer ${kaggleToken}`,accept:'application/json','content-type':'application/json','user-agent':'nd-ace15-render-music/0.1'},body:JSON.stringify(body),signal:ac.signal,redirect:'manual'});
     const raw=(await res.text()).slice(0,1000000);let data={};try{data=raw?JSON.parse(raw):{}}catch{data={message:'provider returned non-JSON'}}
@@ -33,7 +40,7 @@ export function createServer(config={}){
  }
  async function signedOutput(usr,slug,version,file){
   if(!kaggleToken)throw error('KAGGLE_TOKEN_NOT_CONFIGURED',503);
-  const ac=new AbortController(), timer=setTimeout(()=>ac.abort(),TMO);
+  const ac=new AbortController(), timer=setTimeout(()=>ac.abort(),controlBudget());
   try{
    const res=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/DownloadKernelOutput',{
      method:'POST',redirect:'manual',signal:ac.signal,
@@ -50,9 +57,30 @@ export function createServer(config={}){
  async function identity(){const r=await rpc('security.OAuthService','IntrospectToken',{token:kaggleToken});if(!r.active||!r.username)throw error('KAGGLE_TOKEN_INACTIVE',503);if(username&&r.username!==username)throw error('KAGGLE_USERNAME_MISMATCH',503);return r.username;}
  async function quota(){const r=await rpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});const g=r.gpuQuota||r.gpu_quota||{};const total=secs(g.totalTimeAllowed??g.total_time_allowed),used=secs(g.timeUsed??g.time_used),reserved=secs(g.timeReserved??g.time_reserved);return {total_hours:+(total/3600).toFixed(2),remaining_hours:+(Math.max(0,total-used-reserved)/3600).toFixed(2),refresh_at:r.quotaRefreshTime||null,seconds_remaining:Math.max(0,total-used-reserved)};}
  async function find(usr,slug){const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,pageSize:50});const a=(q.kernels||[]).filter(k=>String(k.slug||'').split('/').pop().toLowerCase()===slug&&(!k.ref||String(k.ref).toLowerCase()===usr.toLowerCase()+'/'+slug));if(a.length>1)throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);if(!a.length)return null;return Number(a[0].currentVersionNumber||a[0].current_version_number||0)||null;}
- async function getStatus(usr,slug,version){const r=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});return {state:stateOf(r.status),provider_status:r.status??null,failure_message:r.failureMessage||null};}
+ async function getStatus(usr,slug,version){
+  try{const r=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});return {state:stateOf(r.status),provider_status:r.status??null,failure_message:r.failureMessage||null};}
+  catch(e){if(String(e.message||'').startsWith('KAGGLE_HTTP_403'))return {state:'PROVIDER_VISIBILITY_PENDING',provider_status:null,retry_after_seconds:60,nonblocking:true,safe_to_resubmit:false};throw e;}
+ }
+ // Only one SaveKernel can be in-flight per hash per Render process.
+ // Ambiguous outcomes are quarantined, not replayed; cross-instance persistence still required.
+ async function submitOnce(usr,slug,script){
+  let version;
+  try{version=await find(usr,slug);}
+  catch(e){return {code:503,body:{ok:false,state:'OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,nonblocking:true,error_code:'KAGGLE_LIST_UNAVAILABLE'}};}
+  if(version){outcomeUnknown.delete(slug);const st=await getStatus(usr,slug,version);return {code:200,body:{ok:true,reused_existing:true,job_id:slug+'-v'+version,slug,provider_ref:usr+'/'+slug+'/'+version,...st}};}
+  if(outcomeUnknown.has(slug))return {code:409,body:{ok:false,state:'OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,nonblocking:true,error_code:'RECONCILE_REQUIRED'}};
+  const q=await quota();
+  if(q.seconds_remaining<1200)return {code:409,body:{ok:false,state:'CAPACITY_BLOCKED',free_only:true,gpu:q,nonblocking:true}};
+  const body={slug:usr+'/'+slug,newTitle:'ND private ACE-Step music '+slug,text:script,language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,kernelExecutionType:'SaveAndRunAll',machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:3600};
+  try{
+   const saved=await rpc('kernels.KernelsApiService','SaveKernel',body);const v=Number(saved.versionNumber||saved.version_number||0);if(!v)throw error('KAGGLE_SUBMIT_UNVERIFIED_CHECK_SAME_SLUG',503);
+   return {code:202,body:{ok:true,state:'SUBMITTED',reused_existing:false,job_id:slug+'-v'+v,slug,provider_ref:usr+'/'+slug+'/'+v,free_only:true,gpu:q,nonblocking:true}};
+  }catch(e){outcomeUnknown.add(slug);return {code:503,body:{ok:false,state:'SUBMIT_OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,nonblocking:true,error_code:'RECONCILE_REQUIRED'}};}
+ }
+
  return http.createServer(async(req,res)=>{
   try{
+   deadlineScope.enterWith(Date.now()+TOTAL_CONTROL_BUDGET);
    const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);
    if(url.pathname==='/health'&&req.method==='GET')return response(res,200,{ok:true,service:'nd-kaggle-music-bridge',version:VERSION,configured:!!(kaggleToken&&bridgeToken),free_only:true});
    if(!bridgeToken||!safeEqual(req.headers.authorization||'',`Bearer ${bridgeToken}`))return response(res,401,{ok:false,error:'UNAUTHORIZED'});
@@ -86,21 +114,20 @@ export function createServer(config={}){
     if(typeof key!=='string'||!/^[a-zA-Z0-9_.:-]{3,90}$/.test(key))throw error('idempotency_key invalid');
     if(typeof script!=='string'||!script.trim()||Buffer.byteLength(script)>150000)throw error('python_source size invalid');
     if(b.confirm_private!==true)throw error('confirm_private=true required');
-    const slug=slugFor(key,script);const usr=await identity();const version=await find(usr,slug);
-    if(version){const st=await getStatus(usr,slug,version);return response(res,200,{ok:true,reused_existing:true,job_id:slug+'-v'+version,slug,provider_ref:usr+'/'+slug+'/'+version,...st});}
-    const q=await quota();if(q.seconds_remaining<1200)return response(res,409,{ok:false,state:'CAPACITY_BLOCKED',free_only:true,gpu:q});
-    const body={slug:usr+'/'+slug,newTitle:'ND private ACE-Step music '+slug,text:script,language:'python',kernelType:'script',datasetDataSources:[],kernelDataSources:[],competitionDataSources:[],categoryIds:[],modelDataSources:[],isPrivate:true,enableGpu:true,enableTpu:false,enableInternet:true,kernelExecutionType:'SaveAndRunAll',machineShape:'NvidiaTeslaT4',sessionTimeoutSeconds:3600};
-    try{
-     const saved=await rpc('kernels.KernelsApiService','SaveKernel',body);const v=Number(saved.versionNumber||saved.version_number||0);if(!v)throw error('KAGGLE_SUBMIT_UNVERIFIED_CHECK_SAME_SLUG',503);
-     return response(res,202,{ok:true,state:'SUBMITTED',reused_existing:false,job_id:slug+'-v'+v,slug,provider_ref:usr+'/'+slug+'/'+v,free_only:true,gpu:q});
-    }catch(e){return response(res,503,{ok:false,state:'SUBMIT_OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,error:String(e.message).slice(0,220)});}
+    const slug=slugFor(key,script);const usr=await identity();
+    const prior=inFlight.get(slug);
+    if(prior){const out=await prior;return response(res,out.code,{...out.body,reused_existing:out.body.ok?true:false,concurrent_replay:true});}
+    const work=submitOnce(usr,slug,script);
+    inFlight.set(slug,work);
+    try{const out=await work;return response(res,out.code,out.body);}finally{inFlight.delete(slug);}
    }
    if(url.pathname==='/v1/reconcile'&&req.method==='POST'){
     const b=await readBody(req),key=b.idempotency_key,sourceHash=b.source_sha256;
     if(typeof key!=='string'||!/^[a-zA-Z0-9_.:-]{3,90}$/.test(key)||typeof sourceHash!=='string'||!/^[a-f0-9]{64}$/.test(sourceHash))throw error('invalid reconcile args');
     const slug='nd-ace15-'+sha(key+'\n'+sourceHash).slice(0,22);const usr=await identity(),v=await find(usr,slug);
-    if(!v)return response(res,200,{ok:false,state:'OUTCOME_UNKNOWN',slug,safe_to_resubmit:false});
-    return response(res,200,{ok:true,job_id:slug+'-v'+v,slug,provider_ref:usr+'/'+slug+'/'+v,...await getStatus(usr,slug,v)});
+    if(!v)return response(res,200,{ok:false,state:'OUTCOME_UNKNOWN',slug,safe_to_resubmit:false,nonblocking:true});
+    const st=await getStatus(usr,slug,v);if(st.state!=='PROVIDER_VISIBILITY_PENDING')outcomeUnknown.delete(slug);
+    return response(res,200,{ok:true,job_id:slug+'-v'+v,slug,provider_ref:usr+'/'+slug+'/'+v,...st});
    }
    if((url.pathname==='/v1/status'||url.pathname==='/v1/result')&&req.method==='POST'){
     const b=await readBody(req),m=String(b.job_id||'').match(/^(nd-ace15-[a-f0-9]{22})-v(\d+)$/);if(!m)throw error('invalid job_id');
@@ -109,7 +136,7 @@ export function createServer(config={}){
     if(st.state!=='COMPLETED')return response(res,200,{ok:false,job_id:b.job,...st});
     const file=String(b.file_name||'result.wav');if(!/^[A-Za-z0-9_.-]{1,90}$/.test(file)||file.includes('..'))throw error('invalid output filename');
     const downloadUrl=await signedOutput(usr,slug,Number(version),file);
-    return response(res,200,{ok:true,job_id:b.job_id,file_name:file,url:downloadUrl,expires_with_provider:true});
+    return response(res,200,{ok:true,job_id:b.job_id,file_name:file,url:downloadUrl,expires_with_provider:true,persistence_state:'PROVIDER_REFERENCE_ONLY',artifact_ready:false,sonic_review:'UNKNOWN'});
    }
    return response(res,404,{ok:false,error:'NOT_FOUND'});
   }catch(e){return response(res,e.status&&e.status>=400&&e.status<=599?e.status:500,{ok:false,error:String(e.message||e).slice(0,650)});}
