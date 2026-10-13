@@ -190,7 +190,7 @@ function equal(a,b){const x=Buffer.from(String(a||''));const y=Buffer.from(Strin
 module.exports=async function youtubeVerceMcp(req,res){
  const key=String(req.query?.token || '');
  if(!equal(key,YT_PATH_TOKEN))return j(res,404,{error:'not_found'});
- if(req.method==='GET')return j(res,200,{ok:true,service:'nd-youtube-vercel-mcp',transport:'streamable-http',tools:YT_TOOLS.length,revision:'20261013-v1'});
- if(req.method!=='POST'){res.setHeader('Allow','GET, POST');return j(res,405,{error:'method_not_allowed'});}
+ if(req.method==='GET'){res.setHeader('Allow','POST');return j(res,405,{error:'method_not_allowed'});}
+ if(req.method!=='POST'){res.setHeader('Allow','POST');return j(res,405,{error:'method_not_allowed'});}
  try{return await youtubeMcp(req,res)}catch(e){return j(res,500,{error:'internal_failure'});}
 };
