@@ -95,3 +95,5 @@ jobs:
           retention-days: 7
 
 # Qwen3 NF4 same-effect observation after compatibility preflight.
+
+# Reconcile same Qwen3 effect after completed canonical and semantic recovery receipt.
