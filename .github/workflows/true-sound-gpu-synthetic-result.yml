@@ -93,3 +93,5 @@ jobs:
           path: gpu-result/
           if-no-files-found: error
           retention-days: 7
+
+# Same-effect reconciliation after durable V2 replay and model evidence checkpoint.
