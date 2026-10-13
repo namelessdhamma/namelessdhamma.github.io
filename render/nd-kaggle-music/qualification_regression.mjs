@@ -13,8 +13,10 @@ async function scenario(label, options, test){
   const b=JSON.parse(opt.body||'{}');
   if(u.includes('IntrospectToken')){calls.intro++;return ok({active:true,username:'testuser'});}
   if(u.includes('GetAcceleratorQuotaStatistics')){calls.quota++;return ok({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:options.quotaSeconds===undefined?'108000s':`${options.quotaSeconds}s`}});}
+  if(u.includes('ListKernels')&&b.search==='nd-ltx2b'){calls.list++;return ok({kernels:options.videoCases||[]});}
   if(u.includes('ListKernels')){calls.list++;if(options.noVisibility)return ok({kernels:[]}); if(options.slowList)await sleep(options.slowList);return ok({kernels:[...kernels.entries()].filter(([slug])=>slug.includes(b.search)).map(([slug,v])=>({slug,ref:'testuser/'+slug,currentVersionNumber:v}))});}
   if(u.includes('SaveKernel')){calls.save++;if(options.saveDelay)await sleep(options.saveDelay);if(options.saveStatus)return new Response('{}',{status:options.saveStatus,headers:{'content-type':'application/json'}});const slug=b.slug.split('/').pop();kernels.set(slug,1);return ok({versionNumber:1});}
+  if(u.includes('GetKernelSessionStatus')&&String(b.kernelSlug||'').startsWith('nd-ltx2b-')){calls.status++;if(options.videoVisibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:options.videoStatus===undefined?1:options.videoStatus});}
   if(u.includes('GetKernelSessionStatus')){calls.status++;if(options.visibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:1});}
   throw Error('Unexpected mocked provider API '+u);
  };
@@ -32,4 +34,27 @@ await scenario('parallel_duplicate_submit',{slowList:20,saveDelay:30},async({cal
 await scenario('quota_exhaustion',{quotaSeconds:600},async({call,calls,submitObj})=>{const a=await call('/v1/submit',submitObj);assert.equal(a.body.state,'CAPACITY_BLOCKED');assert.equal(calls.save,0);return {result:'PASS_FREE_ONLY_QUOTA_GUARD',status:a.status};});
 await scenario('save_unknown',{saveStatus:503,noVisibility:true},async({call,calls,submitObj})=>{const a=await call('/v1/submit',submitObj);return {result:a.body.state==='SUBMIT_OUTCOME_UNKNOWN'&&a.body.safe_to_resubmit===false?'PASS_AMBIGUOUS_REPORTED':'FAIL_UNSAFE_RESUBMIT',status:a.status,saveCalls:calls.save};});
 await scenario('provider_kernel_403_visibility',{visibility403:true},async({call,calls,submitObj})=>{const a=await call('/v1/submit',submitObj);const b=await call('/v1/status',{job_id:a.body.job_id});return {result:b.body.state==='PROVIDER_VISIBILITY_PENDING'?'PASS_VISIBILITY_GRACE':'FAIL_UNTYPED_403',status:b.status,error_code:String(b.body.error||'').slice(0,60)};});
+
+const video=[{slug:'nd-ltx2b-admission-fixture',ref:'testuser/nd-ltx2b-admission-fixture',currentVersionNumber:1}];
+await scenario('video_active_blocks_music',{videoCases:video,videoStatus:1},async({call,calls,submitObj})=>{
+ const r=await call('/v1/submit',submitObj);
+ assert.equal(r.status,409);assert.equal(r.body.state,'SHARED_GPU_ADMISSION_BLOCKED');assert.equal(r.body.safe_to_resubmit,false);assert.equal(calls.save,0);
+ return {result:'PASS_NO_MUSIC_WHILE_LTX_RUNNING'};
+});
+await scenario('video_completed_allows_music',{videoCases:video,videoStatus:2},async({call,calls,submitObj})=>{
+ const r=await call('/v1/submit',submitObj);
+ assert.equal(r.status,202);assert.equal(calls.save,1);
+ return {result:'PASS_READONLY_LTX_COMPLETED'};
+});
+await scenario('video_unknown_blocks_music',{videoCases:video,videoStatus:0},async({call,calls,submitObj})=>{
+ const r=await call('/v1/submit',submitObj);
+ assert.equal(r.status,409);assert.equal(r.body.state,'SHARED_GPU_ADMISSION_BLOCKED');assert.equal(calls.save,0);
+ return {result:'PASS_LTX_UNKNOWN_FAIL_CLOSED'};
+});
+await scenario('video_visibility_403_blocks_music',{videoCases:video,videoVisibility403:true},async({call,calls,submitObj})=>{
+ const r=await call('/v1/submit',submitObj);
+ assert.equal(r.status,409);assert.equal(r.body.state,'SHARED_GPU_ADMISSION_BLOCKED');assert.equal(calls.save,0);
+ return {result:'PASS_LTX_INVISIBLE_FAIL_CLOSED'};
+});
+
 process.stdout.write(JSON.stringify(harness,null,2)+'\n');
