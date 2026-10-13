@@ -1,0 +1,80 @@
+name: True Sound private GPU synthetic audio test
+on:
+  push:
+    branches: [true-sound/readonly-kaggle-quota-20261013]
+    paths: [.github/workflows/true-sound-gpu-synthetic-submit.yml]
+permissions:
+  contents: read
+jobs:
+  submit-one-private-effect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile exact effect and submit only if absent
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, urllib.request, urllib.error
+          from pathlib import Path
+          token = os.environ['KAGGLE_API_TOKEN']
+          expected = os.environ.get('KAGGLE_USERNAME_SLUG', '')
+          slug = 'nd-ts-qwen3b-full-synth-20261013-r1'
+          script = Path('qualification/qwen_gpu_synthetic.py').read_text()
+          report = {'effect_slug':slug,'policy':'FREE_ONLY','is_private_requested':True,
+                    'private_audio_uploaded':False,'worker_sha256':hashlib.sha256(script.encode()).hexdigest()}
+          def rpc(method, body, service='kernels.KernelsApiService'):
+              req = urllib.request.Request('https://api.kaggle.com/v1/'+service+'/'+method,
+                  json.dumps(body).encode(), {'Authorization':'Bearer '+token,
+                  'Content-Type':'application/json','User-Agent':'nd-true-sound-qualification/1.0'})
+              with urllib.request.urlopen(req, timeout=22) as r:
+                  return json.loads(r.read(2000000))
+          def sec(v):
+              if isinstance(v,dict): return float(v.get('seconds',0))+float(v.get('nanos',0))/1e9
+              return float(str(v or 0).removesuffix('s'))
+          try:
+              identity = rpc('IntrospectToken',{'token':token},'security.OAuthService')
+              owner = identity.get('username')
+              assert identity.get('active') and owner and (not expected or owner == expected), 'IDENTITY_NOT_VERIFIED'
+              listed = rpc('ListKernels',{'user':owner,'search':slug,'pageSize':50})
+              exact = [k for k in listed.get('kernels',[]) if k.get('slug','').split('/')[-1] == slug]
+              assert len(exact)<=1, 'IDEMPOTENCY_CONFLICT'
+              if exact:
+                  report.update(status='EXISTING_EFFECT_NO_RESUBMIT',provider_ref=owner+'/'+slug,
+                                version=exact[0].get('currentVersionNumber',exact[0].get('current_version_number')))
+              else:
+                  quota = rpc('GetAcceleratorQuotaStatistics',{})
+                  gpu = quota.get('gpuQuota',quota.get('gpu_quota',{}))
+                  remaining = sec(gpu.get('totalTimeAllowed',gpu.get('total_time_allowed')))-sec(gpu.get('timeUsed',gpu.get('time_used')))-sec(gpu.get('timeReserved',gpu.get('time_reserved')))
+                  report['free_gpu_hours_before']=remaining/3600
+                  assert remaining>=1800, 'FREE_ONLY_CAPACITY_BLOCKED'
+                  report['status']='SUBMIT_AMBIGUOUS_NO_REPLAY'
+                  Path('gpu-effect.json').write_text(json.dumps(report,indent=2))
+                  result = rpc('SaveKernel',{'slug':owner+'/'+slug,
+                      'newTitle':'True Sound full precision synthetic input R1','text':script,
+                      'language':'python','kernelType':'script','datasetDataSources':[],
+                      'kernelDataSources':[],'competitionDataSources':[],'modelDataSources':[],
+                      'categoryIds':[],'isPrivate':True,'enableGpu':True,'enableTpu':False,
+                      'enableInternet':True,'kernelExecutionType':'SaveAndRunAll',
+                      'machineShape':'NvidiaTeslaT4','sessionTimeoutSeconds':1800})
+                  assert not result.get('error') and not result.get('invalidKernelSources'), 'PROVIDER_REJECTED'
+                  version = result.get('versionNumber',result.get('version_number'))
+                  assert version, 'SUBMIT_ACK_WITHOUT_VERSION_NO_REPLAY'
+                  report.update(status='SUBMITTED',version=version,provider_ref=owner+'/'+slug+'/'+str(version))
+          except urllib.error.HTTPError as error:
+              report.update(http_status=error.code,error_type='HTTPError')
+              if report.get('status')!='SUBMIT_AMBIGUOUS_NO_REPLAY': report['status']='PREFLIGHT_BLOCKED'
+          except Exception as error:
+              report.update(error_type=type(error).__name__)
+              if report.get('status')!='SUBMIT_AMBIGUOUS_NO_REPLAY': report['status']='PREFLIGHT_BLOCKED'
+          Path('gpu-effect.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: true-sound-private-gpu-effect
+          path: gpu-effect.json
+          if-no-files-found: error
+          retention-days: 7
