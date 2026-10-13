@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import {createServer} from './server.mjs';
+const nativeFetch=globalThis.fetch;
+const harness=[];
+const sleep=(n)=>new Promise(r=>setTimeout(r,n));
+const ok=obj=>new Response(JSON.stringify(obj),{status:200,headers:{'content-type':'application/json'}});
+async function scenario(label, options, test){
+ const calls={save:0,list:0,intro:0,quota:0,status:0};
+ const kernels=new Map();
+ globalThis.fetch=async(url,opt={})=>{
+  let u=String(url);
+  if(!u.includes('api.kaggle.com'))return nativeFetch(url,opt);
+  const b=JSON.parse(opt.body||'{}');
+  if(u.includes('IntrospectToken')){calls.intro++;return ok({active:true,username:'testuser'});}
+  if(u.includes('GetAcceleratorQuotaStatistics')){calls.quota++;return ok({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:options.quotaSeconds===undefined?'108000s':`${options.quotaSeconds}s`}});}
+  if(u.includes('ListKernels')){calls.list++;if(options.noVisibility)return ok({kernels:[]}); if(options.slowList)await sleep(options.slowList);return ok({kernels:[...kernels.entries()].filter(([slug])=>slug.includes(b.search)).map(([slug,v])=>({slug,ref:'testuser/'+slug,currentVersionNumber:v}))});}
+  if(u.includes('SaveKernel')){calls.save++;if(options.saveDelay)await sleep(options.saveDelay);if(options.saveStatus)return new Response('{}',{status:options.saveStatus,headers:{'content-type':'application/json'}});const slug=b.slug.split('/').pop();kernels.set(slug,1);return ok({versionNumber:1});}
+  if(u.includes('GetKernelSessionStatus')){calls.status++;if(options.visibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:1});}
+  throw Error('Unexpected mocked provider API '+u);
+ };
+ const srv=createServer({kaggleToken:'FAKE_TEST_TOKEN',username:'testuser',bridgeToken:'FAKE_GATEWAY_KEY'});
+ await new Promise(resolve=>srv.listen(0,'127.0.0.1',resolve));
+ const base='http://127.0.0.1:'+srv.address().port;
+ const call=async(path,obj)=>{const res=await nativeFetch(base+path,{method:'POST',headers:{authorization:'Bearer FAKE_GATEWAY_KEY','content-type':'application/json'},body:JSON.stringify(obj)});return {status:res.status,body:await res.json()};};
+ const submitObj={idempotency_key:'qa-'+label,python_source:'print("not a real song")',confirm_private:true};
+ try {const result=await test({call,calls,submitObj,options});harness.push({scenario:label,...result,calls});}
+ finally{await new Promise(resolve=>srv.close(resolve)); globalThis.fetch=nativeFetch;}
+}
+await scenario('auth_and_no_gpu_action',{},async({call,calls,submitObj})=>{const r=await call('/v1/submit',{...submitObj,confirm_private:false});assert.equal(r.status,400);assert.equal(calls.save,0);return {result:'PASS_REJECTION',response:r.body.error};});
+await scenario('first_submit_and_reuse',{},async({call,calls,submitObj})=>{const a=await call('/v1/submit',submitObj);const b=await call('/v1/submit',submitObj);assert.equal(a.status,202);assert.equal(b.status,200);assert.equal(calls.save,1);assert.equal(a.body.job_id,b.body.job_id);return {result:'PASS_DEDUP_SEQUENTIAL',jobRef:'redacted'};});
+await scenario('parallel_duplicate_submit',{slowList:20,saveDelay:30},async({call,calls,submitObj})=>{const [a,b]=await Promise.all([call('/v1/submit',submitObj),call('/v1/submit',submitObj)]);return {result:calls.save===1?'PASS_ATOMIC_SINGLE_FLIGHT':'FAIL_DOUBLE_PROVIDER_SUBMIT',saveCalls:calls.save,statuses:[a.status,b.status]};});
+await scenario('quota_exhaustion',{quotaSeconds:600},async({call,calls,submitObj})=>{const a=await call('/v1/submit',submitObj);assert.equal(a.body.state,'CAPACITY_BLOCKED');assert.equal(calls.save,0);return {result:'PASS_FREE_ONLY_QUOTA_GUARD',status:a.status};});
+await scenario('save_unknown',{saveStatus:503,noVisibility:true},async({call,calls,submitObj})=>{const a=await call('/v1/submit',submitObj);return {result:a.body.state==='SUBMIT_OUTCOME_UNKNOWN'&&a.body.safe_to_resubmit===false?'PASS_AMBIGUOUS_REPORTED':'FAIL_UNSAFE_RESUBMIT',status:a.status,saveCalls:calls.save};});
+await scenario('provider_kernel_403_visibility',{visibility403:true},async({call,calls,submitObj})=>{const a=await call('/v1/submit',submitObj);const b=await call('/v1/status',{job_id:a.body.job_id});return {result:b.body.state==='PROVIDER_VISIBILITY_PENDING'?'PASS_VISIBILITY_GRACE':'FAIL_UNTYPED_403',status:b.status,error_code:String(b.body.error||'').slice(0,60)};});
+process.stdout.write(JSON.stringify(harness,null,2)+'\n');
