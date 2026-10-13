@@ -1,4 +1,4 @@
-name: True Sound native AFNext private GPU synthetic audio test
+name: True Sound Qwen3 30B NF4 private GPU synthetic audio test
 on:
   push:
     branches: [true-sound/readonly-kaggle-quota-20261013]
@@ -21,8 +21,8 @@ jobs:
           from pathlib import Path
           token = os.environ['KAGGLE_API_TOKEN']
           expected = os.environ.get('KAGGLE_USERNAME_SLUG', '')
-          slug = 'true-sound-afnext-full-precision-synthetic-r1'
-          script = Path('qualification/afnext_gpu_synthetic.py').read_text()
+          slug = 'true-sound-qwen3-30b-nf4-synthetic-r1'
+          script = Path('qualification/qwen3_gpu_synthetic.py').read_text()
           report = {'effect_slug':slug,'policy':'FREE_ONLY','is_private_requested':True,
                     'private_audio_uploaded':False,'worker_sha256':hashlib.sha256(script.encode()).hexdigest()}
           def rpc(method, body, service='kernels.KernelsApiService'):
@@ -53,7 +53,7 @@ jobs:
                   report['status']='SUBMIT_AMBIGUOUS_NO_REPLAY'
                   Path('gpu-effect.json').write_text(json.dumps(report,indent=2))
                   result = rpc('SaveKernel',{'slug':owner+'/'+slug,
-                      'newTitle':'True Sound AFNext full precision synthetic R1','text':script,
+                      'newTitle':'True Sound Qwen3 30B NF4 synthetic R1','text':script,
                       'language':'python','kernelType':'script','datasetDataSources':[],
                       'kernelDataSources':[],'competitionDataSources':[],'modelDataSources':[],
                       'categoryIds':[],'isPrivate':True,'enableGpu':True,'enableTpu':False,
