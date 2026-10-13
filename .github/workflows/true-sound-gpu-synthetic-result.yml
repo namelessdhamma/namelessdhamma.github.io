@@ -1,4 +1,4 @@
-name: True Sound reconcile private GPU synthetic result
+name: True Sound reconcile native AFNext private GPU synthetic result
 on:
   push:
     branches: [true-sound/readonly-kaggle-quota-20261013]
@@ -20,7 +20,7 @@ jobs:
           from pathlib import Path
           token = os.environ['KAGGLE_API_TOKEN']
           expected_owner = os.environ['KAGGLE_USERNAME_SLUG']
-          slug = 'nd-ts-qwen3b-full-synth-20261013-r1'
+          slug = 'true-sound-afnext-full-precision-synthetic-r1'
           output = Path('gpu-result'); output.mkdir()
           class NoRedirect(urllib.request.HTTPRedirectHandler):
               def redirect_request(self, req, fp, code, msg, headers, newurl): return None
@@ -42,8 +42,8 @@ jobs:
               identity = rpc('IntrospectToken',{'token':token},'security.OAuthService')
               owner = identity.get('username')
               assert identity.get('active') and owner and (not expected_owner or owner==expected_owner), 'IDENTITY_NOT_VERIFIED'
-              listing = rpc('ListKernels',{'user':owner,'search':'True Sound full precision synthetic input R1','pageSize':50})
-              candidates = [k for k in listing.get('kernels',[]) if k.get('title')=='True Sound full precision synthetic input R1' or k.get('slug','').rsplit('/',1)[-1]==slug]
+              listing = rpc('ListKernels',{'user':owner,'search':'True Sound AFNext full precision synthetic R1','pageSize':50})
+              candidates = [k for k in listing.get('kernels',[]) if k.get('title')=='True Sound AFNext full precision synthetic R1' or k.get('slug','').rsplit('/',1)[-1]==slug]
               report['matching_kernels'] = [{'slug':k.get('slug'),'title':k.get('title'),
                   'version':k.get('currentVersionNumber',k.get('current_version_number')),
                   'is_private':k.get('isPrivate',k.get('is_private')),
