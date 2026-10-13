@@ -56,6 +56,28 @@ export function createServer(config={}){
    const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);
    if(url.pathname==='/health'&&req.method==='GET')return response(res,200,{ok:true,service:'nd-kaggle-music-bridge',version:VERSION,configured:!!(kaggleToken&&bridgeToken),free_only:true});
    if(!bridgeToken||!safeEqual(req.headers.authorization||'',`Bearer ${bridgeToken}`))return response(res,401,{ok:false,error:'UNAUTHORIZED'});
+   if(url.pathname==='/mcp'&&req.method==='POST'){
+     const msg=await readBody(req);
+     const reply=result=>response(res,200,{jsonrpc:'2.0',id:msg.id??null,result});
+     if(msg.method==='initialize')return reply({protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'nd-kaggle-music-bridge',version:VERSION}});
+     if(msg.method==='notifications/initialized')return response(res,202,{});
+     if(msg.method==='tools/list')return reply({tools:[
+       {name:'kaggle_music_preflight',description:'Validate existing Kaggle token and free private GPU quota without running inference.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
+       {name:'kaggle_music_submit',description:'Submit exactly one private free-only Kaggle T4 Python music generation script, idempotently. Provide entire PRIVATE python_source directly to the protected service; never put lyrics/source in GitHub. Never retry blindly if outcome unknown.',inputSchema:{type:'object',properties:{idempotency_key:{type:'string'},python_source:{type:'string'},confirm_private:{type:'boolean'}},required:['idempotency_key','python_source','confirm_private'],additionalProperties:false}},
+       {name:'kaggle_music_reconcile',description:'Reconcile a potentially ambiguous prior submit by the SAME idempotency key and sha256 of the unchanged Python source. Does not create a new job.',inputSchema:{type:'object',properties:{idempotency_key:{type:'string'},source_sha256:{type:'string'}},required:['idempotency_key','source_sha256'],additionalProperties:false}},
+       {name:'kaggle_music_status',description:'Check a submitted Kaggle music job by exact job_id; no new generation.',inputSchema:{type:'object',properties:{job_id:{type:'string'}},required:['job_id'],additionalProperties:false}},
+       {name:'kaggle_music_result',description:'Get time-limited download URL of a completed PRIVATE Kaggle result by job_id and output file name.',inputSchema:{type:'object',properties:{job_id:{type:'string'},file_name:{type:'string'}},required:['job_id'],additionalProperties:false}}
+     ]});
+     if(msg.method==='tools/call'){
+       const name=String(msg.params?.name||''),args=msg.params?.arguments||{};
+       const route={kaggle_music_preflight:['GET','/v1/preflight'],kaggle_music_submit:['POST','/v1/submit'],kaggle_music_reconcile:['POST','/v1/reconcile'],kaggle_music_status:['POST','/v1/status'],kaggle_music_result:['POST','/v1/result']}[name];
+       if(!route)return reply({content:[{type:'text',text:JSON.stringify({error:'UNKNOWN_TOOL'})}],isError:true});
+       const upstream=await fetch(`http://127.0.0.1:${req.socket.localPort}${route[1]}`,{method:route[0],headers:{authorization:`Bearer ${bridgeToken}`,'content-type':'application/json'},body:route[0]==='POST'?JSON.stringify(args):undefined,signal:AbortSignal.timeout(60000)});
+       const parsed=await upstream.json();
+       return reply({content:[{type:'text',text:JSON.stringify(parsed)}],isError:!upstream.ok});
+     }
+     return response(res,200,{jsonrpc:'2.0',id:msg.id??null,error:{code:-32601,message:'METHOD_NOT_FOUND'}});
+   }
    if(url.pathname==='/v1/preflight'&&req.method==='GET'){
     const usr=await identity(),q=await quota();return response(res,200,{ok:true,provider:'kaggle',username:usr,gpu:q,free_only:true,submit_ready:q.seconds_remaining>=1200});
    }
