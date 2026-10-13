@@ -1,0 +1,74 @@
+name: True Sound read-only free GPU preflight
+
+on:
+  push:
+    branches: [true-sound/readonly-kaggle-quota-20261013]
+    paths: [.github/workflows/true-sound-free-gpu-readonly.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  quota-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read existing Kaggle identity and accelerator quota
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          from pathlib import Path
+          token = os.environ.get('KAGGLE_API_TOKEN', '')
+          expected = os.environ.get('KAGGLE_USERNAME_SLUG', '')
+          report = {'scope': 'READ_ONLY_QUOTA_NO_KERNEL_NO_AUDIO',
+                    'policy': 'FREE_ONLY', 'credential_configured': bool(token),
+                    'kernel_submission_performed': False, 'audio_uploaded': False}
+          def rpc(service, method, body):
+              request = urllib.request.Request(
+                  'https://api.kaggle.com/v1/' + service + '/' + method,
+                  json.dumps(body).encode(),
+                  {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
+                   'User-Agent': 'nd-true-sound-readonly-quota/1.0'})
+              with urllib.request.urlopen(request, timeout=18) as response:
+                  return json.loads(response.read(1000000))
+          def seconds(value):
+              if isinstance(value, dict):
+                  return float(value.get('seconds', 0)) + float(value.get('nanos', 0))/1e9
+              if value is None: return 0.0
+              return float(str(value).removesuffix('s'))
+          try:
+              if not token: raise RuntimeError('CREDENTIAL_NOT_CONFIGURED')
+              identity = rpc('security.OAuthService', 'IntrospectToken', {'token': token})
+              matches = bool(identity.get('active') and identity.get('username'))
+              matches = matches and (not expected or identity['username'] == expected)
+              report['identity_verified'] = matches
+              if not matches: raise RuntimeError('IDENTITY_NOT_VERIFIED')
+              quota = rpc('kernels.KernelsApiService', 'GetAcceleratorQuotaStatistics', {})
+              gpu = quota.get('gpuQuota', quota.get('gpu_quota', {}))
+              used = seconds(gpu.get('timeUsed', gpu.get('time_used')))
+              total = seconds(gpu.get('totalTimeAllowed', gpu.get('total_time_allowed')))
+              reserved = seconds(gpu.get('timeReserved', gpu.get('time_reserved')))
+              remaining = max(0, total - used - reserved)
+              report['gpu_hours'] = {'used': used/3600, 'reserved': reserved/3600,
+                                     'total': total/3600, 'remaining_unreserved': remaining/3600}
+              report['refresh_at'] = quota.get('quotaRefreshTime', quota.get('quota_refresh_time'))
+              report['status'] = 'FREE_CAPACITY_VISIBLE' if total > 0 and remaining >= 900 else 'CAPACITY_BLOCKED'
+          except urllib.error.HTTPError as error:
+              report.update(status='PROVIDER_READ_FAILED', http_status=error.code)
+          except RuntimeError as error:
+              report.update(status='CAPABILITY_UNAVAILABLE', reason=str(error))
+          except Exception as error:
+              report.update(status='PROVIDER_READ_FAILED', error_type=type(error).__name__)
+          Path('free-gpu-quota.json').write_text(json.dumps(report, indent=2))
+          print(json.dumps(report))
+          PY
+      - name: Preserve sanitized read-only result
+        uses: actions/upload-artifact@v4
+        with:
+          name: true-sound-readonly-free-gpu-quota
+          path: free-gpu-quota.json
+          if-no-files-found: error
+          retention-days: 7
