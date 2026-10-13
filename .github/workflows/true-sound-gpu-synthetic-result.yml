@@ -19,14 +19,15 @@ jobs:
           import json, os, urllib.request, urllib.error
           from pathlib import Path
           token = os.environ['KAGGLE_API_TOKEN']
-          owner = os.environ['KAGGLE_USERNAME_SLUG']
+          expected_owner = os.environ['KAGGLE_USERNAME_SLUG']
           slug = 'nd-ts-qwen3b-full-synth-20261013-r1'
           output = Path('gpu-result'); output.mkdir()
           class NoRedirect(urllib.request.HTTPRedirectHandler):
               def redirect_request(self, req, fp, code, msg, headers, newurl): return None
           opener = urllib.request.build_opener(NoRedirect)
-          def rpc(method, body):
-              req = urllib.request.Request('https://api.kaggle.com/v1/kernels.KernelsApiService/'+method,
+          def rpc(method, body, service='kernels.KernelsApiService'):
+              report['read_phase'] = method
+              req = urllib.request.Request('https://api.kaggle.com/v1/'+service+'/'+method,
                   json.dumps(body).encode(), {'Authorization':'Bearer '+token,
                   'Content-Type':'application/json','User-Agent':'nd-true-sound-result/1.0'})
               try:
@@ -38,6 +39,17 @@ jobs:
           report = {'effect_slug':slug,'version':1,'kernel_submission_performed':False,
                     'scope':'READ_SAME_SYNTHETIC_EFFECT_ONLY'}
           try:
+              identity = rpc('IntrospectToken',{'token':token},'security.OAuthService')
+              owner = identity.get('username')
+              assert identity.get('active') and owner and (not expected_owner or owner==expected_owner), 'IDENTITY_NOT_VERIFIED'
+              listing = rpc('ListKernels',{'user':owner,'search':'True Sound full precision synthetic input R1','pageSize':50})
+              candidates = [k for k in listing.get('kernels',[]) if k.get('title')=='True Sound full precision synthetic input R1' or k.get('slug','').rsplit('/',1)[-1]==slug]
+              report['matching_kernels'] = [{'slug':k.get('slug'),'title':k.get('title'),
+                  'version':k.get('currentVersionNumber',k.get('current_version_number')),
+                  'is_private':k.get('isPrivate',k.get('is_private'))} for k in candidates]
+              assert len(candidates)==1, 'EXACT_EFFECT_IDENTITY_NOT_UNIQUE_NO_RESUBMIT'
+              slug = candidates[0]['slug'].rsplit('/',1)[-1]
+              report['resolved_slug'] = slug
               state = rpc('GetKernelSessionStatus',{'userName':owner,'kernelSlug':slug,'versionLabel':'v1'})
               report['provider_status'] = state.get('status')
               report['failure_message'] = state.get('failureMessage',state.get('failure_message'))
