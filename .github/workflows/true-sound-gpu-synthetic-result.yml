@@ -1,0 +1,79 @@
+name: True Sound reconcile private GPU synthetic result
+on:
+  push:
+    branches: [true-sound/readonly-kaggle-quota-20261013]
+    paths: [.github/workflows/true-sound-gpu-synthetic-result.yml]
+permissions:
+  contents: read
+jobs:
+  observe-same-effect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Observe exact kernel and retrieve bounded result
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+          KAGGLE_USERNAME_SLUG: ${{ secrets.KAGGLE_USERNAME_SLUG }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request, urllib.error
+          from pathlib import Path
+          token = os.environ['KAGGLE_API_TOKEN']
+          owner = os.environ['KAGGLE_USERNAME_SLUG']
+          slug = 'nd-ts-qwen3b-full-synth-20261013-r1'
+          output = Path('gpu-result'); output.mkdir()
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+          opener = urllib.request.build_opener(NoRedirect)
+          def rpc(method, body):
+              req = urllib.request.Request('https://api.kaggle.com/v1/kernels.KernelsApiService/'+method,
+                  json.dumps(body).encode(), {'Authorization':'Bearer '+token,
+                  'Content-Type':'application/json','User-Agent':'nd-true-sound-result/1.0'})
+              try:
+                  with opener.open(req, timeout=22) as r: return json.loads(r.read(2000000))
+              except urllib.error.HTTPError as error:
+                  if method=='DownloadKernelOutput' and error.code in [301,302,303,307,308]:
+                      return {'url':error.headers.get('Location')}
+                  raise
+          report = {'effect_slug':slug,'version':1,'kernel_submission_performed':False,
+                    'scope':'READ_SAME_SYNTHETIC_EFFECT_ONLY'}
+          try:
+              state = rpc('GetKernelSessionStatus',{'userName':owner,'kernelSlug':slug,'versionLabel':'v1'})
+              report['provider_status'] = state.get('status')
+              report['failure_message'] = state.get('failureMessage',state.get('failure_message'))
+              listing = rpc('ListKernelSessionOutput',{'userName':owner,'kernelSlug':slug,
+                                                      'versionLabel':'v1','pageSize':100})
+              report['files'] = [{'name':x.get('fileName',x.get('name',x.get('path'))),
+                                 'size':x.get('fileSize',x.get('size'))} for x in listing.get('files',[])]
+              log = str(listing.get('log',''))
+              (output/'kernel-log.txt').write_text(log[-18000:])
+              allowed = {'model-ready.json','a-receipt.json','b-receipt.json',
+                         'failure.json','frozen-results.json'}
+              report['retrieved'] = []
+              for file in report['files']:
+                  name = str(file['name'] or '')
+                  leaf = name.rsplit('/',1)[-1]
+                  if leaf not in allowed: continue
+                  download = rpc('DownloadKernelOutput',{'ownerSlug':owner,'kernelSlug':slug,
+                                                        'filePath':name,'versionNumber':1})
+                  url = next((download.get(k) for k in ['url','redirectUrl','redirect_url','downloadUrl','download_url'] if download.get(k)),None)
+                  if not url: continue
+                  assert str(url).startswith('https://'), 'UNEXPECTED_OUTPUT_SCHEME'
+                  with urllib.request.urlopen(url, timeout=22) as r: data = r.read(200000)
+                  (output/leaf).write_bytes(data)
+                  report['retrieved'].append(leaf)
+                  print('ACTUAL_PRIVATE_GPU_JSON',leaf,data.decode())
+          except urllib.error.HTTPError as error:
+              report.update(read_error='HTTPError',http_status=error.code)
+          except Exception as error:
+              report.update(read_error=type(error).__name__)
+          (output/'provider-result.json').write_text(json.dumps(report,indent=2))
+          print('GPU_SAME_EFFECT_OBSERVATION',json.dumps(report))
+          print('KERNEL_LOG_TAIL', (output/'kernel-log.txt').read_text()[-6000:] if (output/'kernel-log.txt').exists() else '')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: true-sound-private-gpu-synthetic-result
+          path: gpu-result/
+          if-no-files-found: error
+          retention-days: 7
