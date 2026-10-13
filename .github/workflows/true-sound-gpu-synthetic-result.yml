@@ -1,4 +1,4 @@
-name: True Sound reconcile native AFNext private GPU synthetic result
+name: True Sound reconcile Qwen3 30B NF4 private GPU synthetic result
 on:
   push:
     branches: [true-sound/readonly-kaggle-quota-20261013]
@@ -20,7 +20,7 @@ jobs:
           from pathlib import Path
           token = os.environ['KAGGLE_API_TOKEN']
           expected_owner = os.environ['KAGGLE_USERNAME_SLUG']
-          slug = 'true-sound-afnext-full-precision-synthetic-r1'
+          slug = 'true-sound-qwen3-30b-nf4-synthetic-r1'
           output = Path('gpu-result'); output.mkdir()
           class NoRedirect(urllib.request.HTTPRedirectHandler):
               def redirect_request(self, req, fp, code, msg, headers, newurl): return None
@@ -42,8 +42,8 @@ jobs:
               identity = rpc('IntrospectToken',{'token':token},'security.OAuthService')
               owner = identity.get('username')
               assert identity.get('active') and owner and (not expected_owner or owner==expected_owner), 'IDENTITY_NOT_VERIFIED'
-              listing = rpc('ListKernels',{'user':owner,'search':'True Sound AFNext full precision synthetic R1','pageSize':50})
-              candidates = [k for k in listing.get('kernels',[]) if k.get('title')=='True Sound AFNext full precision synthetic R1' or k.get('slug','').rsplit('/',1)[-1]==slug]
+              listing = rpc('ListKernels',{'user':owner,'search':'True Sound Qwen3 30B NF4 synthetic R1','pageSize':50})
+              candidates = [k for k in listing.get('kernels',[]) if k.get('title')=='True Sound Qwen3 30B NF4 synthetic R1' or k.get('slug','').rsplit('/',1)[-1]==slug]
               report['matching_kernels'] = [{'slug':k.get('slug'),'title':k.get('title'),
                   'version':k.get('currentVersionNumber',k.get('current_version_number')),
                   'is_private':k.get('isPrivate',k.get('is_private')),
@@ -63,7 +63,7 @@ jobs:
                                  'size':x.get('fileSize',x.get('size'))} for x in listing.get('files',[])]
               log = str(listing.get('log',''))
               (output/'kernel-log.txt').write_text(log[-18000:])
-              allowed = {'model-ready.json','a-receipt.json','b-receipt.json',
+              allowed = {'preflight.json','download-ready.json','model-ready.json','a-receipt.json','b-receipt.json',
                          'failure.json','frozen-results.json'}
               report['retrieved'] = []
               for file in report['files']:
@@ -94,4 +94,4 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-# Same-effect reconciliation after durable V2 replay and model evidence checkpoint.
+# Qwen3 NF4 same-effect observation after compatibility preflight.
