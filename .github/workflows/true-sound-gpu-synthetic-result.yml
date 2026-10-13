@@ -46,9 +46,13 @@ jobs:
               candidates = [k for k in listing.get('kernels',[]) if k.get('title')=='True Sound full precision synthetic input R1' or k.get('slug','').rsplit('/',1)[-1]==slug]
               report['matching_kernels'] = [{'slug':k.get('slug'),'title':k.get('title'),
                   'version':k.get('currentVersionNumber',k.get('current_version_number')),
-                  'is_private':k.get('isPrivate',k.get('is_private'))} for k in candidates]
+                  'is_private':k.get('isPrivate',k.get('is_private')),
+                  'metadata_keys':list(k), 'ref':k.get('ref'), 'kernel_slug':k.get('kernelSlug')} for k in candidates]
               assert len(candidates)==1, 'EXACT_EFFECT_IDENTITY_NOT_UNIQUE_NO_RESUBMIT'
-              slug = candidates[0]['slug'].rsplit('/',1)[-1]
+              candidate = candidates[0]
+              actual_ref = candidate.get('slug') or candidate.get('kernelSlug') or candidate.get('ref')
+              assert isinstance(actual_ref,str) and actual_ref, 'PROVIDER_HANDLE_ABSENT_NO_RESUBMIT'
+              slug = actual_ref.rsplit('/',1)[-1]
               report['resolved_slug'] = slug
               state = rpc('GetKernelSessionStatus',{'userName':owner,'kernelSlug':slug,'versionLabel':'v1'})
               report['provider_status'] = state.get('status')
