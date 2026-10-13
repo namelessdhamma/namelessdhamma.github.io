@@ -9,17 +9,17 @@ let s=fs.readFileSync(sourcePath,'utf8');
 const replaceOne=(from,to,label)=>{const n=s.split(from).length-1;if(n!==1)throw new Error('Porfirchik V20.7.21 activation anchor mismatch: '+label+' count='+n);s=s.replace(from,to);};
 replaceOne(
   "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.4-free-music-yandex-fallback-20260930';",
-  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.24-zai-probe-dedupe-20261009';",
+  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.25-ten-message-context-20261013';",
   'revision'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='60c7c079248574529bf0805e06737caa11a58196';",
+  "const PORFIRCHIK_SOURCE_COMMIT='37acbb59d70557ed92e0ebcc2a198a5ea80bd947';",
   'source_commit'
 );
 replaceOne(
   "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_4_music_yandex_fallback_loader.py';",
-  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_22_private_free_openrouter_loader.py';",
+  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_25_history_budget_loader.py';",
   'source_path'
 );
 replaceOne(
