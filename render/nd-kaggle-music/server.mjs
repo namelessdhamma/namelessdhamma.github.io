@@ -84,9 +84,13 @@ export function createServer(config={}){
        if(!Array.isArray(data.kernels))return {ok:false,reason:'VIDEO_LIST_UNVERIFIED'};
        for(const k of data.kernels){
          if(!k||typeof k!=='object')return {ok:false,reason:'VIDEO_ROW_INVALID'};
-         const slug=String(k.slug||'').split('/').pop().toLowerCase();
          const ref=String(k.ref||'').toLowerCase();
          const author=String(k.author||'').toLowerCase();
+         const rawSlug=String(k.slug||'').toLowerCase();
+         const refParts=ref.match(/^([a-z0-9_-]+)\/([a-z0-9-]+)$/);
+         // Kaggle ListKernels live response gives ref but does not include slug.
+         // Only derive slug from a validated, current-user-owned canonical ref.
+         const slug=rawSlug?rawSlug.split('/').pop():(refParts&&refParts[1]===usr.toLowerCase()?refParts[2]:'');
          if(!slug&&!ref&&!author){
            const title=k.title;
            if(typeof title!=='string'||title.length===0||
@@ -96,8 +100,9 @@ export function createServer(config={}){
            continue; // title-only non-LTX provider placeholder, verified against reservation below
          }
          if(!slug)return {ok:false,reason:'VIDEO_SLUG_UNKNOWN'};
+         if(ref && (!refParts || refParts[1]!==usr.toLowerCase() || refParts[2]!==slug))
+           return {ok:false,reason:'VIDEO_REF_MISMATCH'};
          if(!/^nd-ltx2b-(?:direct-)?[a-z0-9-]+$/.test(slug))continue;
-         if(ref&&ref!==usr.toLowerCase()+'/'+slug)continue;
          if(!ref&&author!==usr.toLowerCase())return {ok:false,reason:'VIDEO_OWNERSHIP_UNKNOWN'};
          const key=ref||usr.toLowerCase()+'/'+slug;
          if(visible.has(key))return {ok:false,reason:'VIDEO_PAGE_DUPLICATE'};
@@ -128,7 +133,21 @@ export function createServer(config={}){
      return {ok:true,inspected:visible.size,non_ltx_title_rows:unknownTitleRows};
    }catch{return {ok:false,reason:'VIDEO_PROVIDER_UNAVAILABLE'};}
  }
- async function find(usr,slug){const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,pageSize:50});const a=(q.kernels||[]).filter(k=>String(k.slug||'').split('/').pop().toLowerCase()===slug&&(!k.ref||String(k.ref).toLowerCase()===usr.toLowerCase()+'/'+slug));if(a.length>1)throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);if(!a.length)return null;return Number(a[0].currentVersionNumber||a[0].current_version_number||0)||null;}
+ async function find(usr,slug){
+   const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,pageSize:50});
+   if(!Array.isArray(q.kernels))throw error('KAGGLE_LIST_UNVERIFIED',503);
+   // Prefer the fully-qualified Kaggle ref observed live, not the optional slug.
+   const a=q.kernels.filter(k=>{
+     const ref=String(k.ref||'').toLowerCase();
+     const raw=String(k.slug||'').toLowerCase();
+     return ref===usr.toLowerCase()+'/'+slug || (!ref&&raw.split('/').pop()===slug&&String(k.author||'').toLowerCase()===usr.toLowerCase());
+   });
+   if(a.length>1)throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);
+   if(!a.length)return null;
+   const version=Number(a[0].currentVersionNumber||a[0].current_version_number||0);
+   if(!Number.isSafeInteger(version)||version<1)throw error('KAGGLE_VERSION_UNVERIFIED',503);
+   return version;
+ }
  async function getStatus(usr,slug,version){
   try{const r=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});return {state:stateOf(r.status),provider_status:r.status??null,failure_message:r.failureMessage||null};}
   catch(e){if(String(e.message||'').startsWith('KAGGLE_HTTP_403'))return {state:'PROVIDER_VISIBILITY_PENDING',provider_status:null,retry_after_seconds:60,nonblocking:true,safe_to_resubmit:false};throw e;}
