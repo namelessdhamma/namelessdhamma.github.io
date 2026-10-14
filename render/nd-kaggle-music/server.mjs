@@ -294,11 +294,16 @@ export function createServer(config={}){
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
  const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
  console.log('ND private Kaggle music bridge ready');
- // A7 single bounded synthetic private T4 smoke via free_only/LTX/ledger protected route. Never song content.
+ // READ-ONLY Kaggle metadata field names/types, NO identifying values, lyrics, sources or tokens.
  try{
-  const r=await fetch('http://127.0.0.1:'+app.address().port+'/v1/submit',{method:'POST',headers:{authorization:'Bearer '+String(process.env.ND_KAGGLE_BRIDGE_TOKEN||''),'content-type':'application/json'},body:JSON.stringify({idempotency_key:'nd-a7-neutral-v4-fullinventory-20261014',python_source:"import os,math,struct,wave,json,hashlib\nimport torch\nassert torch.cuda.is_available(),'GPU_NOT_AVAILABLE'\nt=torch.tensor([2,3],device='cuda'); torch.cuda.synchronize()\nassert t.sum().item()==5\nsr=16000\npath='/kaggle/working/nd_a7_neutral_gpu_smoke_v4.wav'\nwith wave.open(path,'wb') as f:\n    f.setnchannels(1);f.setsampwidth(2);f.setframerate(sr)\n    f.writeframes(b''.join(struct.pack('<h',int(4000*math.sin(2*math.pi*440*i/sr))) for i in range(sr*2)))\nwith wave.open(path,'rb') as f:\n    assert f.getnchannels()==1 and f.getframerate()==sr and f.getnframes()==sr*2\nwith open(path,'rb') as f: checksum=hashlib.sha256(f.read()).hexdigest()\nmetadata={'gpu':torch.cuda.get_device_name(0),'wave_sha256':checksum,'bytes':os.path.getsize(path),'sample_rate':sr,'seconds':2}\nwith open('/kaggle/working/nd_a7_neutral_gpu_smoke_v4.json','w') as f:json.dump(metadata,f)\nprint('ND_A7_NEUTRAL_WAV_V4='+json.dumps(metadata))",confirm_private:true}),signal:AbortSignal.timeout(59000)});
-  const x=await r.json();
-  console.log('ND_A7_V4_SUBMIT='+JSON.stringify({http_status:r.status,ok:x.ok===true,state:x.state||null,reason:x.reason||null,error_code:x.error_code||null,job_id:x.job_id||null,slug:x.slug||null,reused_existing:x.reused_existing===true,safe_to_resubmit:x.safe_to_resubmit===true}));
- }catch{console.log('ND_A7_V4_SUBMIT='+JSON.stringify({http_status:'UNKNOWN',state:'OUTCOME_UNKNOWN',safe_to_resubmit:false}));}
+ const token=String(process.env.KAGGLE_API_TOKEN||''),usr=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
+ const url='https://api.kaggle.com/v1/kernels.KernelsApiService/ListKernels';
+ const r=await fetch(url,{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify({user:usr,group:1,search:'nd-ltx2b',sortBy:2,page:1,pageSize:50}),signal:AbortSignal.timeout(13000)});
+ const j=await r.json();const rows=Array.isArray(j.kernels)?j.kernels:[];
+ const ltx=rows.filter(k=>String(k.ref||'').includes('/nd-ltx2b-'));
+ const keyCounts={};for(const k of ltx)for(const key of Object.keys(k||{}))keyCounts[key]=(keyCounts[key]||0)+1;
+ const first=ltx[0]||{},maybeVersion=Object.fromEntries(Object.entries(first).filter(([name])=>/version|status|run|modified|time/i.test(name)).map(([name,v])=>[name,{type:typeof v,nested_keys:v&&typeof v==='object'&&!Array.isArray(v)?Object.keys(v).slice(0,15):[],present:v!=null}]));
+ console.log('ND_A7_LTX_VERSION_SHAPE='+JSON.stringify({http:r.status,rows:rows.length,matching:ltx.length,keys:keyCounts,potential_versions:maybeVersion}));
+ }catch{console.log('ND_A7_LTX_VERSION_SHAPE='+JSON.stringify({status:'UNOBSERVED'}));}
  });
 }
