@@ -198,16 +198,5 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();
- app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
-  console.log('ND private Kaggle music bridge ready');
-  // A7 temporary, read-only provider qualification: never creates a kernel, stores or logs no secrets.
-  try{
-   const r=await fetch('http://127.0.0.1:'+app.address().port+'/v1/preflight',{headers:{authorization:'Bearer '+String(process.env.ND_KAGGLE_BRIDGE_TOKEN||'')},signal:AbortSignal.timeout(48000)});
-   const x=await r.json();
-   console.log('ND_A7_READ_ONLY_PREFLIGHT='+JSON.stringify({http_status:r.status,provider_ok:x.ok===true,quota_ready:x.quota_ready===true,gpu_hours_remaining:typeof x.gpu?.remaining_hours==='number'?x.gpu.remaining_hours:null}));
-  }catch{
-   console.log('ND_A7_READ_ONLY_PREFLIGHT='+JSON.stringify({http_status:'UNOBSERVED',provider_ok:false,quota_ready:false}));
-  }
- });
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
 }
