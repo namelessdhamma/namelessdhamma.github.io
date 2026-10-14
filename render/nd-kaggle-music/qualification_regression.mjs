@@ -14,7 +14,7 @@ async function scenario(label, options, test){
   if(u.includes('IntrospectToken')){calls.intro++;return ok({active:true,username:'testuser'});}
   if(u.includes('GetAcceleratorQuotaStatistics')){calls.quota++;return ok({gpuQuota:{timeUsed:'0s',timeReserved:`${options.reservedSeconds??0}s`,totalTimeAllowed:options.quotaSeconds===undefined?'108000s':`${options.quotaSeconds}s`}});}
   if(u.includes('ListKernels')&&b.search==='nd-ltx2b'){calls.list++;return ok({kernels:options.videoPages?(options.videoPages[Number(b.page||1)-1]||[]):(options.videoCases||[])});}
-  if(u.includes('ListKernels')){calls.list++;if(options.noVisibility)return ok({kernels:[]}); if(options.slowList)await sleep(options.slowList);return ok({kernels:[...kernels.entries()].filter(([slug])=>slug.includes(b.search)).map(([slug,v])=>({slug,ref:'testuser/'+slug,currentVersionNumber:v}))});}
+  if(u.includes('ListKernels')){calls.list++;if(options.noVisibility)return ok({kernels:[]}); if(options.slowList)await sleep(options.slowList);return ok({kernels:[...kernels.entries()].filter(([slug])=>slug.includes(b.search)).map(([slug,v])=>({...(options.musicRefOnly?{}:{slug}),ref:'testuser/'+slug,author:'testuser',currentVersionNumber:v}))});}
   if(u.includes('SaveKernel')){calls.save++;if(options.saveDelay)await sleep(options.saveDelay);if(options.saveStatus)return new Response('{}',{status:options.saveStatus,headers:{'content-type':'application/json'}});const slug=b.slug.split('/').pop();kernels.set(slug,1);return ok({versionNumber:1});}
   if(u.includes('GetKernelSessionStatus')&&String(b.kernelSlug||'').startsWith('nd-ltx2b-')){calls.status++;if(options.videoVisibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:options.videoStatus===undefined?1:options.videoStatus});}
   if(u.includes('GetKernelSessionStatus')){calls.status++;if(options.visibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:1});}
@@ -105,5 +105,20 @@ await scenario('foreign_ltx_ref_rejected',{videoCases:[{ref:'anotheruser/nd-ltx2
  const r=await call('/v1/submit',submitObj);
  assert.equal(r.status,409);assert.equal(r.body.reason,'VIDEO_SLUG_UNKNOWN');assert.equal(calls.save,0);
  return {result:'PASS_FOREIGN_REF_UNKNOWN_FAIL_CLOSED'};
+});
+await scenario('music_ref_only_reuse',{musicRefOnly:true},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj),b=await call('/v1/submit',submitObj);
+ assert.equal(a.status,202);assert.equal(b.status,200);assert.equal(a.body.job_id,b.body.job_id);assert.equal(calls.save,1);
+ return {result:'PASS_REAL_PROVIDER_REF_ONLY_MUSIC_REUSE'};
+});
+const ltx109=Array.from({length:109},(_,i)=>({ref:'testuser/nd-ltx2b-direct-qa'+String(i).padStart(3,'0'),author:'testuser',currentVersionNumber:1}));
+const pages114=[ltx109.slice(0,50),ltx109.slice(50,100),[...ltx109.slice(100),...Array.from({length:5},(_,j)=>({title:'unrelated unnamed '+j,note:true}))]];
+await scenario('large_paged_ref_only_ltx_cached',{videoPages:pages114,videoStatus:2},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,202);assert.equal(calls.status,109);assert.equal(calls.save,1);
+ const second={...submitObj,idempotency_key:submitObj.idempotency_key+'-other'};
+ const b=await call('/v1/submit',second);
+ assert.equal(b.status,202);assert.equal(calls.status,109);assert.equal(calls.save,2);
+ return {result:'PASS_114_ROWS_109_REF_ONLY_TERMINAL_CACHE',status_reads:calls.status};
 });
 process.stdout.write(JSON.stringify(harness,null,2)+'\n');
