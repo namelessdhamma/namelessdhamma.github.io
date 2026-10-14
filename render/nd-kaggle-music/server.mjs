@@ -306,5 +306,11 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
+ // ND Kaggle Music retired on 2026-10-14 at user's explicit request.
+ // The shared Kaggle LTX video route is unaffected.
+ http.createServer((req,res)=>{
+  const health=(req.url||'').split('?')[0]==='/health';
+  res.writeHead(health?200:410,{'content-type':'application/json','cache-control':'no-store'});
+  res.end(JSON.stringify(health?{ok:true,service:'nd-kaggle-music-retired',retired:true}:{ok:false,error:'ND_KAGGLE_MUSIC_RETIRED'}));
+ }).listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND Kaggle Music retired; all job and MCP routes disabled'));
 }
