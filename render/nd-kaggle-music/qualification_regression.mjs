@@ -158,4 +158,25 @@ await scenario('ltx_version_not_in_detail',{videoCases:[{ref:'testuser/nd-ltx2b-
  assert.equal(x.status,409);assert.equal(x.body.reason,'VIDEO_VERSION_UNKNOWN');assert.equal(calls.save,0);
  return {result:'PASS_LTX_MISSING_VERSION_FAIL_CLOSED'};
 });
+// Live Kaggle responded with string status COMPLETE, not COMPLETED.
+await scenario('ltx_complete_enum_is_terminal',{videoCases:[{ref:'testuser/nd-ltx2b-direct-enumcase',author:'testuser'}],videoStatus:'COMPLETE'},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,202);assert.equal(calls.detail,1);assert.equal(calls.save,1);
+ return {result:'PASS_KAGGLE_COMPLETE_ENUM_TERMINAL'};
+});
+await scenario('ltx_qualified_prefixed_complete',{videoCases:[{ref:'testuser/nd-ltx2b-direct-enumcase',author:'testuser'}],videoStatus:'KernelWorkerStatus.COMPLETE'},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,202);assert.equal(calls.save,1);
+ return {result:'PASS_PREFIXED_COMPLETED_ENUM'};
+});
+await scenario('ltx_unknown_enum_blocks',{videoCases:[{ref:'testuser/nd-ltx2b-direct-enumcase',author:'testuser'}],videoStatus:'SOMETHING_ELSE'},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,409);assert.equal(x.body.reason,'VIDEO_GPU_ACTIVE_OR_UNKNOWN');assert.equal(calls.save,0);
+ return {result:'PASS_UNKNOWN_STATUS_FAIL_CLOSED'};
+});
+await scenario('ltx_cancel_requested_string_blocks',{videoCases:[{ref:'testuser/nd-ltx2b-direct-enumcase',author:'testuser'}],videoStatus:'CANCEL_REQUESTED'},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,409);assert.equal(x.body.reason,'VIDEO_GPU_ACTIVE_OR_UNKNOWN');assert.equal(calls.save,0);
+ return {result:'PASS_CANCEL_REQUESTED_STRING_NONTERMINAL'};
+});
 process.stdout.write(JSON.stringify(harness,null,2)+'\n');
