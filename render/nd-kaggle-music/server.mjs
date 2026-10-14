@@ -292,16 +292,27 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();
- app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
-  console.log('ND private Kaggle music bridge ready');
-  // A7: one neutral private GPU smoke, never a song, only by existing free-only guards.
-  const token=String(process.env.ND_KAGGLE_BRIDGE_TOKEN||'');
-  const script="import math, struct, wave, json, os, hashlib\nimport torch\nassert torch.cuda.is_available(), 'A7_CUDA_UNAVAILABLE'\na=torch.tensor([2,3],device='cuda'); torch.cuda.synchronize()\nassert a.sum().item()==5\npath='/kaggle/working/nd_a7_neutral_gpu_smoke_v3.wav'\nsr=16000\nwith wave.open(path,'wb') as out:\n    out.setnchannels(1);out.setsampwidth(2);out.setframerate(sr)\n    out.writeframes(b''.join(struct.pack('<h', int(4400*math.sin(2*math.pi*440*i/sr))) for i in range(2*sr)))\nwith wave.open(path,'rb') as inp:\n    assert inp.getnchannels()==1 and inp.getsampwidth()==2 and inp.getframerate()==16000 and inp.getnframes()==2*sr\nwith open(path,'rb') as inp: digest=hashlib.sha256(inp.read()).hexdigest()\nreceipt={'gpu':torch.cuda.get_device_name(0),'wave':'nd_a7_neutral_gpu_smoke_v3.wav','wave_sha256':digest,'wave_bytes':os.path.getsize(path),'sample_rate':sr,'seconds':2}\nwith open('/kaggle/working/nd_a7_neutral_gpu_smoke_v3.json','w') as out: json.dump(receipt,out)\nprint('ND_A7_GPU_AUDIO_PROOF='+json.dumps(receipt))";
-  try{
-   const r=await fetch('http://127.0.0.1:'+app.address().port+'/v1/submit',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({idempotency_key:'nd-a7-neutral-gpu-v3-20261014-unique',python_source:script,confirm_private:true}),signal:AbortSignal.timeout(59000)});
-   const b=await r.json();
-   console.log('ND_A7_V3_SUBMIT='+JSON.stringify({http:r.status,ok:b.ok===true,state:b.state||null,reason:b.reason||null,error_code:b.error_code||null,job_id:b.job_id||null,slug:b.slug||null,free_only:b.free_only===true,reused_existing:b.reused_existing===true,safe_to_resubmit:b.safe_to_resubmit===true}));
-  }catch{console.log('ND_A7_V3_SUBMIT='+JSON.stringify({http:'UNKNOWN',state:'OUTCOME_UNKNOWN',safe_to_resubmit:false}));}
+ const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
+ console.log('ND private Kaggle music bridge ready');
+ // A7 strictly READ_ONLY, no song data, no provider mutation, no secret logging.
+ try{
+  const token=String(process.env.KAGGLE_API_TOKEN||'');
+  const slug='nd-ace15-763e47cbcc81e5ec1e2107';
+  const owner=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
+  const crypto=await import('node:crypto');
+  for(const [label,search,group,sortBy] of [['exact',slug,1,2],['exact_default',slug,undefined,undefined],['ltx','nd-ltx2b',1,2]]){
+   const pageHashes=[];
+   for(let page=1;page<=4;page++){
+    const payload={user:owner,search,page,pageSize:50};if(group!==undefined)payload.group=group;if(sortBy!==undefined)payload.sortBy=sortBy;
+    const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/ListKernels',{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(16000)});
+    let j={};try{j=await r.json()}catch{}
+    const arr=Array.isArray(j.kernels)?j.kernels:null;
+    const sig=arr?crypto.createHash('sha256').update(JSON.stringify(arr.map(k=>[k.ref||null,k.slug||null,k.title||null]))).digest('hex').slice(0,14):null;
+    const x={label,page,http:r.status,count:arr?.length??null,signature:sig,repeats:!!sig&&pageHashes.includes(sig),exact_refs:arr?.filter(k=>String(k.ref||'').toLowerCase()===owner+'/'+slug).length??null,fields:Object.keys(j).filter(k=>/page|token|kernel/i.test(k)).slice(0,10)};
+    console.log('ND_A7_FIND_DIAG='+JSON.stringify(x));if(sig)pageHashes.push(sig);
+    if(!arr||arr.length<50||x.repeats)break;
+   }
+  }
+ }catch{console.log('ND_A7_FIND_DIAG='+JSON.stringify({status:'UNOBSERVED'}));}
  });
 }
