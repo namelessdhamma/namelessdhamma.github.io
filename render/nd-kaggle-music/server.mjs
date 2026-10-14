@@ -302,10 +302,18 @@ export function createServer(config={}){
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
  const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
  console.log('ND private Kaggle music bridge ready');
- // Single neutral canary, no protected music, all free/private/video/durable guards mandatory.
+ // A7 read-only enum inspection; no kernel titles/identifiers/source or credentials logged.
  try{
-  const resp=await fetch('http://127.0.0.1:'+app.address().port+'/v1/submit',{method:'POST',headers:{authorization:'Bearer '+String(process.env.ND_KAGGLE_BRIDGE_TOKEN||''),'content-type':'application/json'},body:JSON.stringify({idempotency_key:'nd-a7-neutral-v5-version-qualified-20261014',python_source:"import os,math,struct,wave,hashlib,json\nimport torch\nassert torch.cuda.is_available(),'NO_KAGGLE_GPU'\nz=torch.tensor([2,3],device='cuda'); torch.cuda.synchronize()\nassert z.sum().item()==5\nsr=16000\nout='/kaggle/working/nd_a7_gpu_wav_v5.wav'\nwith wave.open(out,'wb') as f:\n    f.setnchannels(1);f.setsampwidth(2);f.setframerate(sr)\n    f.writeframes(b''.join(struct.pack('<h',int(4000*math.sin(2*math.pi*440*i/sr))) for i in range(2*sr)))\nwith wave.open(out,'rb') as f:\n    assert f.getnchannels()==1 and f.getnframes()==2*sr and f.getframerate()==sr\nwith open(out,'rb') as f:digest=hashlib.sha256(f.read()).hexdigest()\nproof={'sha256':digest,'bytes':os.path.getsize(out),'gpu':torch.cuda.get_device_name(0),'rate':sr,'frames':sr*2}\nwith open('/kaggle/working/nd_a7_gpu_wav_v5.json','w') as f:json.dump(proof,f)\nprint('ND_A7_NEUTRAL_GPU_PROOF='+json.dumps(proof))",confirm_private:true}),signal:AbortSignal.timeout(59000)});
-  const body=await resp.json();console.log('ND_A7_V5_SUBMIT='+JSON.stringify({http:resp.status,ok:body.ok===true,state:body.state||null,reason:body.reason||null,error_code:body.error_code||null,job_id:body.job_id||null,slug:body.slug||null,free_only:body.free_only===true,safe_to_resubmit:body.safe_to_resubmit===true,reused_existing:body.reused_existing===true}));
- }catch{console.log('ND_A7_V5_SUBMIT='+JSON.stringify({http:'UNKNOWN',state:'OUTCOME_UNKNOWN',safe_to_resubmit:false}));}
+ const token=String(process.env.KAGGLE_API_TOKEN||''),usr=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
+ const rpc=async(name,body)=>{const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/'+name,{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(13000)});let j={};try{j=await r.json()}catch{}return {http:r.status,data:j};};
+ const listed=await rpc('ListKernels',{user:usr,group:1,sortBy:2,search:'nd-ltx2b',page:1,pageSize:50});const entries=(listed.data.kernels||[]).filter(k=>String(k.ref||'').startsWith(usr+'/nd-ltx2b-')).slice(0,5);
+ const check=[];
+ for(let i=0;i<entries.length;i++){
+  const slug=String(entries[i].ref).split('/').pop();const d=await rpc('GetKernel',{userName:usr,kernelSlug:slug});const v=d.data?.metadata?.currentVersionNumber??d.data?.currentVersionNumber;
+  const s=v?await rpc('GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+v}):null;
+  const raw=s?.data?.status;check.push({index:i,get_http:d.http,status_http:s?.http??null,raw_status:typeof raw==='number'||typeof raw==='string'?String(raw).slice(0,70):null,raw_type:typeof raw});
+ }
+ const quota=await rpc('GetAcceleratorQuotaStatistics',{});console.log('ND_A7_LTX_STATUS_ENUM='+JSON.stringify({count:entries.length,check,quota_http:quota.http,reserved:quota.data?.gpuQuota?.timeReserved??null}));
+ }catch{console.log('ND_A7_LTX_STATUS_ENUM='+JSON.stringify({status:'UNOBSERVED'}));}
  });
 }
