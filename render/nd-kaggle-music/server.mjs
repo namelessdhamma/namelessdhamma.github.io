@@ -198,5 +198,22 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
+ const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
+ console.log('ND private Kaggle music bridge ready');
+ // A7 READ-ONLY: resolve ambiguous Kaggle metadata shapes; never log names, titles, refs, tokens or user data.
+ try{
+  const token=String(process.env.KAGGLE_API_TOKEN||'');
+  const rpc=async(s,m,data)=>{const r=await fetch('https://api.kaggle.com/v1/'+s+'/'+m,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json',accept:'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(12000)});let j={};try{j=await r.json()}catch{}return {code:r.status,data:j};};
+  const id=await rpc('security.OAuthService','IntrospectToken',{token});if(id.code!==200||!id.data?.active||!id.data?.username)throw Error('AUTH');const usr=String(id.data.username).toLowerCase();
+  let malformed=[],total=0,identityMatches=0,knownLtx=0,full=false;
+  for(let page=1;page<=10;page++){
+   const r=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,group:1,search:'nd-ltx2b',sortBy:2,page,pageSize:50});if(r.code!==200||!Array.isArray(r.data?.kernels))throw Error('LIST');const a=r.data.kernels;total+=a.length;
+   for(const k of a){const keys=Object.keys(k||{}),ref=String(k?.ref||''),author=String(k?.author||'').toLowerCase(),name=String(k?.slug||'');if(author===usr||ref.toLowerCase().startsWith(usr+'/'))identityMatches++;if(/^nd-ltx2b-(?:direct-)?[a-z0-9-]+$/.test(name.toLowerCase().split('/').pop()))knownLtx++;
+    if(!(k?.id||k?.ref)){malformed.push({field_count:keys.length,author_present:!!k?.author,author_is_current:author===usr,slug_present:!!name,title_present:!!k?.title,enabled_gpu:k?.enableGpu===true});}}
+   if(a.length<50){full=true;break;}
+  }
+  const q=await rpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});const g=q.data?.gpuQuota||{};
+  console.log('ND_A7_GHOST_AUDIT='+JSON.stringify({count:total,full,owned_identified:identityMatches,ltx:knownLtx,unidentified:malformed,quota_http:q.code,has_reserved_value:g.timeReserved!==undefined}));
+ }catch{console.log('ND_A7_GHOST_AUDIT='+JSON.stringify({status:'OUTCOME_UNKNOWN'}));}
+ });
 }
