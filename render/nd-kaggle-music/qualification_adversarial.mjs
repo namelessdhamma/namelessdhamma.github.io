@@ -12,7 +12,7 @@ async function test(name,flags,work){
   const body=JSON.parse(opt.body||'{}'),u=String(url);
   if(u.includes('IntrospectToken')){calls.identity++;return flags.invalidAuth?bad(401,'invalid'):ok({active:true,username:'testuser'});}
   if(u.includes('GetAcceleratorQuotaStatistics')){calls.quota++;return flags.quotaErr?bad(flags.quotaErr,'FULL'):ok({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:`${flags.quotaSeconds??108000}s`}});}
-  if(u.includes('ListKernels')){calls.list++;if(flags.listErr)return bad(flags.listErr,'NOT_VISIBLE');if(flags.slowList)await sleep(flags.slowList);if(flags.invisible)return ok({kernels:[]});return ok({kernels:[...kernels.entries()].map(([slug,v])=>({slug,ref:'testuser/'+slug,currentVersionNumber:v})).filter(x=>x.slug===body.search)});}
+  if(u.includes('ListKernels')){calls.list++;if(flags.listErr)return bad(flags.listErr,'NOT_VISIBLE');if(flags.slowList)await sleep(flags.slowList);if(flags.invisible)return ok({kernels:[]});return ok({kernels:[...kernels.entries()].map(([slug,v])=>({slug,ref:'testuser/'+slug,currentVersionNumber:v})).filter(x=>!body.search||x.slug===body.search)});}
   if(u.includes('SaveKernel')){calls.save++;if(flags.slowSave)await sleep(flags.slowSave);if(flags.hardSaveFail)return bad(flags.hardSaveFail,'response_lost');let slug=body.slug.split('/').pop();kernels.set(slug,1);if(flags.saveCommitResponseLost)return bad(503,'save accepted but ack lost');return ok({versionNumber:1});}
   if(u.includes('GetKernelSessionStatus')){calls.status++;if(flags.visibility403)return bad(403,'PERMISSION_DENIED');return ok({status:flags.state??1});}
   if(u.includes('DownloadKernelOutput')){calls.out++;return ok({url:'https://example.org/synthetic-qa-result.wav?no-real-audio=1'});}
