@@ -198,5 +198,22 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
+ const app=createServer();
+ app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
+  console.log('ND private Kaggle music bridge ready');
+  // A7 temporary READ-ONLY inventory, no GPU writes and no token/kernel names in logs.
+  const token=String(process.env.KAGGLE_API_TOKEN||'');
+  const rpc=async(s,m,b)=>{
+   const r=await fetch('https://api.kaggle.com/v1/'+s+'/'+m,{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(b),redirect:'manual',signal:AbortSignal.timeout(20000)});
+   let j={};try{j=await r.json()}catch{};return {status:r.status,body:j};
+  };
+  try{
+   const who=await rpc('security.OAuthService','IntrospectToken',{token});
+   if(who.status!==200||!who.body?.active||!who.body?.username)throw Error('IDENTITY_UNVERIFIED');
+   const x=await rpc('kernels.KernelsApiService','ListKernels',{user:who.body.username,search:'nd-ltx2b',pageSize:50});
+   const arr=Array.isArray(x.body?.kernels)?x.body.kernels:null;
+   const matches=arr?arr.filter(k=>/^nd-ltx2b-(?:direct-)?[a-z0-9-]+$/.test(String(k.slug||'').split('/').pop().toLowerCase())).length:null;
+   console.log('ND_A7_READ_ONLY_VIDEO_SCAN='+JSON.stringify({http_status:x.status,has_kernel_array:!!arr,response_count:arr?.length??null,prefix_matches:matches,next_page_flag:Boolean(x.body?.nextPageToken||x.body?.next_page_token),result_fields:Object.keys(x.body||{}).filter(k=>/page|total|kernel/i.test(k)).slice(0,12)}));
+  }catch{console.log('ND_A7_READ_ONLY_VIDEO_SCAN='+JSON.stringify({http_status:'OUTCOME_UNKNOWN',has_kernel_array:false}));}
+ });
 }
