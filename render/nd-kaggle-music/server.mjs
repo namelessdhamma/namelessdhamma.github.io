@@ -306,22 +306,5 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
- console.log('ND private Kaggle music bridge ready');
- // A7 read-only version metadata reachability across private video history; no identities or source logged.
- try{
- const token=String(process.env.KAGGLE_API_TOKEN||''),usr=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
- const rpc=async(m,b)=>{const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/'+m,{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(b),signal:AbortSignal.timeout(12500)});let j={};try{j=await r.json()}catch{}return {http:r.status,data:j};};
- const refs=[];let complete=false;
- for(let p=1;p<=4;p++){
-  const x=await rpc('ListKernels',{user:usr,search:'nd-ltx2b',sortBy:2,group:1,page:p,pageSize:50});if(x.http!==200||!Array.isArray(x.data.kernels))break;
-  for(const k of x.data.kernels){const ref=String(k.ref||'');if(ref.startsWith(usr+'/nd-ltx2b-'))refs.push(ref.split('/').pop());}
-  if(x.data.kernels.length<50){complete=true;break;}
- }
- let ix=0;const results={};const failAt=[];let done=0;
- const work=async()=>{while(ix<refs.length){const index=ix++;try{const r=await rpc('GetKernel',{userName:usr,kernelSlug:refs[index]});const version=r.data?.metadata?.currentVersionNumber??r.data?.currentVersionNumber;const key=r.http===200?(version?'200_WITH_VERSION':'200_WITHOUT_VERSION'):'HTTP_'+r.http;results[key]=(results[key]||0)+1;if(key!=='200_WITH_VERSION')failAt.push(index);}catch{results.THREW=(results.THREW||0)+1;failAt.push(index);}finally{done++;}}};
- await Promise.all(Array.from({length:Math.min(10,refs.length)},work));
- console.log('ND_A7_VERSION_REACH='+JSON.stringify({complete,listed:refs.length,checked:done,count_by_outcome:results,first_problem_indices:failAt.slice(0,12)}));
- }catch{console.log('ND_A7_VERSION_REACH='+JSON.stringify({status:'UNOBSERVED'}));}
- });
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
 }
