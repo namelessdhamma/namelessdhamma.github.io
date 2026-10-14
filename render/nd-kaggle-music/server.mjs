@@ -129,7 +129,15 @@ export function createServer(config={}){
        while(cursor<entries.length&&!denial){
          const [key,k]=entries[cursor++];
          const slug=key.split('/').pop();
-         const version=Number(k.currentVersionNumber||k.current_version_number||0);
+         let version=Number(k.currentVersionNumber||k.current_version_number||0);
+         if(!Number.isSafeInteger(version)||version<1){
+           // Kaggle ListKernels omits version. Reuse R01-qualified read-only
+           // GetKernel metadata resolution before requesting the exact session.
+           try{
+             const detail=await rpc('kernels.KernelsApiService','GetKernel',{userName:usr,kernelSlug:slug});
+             version=Number(detail?.metadata?.currentVersionNumber??detail?.metadata?.current_version_number??detail?.currentVersionNumber??detail?.current_version_number??0);
+           }catch{denial='VIDEO_VERSION_READ_UNAVAILABLE';break;}
+         }
          if(!Number.isSafeInteger(version)||version<1){denial='VIDEO_VERSION_UNKNOWN';break;}
          const checkedKey=key+'#v'+version;
          if(terminalVideoVersions.has(checkedKey))continue;
@@ -292,32 +300,5 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();
- app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
-  console.log('ND private Kaggle music bridge ready');
-  // A7 read-only check; no identity, kernel source, or secret values logged.
-  try{
-   const token=String(process.env.KAGGLE_API_TOKEN||'');
-   const usr=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
-   const rpc=async(method,body)=>{
-    const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/'+method,{
-     method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},
-     body:JSON.stringify(body),signal:AbortSignal.timeout(12000)
-    });
-    let data={};try{data=await r.json()}catch{}
-    return {http:r.status,data};
-   };
-   const inventory=await rpc('ListKernels',{user:usr,group:1,search:'nd-ltx2b',sortBy:2,page:1,pageSize:50});
-   const refs=Array.isArray(inventory.data.kernels)?inventory.data.kernels.filter(k=>String(k.ref||'').startsWith(usr+'/nd-ltx2b-')).slice(0,3):[];
-   for(let i=0;i<refs.length;i++){
-    const slug=String(refs[i].ref).split('/').pop();
-    const detail=await rpc('GetKernel',{userName:usr,kernelSlug:slug});
-    const m=detail.data&&detail.data.metadata||{};
-    const version=m.currentVersionNumber||m.current_version_number||detail.data.currentVersionNumber||detail.data.current_version_number||null;
-    let statusHttp=null,statusPresent=false;
-    if(version){const st=await rpc('GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});statusHttp=st.http;statusPresent=st.data.status!==undefined;}
-    console.log('ND_A7_GETKERNEL_PROBE='+JSON.stringify({index:i,http:detail.http,metadata:!!detail.data.metadata,version:!!version,status_http:statusHttp,status_present:statusPresent}));
-   }
-  }catch{console.log('ND_A7_GETKERNEL_PROBE='+JSON.stringify({error:'PROVIDER_UNVERIFIED'}));}
- });
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
 }
