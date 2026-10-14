@@ -12,8 +12,8 @@ async function scenario(label, options, test){
   if(!u.includes('api.kaggle.com'))return nativeFetch(url,opt);
   const b=JSON.parse(opt.body||'{}');
   if(u.includes('IntrospectToken')){calls.intro++;return ok({active:true,username:'testuser'});}
-  if(u.includes('GetAcceleratorQuotaStatistics')){calls.quota++;return ok({gpuQuota:{timeUsed:'0s',timeReserved:'0s',totalTimeAllowed:options.quotaSeconds===undefined?'108000s':`${options.quotaSeconds}s`}});}
-  if(u.includes('ListKernels')&&b.search==='nd-ltx2b'){calls.list++;return ok({kernels:options.videoCases||[]});}
+  if(u.includes('GetAcceleratorQuotaStatistics')){calls.quota++;return ok({gpuQuota:{timeUsed:'0s',timeReserved:`${options.reservedSeconds??0}s`,totalTimeAllowed:options.quotaSeconds===undefined?'108000s':`${options.quotaSeconds}s`}});}
+  if(u.includes('ListKernels')&&b.search==='nd-ltx2b'){calls.list++;return ok({kernels:options.videoPages?(options.videoPages[Number(b.page||1)-1]||[]):(options.videoCases||[])});}
   if(u.includes('ListKernels')){calls.list++;if(options.noVisibility)return ok({kernels:[]}); if(options.slowList)await sleep(options.slowList);return ok({kernels:[...kernels.entries()].filter(([slug])=>slug.includes(b.search)).map(([slug,v])=>({slug,ref:'testuser/'+slug,currentVersionNumber:v}))});}
   if(u.includes('SaveKernel')){calls.save++;if(options.saveDelay)await sleep(options.saveDelay);if(options.saveStatus)return new Response('{}',{status:options.saveStatus,headers:{'content-type':'application/json'}});const slug=b.slug.split('/').pop();kernels.set(slug,1);return ok({versionNumber:1});}
   if(u.includes('GetKernelSessionStatus')&&String(b.kernelSlug||'').startsWith('nd-ltx2b-')){calls.status++;if(options.videoVisibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:options.videoStatus===undefined?1:options.videoStatus});}
@@ -57,4 +57,37 @@ await scenario('video_visibility_403_blocks_music',{videoCases:video,videoVisibi
  return {result:'PASS_LTX_INVISIBLE_FAIL_CLOSED'};
 });
 
+// LIVE-OBSERVED CASE: Kaggle account history is 50+ rows, with five title-only placeholders.
+const genericHistory=Array.from({length:50},(_,i)=>({slug:'history-'+i,ref:'testuser/history-'+i,currentVersionNumber:1}));
+const titleOnly=Array.from({length:5},(_,i)=>({title:'unrelated note '+i,otherField:true}));
+await scenario('video_history_two_pages_allows_neutral',{videoPages:[genericHistory,titleOnly]},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,202);assert.equal(calls.save,1);assert(calls.list>=3);
+ return {result:'PASS_COMPLETE_PAGED_READONLY_HISTORY',pages:2};
+});
+await scenario('title_only_ltx_blocks',{videoCases:[{title:'ND LTX missing id and slug',otherField:true}]},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,409);assert.equal(a.body.reason,'VIDEO_UNKNOWN_TITLE_ROW');assert.equal(calls.save,0);
+ return {result:'PASS_UNKNOWN_VIDEO_TITLE_FAIL_CLOSED'};
+});
+await scenario('shared_quota_reserved_blocks',{reservedSeconds:90},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,409);assert.equal(a.body.reason,'SHARED_GPU_RESERVATION_ACTIVE');assert.equal(calls.save,0);
+ return {result:'PASS_RESERVED_GPU_FAIL_CLOSED'};
+});
+await scenario('cancel_requested_is_not_terminal',{videoCases:video,videoStatus:4},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,409);assert.equal(a.body.reason,'VIDEO_GPU_ACTIVE_OR_UNKNOWN');assert.equal(calls.save,0);
+ return {result:'PASS_CANCEL_REQUESTED_NONTERMINAL'};
+});
+await scenario('page_limit_fails_closed',{videoPages:Array.from({length:10},(_,p)=>genericHistory.map((k,i)=>({slug:'history-'+p+'-'+i,ref:'testuser/history-'+p+'-'+i,currentVersionNumber:1})))},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,409);assert.equal(a.body.reason,'VIDEO_SCAN_INCOMPLETE');assert.equal(calls.save,0);
+ return {result:'PASS_BOUNDED_LIST_PAGINATION_DENIAL'};
+});
+await scenario('repeated_ltx_ref_on_next_page_blocks',{videoPages:[genericHistory.map((x,i)=>i===0?video[0]:x),[video[0]]]},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,409);assert.equal(a.body.reason,'VIDEO_PAGE_DUPLICATE');assert.equal(calls.save,0);
+ return {result:'PASS_CROSS_PAGE_DUPLICATE_DENIED'};
+});
 process.stdout.write(JSON.stringify(harness,null,2)+'\n');
