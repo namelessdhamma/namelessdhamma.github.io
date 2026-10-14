@@ -198,5 +198,17 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
+ const app=createServer();
+ app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
+  console.log('ND private Kaggle music bridge ready');
+  // A7 one synthetic, entirely non-song private GPU smoke; all quota/video/ledger guards remain intact.
+  const source="import os, math, struct, wave, json, hashlib\nimport torch\nif not torch.cuda.is_available(): raise RuntimeError('A7_GPU_T4_NOT_AVAILABLE')\nv = torch.tensor([2.0,3.0],device='cuda')\ntorch.cuda.synchronize()\nassert float(v.sum().item()) == 5.0\nout = '/kaggle/working/nd_a7_neutral_gpu_smoke.wav'\nrate = 16000\nwith wave.open(out,'wb') as f:\n    f.setnchannels(1); f.setsampwidth(2); f.setframerate(rate)\n    f.writeframes(b''.join(struct.pack('<h',int(4000*math.sin(2*math.pi*440*i/rate))) for i in range(2*rate)))\nwith open(out,'rb') as f: digest=hashlib.sha256(f.read()).hexdigest()\nprint('A7_NEUTRAL_GPU_AUDIO_PASS '+json.dumps({'gpu_detected':True,'cuda_name':torch.cuda.get_device_name(0),'file':'nd_a7_neutral_gpu_smoke.wav','sha256':digest,'bytes':os.path.getsize(out)}))";
+  try{
+   const r=await fetch('http://127.0.0.1:'+app.address().port+'/v1/submit',{method:'POST',headers:{authorization:'Bearer '+String(process.env.ND_KAGGLE_BRIDGE_TOKEN||''),'content-type':'application/json'},body:JSON.stringify({idempotency_key:'nd-a7-neutral-t4-20261014p0',python_source:source,confirm_private:true}),signal:AbortSignal.timeout(100000)});
+   const x=await r.json();
+   console.log('ND_A7_NEUTRAL_SUBMIT='+JSON.stringify({http_status:r.status,ok:x.ok===true,state:x.state||'UNKNOWN',error_code:x.error_code||null,reason:x.reason||null,job_id:x.job_id||null,slug:x.slug||null,reused_existing:x.reused_existing===true,safe_to_resubmit:x.safe_to_resubmit===true}));
+  }catch{
+   console.log('ND_A7_NEUTRAL_SUBMIT='+JSON.stringify({http_status:'UNKNOWN',ok:false,state:'OUTCOME_UNKNOWN',safe_to_resubmit:false}));
+  }
+ });
 }
