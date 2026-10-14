@@ -15,7 +15,7 @@ const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
 const slugFor=(key,script)=>'nd-ace15-'+sha(String(key)+'\n'+sha(script)).slice(0,22);
 const states={0:'QUEUED',1:'RUNNING',2:'COMPLETED',3:'FAILED',4:'CANCEL_REQUESTED',5:'CANCELLED',6:'NEW_SCRIPT'};
 const stateOf=x=>{
- if((typeof x==='number'||(typeof x==='string'&&/^\\d+$/.test(x)))&&Object.hasOwn(states,Number(x)))return states[Number(x)];
+ if((typeof x==='number'||(typeof x==='string'&&x.trim()!==''&&Number.isInteger(Number(x))))&&Object.hasOwn(states,Number(x)))return states[Number(x)];
  const raw=String(x??'').trim().toUpperCase();
  const val=raw.split('.').pop();
  const canonical={COMPLETE:'COMPLETED',COMPLETED:'COMPLETED',ERROR:'FAILED',FAILED:'FAILED',FAILURE:'FAILED',CANCELLED:'CANCELLED',CANCELED:'CANCELLED',CANCEL_REQUESTED:'CANCEL_REQUESTED',CANCELLING:'CANCEL_REQUESTED',RUNNING:'RUNNING',QUEUED:'QUEUED',PENDING:'QUEUED',NEW_SCRIPT:'NEW_SCRIPT'};
