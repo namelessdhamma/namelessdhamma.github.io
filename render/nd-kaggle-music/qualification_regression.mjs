@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import {createServer} from './server.mjs';
 const nativeFetch=globalThis.fetch;
@@ -14,7 +15,8 @@ async function scenario(label, options, test){
   if(u.includes('IntrospectToken')){calls.intro++;return ok({active:true,username:'testuser'});}
   if(u.includes('GetAcceleratorQuotaStatistics')){calls.quota++;return ok({gpuQuota:{timeUsed:'0s',timeReserved:`${options.reservedSeconds??0}s`,totalTimeAllowed:options.quotaSeconds===undefined?'108000s':`${options.quotaSeconds}s`}});}
   if(u.includes('ListKernels')&&b.search==='nd-ltx2b'){calls.list++;return ok({kernels:options.videoPages?(options.videoPages[Number(b.page||1)-1]||[]):(options.videoCases||[])});}
-  if(u.includes('ListKernels')){calls.list++;if(options.noVisibility)return ok({kernels:[]}); if(options.slowList)await sleep(options.slowList);return ok({kernels:[...kernels.entries()].filter(([slug])=>slug.includes(b.search)).map(([slug,v])=>({...(options.musicRefOnly?{}:{slug}),ref:'testuser/'+slug,author:'testuser',currentVersionNumber:v}))});}
+  if(u.includes('ListKernels')&&options.musicPages){calls.list++;return ok({kernels:options.musicPages[Number(b.page||1)-1]||[]});}
+   if(u.includes('ListKernels')){calls.list++;if(options.noVisibility)return ok({kernels:[]}); if(options.slowList)await sleep(options.slowList);return ok({kernels:[...kernels.entries()].filter(([slug])=>slug.includes(b.search)).map(([slug,v])=>({...(options.musicRefOnly?{}:{slug}),ref:'testuser/'+slug,author:'testuser',currentVersionNumber:v}))});}
   if(u.includes('SaveKernel')){calls.save++;if(options.saveDelay)await sleep(options.saveDelay);if(options.saveStatus)return new Response('{}',{status:options.saveStatus,headers:{'content-type':'application/json'}});const slug=b.slug.split('/').pop();kernels.set(slug,1);return ok({versionNumber:1});}
   if(u.includes('GetKernelSessionStatus')&&String(b.kernelSlug||'').startsWith('nd-ltx2b-')){calls.status++;if(options.videoVisibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:options.videoStatus===undefined?1:options.videoStatus});}
   if(u.includes('GetKernelSessionStatus')){calls.status++;if(options.visibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:1});}
@@ -120,5 +122,23 @@ await scenario('large_paged_ref_only_ltx_cached',{videoPages:pages114,videoStatu
  const b=await call('/v1/submit',second);
  assert.equal(b.status,202);assert.equal(calls.status,109);assert.equal(calls.save,2);
  return {result:'PASS_114_ROWS_109_REF_ONLY_TERMINAL_CACHE',status_reads:calls.status};
+});
+const previousSlug=(o)=>'nd-ace15-'+crypto.createHash('sha256').update(o.idempotency_key+'\n'+crypto.createHash('sha256').update(o.python_source).digest('hex')).digest('hex').slice(0,22);
+const unrelated100=Array.from({length:100},(_,i)=>({ref:'testuser/unrelated-'+i,author:'testuser',currentVersionNumber:1}));
+await scenario('music_exact_ref_on_third_page',{musicPages:[unrelated100.slice(0,50),unrelated100.slice(50,100),{pending:true}]},async({call,calls,submitObj,options})=>{
+ const slug=previousSlug(submitObj);
+ options.musicPages[2]=[{ref:'testuser/'+slug,author:'testuser',currentVersionNumber:3}];
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,200);assert.equal(a.body.reused_existing,true);assert.equal(calls.save,0);assert.equal(calls.list,3);
+ return {result:'PASS_EXISTING_MUSIC_REF_PAGE3_NO_RESUBMIT'};
+});
+await scenario('music_search_history_incomplete',{musicPages:Array.from({length:10},(_,p)=>unrelated100.slice(0,50).map((k,i)=>({ref:'testuser/history-'+p+'-'+i,author:'testuser'})))},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,503);assert.equal(a.body.safe_to_resubmit,false);assert.equal(calls.save,0);
+ return {result:'PASS_NO_SAVE_ON_INCOMPLETE_EFFECT_SEARCH'};
+});
+await scenario('music_search_missing_after_complete_pages',{musicPages:[unrelated100.slice(0,50),unrelated100.slice(50,100),[]]},async({call,calls,submitObj})=>{
+ const a=await call('/v1/submit',submitObj);
+ assert.equal(a.status,202);assert.equal(calls.save,1);return {result:'PASS_COMPLETE_THREE_PAGE_SEARCH_PERMITS_SAFE_CLAIM'};
 });
 process.stdout.write(JSON.stringify(harness,null,2)+'\n');
