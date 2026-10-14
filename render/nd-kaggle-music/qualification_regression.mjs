@@ -179,4 +179,15 @@ await scenario('ltx_cancel_requested_string_blocks',{videoCases:[{ref:'testuser/
  assert.equal(x.status,409);assert.equal(x.body.reason,'VIDEO_GPU_ACTIVE_OR_UNKNOWN');assert.equal(calls.save,0);
  return {result:'PASS_CANCEL_REQUESTED_STRING_NONTERMINAL'};
 });
+// Live LTX history contains CANCEL_ACKNOWLEDGED; cancellation is settled, not successful.
+await scenario('ltx_acknowledged_cancel_terminal',{videoCases:[{ref:'testuser/nd-ltx2b-direct-cancelack',author:'testuser'}],videoStatus:'CANCEL_ACKNOWLEDGED'},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,202);assert.equal(calls.detail,1);assert.equal(calls.save,1);
+ return {result:'PASS_CANCEL_ACKNOWLEDGED_TERMINAL'};
+});
+await scenario('ltx_error_terminal',{videoCases:[{ref:'testuser/nd-ltx2b-direct-error',author:'testuser'}],videoStatus:'ERROR'},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,202);assert.equal(calls.save,1);
+ return {result:'PASS_ERROR_TERMINAL_BUT_NOT_SUCCESS'};
+});
 process.stdout.write(JSON.stringify(harness,null,2)+'\n');
