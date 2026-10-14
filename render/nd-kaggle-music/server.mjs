@@ -294,25 +294,15 @@ export function createServer(config={}){
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
  const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
  console.log('ND private Kaggle music bridge ready');
- // A7 strictly READ_ONLY, no song data, no provider mutation, no secret logging.
+ // READ-ONLY structural probe of Kaggle ListKernels, never print provider content.
  try{
-  const token=String(process.env.KAGGLE_API_TOKEN||'');
-  const slug='nd-ace15-763e47cbcc81e5ec1e2107';
-  const owner=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
-  const crypto=await import('node:crypto');
-  for(const [label,search,group,sortBy] of [['exact',slug,1,2],['exact_default',slug,undefined,undefined],['ltx','nd-ltx2b',1,2]]){
-   const pageHashes=[];
-   for(let page=1;page<=4;page++){
-    const payload={user:owner,search,page,pageSize:50};if(group!==undefined)payload.group=group;if(sortBy!==undefined)payload.sortBy=sortBy;
-    const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/ListKernels',{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(16000)});
-    let j={};try{j=await r.json()}catch{}
-    const arr=Array.isArray(j.kernels)?j.kernels:null;
-    const sig=arr?crypto.createHash('sha256').update(JSON.stringify(arr.map(k=>[k.ref||null,k.slug||null,k.title||null]))).digest('hex').slice(0,14):null;
-    const x={label,page,http:r.status,count:arr?.length??null,signature:sig,repeats:!!sig&&pageHashes.includes(sig),exact_refs:arr?.filter(k=>String(k.ref||'').toLowerCase()===owner+'/'+slug).length??null,fields:Object.keys(j).filter(k=>/page|token|kernel/i.test(k)).slice(0,10)};
-    console.log('ND_A7_FIND_DIAG='+JSON.stringify(x));if(sig)pageHashes.push(sig);
-    if(!arr||arr.length<50||x.repeats)break;
-   }
-  }
- }catch{console.log('ND_A7_FIND_DIAG='+JSON.stringify({status:'UNOBSERVED'}));}
+ const token=String(process.env.KAGGLE_API_TOKEN||''),usr=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
+ for(const [kind,search,group] of [['empty','',1],['music','nd-ace15',1],['exact','nd-ace15-763e47cbcc81e5ec1e2107',1],['legacy','nd-ltx2b',1]]){
+   const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/ListKernels',{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify({user:usr,search,group,sortBy:2,page:1,pageSize:50}),signal:AbortSignal.timeout(14000)});
+   const raw=await r.text();let data,validJson=true;try{data=JSON.parse(raw)}catch{validJson=false;data=null}
+   const isArr=Array.isArray(data);const isObj=data&&typeof data==='object';const kernels=isObj&&!isArr?data.kernels:undefined;
+   console.log('ND_A7_SEARCH_SHAPE='+JSON.stringify({kind,http:r.status,json:validJson,root:isArr?'ARRAY':isObj?'OBJECT':typeof data,root_keys:isObj&&!isArr?Object.keys(data).filter(k=>!/(message|error|token|secret)/i.test(k)).slice(0,14):[],array_length:isArr?data.length:null,kernels_field:Array.isArray(kernels)?'ARRAY':kernels===undefined?'OMITTED':typeof kernels,kernels_count:Array.isArray(kernels)?kernels.length:null,bytes:raw.length}));
+ }
+ }catch{console.log('ND_A7_SEARCH_SHAPE='+JSON.stringify({status:'UNOBSERVED'}));}
  });
 }
