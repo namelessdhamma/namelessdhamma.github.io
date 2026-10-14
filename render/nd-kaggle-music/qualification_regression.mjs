@@ -6,7 +6,7 @@ const harness=[];
 const sleep=(n)=>new Promise(r=>setTimeout(r,n));
 const ok=obj=>new Response(JSON.stringify(obj),{status:200,headers:{'content-type':'application/json'}});
 async function scenario(label, options, test){
- const calls={save:0,list:0,intro:0,quota:0,status:0};
+ const calls={save:0,list:0,intro:0,quota:0,status:0,detail:0};
  const kernels=new Map();
  globalThis.fetch=async(url,opt={})=>{
   let u=String(url);
@@ -19,7 +19,8 @@ async function scenario(label, options, test){
    if(u.includes('ListKernels')){calls.list++;if(options.noVisibility)return ok({kernels:[]}); if(options.slowList)await sleep(options.slowList);return ok({kernels:[...kernels.entries()].filter(([slug])=>slug.includes(b.search)).map(([slug,v])=>({...(options.musicRefOnly?{}:{slug}),ref:'testuser/'+slug,author:'testuser',currentVersionNumber:v}))});}
   if(u.includes('SaveKernel')){calls.save++;if(options.saveDelay)await sleep(options.saveDelay);if(options.saveStatus)return new Response('{}',{status:options.saveStatus,headers:{'content-type':'application/json'}});const slug=b.slug.split('/').pop();kernels.set(slug,1);return ok({versionNumber:1});}
   if(u.includes('GetKernelSessionStatus')&&String(b.kernelSlug||'').startsWith('nd-ltx2b-')){calls.status++;if(options.videoVisibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:options.videoStatus===undefined?1:options.videoStatus});}
-  if(u.includes('GetKernelSessionStatus')){calls.status++;if(options.visibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:1});}
+  if(u.includes('GetKernel')&&!u.includes('GetKernelSessionStatus')){calls.detail++;if(options.detailHttp)return new Response('{"message":"not visible"}',{status:options.detailHttp,headers:{'content-type':'application/json'}});return ok({metadata:options.emptyDetail?{}:{currentVersionNumber:1}});}
+   if(u.includes('GetKernelSessionStatus')){calls.status++;if(options.visibility403)return new Response('{"message":"PERMISSION_DENIED"}',{status:403,headers:{'content-type':'application/json'}});return ok({status:1});}
   throw Error('Unexpected mocked provider API '+u);
  };
  const srv=createServer({kaggleToken:'FAKE_TEST_TOKEN',username:'testuser',bridgeToken:'FAKE_GATEWAY_KEY'});
@@ -140,5 +141,21 @@ await scenario('music_search_history_incomplete',{musicPages:Array.from({length:
 await scenario('music_search_missing_after_complete_pages',{musicPages:[unrelated100.slice(0,50),unrelated100.slice(50,100),[]]},async({call,calls,submitObj})=>{
  const a=await call('/v1/submit',submitObj);
  assert.equal(a.status,202);assert.equal(calls.save,1);return {result:'PASS_COMPLETE_THREE_PAGE_SEARCH_PERMITS_SAFE_CLAIM'};
+});
+// Live Kaggle ListKernels has no version at all; version must come from GetKernel.
+await scenario('ltx_version_readonly_fallback',{videoCases:[{ref:'testuser/nd-ltx2b-direct-versionfallback',author:'testuser'}],videoStatus:2},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,202);assert.equal(calls.detail,1);assert.equal(calls.save,1);
+ return {result:'PASS_LTX_METADATA_VERSION_READONLY_FALLBACK'};
+});
+await scenario('ltx_version_detail_denied',{videoCases:[{ref:'testuser/nd-ltx2b-direct-versionfallback',author:'testuser'}],detailHttp:403},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,409);assert.equal(x.body.reason,'VIDEO_VERSION_READ_UNAVAILABLE');assert.equal(calls.save,0);
+ return {result:'PASS_LTX_METADATA_AUTH_DENIED_FAIL_CLOSED'};
+});
+await scenario('ltx_version_not_in_detail',{videoCases:[{ref:'testuser/nd-ltx2b-direct-versionfallback',author:'testuser'}],emptyDetail:true},async({call,calls,submitObj})=>{
+ const x=await call('/v1/submit',submitObj);
+ assert.equal(x.status,409);assert.equal(x.body.reason,'VIDEO_VERSION_UNKNOWN');assert.equal(calls.save,0);
+ return {result:'PASS_LTX_MISSING_VERSION_FAIL_CLOSED'};
 });
 process.stdout.write(JSON.stringify(harness,null,2)+'\n');
