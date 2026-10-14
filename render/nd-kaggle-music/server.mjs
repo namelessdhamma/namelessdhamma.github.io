@@ -13,7 +13,7 @@ const deadlineScope=new AsyncLocalStorage();
 function controlBudget(){const d=deadlineScope.getStore();const remain=d===undefined?TMO:d-Date.now();if(remain<=0)throw error('CONTROL_DEADLINE_OUTCOME_UNKNOWN',504);return Math.min(remain,TMO);}
 const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
 const slugFor=(key,script)=>'nd-ace15-'+sha(String(key)+'\n'+sha(script)).slice(0,22);
-const states={0:'QUEUED',1:'RUNNING',2:'COMPLETED',3:'FAILED',4:'CANCELLED',5:'CANCELLED'};
+const states={0:'QUEUED',1:'RUNNING',2:'COMPLETED',3:'FAILED',4:'CANCEL_REQUESTED',5:'CANCELLED',6:'NEW_SCRIPT'};
 const stateOf=x=>states[Number(x)]||String(x||'QUEUED').toUpperCase();
 const secs=v=>typeof v==='number'?v:typeof v==='string'?Number(v.replace(/s$/,''))||0:v&&typeof v==='object'?Number(v.seconds||0)+Number(v.nanos||0)/1e9:0;
 const isAsciiSlug=s=>typeof s==='string'&&/^[a-z0-9][a-z0-9-]{4,100}$/.test(s);
@@ -74,25 +74,58 @@ export function createServer(config={}){
  // a known LTX video session is active or provider visibility is insufficient.
  // This does NOT qualify bidirectional scheduling and MUST NOT edit closed video R01.
  async function videoGpuAdmission(usr){
+   // One-sided music admission: exhaustive bounded LTX history, then Kaggle's
+   // authoritative GPU reservation. NOT an atomic lease shared with closed LTX R01.
+   const pageSize=50,maxPages=10,visible=new Map();
+   let completed=false,unknownTitleRows=0;
    try{
-     const data=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:'nd-ltx2b',pageSize:50});
-     if(!Array.isArray(data.kernels))return {ok:false,reason:'VIDEO_LIST_UNVERIFIED'};
-     const kernels=data.kernels.filter(k=>{
-       const slug=String(k.slug||'').split('/').pop().toLowerCase();
-       return /^nd-ltx2b-(?:direct-)?[a-z0-9-]+$/.test(slug) &&
-         (!k.ref||String(k.ref).toLowerCase()===usr.toLowerCase()+'/'+slug);
-     });
-     // Exhaustiveness is not established if the response is full or control scan is too costly.
-     if(data.kernels.length>=50||kernels.length>12)return {ok:false,reason:'VIDEO_SCAN_INCOMPLETE'};
-     for(const k of kernels){
-       const slug=String(k.slug).split('/').pop();
+     for(let page=1;page<=maxPages;page++){
+       const data=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,group:1,search:'nd-ltx2b',sortBy:2,page,pageSize});
+       if(!Array.isArray(data.kernels))return {ok:false,reason:'VIDEO_LIST_UNVERIFIED'};
+       for(const k of data.kernels){
+         if(!k||typeof k!=='object')return {ok:false,reason:'VIDEO_ROW_INVALID'};
+         const slug=String(k.slug||'').split('/').pop().toLowerCase();
+         const ref=String(k.ref||'').toLowerCase();
+         const author=String(k.author||'').toLowerCase();
+         if(!slug&&!ref&&!author){
+           const title=k.title;
+           if(typeof title!=='string'||title.length===0||
+              /(?:ltx|kaggle|video|(?:^|[^a-z0-9])nd(?:[^a-z0-9]|$))/i.test(title))
+             return {ok:false,reason:'VIDEO_UNKNOWN_TITLE_ROW'};
+           unknownTitleRows++;
+           continue; // title-only non-LTX provider placeholder, verified against reservation below
+         }
+         if(!slug)return {ok:false,reason:'VIDEO_SLUG_UNKNOWN'};
+         if(!/^nd-ltx2b-(?:direct-)?[a-z0-9-]+$/.test(slug))continue;
+         if(ref&&ref!==usr.toLowerCase()+'/'+slug)continue;
+         if(!ref&&author!==usr.toLowerCase())return {ok:false,reason:'VIDEO_OWNERSHIP_UNKNOWN'};
+         const key=ref||usr.toLowerCase()+'/'+slug;
+         if(visible.has(key))return {ok:false,reason:'VIDEO_PAGE_DUPLICATE'};
+         visible.set(key,k);
+       }
+       if(data.kernels.length<pageSize){completed=true;break;}
+     }
+     if(!completed)return {ok:false,reason:'VIDEO_SCAN_INCOMPLETE'};
+     // Provider docs: timeReserved = quota reserved by currently-running GPU sessions.
+     // Reject absent/malformed or positive values, including independent non-LTX work.
+     const q=await rpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});
+     const g=q.gpuQuota||q.gpu_quota||{};
+     const raw=g.timeReserved??g.time_reserved;
+     const valid=(typeof raw==='number'&&Number.isFinite(raw)&&raw>=0)||
+       (typeof raw==='string'&&/^\d+(?:\.\d+)?s?$/.test(raw))||
+       (raw&&typeof raw==='object'&&Number.isFinite(Number(raw.seconds??0))&&Number.isFinite(Number(raw.nanos??0)));
+     if(!valid)return {ok:false,reason:'SHARED_GPU_RESERVATION_UNKNOWN'};
+     if(secs(raw)>0)return {ok:false,reason:'SHARED_GPU_RESERVATION_ACTIVE'};
+     for(const [key,k] of visible){
+       const slug=key.split('/').pop();
        const version=Number(k.currentVersionNumber||k.current_version_number||0);
        if(!Number.isSafeInteger(version)||version<1)return {ok:false,reason:'VIDEO_VERSION_UNKNOWN'};
        const status=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});
        const state=stateOf(status.status);
-       if(!['COMPLETED','FAILED','CANCELLED'].includes(state))return {ok:false,reason:'VIDEO_GPU_ACTIVE_OR_UNKNOWN'};
+       if(!['COMPLETED','FAILED','CANCELLED'].includes(state))
+         return {ok:false,reason:'VIDEO_GPU_ACTIVE_OR_UNKNOWN'};
      }
-     return {ok:true,inspected:kernels.length};
+     return {ok:true,inspected:visible.size,non_ltx_title_rows:unknownTitleRows};
    }catch{return {ok:false,reason:'VIDEO_PROVIDER_UNAVAILABLE'};}
  }
  async function find(usr,slug){const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,pageSize:50});const a=(q.kernels||[]).filter(k=>String(k.slug||'').split('/').pop().toLowerCase()===slug&&(!k.ref||String(k.ref).toLowerCase()===usr.toLowerCase()+'/'+slug));if(a.length>1)throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);if(!a.length)return null;return Number(a[0].currentVersionNumber||a[0].current_version_number||0)||null;}
