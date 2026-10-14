@@ -198,24 +198,26 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();
- app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
+ const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
  console.log('ND private Kaggle music bridge ready');
- // A7 temporary read-only bounded pagination diagnosis, no kernel names or credentials emitted.
+ // A7 read-only metadata integrity test; does not submit GPU and never logs kernel names, refs or secrets.
  try{
   const token=String(process.env.KAGGLE_API_TOKEN||'');
-  const call=async(service,method,body)=>{const r=await fetch('https://api.kaggle.com/v1/'+service+'/'+method,{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(13000)});let j={};try{j=await r.json()}catch{}return {code:r.status,data:j};};
-  const id=await call('security.OAuthService','IntrospectToken',{token});if(id.code!==200||!id.data?.active||!id.data?.username)throw Error('AUTH_UNKNOWN');
-  const usr=id.data.username.toLowerCase(),seen=new Set();let total=0,own=0,ltx=0,pages=0,tail=0,repeated=false,error=null;
-  for(let page=1;page<=20;page++){
-   const r=await call('kernels.KernelsApiService','ListKernels',{user:usr,group:1,search:'nd-ltx2b',sortBy:3,page,pageSize:50});if(r.code!==200||!Array.isArray(r.data?.kernels)){error='PROVIDER_LIST_INVALID';break;}
-   const arr=r.data.kernels;pages++;tail=arr.length;total+=arr.length;
-   for(const k of arr){const name=String(k.slug||'').split('/').pop().toLowerCase(),ref=String(k.ref||'').toLowerCase();const owned=String(k.author||'').toLowerCase()===usr||ref.startsWith(usr+'/');if(owned)own++;if(owned&&/^nd-ltx2b-(?:direct-)?[a-z0-9-]+$/.test(name))ltx++;const key=String(k.id||ref||name);if(seen.has(key))repeated=true;seen.add(key);}
-   if(repeated){error='REPEATED_PAGE';break;}
-   if(arr.length<50)break;
-   if(page===20)error='BOUNDED_LIMIT';
+  const rpc=async(s,m,data)=>{const r=await fetch('https://api.kaggle.com/v1/'+s+'/'+m,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json',accept:'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(12000)});let j={};try{j=await r.json()}catch{}return {code:r.status,data:j};};
+  const id=await rpc('security.OAuthService','IntrospectToken',{token});if(id.code!==200||!id.data?.active||!id.data?.username)throw Error('AUTH');
+  const usr=String(id.data.username).toLowerCase();
+  for(const sort of [2,3,0]){
+   let seen=new Set(),total=0,dupes=0,missingId=0,match=0,pages=0,tail=null,err=null,foreign=0;
+   for(let page=1;page<=10;page++){
+    let r=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,group:1,search:'nd-ltx2b',sortBy:sort,page,pageSize:50});
+    if(r.code!==200||!Array.isArray(r.data?.kernels)){err='PROVIDER_ERROR';break;}
+    pages++;const arr=r.data.kernels;tail=arr.length;total+=arr.length;
+    for(const k of arr){const key=String(k.id||k.ref||'');if(!key)missingId++;if(key&&seen.has(key))dupes++;seen.add(key);const ref=String(k.ref||'').toLowerCase(),a=String(k.author||'').toLowerCase();if(!ref.startsWith(usr+'/')&&a!==usr)foreign++;if(/^nd-ltx2b-(?:direct-)?[a-z0-9-]+$/.test(String(k.slug||'').split('/').pop().toLowerCase()))match++;}
+    if(arr.length<50)break;
+    if(page===10)err='SCAN_CAP';
+   }
+   console.log('ND_A7_SORT_PAGES='+JSON.stringify({sort,pages,total,unique:seen.size,duplicates:dupes,missingId,foreign,ltx:match,last_page_count:tail,strict_complete:!err&&dupes===0&&tail<50,error:err}));
   }
-  console.log('ND_A7_PAGED_INVENTORY='+JSON.stringify({pages,total,owned:own,ltx,tail,complete:!error&&tail<50,repeated,error}));
- }catch{console.log('ND_A7_PAGED_INVENTORY='+JSON.stringify({status:'OUTCOME_UNKNOWN'}));}
+ }catch{console.log('ND_A7_SORT_PAGES='+JSON.stringify({status:'UNOBSERVED'}));}
  });
 }
