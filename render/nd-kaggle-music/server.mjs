@@ -70,7 +70,7 @@ export function createServer(config={}){
  }
  async function identity(){const r=await rpc('security.OAuthService','IntrospectToken',{token:kaggleToken});if(!r.active||!r.username)throw error('KAGGLE_TOKEN_INACTIVE',503);if(username&&r.username!==username)throw error('KAGGLE_USERNAME_MISMATCH',503);return r.username;}
  async function quota(){const r=await rpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});const g=r.gpuQuota||r.gpu_quota||{};const total=secs(g.totalTimeAllowed??g.total_time_allowed),used=secs(g.timeUsed??g.time_used),reserved=secs(g.timeReserved??g.time_reserved);return {total_hours:+(total/3600).toFixed(2),remaining_hours:+(Math.max(0,total-used-reserved)/3600).toFixed(2),refresh_at:r.quotaRefreshTime||null,seconds_remaining:Math.max(0,total-used-reserved)};}
- // Non-invasive one-sided admission: music must not consume shared Kaggle GPU while
+ const terminalVideoVersions=new Set(); // Verified terminal version cache, process-local only.\n // Non-invasive one-sided admission: music must not consume shared Kaggle GPU while
  // a known LTX video session is active or provider visibility is insufficient.
  // This does NOT qualify bidirectional scheduling and MUST NOT edit closed video R01.
  async function videoGpuAdmission(usr){
@@ -121,15 +121,39 @@ export function createServer(config={}){
        (raw&&typeof raw==='object'&&Number.isFinite(Number(raw.seconds??0))&&Number.isFinite(Number(raw.nanos??0)));
      if(!valid)return {ok:false,reason:'SHARED_GPU_RESERVATION_UNKNOWN'};
      if(secs(raw)>0)return {ok:false,reason:'SHARED_GPU_RESERVATION_ACTIVE'};
-     for(const [key,k] of visible){
-       const slug=key.split('/').pop();
-       const version=Number(k.currentVersionNumber||k.current_version_number||0);
-       if(!Number.isSafeInteger(version)||version<1)return {ok:false,reason:'VIDEO_VERSION_UNKNOWN'};
-       const status=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});
-       const state=stateOf(status.status);
-       if(!['COMPLETED','FAILED','CANCELLED'].includes(state))
-         return {ok:false,reason:'VIDEO_GPU_ACTIVE_OR_UNKNOWN'};
-     }
+     // Terminal is immutable for a particular kernel ref+version. Retain only
+     // confirmed provider evidence in process memory, never cache unknowns.
+     const entries=[...visible.entries()];
+     let cursor=0,denial=null;
+     const inspectOne=async()=>{
+       while(cursor<entries.length&&!denial){
+         const [key,k]=entries[cursor++];
+         const slug=key.split('/').pop();
+         const version=Number(k.currentVersionNumber||k.current_version_number||0);
+         if(!Number.isSafeInteger(version)||version<1){denial='VIDEO_VERSION_UNKNOWN';break;}
+         const checkedKey=key+'#v'+version;
+         if(terminalVideoVersions.has(checkedKey))continue;
+         try{
+           const status=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});
+           const state=stateOf(status.status);
+           if(!['COMPLETED','FAILED','CANCELLED'].includes(state)){
+             denial='VIDEO_GPU_ACTIVE_OR_UNKNOWN';break;
+           }
+           if(terminalVideoVersions.size<1000)terminalVideoVersions.add(checkedKey);
+         }catch{denial='VIDEO_STATUS_UNAVAILABLE';break;}
+       }
+     };
+     await Promise.all(Array.from({length:Math.min(12,entries.length)},inspectOne));
+     if(denial)return {ok:false,reason:denial};
+     // Recheck global reservation following possibly slow history inspection.
+     const q2=await rpc('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});
+     const g2=q2.gpuQuota||q2.gpu_quota||{};
+     const r2=g2.timeReserved??g2.time_reserved;
+     if(!(typeof r2==='number'&&Number.isFinite(r2)&&r2>=0) &&
+        !(typeof r2==='string'&&/^\d+(?:\.\d+)?s?$/.test(r2)) &&
+        !(r2&&typeof r2==='object'&&Number.isFinite(Number(r2.seconds??0))&&Number.isFinite(Number(r2.nanos??0))))
+       return {ok:false,reason:'SHARED_GPU_RESERVATION_UNKNOWN'};
+     if(secs(r2)>0)return {ok:false,reason:'SHARED_GPU_RESERVATION_ACTIVE'};
      return {ok:true,inspected:visible.size,non_ltx_title_rows:unknownTitleRows};
    }catch{return {ok:false,reason:'VIDEO_PROVIDER_UNAVAILABLE'};}
  }
