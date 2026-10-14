@@ -90,4 +90,20 @@ await scenario('repeated_ltx_ref_on_next_page_blocks',{videoPages:[genericHistor
  assert.equal(a.status,409);assert.equal(a.body.reason,'VIDEO_PAGE_DUPLICATE');assert.equal(calls.save,0);
  return {result:'PASS_CROSS_PAGE_DUPLICATE_DENIED'};
 });
+// Live Kaggle ListKernels omits slug on ordinary records. A validated ref MUST work.
+await scenario('live_ltx_ref_without_slug_done',{videoCases:[{ref:'testuser/nd-ltx2b-referenceonly',author:'testuser',currentVersionNumber:2}],videoStatus:2},async({call,calls,submitObj})=>{
+ const r=await call('/v1/submit',submitObj);
+ assert.equal(r.status,202);assert.equal(calls.save,1);
+ return {result:'PASS_VERIFIED_REF_ONLY_LTX'};
+});
+await scenario('live_ltx_ref_without_slug_running',{videoCases:[{ref:'testuser/nd-ltx2b-referenceonly',author:'testuser',currentVersionNumber:2}],videoStatus:1},async({call,calls,submitObj})=>{
+ const r=await call('/v1/submit',submitObj);
+ assert.equal(r.status,409);assert.equal(r.body.reason,'VIDEO_GPU_ACTIVE_OR_UNKNOWN');assert.equal(calls.save,0);
+ return {result:'PASS_REF_ONLY_LTX_RUNNING_DENIED'};
+});
+await scenario('foreign_ltx_ref_rejected',{videoCases:[{ref:'anotheruser/nd-ltx2b-other',author:'anotheruser',currentVersionNumber:2}]},async({call,calls,submitObj})=>{
+ const r=await call('/v1/submit',submitObj);
+ assert.equal(r.status,409);assert.equal(r.body.reason,'VIDEO_SLUG_UNKNOWN');assert.equal(calls.save,0);
+ return {result:'PASS_FOREIGN_REF_UNKNOWN_FAIL_CLOSED'};
+});
 process.stdout.write(JSON.stringify(harness,null,2)+'\n');
