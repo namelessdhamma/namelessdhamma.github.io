@@ -18,7 +18,7 @@ const stateOf=x=>{
  if((typeof x==='number'||(typeof x==='string'&&x.trim()!==''&&Number.isInteger(Number(x))))&&Object.hasOwn(states,Number(x)))return states[Number(x)];
  const raw=String(x??'').trim().toUpperCase();
  const val=raw.split('.').pop();
- const canonical={COMPLETE:'COMPLETED',COMPLETED:'COMPLETED',ERROR:'FAILED',FAILED:'FAILED',FAILURE:'FAILED',CANCELLED:'CANCELLED',CANCELED:'CANCELLED',CANCEL_REQUESTED:'CANCEL_REQUESTED',CANCELLING:'CANCEL_REQUESTED',RUNNING:'RUNNING',QUEUED:'QUEUED',PENDING:'QUEUED',NEW_SCRIPT:'NEW_SCRIPT'};
+ const canonical={COMPLETE:'COMPLETED',COMPLETED:'COMPLETED',ERROR:'FAILED',FAILED:'FAILED',FAILURE:'FAILED',CANCELLED:'CANCELLED',CANCELED:'CANCELLED',CANCEL_ACKNOWLEDGED:'CANCELLED',CANCEL_REQUESTED:'CANCEL_REQUESTED',CANCELLING:'CANCEL_REQUESTED',RUNNING:'RUNNING',QUEUED:'QUEUED',PENDING:'QUEUED',NEW_SCRIPT:'NEW_SCRIPT'};
  return canonical[val]||'UNKNOWN';
 };
 const secs=v=>typeof v==='number'?v:typeof v==='string'?Number(v.replace(/s$/,''))||0:v&&typeof v==='object'?Number(v.seconds||0)+Number(v.nanos||0)/1e9:0;
@@ -306,20 +306,5 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
- console.log('ND private Kaggle music bridge ready');
- // Read-only, bounded 30-result video status histogram; never log names, refs, source, or credentials.
- try{
- const token=String(process.env.KAGGLE_API_TOKEN||''),usr=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
- const rpc=async(m,b)=>{const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/'+m,{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(b),signal:AbortSignal.timeout(12500)});let j={};try{j=await r.json()}catch{}return {http:r.status,data:j};};
- const list=await rpc('ListKernels',{user:usr,group:1,search:'nd-ltx2b',sortBy:2,page:1,pageSize:50});
- const entries=(list.data.kernels||[]).filter(k=>String(k.ref||'').startsWith(usr+'/nd-ltx2b-')).slice(0,30);
- const counts={},codes={};let n=0,cursor=0;
- const work=async()=>{while(cursor<entries.length){const j=cursor++;const slug=String(entries[j].ref).split('/').pop();try{const detail=await rpc('GetKernel',{userName:usr,kernelSlug:slug});const v=detail.data?.metadata?.currentVersionNumber??detail.data?.currentVersionNumber;if(detail.http!==200||!v){codes['VERSION_UNAVAILABLE']=(codes['VERSION_UNAVAILABLE']||0)+1;continue;}
-  const status=await rpc('GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+v});if(status.http!==200){codes['STATUS_HTTP_'+status.http]=(codes['STATUS_HTTP_'+status.http]||0)+1;continue;}const value=String(status.data?.status??'OMITTED').slice(0,75);counts[value]=(counts[value]||0)+1;}catch{codes['REQUEST_FAILED']=(codes['REQUEST_FAILED']||0)+1;}finally{n++;}}};
- await Promise.all(Array.from({length:Math.min(8,entries.length)},work));
- const quota=await rpc('GetAcceleratorQuotaStatistics',{});
- console.log('ND_A7_LTX_HISTOGRAM='+JSON.stringify({listed:list.data.kernels?.length??null,checked:n,counts,errors:codes,reserved:quota.data?.gpuQuota?.timeReserved??null,quota_http:quota.http}));
- }catch{console.log('ND_A7_LTX_HISTOGRAM='+JSON.stringify({status:'UNOBSERVED'}));}
- });
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
 }
