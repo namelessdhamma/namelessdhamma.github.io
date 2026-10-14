@@ -231,5 +231,14 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
+ const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
+ console.log('ND private Kaggle music bridge ready');
+ // One independent private neutral audio smoke. Existing LTX/quota/ledger admission remains mandatory.
+ const source="import os, math, struct, wave, json, hashlib\nimport torch\nif not torch.cuda.is_available(): raise RuntimeError('GPU_T4_NOT_AVAILABLE')\na=torch.tensor([2.0, 3.0],device='cuda')\ntorch.cuda.synchronize()\nassert float(a.sum().item())==5.0\nout='/kaggle/working/nd_a7_neutral_v2.wav'\nsr=16000\nwith wave.open(out,'wb') as fh:\n    fh.setnchannels(1);fh.setsampwidth(2);fh.setframerate(sr)\n    fh.writeframes(b''.join(struct.pack('<h',int(4000*math.sin(2*math.pi*440*i/sr))) for i in range(2*sr)))\nwith open(out,'rb') as fh: digest=hashlib.sha256(fh.read()).hexdigest()\nprint('ND_A7_REAL_T4_WAV '+json.dumps({'cuda':True,'gpu_name':torch.cuda.get_device_name(0),'file':'nd_a7_neutral_v2.wav','file_bytes':os.path.getsize(out),'sha256':digest}))";
+ try{
+  const r=await fetch('http://127.0.0.1:'+app.address().port+'/v1/submit',{method:'POST',headers:{authorization:'Bearer '+String(process.env.ND_KAGGLE_BRIDGE_TOKEN||''),'content-type':'application/json'},body:JSON.stringify({idempotency_key:'nd-a7-neutral-t4-v2-20261014',python_source:source,confirm_private:true}),signal:AbortSignal.timeout(60000)});
+  const b=await r.json();
+  console.log('ND_A7_NEUTRAL_V2='+JSON.stringify({http_status:r.status,ok:b.ok===true,state:b.state||null,reason:b.reason||null,code:b.error_code||null,job_id:b.job_id||null,slug:b.slug||null,safe_to_resubmit:b.safe_to_resubmit===true,free_only:b.free_only===true}));
+ }catch{console.log('ND_A7_NEUTRAL_V2='+JSON.stringify({http_status:'UNKNOWN',state:'OUTCOME_UNKNOWN',safe_to_resubmit:false}));}
+ });
 }
