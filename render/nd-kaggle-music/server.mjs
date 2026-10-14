@@ -198,21 +198,5 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
- console.log('ND private Kaggle music bridge ready');
- // A7 read-only: title boolean flags for incomplete rows, no actual kernel titles or identities logged.
- try{
- const token=String(process.env.KAGGLE_API_TOKEN||'');
- const call=async(s,m,b)=>{const r=await fetch('https://api.kaggle.com/v1/'+s+'/'+m,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json',accept:'application/json'},body:JSON.stringify(b),signal:AbortSignal.timeout(12000)});let j={};try{j=await r.json()}catch{}return {code:r.status,data:j};};
- const me=await call('security.OAuthService','IntrospectToken',{token});if(me.code!==200||!me.data?.active)throw Error('AUTH');
- const usr=String(me.data.username||'').toLowerCase();let phantom=[],n=0,full=false,reservedValue=null,quotaHttp=null,quotaPayScale=null;
- for(let page=1;page<=10;page++){
-  const z=await call('kernels.KernelsApiService','ListKernels',{user:usr,group:1,search:'nd-ltx2b',sortBy:2,page,pageSize:50});if(z.code!==200||!Array.isArray(z.data?.kernels))throw Error('LIST');const a=z.data.kernels;n+=a.length;
-  for(const k of a){if(k?.id||k?.ref)continue;const title=String(k?.title||'').toLowerCase(),str=String(k?.slug||'').toLowerCase();phantom.push({title_contains_ltx:title.includes('ltx'),title_contains_nd:title.includes('nd'),title_contains_kaggle:title.includes('kaggle'),title_contains_video:title.includes('video'),slug_contains_ltx:str.includes('ltx'),keys:Object.keys(k||{}).filter(y=>['title','url','id','slug','ref','author','status'].includes(y))});}
-  if(a.length<50){full=true;break;}
- }
- const q=await call('kernels.KernelsApiService','GetAcceleratorQuotaStatistics',{});quotaHttp=q.code;const g=q.data?.gpuQuota||{};reservedValue=g.timeReserved??g.time_reserved??null;quotaPayScale=g.isPayToScaleEnabled??g.is_pay_to_scale_enabled??null;
- console.log('ND_A7_GHOST_TITLE_FLAGS='+JSON.stringify({records:n,full,phantom,quota_http:quotaHttp,time_reserved:reservedValue,pay_to_scale_enabled:quotaPayScale}));
- }catch{console.log('ND_A7_GHOST_TITLE_FLAGS='+JSON.stringify({status:'UNKNOWN'}));}
- });
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
 }
