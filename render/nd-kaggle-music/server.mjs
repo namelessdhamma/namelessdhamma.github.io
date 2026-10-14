@@ -158,19 +158,37 @@ export function createServer(config={}){
    }catch{return {ok:false,reason:'VIDEO_PROVIDER_UNAVAILABLE'};}
  }
  async function find(usr,slug){
-   const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,pageSize:50});
+  // Kaggle's ListKernels can ignore narrow search for this account and return
+  // >50 entries; never conclude that a private effect is absent from page one.
+  const size=50,maxPages=10,matches=new Map(),pageKeys=new Set();
+  let complete=false;
+  for(let page=1;page<=maxPages;page++){
+   const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,group:1,sortBy:2,page,pageSize:size});
    if(!Array.isArray(q.kernels))throw error('KAGGLE_LIST_UNVERIFIED',503);
-   // Prefer the fully-qualified Kaggle ref observed live, not the optional slug.
-   const a=q.kernels.filter(k=>{
-     const ref=String(k.ref||'').toLowerCase();
-     const raw=String(k.slug||'').toLowerCase();
-     return ref===usr.toLowerCase()+'/'+slug || (!ref&&raw.split('/').pop()===slug&&String(k.author||'').toLowerCase()===usr.toLowerCase());
-   });
-   if(a.length>1)throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);
-   if(!a.length)return null;
-   const version=Number(a[0].currentVersionNumber||a[0].current_version_number||0);
-   if(!Number.isSafeInteger(version)||version<1)throw error('KAGGLE_VERSION_UNVERIFIED',503);
-   return version;
+   for(const k of q.kernels){
+    if(!k||typeof k!=='object')throw error('KAGGLE_LIST_ROW_UNKNOWN',503);
+    const ref=String(k.ref||'').toLowerCase();
+    const raw=String(k.slug||'').toLowerCase().split('/').pop();
+    const owner=String(k.author||'').toLowerCase();
+    const exact=ref===usr.toLowerCase()+'/'+slug||(!ref&&raw===slug&&owner===usr.toLowerCase());
+    const title=String(k.title||'').toLowerCase();
+    if(!ref&&!raw&&title.includes(slug))throw error('KAGGLE_LIST_POTENTIAL_EFFECT',503);
+    if(!exact)continue;
+    if(matches.has(ref||usr.toLowerCase()+'/'+raw))throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);
+    const version=Number(k.currentVersionNumber||k.current_version_number||0);
+    if(!Number.isSafeInteger(version)||version<1)throw error('KAGGLE_VERSION_UNVERIFIED',503);
+    matches.set(ref||usr.toLowerCase()+'/'+raw,version);
+   }
+   // Bounded safety: page overlap of *nonmatching* rows may signal provider
+   // pagination drift, so do not declare effect absent from incomplete history.
+   const signature=q.kernels.map(k=>String(k?.ref||k?.slug||k?.title||'')).join('\n');
+   if(pageKeys.has(signature))throw error('KAGGLE_LIST_REPEATED_PAGE',503);
+   pageKeys.add(signature);
+   if(q.kernels.length<size){complete=true;break;}
+  }
+  if(!complete)throw error('KAGGLE_LIST_INCOMPLETE',503);
+  if(matches.size>1)throw error('KAGGLE_MULTIPLE_IDENTICAL_KERNELS',409);
+  return matches.size===1?[...matches.values()][0]:null;
  }
  async function getStatus(usr,slug,version){
   try{const r=await rpc('kernels.KernelsApiService','GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+version});return {state:stateOf(r.status),provider_status:r.status??null,failure_message:r.failureMessage||null};}
