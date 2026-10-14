@@ -14,7 +14,13 @@ function controlBudget(){const d=deadlineScope.getStore();const remain=d===undef
 const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
 const slugFor=(key,script)=>'nd-ace15-'+sha(String(key)+'\n'+sha(script)).slice(0,22);
 const states={0:'QUEUED',1:'RUNNING',2:'COMPLETED',3:'FAILED',4:'CANCEL_REQUESTED',5:'CANCELLED',6:'NEW_SCRIPT'};
-const stateOf=x=>states[Number(x)]||String(x||'QUEUED').toUpperCase();
+const stateOf=x=>{
+ if((typeof x==='number'||(typeof x==='string'&&/^\\d+$/.test(x)))&&Object.hasOwn(states,Number(x)))return states[Number(x)];
+ const raw=String(x??'').trim().toUpperCase();
+ const val=raw.split('.').pop();
+ const canonical={COMPLETE:'COMPLETED',COMPLETED:'COMPLETED',ERROR:'FAILED',FAILED:'FAILED',FAILURE:'FAILED',CANCELLED:'CANCELLED',CANCELED:'CANCELLED',CANCEL_REQUESTED:'CANCEL_REQUESTED',CANCELLING:'CANCEL_REQUESTED',RUNNING:'RUNNING',QUEUED:'QUEUED',PENDING:'QUEUED',NEW_SCRIPT:'NEW_SCRIPT'};
+ return canonical[val]||'UNKNOWN';
+};
 const secs=v=>typeof v==='number'?v:typeof v==='string'?Number(v.replace(/s$/,''))||0:v&&typeof v==='object'?Number(v.seconds||0)+Number(v.nanos||0)/1e9:0;
 const isAsciiSlug=s=>typeof s==='string'&&/^[a-z0-9][a-z0-9-]{4,100}$/.test(s);
 function response(res,status,data){const b=JSON.stringify(data);res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','content-length':Buffer.byteLength(b),'x-content-type-options':'nosniff'});res.end(b);}
@@ -300,20 +306,5 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
- console.log('ND private Kaggle music bridge ready');
- // A7 read-only enum inspection; no kernel titles/identifiers/source or credentials logged.
- try{
- const token=String(process.env.KAGGLE_API_TOKEN||''),usr=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
- const rpc=async(name,body)=>{const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/'+name,{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(13000)});let j={};try{j=await r.json()}catch{}return {http:r.status,data:j};};
- const listed=await rpc('ListKernels',{user:usr,group:1,sortBy:2,search:'nd-ltx2b',page:1,pageSize:50});const entries=(listed.data.kernels||[]).filter(k=>String(k.ref||'').startsWith(usr+'/nd-ltx2b-')).slice(0,5);
- const check=[];
- for(let i=0;i<entries.length;i++){
-  const slug=String(entries[i].ref).split('/').pop();const d=await rpc('GetKernel',{userName:usr,kernelSlug:slug});const v=d.data?.metadata?.currentVersionNumber??d.data?.currentVersionNumber;
-  const s=v?await rpc('GetKernelSessionStatus',{userName:usr,kernelSlug:slug,versionLabel:'v'+v}):null;
-  const raw=s?.data?.status;check.push({index:i,get_http:d.http,status_http:s?.http??null,raw_status:typeof raw==='number'||typeof raw==='string'?String(raw).slice(0,70):null,raw_type:typeof raw});
- }
- const quota=await rpc('GetAcceleratorQuotaStatistics',{});console.log('ND_A7_LTX_STATUS_ENUM='+JSON.stringify({count:entries.length,check,quota_http:quota.http,reserved:quota.data?.gpuQuota?.timeReserved??null}));
- }catch{console.log('ND_A7_LTX_STATUS_ENUM='+JSON.stringify({status:'UNOBSERVED'}));}
- });
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
 }
