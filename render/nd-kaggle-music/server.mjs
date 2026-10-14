@@ -231,20 +231,5 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
- console.log('ND private Kaggle music bridge ready');
- // Read-only structure audit: counts booleans, no data strings, GPU submissions or secrets.
- try{
- const token=String(process.env.KAGGLE_API_TOKEN||'');
- const call=async(s,m,b)=>{const r=await fetch('https://api.kaggle.com/v1/'+s+'/'+m,{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify(b),signal:AbortSignal.timeout(12000)});let j={};try{j=await r.json()}catch{}return {code:r.status,data:j};};
- const me=await call('security.OAuthService','IntrospectToken',{token});if(me.code!==200||!me.data?.active||!me.data?.username)throw Error('AUTH');const usr=String(me.data.username).toLowerCase();
- let total=0,has_slug=0,has_ref=0,has_author=0,missing_slug_ref=0,missing_slug_author=0,missing_slug_title=0,missing_all=0,derivable_ref=0,ref_ends_ltx=0,ref_no_slug_title_ltx=0,pages=0;
- for(let page=1;page<=10;page++){
- const z=await call('kernels.KernelsApiService','ListKernels',{user:usr,group:1,search:'nd-ltx2b',sortBy:2,page,pageSize:50});if(z.code!==200||!Array.isArray(z.data?.kernels))throw Error('LIST');const a=z.data.kernels;pages++;
- for(const k of a){total++;const slug=String(k?.slug||''),ref=String(k?.ref||''),author=String(k?.author||''),title=String(k?.title||'');if(slug)has_slug++;if(ref)has_ref++;if(author)has_author++;if(!slug&&ref){missing_slug_ref++;if(ref.includes('/'))derivable_ref++;if(ref.toLowerCase().includes('nd-ltx2b'))ref_ends_ltx++;if(title.toLowerCase().includes('ltx'))ref_no_slug_title_ltx++;}else if(!slug&&author){missing_slug_author++;if(title)missing_slug_title++;}else if(!slug){missing_all++;}}
- if(a.length<50)break;
- }
- console.log('ND_A7_LIST_ROW_SHAPE='+JSON.stringify({pages,total,has_slug,has_ref,has_author,missing_slug_ref,missing_slug_author,missing_slug_title,missing_all,derivable_ref,ref_ends_ltx,ref_no_slug_title_ltx}));
- }catch{console.log('ND_A7_LIST_ROW_SHAPE='+JSON.stringify({status:'UNKNOWN'}));}
- });
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
 }
