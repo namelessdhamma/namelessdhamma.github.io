@@ -158,12 +158,12 @@ export function createServer(config={}){
    }catch{return {ok:false,reason:'VIDEO_PROVIDER_UNAVAILABLE'};}
  }
  async function find(usr,slug){
-  // Kaggle's ListKernels can ignore narrow search for this account and return
+  // Kaggle's exact search returns {} when no hits; independently inventory ALL of\n  // this user's kernels to guard against stale search results and return
   // >50 entries; never conclude that a private effect is absent from page one.
   const size=50,maxPages=10,matches=new Map(),pageKeys=new Set();
   let complete=false;
   for(let page=1;page<=maxPages;page++){
-   const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:slug,group:1,sortBy:2,page,pageSize:size});
+   const q=await rpc('kernels.KernelsApiService','ListKernels',{user:usr,search:'',group:1,sortBy:2,page,pageSize:size});
    if(!Array.isArray(q.kernels))throw error('KAGGLE_LIST_UNVERIFIED',503);
    for(const k of q.kernels){
     if(!k||typeof k!=='object')throw error('KAGGLE_LIST_ROW_UNKNOWN',503);
@@ -292,17 +292,5 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
- console.log('ND private Kaggle music bridge ready');
- // READ-ONLY structural probe of Kaggle ListKernels, never print provider content.
- try{
- const token=String(process.env.KAGGLE_API_TOKEN||''),usr=String(process.env.KAGGLE_USERNAME_SLUG||'').toLowerCase();
- for(const [kind,search,group] of [['empty','',1],['music','nd-ace15',1],['exact','nd-ace15-763e47cbcc81e5ec1e2107',1],['legacy','nd-ltx2b',1]]){
-   const r=await fetch('https://api.kaggle.com/v1/kernels.KernelsApiService/ListKernels',{method:'POST',headers:{authorization:'Bearer '+token,accept:'application/json','content-type':'application/json'},body:JSON.stringify({user:usr,search,group,sortBy:2,page:1,pageSize:50}),signal:AbortSignal.timeout(14000)});
-   const raw=await r.text();let data,validJson=true;try{data=JSON.parse(raw)}catch{validJson=false;data=null}
-   const isArr=Array.isArray(data);const isObj=data&&typeof data==='object';const kernels=isObj&&!isArr?data.kernels:undefined;
-   console.log('ND_A7_SEARCH_SHAPE='+JSON.stringify({kind,http:r.status,json:validJson,root:isArr?'ARRAY':isObj?'OBJECT':typeof data,root_keys:isObj&&!isArr?Object.keys(data).filter(k=>!/(message|error|token|secret)/i.test(k)).slice(0,14):[],array_length:isArr?data.length:null,kernels_field:Array.isArray(kernels)?'ARRAY':kernels===undefined?'OMITTED':typeof kernels,kernels_count:Array.isArray(kernels)?kernels.length:null,bytes:raw.length}));
- }
- }catch{console.log('ND_A7_SEARCH_SHAPE='+JSON.stringify({status:'UNOBSERVED'}));}
- });
+ createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
 }
