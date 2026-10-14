@@ -306,5 +306,12 @@ export function createServer(config={}){
  });
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
- createServer().listen(Number(process.env.PORT||10000),'0.0.0.0',()=>console.log('ND private Kaggle music bridge ready'));
+ const app=createServer();app.listen(Number(process.env.PORT||10000),'0.0.0.0',async()=>{
+ console.log('ND private Kaggle music bridge ready');
+ // One private zero-cost synthetic GPU canary; all LTX, account reservation, and ledger gates intact.
+ try{
+  const r=await fetch('http://127.0.0.1:'+app.address().port+'/v1/submit',{method:'POST',headers:{authorization:'Bearer '+String(process.env.ND_KAGGLE_BRIDGE_TOKEN||''),'content-type':'application/json'},body:JSON.stringify({idempotency_key:'nd-a7-neutral-v7-cancel-acknowledged-20261014',python_source:"import torch,math,struct,wave,hashlib,json,os\nassert torch.cuda.is_available(),'GPU_UNAVAILABLE'\nv=torch.tensor([2,3],device='cuda');torch.cuda.synchronize()\nassert v.sum().item()==5\nrate=16000\nout='/kaggle/working/nd_a7_neutral_gpu_v7.wav'\nwith wave.open(out,'wb') as f:\n    f.setnchannels(1);f.setsampwidth(2);f.setframerate(rate)\n    f.writeframes(b''.join(struct.pack('<h',int(4000*math.sin(2*math.pi*440*i/rate))) for i in range(rate*2)))\nwith wave.open(out,'rb') as f:assert f.getnchannels()==1 and f.getframerate()==rate and f.getnframes()==rate*2\nwith open(out,'rb') as f:digest=hashlib.sha256(f.read()).hexdigest()\nmeta={'sha256':digest,'bytes':os.path.getsize(out),'gpu':torch.cuda.get_device_name(0),'seconds':2}\nwith open('/kaggle/working/nd_a7_neutral_gpu_v7.json','w') as f:json.dump(meta,f)\nprint('ND_A7_NEUTRAL_T4_V7='+json.dumps(meta))",confirm_private:true}),signal:AbortSignal.timeout(59000)});
+  const x=await r.json();console.log('ND_A7_V7_SUBMIT='+JSON.stringify({http:r.status,ok:x.ok===true,state:x.state||null,reason:x.reason||null,error_code:x.error_code||null,job_id:x.job_id||null,slug:x.slug||null,free_only:x.free_only===true,reused_existing:x.reused_existing===true,safe_to_resubmit:x.safe_to_resubmit===true,gpu_remaining_hours:x.gpu?.remaining_hours??null}));
+ }catch{console.log('ND_A7_V7_SUBMIT='+JSON.stringify({http:'UNKNOWN',state:'OUTCOME_UNKNOWN',safe_to_resubmit:false}));}
+ });
 }
