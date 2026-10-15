@@ -239,7 +239,7 @@ async function handleDriveMcp(req,res){
 
 
 async function runRenderRwQualification(){
-  if(process.env.ND_DRIVE_QUALIFY_RUN!=='rw-20261015-a')return;
+  if(process.env.ND_DRIVE_QUALIFY_RUN!=='rw-20261015-b')return;
   const marker=crypto.randomBytes(7).toString('hex');
   const made=[];const results=[];
   const check=(x,reason)=>{if(!x)throw new Error(reason);};
@@ -278,9 +278,23 @@ async function runRenderRwQualification(){
       const m=await invoke('drive_get_currentness_token',{file_id:f.id});
       const before=await invoke('drive_read_content',{file_id:f.id,max_bytes:128,encoding:'utf8'});
       check(before.content==='nd-alpha','raw_readback_before');
-      await invoke('drive_replace_content',{file_id:f.id,mime_type:'text/plain',content_text:'nd-beta',expected_drive_version:String(m.drive_version)});
+      let version=String(m.drive_version);
+      try{await invoke('drive_replace_content',{file_id:f.id,mime_type:'text/plain',content_text:'nd-beta',expected_drive_version:version});}
+      catch(e){
+        if(!String(e?.message||e).includes('DRIVE_VERSION_MISMATCH'))throw e;
+        const unchanged=await invoke('drive_read_content',{file_id:f.id,max_bytes:128,encoding:'utf8'});
+        check(unchanged.content==='nd-alpha','concurrent_unexpected_change');
+        const fresh=await invoke('drive_get_currentness_token',{file_id:f.id});
+        version=String(fresh.drive_version);
+        console.log('ND_DRIVE_RENDER_QUAL_RAW_CAS_REFRESH');
+        await invoke('drive_replace_content',{file_id:f.id,mime_type:'text/plain',content_text:'nd-beta',expected_drive_version:version});
+      }
       const after=await invoke('drive_read_content',{file_id:f.id,max_bytes:128,encoding:'utf8'});
       check(after.content==='nd-beta','raw_readback_after');
+      let mismatch=false;
+      try{await invoke('drive_replace_content',{file_id:f.id,mime_type:'text/plain',content_text:'must-not-write',expected_drive_version:'0'});}
+      catch(e){mismatch=String(e?.message||e).includes('DRIVE_VERSION_MISMATCH');}
+      check(mismatch,'stale_version_not_blocked');
       await invoke('drive_update_metadata',{file_id:f.id,name:'probe-renamed.txt'});
       const renamed=await invoke('drive_get_metadata',{file_id:f.id});
       check(renamed.name==='probe-renamed.txt','rename_readback');
@@ -392,7 +406,7 @@ server.listen(PORT,'0.0.0.0',()=>{
       console.warn('ND_DRIVE_RENDER_USER_OAUTH_FAIL status='+status+' reason='+reason+' detail='+descriptionClass);
       return;
     }
-    try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK'); if(process.env.ND_DRIVE_QUALIFY_RUN==='rw-20261015-a')await runRenderRwQualification();}
+    try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK'); if(process.env.ND_DRIVE_QUALIFY_RUN==='rw-20261015-b')await runRenderRwQualification();}
     catch{console.warn('ND_DRIVE_RENDER_GOOGLE_READ_OR_QUAL_FAILED');}
   });
 });
