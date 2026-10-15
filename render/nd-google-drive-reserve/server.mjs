@@ -275,7 +275,7 @@ server.listen(PORT,'0.0.0.0',()=>{
       console.warn('ND_DRIVE_RENDER_SERVICE_ACCOUNT_FAIL category='+category);
       return;
     }
-    try{await loadRefresh();console.log('ND_DRIVE_RENDER_ENCRYPTED_ESCROW_PASS');}
+    try{await loadRefresh();console.log(OAUTH_REFRESH_ENV?'ND_DRIVE_RENDER_REFRESH_ENV_PRESENT':'ND_DRIVE_RENDER_ENCRYPTED_ESCROW_PASS');}
     catch{console.warn('ND_DRIVE_RENDER_ENCRYPTED_ESCROW_FAIL');return;}
     try{await userAccessToken();console.log('ND_DRIVE_RENDER_USER_OAUTH_PASS');}
     catch(e){
@@ -283,7 +283,8 @@ server.listen(PORT,'0.0.0.0',()=>{
       const status=(msg.match(/^oauth_refresh_http_([0-9]{3})/)||[])[1]||'UNKNOWN';
       const reasons=['invalid_client','invalid_grant','unauthorized_client','invalid_request','invalid_scope','access_denied'];
       const reason=reasons.find(k=>new RegExp('["\\s:]'+k+'["\\s,}]').test(msg))||'UNKNOWN';
-      console.warn('ND_DRIVE_RENDER_USER_OAUTH_FAIL status='+status+' reason='+reason);
+      const descriptionClass=/Token has been expired or revoked/i.test(msg)?'EXPIRED_OR_REVOKED':/Bad Request/i.test(msg)?'BAD_REQUEST':/invalid_client/i.test(msg)?'CLIENT_REJECTED':'OTHER';
+      console.warn('ND_DRIVE_RENDER_USER_OAUTH_FAIL status='+status+' reason='+reason+' detail='+descriptionClass);
       return;
     }
     try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK');}
