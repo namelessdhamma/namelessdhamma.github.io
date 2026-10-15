@@ -7,6 +7,7 @@ const SERVICE_EMAIL=String(process.env.ND_GOOGLE_CLIENT_EMAIL||'').trim();
 const SERVICE_KEY_B64=String(process.env.ND_GOOGLE_PRIVATE_KEY_B64||'').trim();
 const OAUTH_CLIENT_ID=String(process.env.ND_DRIVE_USER_OAUTH_CLIENT_ID||'').trim();
 const OAUTH_CLIENT_SECRET=String(process.env.ND_DRIVE_USER_OAUTH_CLIENT_SECRET||'').trim();
+const OAUTH_REFRESH_ENV=String(process.env.ND_DRIVE_USER_OAUTH_REFRESH_TOKEN||'').trim();
 const STORE_NAME='.nd-drive-user-oauth.enc.json';
 const STORE_PARENT='15CrPbHWMK2LqOYhBM05Hn1cmzOYA8dKC';
 const SERVICE_SCOPES='https://www.googleapis.com/auth/drive';
@@ -58,6 +59,7 @@ async function serviceJson(url,opts={}){
   if(!r.ok){const e=new Error('google_http_'+r.status+':'+t.slice(0,800));e.status=r.status;throw e;} return o;
 }
 async function loadRefresh(){
+  if(OAUTH_REFRESH_ENV)return OAUTH_REFRESH_ENV;
   if(refreshCache)return refreshCache;
   const q=new URLSearchParams({q:"name = '"+STORE_NAME+"' and trashed = false",pageSize:'10',spaces:'drive',fields:'files(id,name,parents)'});
   const list=await serviceJson('https://www.googleapis.com/drive/v3/files?'+q.toString());
