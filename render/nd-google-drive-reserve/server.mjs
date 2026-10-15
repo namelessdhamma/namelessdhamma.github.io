@@ -276,7 +276,14 @@ server.listen(PORT,'0.0.0.0',()=>{
     try{await loadRefresh();console.log('ND_DRIVE_RENDER_ENCRYPTED_ESCROW_PASS');}
     catch{console.warn('ND_DRIVE_RENDER_ENCRYPTED_ESCROW_FAIL');return;}
     try{await userAccessToken();console.log('ND_DRIVE_RENDER_USER_OAUTH_PASS');}
-    catch{console.warn('ND_DRIVE_RENDER_USER_OAUTH_FAIL');return;}
+    catch(e){
+      const msg=String(e?.message||'');
+      const status=(msg.match(/^oauth_refresh_http_([0-9]{3})/)||[])[1]||'UNKNOWN';
+      const reasons=['invalid_client','invalid_grant','unauthorized_client','invalid_request','invalid_scope','access_denied'];
+      const reason=reasons.find(k=>new RegExp('["\\s:]'+k+'["\\s,}]').test(msg))||'UNKNOWN';
+      console.warn('ND_DRIVE_RENDER_USER_OAUTH_FAIL status='+status+' reason='+reason);
+      return;
+    }
     try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK');}
     catch{console.warn('ND_DRIVE_RENDER_GOOGLE_READ_FAILED');}
   });
