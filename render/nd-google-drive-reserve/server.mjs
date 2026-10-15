@@ -261,7 +261,13 @@ if(!BRIDGE_KEY||!SERVICE_EMAIL||!SERVICE_KEY_B64||!OAUTH_CLIENT_ID||!OAUTH_CLIEN
 server.listen(PORT,'0.0.0.0',()=>{
   console.log('ND_DRIVE_RENDER_READY '+JSON.stringify({tools:TOOLS.length,auth:'protected_bridge',google:'pending_readback'}));
   setImmediate(async()=>{
-    try {await userAccessToken();await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK');}
-    catch {console.warn('ND_DRIVE_RENDER_GOOGLE_READ_FAILED');}
+    try{await serviceAccessToken();console.log('ND_DRIVE_RENDER_SERVICE_ACCOUNT_PASS');}
+    catch{console.warn('ND_DRIVE_RENDER_SERVICE_ACCOUNT_FAIL');return;}
+    try{await loadRefresh();console.log('ND_DRIVE_RENDER_ENCRYPTED_ESCROW_PASS');}
+    catch{console.warn('ND_DRIVE_RENDER_ENCRYPTED_ESCROW_FAIL');return;}
+    try{await userAccessToken();console.log('ND_DRIVE_RENDER_USER_OAUTH_PASS');}
+    catch{console.warn('ND_DRIVE_RENDER_USER_OAUTH_FAIL');return;}
+    try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK');}
+    catch{console.warn('ND_DRIVE_RENDER_GOOGLE_READ_FAILED');}
   });
 });
