@@ -262,7 +262,17 @@ server.listen(PORT,'0.0.0.0',()=>{
   console.log('ND_DRIVE_RENDER_READY '+JSON.stringify({tools:TOOLS.length,auth:'protected_bridge',google:'pending_readback'}));
   setImmediate(async()=>{
     try{await serviceAccessToken();console.log('ND_DRIVE_RENDER_SERVICE_ACCOUNT_PASS');}
-    catch{console.warn('ND_DRIVE_RENDER_SERVICE_ACCOUNT_FAIL');return;}
+    catch(e){
+      const message=String(e?.message||'');
+      const http=message.match(/^service_token_http_([0-9]{3})/);
+      const category=http?'SERVICE_TOKEN_HTTP_'+http[1]:
+        message.includes('service_account_env_missing')?'SERVICE_ENV_MISSING':
+        message.includes('BEGIN PRIVATE KEY')?'KEY_FORMAT_INVALID':
+        /sign|DECODER|key|crypto|PEM|ASN1|ASN.1/i.test(message)?'KEY_SIGNING_FAILED':
+        /fetch|network|ENOTFOUND|ECONN|ETIMEOUT|ETIMEDOUT/i.test(message)?'NETWORK_FAILURE':'UNKNOWN';
+      console.warn('ND_DRIVE_RENDER_SERVICE_ACCOUNT_FAIL category='+category);
+      return;
+    }
     try{await loadRefresh();console.log('ND_DRIVE_RENDER_ENCRYPTED_ESCROW_PASS');}
     catch{console.warn('ND_DRIVE_RENDER_ENCRYPTED_ESCROW_FAIL');return;}
     try{await userAccessToken();console.log('ND_DRIVE_RENDER_USER_OAUTH_PASS');}
