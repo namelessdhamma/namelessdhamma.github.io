@@ -237,6 +237,111 @@ async function handleDriveMcp(req,res){
   const out=await driveMcpMessage(msg);if(out===null){res.writeHead(202,{'cache-control':'no-store'});return res.end();}return send(res,200,out);
 }
 
+
+async function runRenderRwQualification(){
+  if(process.env.ND_DRIVE_QUALIFY_RUN!=='rw-20261015-a')return;
+  const marker=crypto.randomBytes(7).toString('hex');
+  const made=[];const results=[];
+  const check=(x,reason)=>{if(!x)throw new Error(reason);};
+  const safeClass=e=>{
+    const msg=String(e?.message||e);
+    if(/DRIVE_VERSION_MISMATCH/.test(msg))return 'VERSION_MISMATCH';
+    if(/REVISION_MISMATCH/.test(msg))return 'REVISION_MISMATCH';
+    if(/EXACT_MATCH_REQUIRED/.test(msg))return 'EXACT_MATCH_REQUIRED';
+    const match=msg.match(/(?:google[_ ]HTTP[_ ]|oauth_refresh_http_)(\d{3})/i);
+    return match?'PROVIDER_HTTP_'+match[1]:'VALIDATION_OR_OTHER';
+  };
+  async function phase(name,fn){
+    try{await fn();results.push({name,ok:true});console.log('ND_DRIVE_RENDER_QUAL_'+name+'_PASS');}
+    catch(e){results.push({name,ok:false});console.warn('ND_DRIVE_RENDER_QUAL_'+name+'_FAIL class='+safeClass(e));}
+  }
+  let folder=null;
+  try{
+    await phase('MCP_LOCAL_DISPATCH',async()=>{
+      const init=await driveMcpMessage({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});
+      const list=await driveMcpMessage({jsonrpc:'2.0',id:2,method:'tools/list'});
+      check(init?.result?.capabilities?.tools&&list?.result?.tools?.length===22,'mcp_list_invalid');
+      check(new Set(list.result.tools.map(t=>t.name)).size===22,'mcp_duplicate_tools');
+    });
+    await phase('FOLDER_CREATE_READ',async()=>{
+      folder=await invoke('drive_create_folder',{name:'ND_RENDER_EPHEMERAL_QUAL_'+marker});
+      check(folder?.id,'folder_no_id');made.push(folder.id);
+      const m=await invoke('drive_get_metadata',{file_id:folder.id});
+      check(m.id===folder.id&&m.mimeType==='application/vnd.google-apps.folder','folder_readback');
+      const q=await invoke('search',{query:'ND_RENDER_EPHEMERAL_QUAL_'+marker,top_n:10});
+      check(q.results.some(f=>f.id===folder.id),'folder_search_readback');
+    });
+    if(!folder?.id) return;
+    await phase('DRIVE_RAW_CRUD',async()=>{
+      const f=await invoke('drive_create_raw_file',{name:'probe.txt',mime_type:'text/plain',parent_id:folder.id,content_text:'nd-alpha'});
+      check(f?.id,'raw_no_id');made.push(f.id);
+      const m=await invoke('drive_get_currentness_token',{file_id:f.id});
+      const before=await invoke('drive_read_content',{file_id:f.id,max_bytes:128,encoding:'utf8'});
+      check(before.content==='nd-alpha','raw_readback_before');
+      await invoke('drive_replace_content',{file_id:f.id,mime_type:'text/plain',content_text:'nd-beta',expected_drive_version:String(m.drive_version)});
+      const after=await invoke('drive_read_content',{file_id:f.id,max_bytes:128,encoding:'utf8'});
+      check(after.content==='nd-beta','raw_readback_after');
+      await invoke('drive_update_metadata',{file_id:f.id,name:'probe-renamed.txt'});
+      const renamed=await invoke('drive_get_metadata',{file_id:f.id});
+      check(renamed.name==='probe-renamed.txt','rename_readback');
+    });
+    await phase('DOCS_CRUD',async()=>{
+      const f=await invoke('drive_create_native_file',{name:'probe-doc',kind:'document',parent_id:folder.id});
+      check(f?.id,'doc_no_id');made.push(f.id);
+      const before=await invoke('docs_read',{document_id:f.id});
+      await invoke('docs_append',{document_id:f.id,text:'ND_RENDER_ALPHA',expected_revision_id:before.revision_id});
+      const middle=await invoke('docs_read',{document_id:f.id});
+      check(middle.text.includes('ND_RENDER_ALPHA'),'docs_append_readback');
+      await invoke('docs_replace_exact',{document_id:f.id,old_text:'ND_RENDER_ALPHA',new_text:'ND_RENDER_BETA',expected_revision_id:middle.revision_id});
+      const after=await invoke('docs_read',{document_id:f.id});
+      check(after.text.includes('ND_RENDER_BETA')&&!after.text.includes('ND_RENDER_ALPHA'),'docs_replace_readback');
+    });
+    await phase('SHEETS_CRUD',async()=>{
+      const f=await invoke('drive_create_native_file',{name:'probe-sheet',kind:'spreadsheet',parent_id:folder.id});
+      check(f?.id,'sheet_no_id');made.push(f.id);
+      let sh=await invoke('sheets_get',{spreadsheet_id:f.id});
+      const sname=sh.sheets?.[0]?.properties?.title;
+      let sheetName=sname;
+      if(!sheetName){
+        await invoke('sheets_batch_update',{spreadsheet_id:f.id,requests:[{addSheet:{properties:{title:'Qualification'}}}]});
+        sheetName='Qualification';
+      }
+      const range="'"+sheetName.replace(/'/g,"''")+"'!A1:B1";
+      await invoke('sheets_update_values',{spreadsheet_id:f.id,range,values:[['nd-key','nd-value']],value_input_option:'RAW'});
+      const read=await invoke('sheets_get_values',{spreadsheet_id:f.id,range});
+      check(read.values?.[0]?.[0]==='nd-key'&&read.values?.[0]?.[1]==='nd-value','sheets_readback');
+      await invoke('sheets_batch_update',{spreadsheet_id:f.id,requests:[{updateSpreadsheetProperties:{properties:{title:'probe-sheet-updated'},fields:'title'}}]});
+      sh=await invoke('sheets_get',{spreadsheet_id:f.id});
+      check(sh.properties?.title==='probe-sheet-updated','sheets_batch_readback');
+    });
+    await phase('SLIDES_CRUD',async()=>{
+      const f=await invoke('drive_create_native_file',{name:'probe-slides',kind:'presentation',parent_id:folder.id});
+      check(f?.id,'slides_no_id');made.push(f.id);
+      const s='nd_qual_slide_'+marker, shape='nd_qual_text_'+marker;
+      const requests=[
+        {createSlide:{objectId:s,slideLayoutReference:{predefinedLayout:'BLANK'}}},
+        {createShape:{objectId:shape,shapeType:'TEXT_BOX',elementProperties:{pageObjectId:s,size:{width:{magnitude:200,unit:'PT'},height:{magnitude:60,unit:'PT'}},transform:{scaleX:1,scaleY:1,translateX:25,translateY:25,unit:'PT'}}}},
+        {insertText:{objectId:shape,text:'ND_RENDER_SLIDE_OK',insertionIndex:0}}
+      ];
+      await invoke('slides_batch_update',{presentation_id:f.id,requests});
+      const after=await invoke('slides_get',{presentation_id:f.id});
+      check(after.slides?.some(t=>t.text.includes('ND_RENDER_SLIDE_OK')),'slides_readback');
+    });
+    await phase('FOLDER_CHILDREN',async()=>{
+      const ch=await invoke('drive_list_children',{folder_id:folder.id,top_n:25});
+      check(Array.isArray(ch.results)&&ch.results.length>=3,'children_missing');
+    });
+  }finally{
+    let fails=0;
+    for(const id of made.slice().reverse()){
+      try{await invoke('drive_delete_file',{file_id:id});}
+      catch(e){fails++;console.warn('ND_DRIVE_RENDER_QUAL_CLEANUP_ITEM_FAIL id='+id+' class='+safeClass(e));}
+    }
+    console.log(fails?'ND_DRIVE_RENDER_QUAL_CLEANUP_FAIL count='+fails:'ND_DRIVE_RENDER_QUAL_CLEANUP_PASS');
+    console.log('ND_DRIVE_RENDER_QUAL_SUMMARY '+JSON.stringify({passed:results.filter(r=>r.ok).map(r=>r.name),failed:results.filter(r=>!r.ok).map(r=>r.name),cleanup_fails:fails}));
+  }
+}
+
 const server=http.createServer(async(req,res)=>{
   try{
     const u=new URL(req.url||'/','http://127.0.0.1:'+PORT);
@@ -287,7 +392,7 @@ server.listen(PORT,'0.0.0.0',()=>{
       console.warn('ND_DRIVE_RENDER_USER_OAUTH_FAIL status='+status+' reason='+reason+' detail='+descriptionClass);
       return;
     }
-    try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK');}
-    catch{console.warn('ND_DRIVE_RENDER_GOOGLE_READ_FAILED');}
+    try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK'); if(process.env.ND_DRIVE_QUALIFY_RUN==='rw-20261015-a')await runRenderRwQualification();}
+    catch{console.warn('ND_DRIVE_RENDER_GOOGLE_READ_OR_QUAL_FAILED');}
   });
 });
