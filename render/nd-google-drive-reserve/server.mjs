@@ -238,6 +238,31 @@ async function handleDriveMcp(req,res){
 }
 
 
+
+async function runMcpLoopbackCanary(){
+  if(process.env.ND_DRIVE_MCP_CANARY!=='20261015')return;
+  const endpoint='http://127.0.0.1:'+PORT+'/drive/mcp';
+  const rpc=async(message,secret=BRIDGE_KEY)=>{
+    const resp=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json','x-nd-bridge-key':secret},body:JSON.stringify(message)});
+    return {status:resp.status,data:await resp.json()};
+  };
+  try{
+    const no=await rpc({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}},'incorrect-key');
+    if(no.status!==401)throw new Error('unauthorized_request_accepted');
+    const init=await rpc({jsonrpc:'2.0',id:2,method:'initialize',params:{protocolVersion:'2025-06-18'}});
+    if(init.status!==200||!init.data?.result?.capabilities?.tools)throw new Error('initialize_invalid');
+    const ls=await rpc({jsonrpc:'2.0',id:3,method:'tools/list'});
+    if(ls.status!==200||ls.data?.result?.tools?.length!==22)throw new Error('tools_list_invalid');
+    const call=await rpc({jsonrpc:'2.0',id:4,method:'tools/call',params:{name:'search',arguments:{query:'ND_RENDER_EPHEMERAL_QUAL_',top_n:1}}});
+    if(call.status!==200||call.data?.result?.isError||!Array.isArray(call.data?.result?.structuredContent?.results))throw new Error('search_dispatch_invalid');
+    console.log('ND_DRIVE_RENDER_MCP_LOOPBACK_AUTH_22TOOLS_GOOGLE_READ_PASS');
+  }catch(e){
+    const reason=String(e?.message||e);
+    const cls=/unauthorized_request_accepted/.test(reason)?'AUTH_BYPASS':/initialize_invalid/.test(reason)?'INITIALIZE':/tools_list_invalid/.test(reason)?'TOOLS_LIST':/search_dispatch_invalid/.test(reason)?'GOOGLE_READ':'OTHER';
+    console.warn('ND_DRIVE_RENDER_MCP_LOOPBACK_FAIL class='+cls);
+  }
+}
+
 async function runRenderRwQualification(){
   if(process.env.ND_DRIVE_QUALIFY_RUN!=='rw-20261015-b')return;
   const marker=crypto.randomBytes(7).toString('hex');
@@ -406,7 +431,7 @@ server.listen(PORT,'0.0.0.0',()=>{
       console.warn('ND_DRIVE_RENDER_USER_OAUTH_FAIL status='+status+' reason='+reason+' detail='+descriptionClass);
       return;
     }
-    try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK'); if(process.env.ND_DRIVE_QUALIFY_RUN==='rw-20261015-b')await runRenderRwQualification();}
+    try{await gjson('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)');console.log('ND_DRIVE_RENDER_GOOGLE_READ_OK'); if(process.env.ND_DRIVE_MCP_CANARY==='20261015')await runMcpLoopbackCanary(); if(process.env.ND_DRIVE_QUALIFY_RUN==='rw-20261015-b')await runRenderRwQualification();}
     catch{console.warn('ND_DRIVE_RENDER_GOOGLE_READ_OR_QUAL_FAILED');}
   });
 });
