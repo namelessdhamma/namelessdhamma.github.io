@@ -1,0 +1,95 @@
+{
+  "id": "BLUE_SEA_SEVEN_WORLDS_CANON_2026-10-01",
+  "status": "USER_ACCEPTED_VISUAL_TARGET",
+  "scope": "A5 16:9 phone-landscape visual references; images are concept reference, not shipped composited UI textures",
+  "images": [
+    {
+      "world": "nd_premium_void",
+      "file": "01_nd_premium_void.png",
+      "sha256": "00ffb7f48345b493cbd2cb986a3fb21fac345db50f0f8f20c679cdff58b421b8",
+      "size": [
+        1672,
+        941
+      ],
+      "bytes": 2743931,
+      "source_file": "อ_นเทอร_เฟซเกมอวกาศฟ_ชช_นทะเลส_น_ออน.png"
+    },
+    {
+      "world": "pirate_sea",
+      "file": "02_pirate_sea.png",
+      "sha256": "0e9f2f706ba9127cecef7e718fa50c320a8e92b9fe093b54cffbd69b471eafb1",
+      "size": [
+        1672,
+        941
+      ],
+      "bytes": 2798608,
+      "source_file": "пиратская_карта_синего_моря.png"
+    },
+    {
+      "world": "atlantis",
+      "file": "03_atlantis.png",
+      "sha256": "2cd5c4188ee1f21bb3aa74eec0ca933affd6d9af0982b27433c2689acf8d219f",
+      "size": [
+        1672,
+        941
+      ],
+      "bytes": 2974551,
+      "source_file": "กระดานเกมแอตแลนต_สใต_สม_ทร.png"
+    },
+    {
+      "world": "gods_of_the_deep",
+      "file": "04_gods_of_the_deep.png",
+      "sha256": "10ddb91c1ddf75d6faaec496600419ae9483a02453f38e81f44bbc7ee1903f4d",
+      "size": [
+        1672,
+        941
+      ],
+      "bytes": 3131033,
+      "source_file": "เกมกระดานเทพแห_งห_วงสม_ทร.png"
+    },
+    {
+      "world": "sand_sea",
+      "file": "05_sand_sea.png",
+      "sha256": "01d5b202cd9451520652f67c4ccdbd6d636e59e16c056b050aa10663c73fb6b3",
+      "size": [
+        1672,
+        941
+      ],
+      "bytes": 2780259,
+      "source_file": "กระดานทรายแห_งอ_ย_ปต_โบราณ.png"
+    },
+    {
+      "world": "night_sea",
+      "file": "06_night_sea.png",
+      "sha256": "ecdb9072a004b264eb768d98caaceb63857329dcbb8cb5bf5c6a86424c8b66da",
+      "size": [
+        1672,
+        941
+      ],
+      "bytes": 2782009,
+      "source_file": "ночное_море_маяки_рангов_1_9.png"
+    },
+    {
+      "world": "northern_sea",
+      "file": "07_northern_sea.png",
+      "sha256": "3289a2a7eeed5fca9426e8e3af515a504a1658e0e450327dd22e26f44e664775",
+      "size": [
+        1672,
+        941
+      ],
+      "bytes": 3089383,
+      "source_file": "северное_море_руническая_гавань.png"
+    }
+  ],
+  "constraints": [
+    "seven named worlds: ND Premium Void, Pirate Sea, Atlantis, Gods of the Deep, Sand Sea, Night Sea, Northern Sea",
+    "logo СИНЕЕ МОРЕ always red",
+    "board 10–20% larger than preceding layouts; maximize comfortable mobile cell tapping",
+    "piece ranks 1–9 visibly increase in size; rank 9 largest",
+    "only active player reserve displayed below board; never opponent reserve",
+    "no Back/Reset/Next immediately beneath active pieces; Back in top menu, Reset in menu with confirmation, Next only after game end",
+    "Void board may float with an inclined viewpoint, empty warm/cool light opposition, minimalist surround; other boards rest physically on a table/ground",
+    "world-specific pieces: Void glass light domes; Pirate leather/brass naval caps; Atlantis stepped temples; Gods of Deep marine beings; Sand Egyptian pyramids; Night Gothic beacons; North runestones",
+    "original images can contain generative inconsistencies (e.g. missing numeric glyphs, impossible board occupancy), which must be corrected in functional implementation, not copied as behavior"
+  ]
+}
