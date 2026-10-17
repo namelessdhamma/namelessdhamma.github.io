@@ -1,0 +1,144 @@
+{
+  "version": "A5-v107",
+  "world": "sand_sea",
+  "source_file": "05_sand_sea_canon_source.png",
+  "source_sha256": "01d5b202cd9451520652f67c4ccdbd6d636e59e16c056b050aa10663c73fb6b3",
+  "source_size": [
+    1672,
+    941
+  ],
+  "source_board_corners": [
+    [
+      407,
+      228
+    ],
+    [
+      1281,
+      226
+    ],
+    [
+      1470,
+      751
+    ],
+    [
+      246,
+      751
+    ]
+  ],
+  "donor_cells": [
+    2,
+    4,
+    6
+  ],
+  "canonical_empty_motifs": {
+    "2": "sun",
+    "4": "ankh",
+    "6": "eye_of_horus"
+  },
+  "output_size": [
+    192,
+    192
+  ],
+  "use": "Nine live Godot stone cells; ranks/pyramids/occupancy dynamic",
+  "cells": [
+    {
+      "cell": 0,
+      "file": "cell_00.png",
+      "sha256": "cf48257737cf854bc588c6f4e620dc5c69a4b5e4d515a299319ce338d664042c",
+      "donor_empty_cell": 6,
+      "donor_symbol": "eye_of_horus",
+      "inset": 0.76,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 1,
+      "file": "cell_01.png",
+      "sha256": "09afe11049213187aac868a83995bd9d30889476daadf9c157d75420d07443ce",
+      "donor_empty_cell": 4,
+      "donor_symbol": "ankh",
+      "inset": 0.78,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 2,
+      "file": "cell_02.png",
+      "sha256": "886c59432d6c3fad1a5254f462a6d6b2ab434910abe2c52fa3c3823945ae9acb",
+      "donor_empty_cell": 2,
+      "donor_symbol": "sun",
+      "inset": 0.82,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 3,
+      "file": "cell_03.png",
+      "sha256": "4e082bb8560d550a5a5b8ffa38a17ca0ba315095d1fe4045f9cf06fd15e41694",
+      "donor_empty_cell": 2,
+      "donor_symbol": "sun",
+      "inset": 0.76,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 4,
+      "file": "cell_04.png",
+      "sha256": "390bd7d6801e86e88faa0dceab1b77f6410f7d14edefbc1796b1029d6f35cd19",
+      "donor_empty_cell": 4,
+      "donor_symbol": "ankh",
+      "inset": 0.82,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 5,
+      "file": "cell_05.png",
+      "sha256": "eb628a09dfd76a755434321dd902e9210524a94b8704e8dbed9ba0754ead40fd",
+      "donor_empty_cell": 6,
+      "donor_symbol": "eye_of_horus",
+      "inset": 0.79,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 6,
+      "file": "cell_06.png",
+      "sha256": "85c76691fcb90d56938a2054ea9050a972a7241ba3411a2d0d651e156f6de4db",
+      "donor_empty_cell": 6,
+      "donor_symbol": "eye_of_horus",
+      "inset": 0.82,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 7,
+      "file": "cell_07.png",
+      "sha256": "df742fc409b590828687ff0c77472c415e16226c755576e97f78d1098b58c74a",
+      "donor_empty_cell": 2,
+      "donor_symbol": "sun",
+      "inset": 0.78,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 8,
+      "file": "cell_08.png",
+      "sha256": "a082a919e4de1695b5ae97a9383a70bf963019a0d5b454b39b156d5ac1d98a1e",
+      "donor_empty_cell": 4,
+      "donor_symbol": "ankh",
+      "inset": 0.76,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    }
+  ]
+}

@@ -1,0 +1,258 @@
+{
+  "source_sha256": "3289a2a7eeed5fca9426e8e3af515a504a1658e0e450327dd22e26f44e664775",
+  "source": "07_northern_sea.png",
+  "assets": [
+    {
+      "rank": 1,
+      "player": 1,
+      "file": "north_rank_01_p1.png",
+      "sha256": "ad1c7dc5c517bc724d3c0406c1ee6c2042ed74add4826c9236607fe5cd053103",
+      "bounds": [
+        40,
+        43,
+        87,
+        84
+      ],
+      "width": 47,
+      "height": 41
+    },
+    {
+      "rank": 1,
+      "player": 2,
+      "file": "north_rank_01_p2.png",
+      "sha256": "c55003231d0efb135ec37222a5d8d0be1ec690504ad06c209f9e35b362d69a1f",
+      "bounds": [
+        40,
+        43,
+        87,
+        84
+      ],
+      "width": 47,
+      "height": 41
+    },
+    {
+      "rank": 2,
+      "player": 1,
+      "file": "north_rank_02_p1.png",
+      "sha256": "ae8afd1d530caa2a027f26c138b9a94d031181a176a8620cd1c4e32a0f0d8d89",
+      "bounds": [
+        36,
+        42,
+        92,
+        85
+      ],
+      "width": 56,
+      "height": 43
+    },
+    {
+      "rank": 2,
+      "player": 2,
+      "file": "north_rank_02_p2.png",
+      "sha256": "37f8b3ef78d9e3b4078c4c92b6e97412b8fc60befee9cf76ff8e27c9837a8ae9",
+      "bounds": [
+        36,
+        42,
+        92,
+        85
+      ],
+      "width": 56,
+      "height": 43
+    },
+    {
+      "rank": 3,
+      "player": 1,
+      "file": "north_rank_03_p1.png",
+      "sha256": "1b29d49004305e065663137212fa39de0642546d4cad2141c744ec9dfd4d5507",
+      "bounds": [
+        31,
+        36,
+        96,
+        91
+      ],
+      "width": 65,
+      "height": 55
+    },
+    {
+      "rank": 3,
+      "player": 2,
+      "file": "north_rank_03_p2.png",
+      "sha256": "788ddfe1042e91f1a5115276d4403442438c6b9109121437f552bc836c9c154d",
+      "bounds": [
+        31,
+        36,
+        96,
+        91
+      ],
+      "width": 65,
+      "height": 55
+    },
+    {
+      "rank": 4,
+      "player": 1,
+      "file": "north_rank_04_p1.png",
+      "sha256": "83f1de18aa8ac2255e9bda0cf5bf35ea9f52450c4cd53dab0e1286365b01547b",
+      "bounds": [
+        27,
+        32,
+        101,
+        95
+      ],
+      "width": 74,
+      "height": 63
+    },
+    {
+      "rank": 4,
+      "player": 2,
+      "file": "north_rank_04_p2.png",
+      "sha256": "fcca30b35deada797672eb7dc56f56a29489d92191a4bbae38c648ad8c8c8bce",
+      "bounds": [
+        27,
+        32,
+        101,
+        95
+      ],
+      "width": 74,
+      "height": 63
+    },
+    {
+      "rank": 5,
+      "player": 1,
+      "file": "north_rank_05_p1.png",
+      "sha256": "8ad80f3b20403cd54b17160e3d80ae350743343117273aa6f778488231df26e6",
+      "bounds": [
+        22,
+        26,
+        105,
+        101
+      ],
+      "width": 83,
+      "height": 75
+    },
+    {
+      "rank": 5,
+      "player": 2,
+      "file": "north_rank_05_p2.png",
+      "sha256": "905a13e73e88e1c894479a4c13df2c9fcee10c11f09d7d103a3e580043114cff",
+      "bounds": [
+        22,
+        26,
+        105,
+        101
+      ],
+      "width": 83,
+      "height": 75
+    },
+    {
+      "rank": 6,
+      "player": 1,
+      "file": "north_rank_06_p1.png",
+      "sha256": "d6fc5049a73aaf17a3871639fce874d1dc77efffd20ca9249851ac315b3ad094",
+      "bounds": [
+        18,
+        24,
+        110,
+        103
+      ],
+      "width": 92,
+      "height": 79
+    },
+    {
+      "rank": 6,
+      "player": 2,
+      "file": "north_rank_06_p2.png",
+      "sha256": "fe7f7429af87f0687552f37aa6b80a5f749dd1b1d0428c16b7987f404b6d95e5",
+      "bounds": [
+        18,
+        24,
+        110,
+        103
+      ],
+      "width": 92,
+      "height": 79
+    },
+    {
+      "rank": 7,
+      "player": 1,
+      "file": "north_rank_07_p1.png",
+      "sha256": "d6951a317592c248880ead01ef9db29ef47a45a07eddc92321c10a7d878581b8",
+      "bounds": [
+        13,
+        20,
+        114,
+        108
+      ],
+      "width": 101,
+      "height": 88
+    },
+    {
+      "rank": 7,
+      "player": 2,
+      "file": "north_rank_07_p2.png",
+      "sha256": "bcdba7cf42a040ee501918a4be9b2d2da96eba245745e2ce7a258d214204ced5",
+      "bounds": [
+        13,
+        20,
+        114,
+        108
+      ],
+      "width": 101,
+      "height": 88
+    },
+    {
+      "rank": 8,
+      "player": 1,
+      "file": "north_rank_08_p1.png",
+      "sha256": "856b694eda54c56d43ac003ac5b679a89b2f12e280f27b3d4ae2f702247065d0",
+      "bounds": [
+        9,
+        18,
+        119,
+        110
+      ],
+      "width": 110,
+      "height": 92
+    },
+    {
+      "rank": 8,
+      "player": 2,
+      "file": "north_rank_08_p2.png",
+      "sha256": "751298524d3010d0fcf54cf13347b8a6afee90917611953fb8bf84c8ac01e9fa",
+      "bounds": [
+        9,
+        18,
+        119,
+        110
+      ],
+      "width": 110,
+      "height": 92
+    },
+    {
+      "rank": 9,
+      "player": 1,
+      "file": "north_rank_09_p1.png",
+      "sha256": "cec4aaec827d54c9d63d6979e44d363a62a0474197d478a83a3a29ac23e99126",
+      "bounds": [
+        4,
+        15,
+        124,
+        113
+      ],
+      "width": 120,
+      "height": 98
+    },
+    {
+      "rank": 9,
+      "player": 2,
+      "file": "north_rank_09_p2.png",
+      "sha256": "e8e80c9f2443019fb191dae2ded54142c2cdf9bc5ddd682edc1a38c20048a609",
+      "bounds": [
+        4,
+        15,
+        124,
+        113
+      ],
+      "width": 120,
+      "height": 98
+    }
+  ]
+}

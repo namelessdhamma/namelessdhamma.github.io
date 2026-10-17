@@ -1,0 +1,41 @@
+{
+  "generator": "tools/build_pirate_atlantis_prebaked_environment.py",
+  "kind": "original_scenery_and_physical_support_ONLY",
+  "contains_game_state_or_board_cells": false,
+  "canonical_reference_images_changed": false,
+  "source_math": "scripts/world_visuals.gd Pirate/Atlantis RGB8 formulas",
+  "assets": [
+    {
+      "file": "pirate_chart_backdrop.png",
+      "sha256": "e6fbf8b5ec3e6c5e1c0d5b14122fc0465919d5569f3769af82ec4084ff443535",
+      "size": [
+        512,
+        288
+      ]
+    },
+    {
+      "file": "pirate_chart_support.png",
+      "sha256": "867f8c39b1f2a57d6138c1b76451f9b29e528a6b8b1ed1ca85e0257bd04b89fb",
+      "size": [
+        256,
+        256
+      ]
+    },
+    {
+      "file": "atlantis_underwater_backdrop.png",
+      "sha256": "817dbbede16396b84c808e4b6b6d1c318963f9f973fd35f246fe4bf40a471c24",
+      "size": [
+        512,
+        288
+      ]
+    },
+    {
+      "file": "atlantis_stone_support.png",
+      "sha256": "fc3ec26ccbc783dab87098e5185a3ec5ad395a5822f740a789c7a6e343a653ba",
+      "size": [
+        256,
+        256
+      ]
+    }
+  ]
+}

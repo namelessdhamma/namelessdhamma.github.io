@@ -1,0 +1,162 @@
+{
+  "version": "A5-v108",
+  "world": "atlantis",
+  "source_file": "03_atlantis_canon_source.png",
+  "source_sha256": "2cd5c4188ee1f21bb3aa74eec0ca933affd6d9af0982b27433c2689acf8d219f",
+  "source_size": [
+    1672,
+    941
+  ],
+  "source_board_corners": [
+    [
+      398,
+      278
+    ],
+    [
+      1288,
+      275
+    ],
+    [
+      1400,
+      739
+    ],
+    [
+      283,
+      744
+    ]
+  ],
+  "donor_cells": [
+    1,
+    5,
+    6
+  ],
+  "upper_donor_safety": {
+    "1": 22,
+    "5": 22
+  },
+  "lower_donor_empty_cell": 6,
+  "output_size": [
+    192,
+    192
+  ],
+  "use": "Nine LIVE Godot cells; pyramids/ranks/occupancy dynamic",
+  "cells": [
+    {
+      "cell": 0,
+      "file": "cell_00.png",
+      "sha256": "d0ba05c288471914a234089c213a7a64b63fb68844006ffd2a6c0be4e4182392",
+      "donor_empty_cell": 6,
+      "inset": 0.85,
+      "source_upper_only": false,
+      "safe_upper_end": null,
+      "lower_blend_end": null,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 1,
+      "file": "cell_01.png",
+      "sha256": "c863a2f153ee7443705ea2e6c820181824df9aac36f9f0184ac240eeb3d6891a",
+      "donor_empty_cell": 1,
+      "inset": 0.7,
+      "source_upper_only": true,
+      "safe_upper_end": 22,
+      "lower_blend_end": 48,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 2,
+      "file": "cell_02.png",
+      "sha256": "746488d12630521287eb20b96d7dc236076f5d418c702cb329914c4f7c588616",
+      "donor_empty_cell": 6,
+      "inset": 0.92,
+      "source_upper_only": false,
+      "safe_upper_end": null,
+      "lower_blend_end": null,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 3,
+      "file": "cell_03.png",
+      "sha256": "abc9070090665009fa0bf9f62664452c793dd62a9cd75f25075dbf4c2e8886a3",
+      "donor_empty_cell": 5,
+      "inset": 0.81,
+      "source_upper_only": true,
+      "safe_upper_end": 22,
+      "lower_blend_end": 48,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 4,
+      "file": "cell_04.png",
+      "sha256": "b036ab9dbe0799c48f18372c71bd7913123df55620858e2d71bef8141efdf0d0",
+      "donor_empty_cell": 6,
+      "inset": 0.89,
+      "source_upper_only": false,
+      "safe_upper_end": null,
+      "lower_blend_end": null,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 5,
+      "file": "cell_05.png",
+      "sha256": "1ab0d9a316f15ac3d778272ff75700bf55dbf26d632f413e24fe5621fb3602ff",
+      "donor_empty_cell": 5,
+      "inset": 0.87,
+      "source_upper_only": true,
+      "safe_upper_end": 22,
+      "lower_blend_end": 48,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 6,
+      "file": "cell_06.png",
+      "sha256": "15c5f8ce5120cea2be6750a8307ea5f9389d075c256d6b2455ddc9a728503d8b",
+      "donor_empty_cell": 6,
+      "inset": 0.97,
+      "source_upper_only": false,
+      "safe_upper_end": null,
+      "lower_blend_end": null,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 7,
+      "file": "cell_07.png",
+      "sha256": "1f226df1aa5a6db307b545abda961b01a70b2e961048dfa69095d030607387cd",
+      "donor_empty_cell": 1,
+      "inset": 0.78,
+      "source_upper_only": true,
+      "safe_upper_end": 22,
+      "lower_blend_end": 48,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 8,
+      "file": "cell_08.png",
+      "sha256": "f82c4010740ee784c089cea4554f00e650f58dfbcbe8e8473c7e69215310c240",
+      "donor_empty_cell": 6,
+      "inset": 0.94,
+      "source_upper_only": false,
+      "safe_upper_end": null,
+      "lower_blend_end": null,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "occupied_reference_cell_baked": false
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+[
+  {
+    "world": 0,
+    "source": "01_nd_premium_void_canon_source.png",
+    "source_sha256": "00ffb7f48345b493cbd2cb986a3fb21fac345db50f0f8f20c679cdff58b421b8",
+    "bounds": [
+      18,
+      18,
+      112,
+      88
+    ],
+    "radius": 18,
+    "sprite": "world_00.png",
+    "sprite_sha256": "98c158f2e693b0cd9353f17024c9bab59eb45c94001af5397a6fe691a2e17613",
+    "scenery_cutout": false
+  },
+  {
+    "world": 1,
+    "source": "02_pirate_sea_canon_source.png",
+    "source_sha256": "0e9f2f706ba9127cecef7e718fa50c320a8e92b9fe093b54cffbd69b471eafb1",
+    "bounds": [
+      27,
+      19,
+      96,
+      90
+    ],
+    "radius": 14,
+    "sprite": "world_01.png",
+    "sprite_sha256": "8b816fd5ab5ba3e9f2bbe4d332ebcdf1f2487996a138427a8d2472d3798ec6b0",
+    "scenery_cutout": true
+  },
+  {
+    "world": 2,
+    "source": "03_atlantis_canon_source.png",
+    "source_sha256": "2cd5c4188ee1f21bb3aa74eec0ca933affd6d9af0982b27433c2689acf8d219f",
+    "bounds": [
+      21,
+      22,
+      108,
+      98
+    ],
+    "radius": 17,
+    "sprite": "world_02.png",
+    "sprite_sha256": "ab9c69b5d1d56beb3c80b4df0db29e2c6b70fd208ccab11a45e79430bd2181e2",
+    "scenery_cutout": true
+  },
+  {
+    "world": 3,
+    "source": "04_gods_of_the_deep_canon_source.png",
+    "source_sha256": "10ddb91c1ddf75d6faaec496600419ae9483a02453f38e81f44bbc7ee1903f4d",
+    "bounds": [
+      22,
+      19,
+      111,
+      97
+    ],
+    "radius": 19,
+    "sprite": "world_03.png",
+    "sprite_sha256": "75314d8fc06ff81a2a6ea662255cc1fce6842b3b306901f37705db17e8062d7e",
+    "scenery_cutout": true
+  },
+  {
+    "world": 4,
+    "source": "05_sand_sea_canon_source.png",
+    "source_sha256": "01d5b202cd9451520652f67c4ccdbd6d636e59e16c056b050aa10663c73fb6b3",
+    "bounds": [
+      24,
+      20,
+      107,
+      97
+    ],
+    "radius": 17,
+    "sprite": "world_04.png",
+    "sprite_sha256": "c0c06663f7bf61c89f2a053f8df2cd0088e699f2ffb39859ec81c7b550b1769e",
+    "scenery_cutout": true
+  },
+  {
+    "world": 5,
+    "source": "06_night_sea_canon_source.png",
+    "source_sha256": "ecdb9072a004b264eb768d98caaceb63857329dcbb8cb5bf5c6a86424c8b66da",
+    "bounds": [
+      17,
+      19,
+      112,
+      99
+    ],
+    "radius": 20,
+    "sprite": "world_05.png",
+    "sprite_sha256": "b684a19f57606af1979bd733df3077bc9274f05f7e5738de3d6e2ece6c371dad",
+    "scenery_cutout": true
+  },
+  {
+    "world": 6,
+    "source": "07_northern_sea_canon_source.png",
+    "source_sha256": "3289a2a7eeed5fca9426e8e3af515a504a1658e0e450327dd22e26f44e664775",
+    "bounds": [
+      20,
+      19,
+      111,
+      97
+    ],
+    "radius": 19,
+    "sprite": "world_06.png",
+    "sprite_sha256": "f3f2345044e88f4109702e68bef133cefc68b3f7206af04ec5845d2008fb8bb1",
+    "scenery_cutout": true
+  }
+]

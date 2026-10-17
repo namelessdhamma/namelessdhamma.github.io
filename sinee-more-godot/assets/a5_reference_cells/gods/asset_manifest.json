@@ -1,0 +1,153 @@
+{
+  "version": "A5-v106",
+  "world": "gods_of_the_deep",
+  "source_file": "04_gods_of_the_deep_canon_source.png",
+  "source_sha256": "10ddb91c1ddf75d6faaec496600419ae9483a02453f38e81f44bbc7ee1903f4d",
+  "source_size": [
+    1672,
+    941
+  ],
+  "source_board_corners": [
+    [
+      385,
+      278
+    ],
+    [
+      1280,
+      279
+    ],
+    [
+      1410,
+      730
+    ],
+    [
+      265,
+      730
+    ]
+  ],
+  "donor_cells": [
+    1,
+    5,
+    6
+  ],
+  "canonical_empty_motifs": {
+    "1": "spiral",
+    "5": "trident",
+    "6": "eye"
+  },
+  "output_size": [
+    192,
+    192
+  ],
+  "use": "Nine live Godot cells; pieces/ranks/occupancy/AI are dynamic",
+  "cells": [
+    {
+      "cell": 0,
+      "file": "cell_00.png",
+      "sha256": "f7b384edcbf536bb261df07f53f3ed298d5d1c6534d9f7473e335047c9c7c24e",
+      "donor_empty_cell": 5,
+      "donor_symbol": "trident",
+      "inset": 0.76,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "reference_spill_repaired": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 1,
+      "file": "cell_01.png",
+      "sha256": "2ccbd3407d5efd4e1235d7a138cc65228f4db3f63661aefaec74840b53e5ba54",
+      "donor_empty_cell": 1,
+      "donor_symbol": "spiral",
+      "inset": 0.82,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "reference_spill_repaired": true,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 2,
+      "file": "cell_02.png",
+      "sha256": "391cc60d977a1f948a4aa7b63d732eb0ddef872aaf372120962d38e08e6ea33c",
+      "donor_empty_cell": 6,
+      "donor_symbol": "eye",
+      "inset": 0.78,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "reference_spill_repaired": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 3,
+      "file": "cell_03.png",
+      "sha256": "7352bc8c6a181c7d60c3fbdc210b2382adf0a59b33e05042b19ec6d8eb2972b1",
+      "donor_empty_cell": 6,
+      "donor_symbol": "eye",
+      "inset": 0.8,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "reference_spill_repaired": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 4,
+      "file": "cell_04.png",
+      "sha256": "139288475927bb218745afe4b51efb7916fa35a14193c49c52435f4bbc978055",
+      "donor_empty_cell": 1,
+      "donor_symbol": "spiral",
+      "inset": 0.79,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "reference_spill_repaired": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 5,
+      "file": "cell_05.png",
+      "sha256": "3e1560e788113d006372b7170cf575eaafc4e1da485ddcda3370d3835532d3e4",
+      "donor_empty_cell": 5,
+      "donor_symbol": "trident",
+      "inset": 0.82,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "reference_spill_repaired": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 6,
+      "file": "cell_06.png",
+      "sha256": "8125ae59440a34dba38974b3729e0d72b531f9dece7397802b63b2363cdb9a53",
+      "donor_empty_cell": 6,
+      "donor_symbol": "eye",
+      "inset": 0.82,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": true,
+      "reference_spill_repaired": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 7,
+      "file": "cell_07.png",
+      "sha256": "e669adc3d13d922beb1ddd44710c5696dd469f18698d8b819b48e7e161b4983b",
+      "donor_empty_cell": 5,
+      "donor_symbol": "trident",
+      "inset": 0.77,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "reference_spill_repaired": false,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 8,
+      "file": "cell_08.png",
+      "sha256": "56d6c214baffa7e619267c7b6e9205783733b9076fa9d4c0fcea0ab2c66e3c31",
+      "donor_empty_cell": 1,
+      "donor_symbol": "spiral",
+      "inset": 0.77,
+      "turns_ccw": 0,
+      "reference_cell_is_empty": false,
+      "reference_spill_repaired": false,
+      "occupied_reference_cell_baked": false
+    }
+  ]
+}

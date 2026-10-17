@@ -1,0 +1,14 @@
+{
+  "version": "A5-v77",
+  "asset": "void_split_light_backdrop.png",
+  "sha256": "9d874c02493cb1611da0c3ad11bdfdc5c2f70fd13e78e7ff7696c7860152e997",
+  "size": [
+    512,
+    288
+  ],
+  "contains_board_or_pieces_or_ui": false,
+  "source": "v76 world_visuals.gd::_make_backdrop(0), original split warm/cool light",
+  "canonical_reference_images_modified": false,
+  "pixels_compared": 147456,
+  "pixel_mismatches": 0
+}

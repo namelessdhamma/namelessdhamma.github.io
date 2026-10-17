@@ -1,0 +1,258 @@
+{
+  "source": "a5_northern_ranked (immutable approved-source derivatives)",
+  "method": "deterministic Elder Futhark upper-face etch; dynamic numeric rank remains Godot UI",
+  "assets": [
+    {
+      "rank": 1,
+      "player": 1,
+      "rune_index": 1,
+      "original_sha256": "ad1c7dc5c517bc724d3c0406c1ee6c2042ed74add4826c9236607fe5cd053103",
+      "original_bbox": [
+        39,
+        42,
+        88,
+        85
+      ],
+      "file": "north_runed_rank_01_p1.png",
+      "sha256": "cb703e23f16e879453714f3a14e76c5736084fc45885c70568907f2663f6b81f"
+    },
+    {
+      "rank": 2,
+      "player": 1,
+      "rune_index": 2,
+      "original_sha256": "ae8afd1d530caa2a027f26c138b9a94d031181a176a8620cd1c4e32a0f0d8d89",
+      "original_bbox": [
+        35,
+        41,
+        93,
+        86
+      ],
+      "file": "north_runed_rank_02_p1.png",
+      "sha256": "ced38e1b44c6be4c595f252e9f27c0dd83e225ac41151f869643bf12b6d5e0e3"
+    },
+    {
+      "rank": 3,
+      "player": 1,
+      "rune_index": 3,
+      "original_sha256": "1b29d49004305e065663137212fa39de0642546d4cad2141c744ec9dfd4d5507",
+      "original_bbox": [
+        30,
+        35,
+        97,
+        92
+      ],
+      "file": "north_runed_rank_03_p1.png",
+      "sha256": "c7775e828e185dac8dadeaf40d6719ba2c010abb898d69c7a89a18debce27d14"
+    },
+    {
+      "rank": 4,
+      "player": 1,
+      "rune_index": 4,
+      "original_sha256": "83f1de18aa8ac2255e9bda0cf5bf35ea9f52450c4cd53dab0e1286365b01547b",
+      "original_bbox": [
+        26,
+        31,
+        102,
+        96
+      ],
+      "file": "north_runed_rank_04_p1.png",
+      "sha256": "4b737b8d7704250a48cdbda54b0241be2e36e0444c6c9df7479dbbd745959b13"
+    },
+    {
+      "rank": 5,
+      "player": 1,
+      "rune_index": 5,
+      "original_sha256": "8ad80f3b20403cd54b17160e3d80ae350743343117273aa6f778488231df26e6",
+      "original_bbox": [
+        21,
+        25,
+        106,
+        102
+      ],
+      "file": "north_runed_rank_05_p1.png",
+      "sha256": "f670096f30bbe0667a5dc489716c1769f225f6b71e9f938ff193d3e24f21cc3d"
+    },
+    {
+      "rank": 6,
+      "player": 1,
+      "rune_index": 6,
+      "original_sha256": "d6fc5049a73aaf17a3871639fce874d1dc77efffd20ca9249851ac315b3ad094",
+      "original_bbox": [
+        17,
+        23,
+        111,
+        104
+      ],
+      "file": "north_runed_rank_06_p1.png",
+      "sha256": "0eef753d5de2db487042f06723279d1b127257f3f37cfd5a1bd790f6429af60e"
+    },
+    {
+      "rank": 7,
+      "player": 1,
+      "rune_index": 7,
+      "original_sha256": "d6951a317592c248880ead01ef9db29ef47a45a07eddc92321c10a7d878581b8",
+      "original_bbox": [
+        12,
+        19,
+        115,
+        109
+      ],
+      "file": "north_runed_rank_07_p1.png",
+      "sha256": "e2b4d62b34dd719a8dfa175803e0e5535a10e92b801575153ba5e5d86225eab6"
+    },
+    {
+      "rank": 8,
+      "player": 1,
+      "rune_index": 8,
+      "original_sha256": "856b694eda54c56d43ac003ac5b679a89b2f12e280f27b3d4ae2f702247065d0",
+      "original_bbox": [
+        8,
+        17,
+        120,
+        111
+      ],
+      "file": "north_runed_rank_08_p1.png",
+      "sha256": "e84ebc6883fa25386014353491ad3627ee95e2b1645927e9b017afad44e4c129"
+    },
+    {
+      "rank": 9,
+      "player": 1,
+      "rune_index": 9,
+      "original_sha256": "cec4aaec827d54c9d63d6979e44d363a62a0474197d478a83a3a29ac23e99126",
+      "original_bbox": [
+        3,
+        14,
+        125,
+        114
+      ],
+      "file": "north_runed_rank_09_p1.png",
+      "sha256": "151c0546de9cb4da321b6dd45e7829bc2d7d846a179d886d13c45c81d5e26fe7"
+    },
+    {
+      "rank": 1,
+      "player": 2,
+      "rune_index": 1,
+      "original_sha256": "c55003231d0efb135ec37222a5d8d0be1ec690504ad06c209f9e35b362d69a1f",
+      "original_bbox": [
+        39,
+        42,
+        88,
+        85
+      ],
+      "file": "north_runed_rank_01_p2.png",
+      "sha256": "0f3eafea494fb0e03bd4d9dc977755da1ff4b35942791cb09d69bd9154755c7a"
+    },
+    {
+      "rank": 2,
+      "player": 2,
+      "rune_index": 2,
+      "original_sha256": "37f8b3ef78d9e3b4078c4c92b6e97412b8fc60befee9cf76ff8e27c9837a8ae9",
+      "original_bbox": [
+        35,
+        41,
+        93,
+        86
+      ],
+      "file": "north_runed_rank_02_p2.png",
+      "sha256": "3db96a4549c652a7611c738c44cda5ef3b852862a87f9aad0131deca9ea051d7"
+    },
+    {
+      "rank": 3,
+      "player": 2,
+      "rune_index": 3,
+      "original_sha256": "788ddfe1042e91f1a5115276d4403442438c6b9109121437f552bc836c9c154d",
+      "original_bbox": [
+        30,
+        35,
+        97,
+        92
+      ],
+      "file": "north_runed_rank_03_p2.png",
+      "sha256": "fac090c716c036aee149e9377bd2e7060e58adbf5f3757a7e2caf4bd74025786"
+    },
+    {
+      "rank": 4,
+      "player": 2,
+      "rune_index": 4,
+      "original_sha256": "fcca30b35deada797672eb7dc56f56a29489d92191a4bbae38c648ad8c8c8bce",
+      "original_bbox": [
+        26,
+        31,
+        102,
+        96
+      ],
+      "file": "north_runed_rank_04_p2.png",
+      "sha256": "f03357f81a8d6ad45f36aa663193616be2796055e1e3edef14206311f420c439"
+    },
+    {
+      "rank": 5,
+      "player": 2,
+      "rune_index": 5,
+      "original_sha256": "905a13e73e88e1c894479a4c13df2c9fcee10c11f09d7d103a3e580043114cff",
+      "original_bbox": [
+        21,
+        25,
+        106,
+        102
+      ],
+      "file": "north_runed_rank_05_p2.png",
+      "sha256": "4025bcad80919285ba22afff92f5201b067c9175e092caf0eba2d1f75e9612b1"
+    },
+    {
+      "rank": 6,
+      "player": 2,
+      "rune_index": 6,
+      "original_sha256": "fe7f7429af87f0687552f37aa6b80a5f749dd1b1d0428c16b7987f404b6d95e5",
+      "original_bbox": [
+        17,
+        23,
+        111,
+        104
+      ],
+      "file": "north_runed_rank_06_p2.png",
+      "sha256": "438e1e526be3558ba491b753db714e0359c69035c759700e753de053f557f1da"
+    },
+    {
+      "rank": 7,
+      "player": 2,
+      "rune_index": 7,
+      "original_sha256": "bcdba7cf42a040ee501918a4be9b2d2da96eba245745e2ce7a258d214204ced5",
+      "original_bbox": [
+        12,
+        19,
+        115,
+        109
+      ],
+      "file": "north_runed_rank_07_p2.png",
+      "sha256": "053ffbe0f85432f32f14982b8b55fbbc5a48ffd5d91c15bd042f11cd31d1aacf"
+    },
+    {
+      "rank": 8,
+      "player": 2,
+      "rune_index": 8,
+      "original_sha256": "751298524d3010d0fcf54cf13347b8a6afee90917611953fb8bf84c8ac01e9fa",
+      "original_bbox": [
+        8,
+        17,
+        120,
+        111
+      ],
+      "file": "north_runed_rank_08_p2.png",
+      "sha256": "89794d70051c3d3ac198445c2aa351a86bc61a12d06f7142cb0473e5ff739739"
+    },
+    {
+      "rank": 9,
+      "player": 2,
+      "rune_index": 9,
+      "original_sha256": "e8e80c9f2443019fb191dae2ded54142c2cdf9bc5ddd682edc1a38c20048a609",
+      "original_bbox": [
+        3,
+        14,
+        125,
+        114
+      ],
+      "file": "north_runed_rank_09_p2.png",
+      "sha256": "95672c9bf1c90af03768a4dc1ac54986f7e9dc7a152ce5d6b812ae839d3bfb6e"
+    }
+  ]
+}

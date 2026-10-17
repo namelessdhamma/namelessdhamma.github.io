@@ -1,0 +1,41 @@
+{
+  "generator": "tools/build_sand_night_prebaked_environment.py",
+  "kind": "original_live_scenery_and_physical_support_ONLY",
+  "contains_game_state_or_board_cells": false,
+  "canonical_reference_images_changed": false,
+  "source_math": "scripts/world_visuals.gd Sand and Night procedural formulas v74",
+  "assets": [
+    {
+      "file": "sand_sunset_backdrop.png",
+      "sha256": "5dfa8dae21b0732c00d4e73c1d1ff2f8e87acf1cf55821a774a13cf7cd7ef8e2",
+      "size": [
+        512,
+        288
+      ]
+    },
+    {
+      "file": "sand_sandstone_support.png",
+      "sha256": "e2d0a14404c2b9984b8ce3fd4befa24d95ef498cb25c9d7d1d1d991f8fb8c18c",
+      "size": [
+        256,
+        256
+      ]
+    },
+    {
+      "file": "night_gothic_harbor_backdrop.png",
+      "sha256": "941e15cbf5c95c0c83e4a8673493481348d2a5b247bf0fbe52ba579d69059447",
+      "size": [
+        512,
+        288
+      ]
+    },
+    {
+      "file": "night_masonry_support.png",
+      "sha256": "6d05f45d5671e5f95aec1fa2d5e7af11a0636ac66a8f835040a876ba4d2c2418",
+      "size": [
+        256,
+        256
+      ]
+    }
+  ]
+}

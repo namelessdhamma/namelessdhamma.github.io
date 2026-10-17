@@ -1,0 +1,241 @@
+{
+  "source": "03_atlantis.png",
+  "source_sha256": "2cd5c4188ee1f21bb3aa74eec0ca933affd6d9af0982b27433c2689acf8d219f",
+  "method": "two original board shrine material masters, source-pixel silhouette mattes, rank scaling, live numeric overlay",
+  "assets": [
+    {
+      "rank": 1,
+      "player": 1,
+      "file": "atlantis_rank_01_p1.png",
+      "sha256": "2a7e1e42874c372762e9ba7442d3580668e97e7c23ecf654b6ffd1cb38442c9a",
+      "alpha_bounds": [
+        39,
+        78,
+        89,
+        124
+      ],
+      "visible_width": 50
+    },
+    {
+      "rank": 1,
+      "player": 2,
+      "file": "atlantis_rank_01_p2.png",
+      "sha256": "a103ca6fca5bc06cdda50f4d8068b9eef200e4d58402ccae79ea11615a660110",
+      "alpha_bounds": [
+        39,
+        80,
+        89,
+        124
+      ],
+      "visible_width": 50
+    },
+    {
+      "rank": 2,
+      "player": 1,
+      "file": "atlantis_rank_02_p1.png",
+      "sha256": "db6d460e92749919f00752eeb3588a6461bcfab6ba31357500f0eab95ae02e39",
+      "alpha_bounds": [
+        35,
+        71,
+        93,
+        124
+      ],
+      "visible_width": 58
+    },
+    {
+      "rank": 2,
+      "player": 2,
+      "file": "atlantis_rank_02_p2.png",
+      "sha256": "dba4d0f2f719fbe9f923d360dcf1b9fc3dbcb7438caf58ab59c66688d274ff1e",
+      "alpha_bounds": [
+        35,
+        73,
+        93,
+        124
+      ],
+      "visible_width": 58
+    },
+    {
+      "rank": 3,
+      "player": 1,
+      "file": "atlantis_rank_03_p1.png",
+      "sha256": "3b2de4f9eae034a80c8ca8365d9981357689c6e8df3baad467786749653ff461",
+      "alpha_bounds": [
+        31,
+        63,
+        97,
+        124
+      ],
+      "visible_width": 66
+    },
+    {
+      "rank": 3,
+      "player": 2,
+      "file": "atlantis_rank_03_p2.png",
+      "sha256": "44f8d476751eb3499852615467c5064bcc0784bb7326fe896cc973a3c9e5fee6",
+      "alpha_bounds": [
+        31,
+        66,
+        97,
+        124
+      ],
+      "visible_width": 66
+    },
+    {
+      "rank": 4,
+      "player": 1,
+      "file": "atlantis_rank_04_p1.png",
+      "sha256": "48d04f1dbe66efed047cde78567c1f8818649e3c4d4060a972884d2223a51388",
+      "alpha_bounds": [
+        27,
+        56,
+        101,
+        124
+      ],
+      "visible_width": 74
+    },
+    {
+      "rank": 4,
+      "player": 2,
+      "file": "atlantis_rank_04_p2.png",
+      "sha256": "ccc9b6ace8474164e3cc4b902ae183617277f8de4aee08889e29a0e4e7f4e549",
+      "alpha_bounds": [
+        27,
+        58,
+        101,
+        124
+      ],
+      "visible_width": 74
+    },
+    {
+      "rank": 5,
+      "player": 1,
+      "file": "atlantis_rank_05_p1.png",
+      "sha256": "23ee195f65a521604237ebbb06809b7ea8870854bd9a5521b522c7230c78c6d3",
+      "alpha_bounds": [
+        23,
+        49,
+        105,
+        124
+      ],
+      "visible_width": 82
+    },
+    {
+      "rank": 5,
+      "player": 2,
+      "file": "atlantis_rank_05_p2.png",
+      "sha256": "7746cfe9628c62e611473a4f4b557ee44197110b692edaa125bd63598c2e84f2",
+      "alpha_bounds": [
+        23,
+        51,
+        105,
+        124
+      ],
+      "visible_width": 82
+    },
+    {
+      "rank": 6,
+      "player": 1,
+      "file": "atlantis_rank_06_p1.png",
+      "sha256": "753b654f9cb1144dee0e8cca3f4a4536961062f169050a8f279cbb210842ed2a",
+      "alpha_bounds": [
+        19,
+        41,
+        109,
+        124
+      ],
+      "visible_width": 90
+    },
+    {
+      "rank": 6,
+      "player": 2,
+      "file": "atlantis_rank_06_p2.png",
+      "sha256": "2b36f7be67b9e172912960af4468bc1b123a433d2c026e4742d1a761f4ee090f",
+      "alpha_bounds": [
+        19,
+        44,
+        109,
+        124
+      ],
+      "visible_width": 90
+    },
+    {
+      "rank": 7,
+      "player": 1,
+      "file": "atlantis_rank_07_p1.png",
+      "sha256": "c7a34b15ef29ddb0937310aad08bf7b2666d3797c84c86eea18aecaf39a4d2e4",
+      "alpha_bounds": [
+        15,
+        34,
+        113,
+        124
+      ],
+      "visible_width": 98
+    },
+    {
+      "rank": 7,
+      "player": 2,
+      "file": "atlantis_rank_07_p2.png",
+      "sha256": "2aa2c37b0d9445ef6908baec075515e66ad671518a744dc8f535dca9f9e39258",
+      "alpha_bounds": [
+        15,
+        37,
+        113,
+        124
+      ],
+      "visible_width": 98
+    },
+    {
+      "rank": 8,
+      "player": 1,
+      "file": "atlantis_rank_08_p1.png",
+      "sha256": "9b24f99855421c51fb54fbc036c35712469e1697564ba6c630d42465917cc61c",
+      "alpha_bounds": [
+        10,
+        26,
+        117,
+        124
+      ],
+      "visible_width": 107
+    },
+    {
+      "rank": 8,
+      "player": 2,
+      "file": "atlantis_rank_08_p2.png",
+      "sha256": "75292b2ec2578154c9d60668ebb558425441ba20b1a5b9b3bd8b16abeb06028b",
+      "alpha_bounds": [
+        10,
+        29,
+        117,
+        124
+      ],
+      "visible_width": 107
+    },
+    {
+      "rank": 9,
+      "player": 1,
+      "file": "atlantis_rank_09_p1.png",
+      "sha256": "6a2d35bb299effcb8d182d4d5c30eacfae151e3f283ee993763df033940a6a4b",
+      "alpha_bounds": [
+        5,
+        17,
+        122,
+        124
+      ],
+      "visible_width": 117
+    },
+    {
+      "rank": 9,
+      "player": 2,
+      "file": "atlantis_rank_09_p2.png",
+      "sha256": "568068b63e6000d17f36a770460f7e16c1eb55171da6f7df3e7469765a8bd958",
+      "alpha_bounds": [
+        5,
+        20,
+        122,
+        124
+      ],
+      "visible_width": 117
+    }
+  ]
+}

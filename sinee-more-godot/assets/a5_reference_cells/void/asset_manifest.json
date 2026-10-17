@@ -1,0 +1,108 @@
+{
+  "version": "A5-v111",
+  "world": "nd_premium_void",
+  "source_file": "01_nd_premium_void_canon_source.png",
+  "source_sha256": "00ffb7f48345b493cbd2cb986a3fb21fac345db50f0f8f20c679cdff58b421b8",
+  "source_size": [
+    1672,
+    941
+  ],
+  "purpose": "source-derived empty cells, no figures, ranks, UI or occupancy; live Godot state only",
+  "donors": [
+    "top_middle",
+    "middle_middle_compass"
+  ],
+  "assets": [
+    {
+      "cell": 0,
+      "file": "cell_00.png",
+      "sha256": "5abcc6153567066017f0b77b545ec2e072dd0a02025122734c519d58e0459f0e",
+      "empty_donors": [
+        "top_middle"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    },
+    {
+      "cell": 1,
+      "file": "cell_01.png",
+      "sha256": "734d1d689cbe9a2075ac16420adbed75e3d9fe3f2668080722e885c39790eb98",
+      "empty_donors": [
+        "top_middle"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    },
+    {
+      "cell": 2,
+      "file": "cell_02.png",
+      "sha256": "799d185760f359fe627afba7424bae06c7937f0c0bd3ac46e4b4ad1a37f12a2f",
+      "empty_donors": [
+        "top_middle"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    },
+    {
+      "cell": 3,
+      "file": "cell_03.png",
+      "sha256": "77fadf34c20b37c81a3a0bb9c82bfc7d46cc8d40d1434316d8eeb84ec5ecd7e4",
+      "empty_donors": [
+        "top_middle"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    },
+    {
+      "cell": 4,
+      "file": "cell_04.png",
+      "sha256": "8066b384ffa63b12380f52e7a951f5d17cc2a4cd834180b06f6baaf4c7850b29",
+      "empty_donors": [
+        "top_middle",
+        "middle_middle_compass"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    },
+    {
+      "cell": 5,
+      "file": "cell_05.png",
+      "sha256": "11ba789045986c9386c761aaf40ae1e86ce32829559586e881c5324ecd9adab2",
+      "empty_donors": [
+        "top_middle"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    },
+    {
+      "cell": 6,
+      "file": "cell_06.png",
+      "sha256": "31bb91eb12b38274c1562da3a2aba27574d3a86442880ddfb49fa333a90a2ca9",
+      "empty_donors": [
+        "top_middle"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    },
+    {
+      "cell": 7,
+      "file": "cell_07.png",
+      "sha256": "e8a00b0215e8ca61352c3b3c6bfc03f76b48f6154e11010d4a7ec024155a8af5",
+      "empty_donors": [
+        "top_middle"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    },
+    {
+      "cell": 8,
+      "file": "cell_08.png",
+      "sha256": "a6a63fa1a49fbdfbc082158cdce814f8481c566d7b6bc900df20fa80b3ec83b3",
+      "empty_donors": [
+        "top_middle"
+      ],
+      "occupied_reference_cell_baked": false,
+      "rotation_ccw_quarters": 0
+    }
+  ]
+}

@@ -1,0 +1,259 @@
+{
+  "source": "05_sand_sea.png",
+  "source_sha256": "01d5b202cd9451520652f67c4ccdbd6d636e59e16c056b050aa10663c73fb6b3",
+  "method": "two board-sourced original pyramid masters, silhouette alpha, rank-dependent scaling, live rank overlay",
+  "assets": [
+    {
+      "rank": 1,
+      "player": 1,
+      "file": "sand_rank_01_p1.png",
+      "sha256": "9969cb6b904069912eeae72218c2be69b9a6c29c3f0eea59f6e00b86c05abf51",
+      "alpha_bounds": [
+        39,
+        86,
+        89,
+        124
+      ],
+      "visible_width": 50,
+      "visible_height": 38
+    },
+    {
+      "rank": 1,
+      "player": 2,
+      "file": "sand_rank_01_p2.png",
+      "sha256": "fc5c2ddaadb0c7a90b0a502583f2bfb687b0f2031b6cfdba4442a910fae5f63f",
+      "alpha_bounds": [
+        39,
+        86,
+        89,
+        124
+      ],
+      "visible_width": 50,
+      "visible_height": 38
+    },
+    {
+      "rank": 2,
+      "player": 1,
+      "file": "sand_rank_02_p1.png",
+      "sha256": "a174f6025d718f947f36df9ac8237e515fbbda0bfe600e9f24e56d3ae0a6f8f5",
+      "alpha_bounds": [
+        35,
+        80,
+        93,
+        124
+      ],
+      "visible_width": 58,
+      "visible_height": 44
+    },
+    {
+      "rank": 2,
+      "player": 2,
+      "file": "sand_rank_02_p2.png",
+      "sha256": "899f5bafea80bd2e7c36ddda04ec1062e2028d242ec3ca77647e94ff10f13de2",
+      "alpha_bounds": [
+        35,
+        80,
+        93,
+        124
+      ],
+      "visible_width": 58,
+      "visible_height": 44
+    },
+    {
+      "rank": 3,
+      "player": 1,
+      "file": "sand_rank_03_p1.png",
+      "sha256": "bc7185570b11155c747ddda1f71fb91727e63d9534cd8a6ef57c7206e875595a",
+      "alpha_bounds": [
+        31,
+        74,
+        97,
+        123
+      ],
+      "visible_width": 66,
+      "visible_height": 49
+    },
+    {
+      "rank": 3,
+      "player": 2,
+      "file": "sand_rank_03_p2.png",
+      "sha256": "8954af3360c94ec72337829ad225c1eacf4e037e75c7d3f7013c82fc5ae4cd09",
+      "alpha_bounds": [
+        31,
+        74,
+        97,
+        124
+      ],
+      "visible_width": 66,
+      "visible_height": 50
+    },
+    {
+      "rank": 4,
+      "player": 1,
+      "file": "sand_rank_04_p1.png",
+      "sha256": "52cc0d531df7f92dca7c0e62dd008b94c77bc642fba89c70c0cc4e029d58c654",
+      "alpha_bounds": [
+        28,
+        68,
+        101,
+        123
+      ],
+      "visible_width": 73,
+      "visible_height": 55
+    },
+    {
+      "rank": 4,
+      "player": 2,
+      "file": "sand_rank_04_p2.png",
+      "sha256": "d9f69fd2ec00a803f78cae9adf608f506c16e3b5581584c44920be44a8970f64",
+      "alpha_bounds": [
+        27,
+        67,
+        101,
+        124
+      ],
+      "visible_width": 74,
+      "visible_height": 57
+    },
+    {
+      "rank": 5,
+      "player": 1,
+      "file": "sand_rank_05_p1.png",
+      "sha256": "1d81c49360970fc11320105bbda2602b01e4c37afec9a2ea937aa125fcfafb3b",
+      "alpha_bounds": [
+        24,
+        61,
+        104,
+        123
+      ],
+      "visible_width": 80,
+      "visible_height": 62
+    },
+    {
+      "rank": 5,
+      "player": 2,
+      "file": "sand_rank_05_p2.png",
+      "sha256": "4373117d8eeb4b78b6f3f51397e12da86339600fb3c1df3d44c7f97de049bf43",
+      "alpha_bounds": [
+        23,
+        61,
+        105,
+        124
+      ],
+      "visible_width": 82,
+      "visible_height": 63
+    },
+    {
+      "rank": 6,
+      "player": 1,
+      "file": "sand_rank_06_p1.png",
+      "sha256": "cc6bfb612f32cbece4d6518a1ffe399fcdbbc10da2115a436e875c25e6d2a097",
+      "alpha_bounds": [
+        20,
+        55,
+        108,
+        123
+      ],
+      "visible_width": 88,
+      "visible_height": 68
+    },
+    {
+      "rank": 6,
+      "player": 2,
+      "file": "sand_rank_06_p2.png",
+      "sha256": "764c0bcc80bf1f7626358142ac07988716868a83605fb50df5b6c81d6f8d35cb",
+      "alpha_bounds": [
+        20,
+        55,
+        109,
+        124
+      ],
+      "visible_width": 89,
+      "visible_height": 69
+    },
+    {
+      "rank": 7,
+      "player": 1,
+      "file": "sand_rank_07_p1.png",
+      "sha256": "cbfe6c320a49c852d96c1e49604493aecdbd52392164fc2750c92f6480b956a3",
+      "alpha_bounds": [
+        16,
+        49,
+        112,
+        123
+      ],
+      "visible_width": 96,
+      "visible_height": 74
+    },
+    {
+      "rank": 7,
+      "player": 2,
+      "file": "sand_rank_07_p2.png",
+      "sha256": "736b2eb20ad6a189530dea571e8fd8328002dc9faf9c557b69253bb6a943ecc0",
+      "alpha_bounds": [
+        16,
+        49,
+        113,
+        124
+      ],
+      "visible_width": 97,
+      "visible_height": 75
+    },
+    {
+      "rank": 8,
+      "player": 1,
+      "file": "sand_rank_08_p1.png",
+      "sha256": "1e30ee6fe819ec5a0dc9cc0cf137559fae2e2c26cd19737d79b59efc8c9cb768",
+      "alpha_bounds": [
+        11,
+        42,
+        116,
+        123
+      ],
+      "visible_width": 105,
+      "visible_height": 81
+    },
+    {
+      "rank": 8,
+      "player": 2,
+      "file": "sand_rank_08_p2.png",
+      "sha256": "762afd0c4af89e57da9396dbc8e9383f89a62cd8f33cabdd729c4d5c73a32068",
+      "alpha_bounds": [
+        11,
+        42,
+        117,
+        124
+      ],
+      "visible_width": 106,
+      "visible_height": 82
+    },
+    {
+      "rank": 9,
+      "player": 1,
+      "file": "sand_rank_09_p1.png",
+      "sha256": "a3b2ada7f9bac6e5d2b3381d770f323f27ebc3b586d977f1de8d82d92cbc36aa",
+      "alpha_bounds": [
+        6,
+        34,
+        121,
+        123
+      ],
+      "visible_width": 115,
+      "visible_height": 89
+    },
+    {
+      "rank": 9,
+      "player": 2,
+      "file": "sand_rank_09_p2.png",
+      "sha256": "0a4018b68b224485277ff3b7364102aaefb2e43659e9d665d0eabd15f3605da2",
+      "alpha_bounds": [
+        6,
+        34,
+        122,
+        124
+      ],
+      "visible_width": 116,
+      "visible_height": 90
+    }
+  ]
+}

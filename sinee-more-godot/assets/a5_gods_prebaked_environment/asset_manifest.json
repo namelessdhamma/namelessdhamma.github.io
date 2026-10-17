@@ -1,0 +1,25 @@
+{
+  "generator": "tools/build_gods_prebaked_environment.py",
+  "kind": "original_scenery_and_physical_support_ONLY",
+  "contains_game_state_or_board_cells": false,
+  "canonical_reference_images_changed": false,
+  "source_math": "scripts/world_visuals.gd Gods backdrop/plinth v73",
+  "assets": [
+    {
+      "file": "gods_underwater_backdrop.png",
+      "sha256": "c1311c49c0bc8d988e5002b42b46cedc7adbd42e0c05e220bdd56441d7e36065",
+      "size": [
+        512,
+        288
+      ]
+    },
+    {
+      "file": "gods_basalt_support.png",
+      "sha256": "9f9b318f4af1f815761b20084c62e8d8f8f93b62dcb5261144d1c02e425d8a6c",
+      "size": [
+        256,
+        256
+      ]
+    }
+  ]
+}

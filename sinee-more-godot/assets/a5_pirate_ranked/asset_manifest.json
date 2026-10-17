@@ -1,0 +1,260 @@
+{
+  "source": "02_pirate_sea.png",
+  "source_sha256": "0e9f2f706ba9127cecef7e718fa50c320a8e92b9fe093b54cffbd69b471eafb1",
+  "source_kind": "USER_ACCEPTED_REFERENCE_UNMODIFIED",
+  "method": "two exact-reference material masters, matte+number cleanup, rank-specific scaling; dynamic labels in Godot",
+  "assets": [
+    {
+      "rank": 1,
+      "player": 1,
+      "file": "pirate_rank_01_p1.png",
+      "sha256": "2174d6455195ec999f06d7b9518b32627f359215b2c14dd4433b3a478d766fbd",
+      "alpha_bounds": [
+        37,
+        72,
+        91,
+        122
+      ],
+      "visible_width": 54,
+      "visible_height": 50
+    },
+    {
+      "rank": 1,
+      "player": 2,
+      "file": "pirate_rank_01_p2.png",
+      "sha256": "428ed956f44db5fab344187ab171fb8ad2a32ebc0094b8f5fe0651c73fb72186",
+      "alpha_bounds": [
+        37,
+        69,
+        91,
+        122
+      ],
+      "visible_width": 54,
+      "visible_height": 53
+    },
+    {
+      "rank": 2,
+      "player": 1,
+      "file": "pirate_rank_02_p1.png",
+      "sha256": "7c882bc5ec084bb4c1b1ece6741714faaedb4c90ffce5e10db8b9be54255d12f",
+      "alpha_bounds": [
+        33,
+        65,
+        95,
+        122
+      ],
+      "visible_width": 62,
+      "visible_height": 57
+    },
+    {
+      "rank": 2,
+      "player": 2,
+      "file": "pirate_rank_02_p2.png",
+      "sha256": "ff5fefe94aa98b12403563e320d68686894737b94909cd922701dfcef3e9f961",
+      "alpha_bounds": [
+        33,
+        61,
+        95,
+        122
+      ],
+      "visible_width": 62,
+      "visible_height": 61
+    },
+    {
+      "rank": 3,
+      "player": 1,
+      "file": "pirate_rank_03_p1.png",
+      "sha256": "332c8f9008e58dc18865ba2bdf92cc941269751144a98cd793edd6b094d1ac41",
+      "alpha_bounds": [
+        29,
+        58,
+        99,
+        122
+      ],
+      "visible_width": 70,
+      "visible_height": 64
+    },
+    {
+      "rank": 3,
+      "player": 2,
+      "file": "pirate_rank_03_p2.png",
+      "sha256": "33ad19966e63799519ea8c31374223de743dddffa5dbdd816a3c94477f0ae1e6",
+      "alpha_bounds": [
+        29,
+        53,
+        99,
+        122
+      ],
+      "visible_width": 70,
+      "visible_height": 69
+    },
+    {
+      "rank": 4,
+      "player": 1,
+      "file": "pirate_rank_04_p1.png",
+      "sha256": "ef12435b1443304d1113a3a07ed85d0baed2a0c442622bb70aa854e89ac2285f",
+      "alpha_bounds": [
+        25,
+        50,
+        103,
+        122
+      ],
+      "visible_width": 78,
+      "visible_height": 72
+    },
+    {
+      "rank": 4,
+      "player": 2,
+      "file": "pirate_rank_04_p2.png",
+      "sha256": "c96a6803fd4fb367584f203e3e18589b3927b02024458fa7aa3e34392bcd4758",
+      "alpha_bounds": [
+        25,
+        45,
+        102,
+        122
+      ],
+      "visible_width": 77,
+      "visible_height": 77
+    },
+    {
+      "rank": 5,
+      "player": 1,
+      "file": "pirate_rank_05_p1.png",
+      "sha256": "9678f2d2ecf1d93e31da86aebd6882aba707249998a03471cf9eb3def630267b",
+      "alpha_bounds": [
+        21,
+        43,
+        107,
+        122
+      ],
+      "visible_width": 86,
+      "visible_height": 79
+    },
+    {
+      "rank": 5,
+      "player": 2,
+      "file": "pirate_rank_05_p2.png",
+      "sha256": "d7a8c0c35aac57124ec27bde19339752a8afa279fed0172739011b4509fbad5b",
+      "alpha_bounds": [
+        21,
+        37,
+        106,
+        122
+      ],
+      "visible_width": 85,
+      "visible_height": 85
+    },
+    {
+      "rank": 6,
+      "player": 1,
+      "file": "pirate_rank_06_p1.png",
+      "sha256": "8ff660ca3c1fc887b5149ae6cdbe954eb5a206b867566762527027ea50efe75a",
+      "alpha_bounds": [
+        17,
+        35,
+        111,
+        122
+      ],
+      "visible_width": 94,
+      "visible_height": 87
+    },
+    {
+      "rank": 6,
+      "player": 2,
+      "file": "pirate_rank_06_p2.png",
+      "sha256": "9c67cd8dabb968d6b7791b9397d9ec0705e4c57a154c678c6700b569de3bd204",
+      "alpha_bounds": [
+        17,
+        29,
+        110,
+        122
+      ],
+      "visible_width": 93,
+      "visible_height": 93
+    },
+    {
+      "rank": 7,
+      "player": 1,
+      "file": "pirate_rank_07_p1.png",
+      "sha256": "b6012779d9883ab1c899e318ff4c8d9d3aa5df87e4017a772852769f9e1e68d3",
+      "alpha_bounds": [
+        13,
+        28,
+        115,
+        122
+      ],
+      "visible_width": 102,
+      "visible_height": 94
+    },
+    {
+      "rank": 7,
+      "player": 2,
+      "file": "pirate_rank_07_p2.png",
+      "sha256": "bab374c35c3792839356542eb6bf16fbe04691b2c75d32a024650cd38ed5ffe5",
+      "alpha_bounds": [
+        13,
+        21,
+        114,
+        122
+      ],
+      "visible_width": 101,
+      "visible_height": 101
+    },
+    {
+      "rank": 8,
+      "player": 1,
+      "file": "pirate_rank_08_p1.png",
+      "sha256": "3909cc5baa1e26d00651771d9f6511bb6e1f6d8aeb8d055aa1d3740d702b6ef7",
+      "alpha_bounds": [
+        9,
+        21,
+        119,
+        122
+      ],
+      "visible_width": 110,
+      "visible_height": 101
+    },
+    {
+      "rank": 8,
+      "player": 2,
+      "file": "pirate_rank_08_p2.png",
+      "sha256": "8f782812bc0224b83bddefa6a351324d908c9993ff3faf46150449b29846db60",
+      "alpha_bounds": [
+        9,
+        13,
+        118,
+        122
+      ],
+      "visible_width": 109,
+      "visible_height": 109
+    },
+    {
+      "rank": 9,
+      "player": 1,
+      "file": "pirate_rank_09_p1.png",
+      "sha256": "c0969a4e3edaf7409f204cda0f2c0b2784dde19af228a36922346bff65274307",
+      "alpha_bounds": [
+        5,
+        13,
+        123,
+        122
+      ],
+      "visible_width": 118,
+      "visible_height": 109
+    },
+    {
+      "rank": 9,
+      "player": 2,
+      "file": "pirate_rank_09_p2.png",
+      "sha256": "c34868786875747c271bc11ff59bca90093d1fac5a4fc9adc844a8cff59e3a34",
+      "alpha_bounds": [
+        5,
+        5,
+        122,
+        122
+      ],
+      "visible_width": 117,
+      "visible_height": 117
+    }
+  ]
+}

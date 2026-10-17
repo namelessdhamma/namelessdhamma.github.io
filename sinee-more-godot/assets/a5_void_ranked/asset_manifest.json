@@ -1,0 +1,263 @@
+{
+  "source": "01_nd_premium_void.png",
+  "source_sha256": "00ffb7f48345b493cbd2cb986a3fb21fac345db50f0f8f20c679cdff58b421b8",
+  "method": "two source-derived glass light domes, white screenshot numerals inpainted, source-ellipse mattes, nine ranked sizes, live Godot numeric overlays",
+  "digit_inpaint_mask_pixels": {
+    "1": 1009,
+    "2": 1139
+  },
+  "assets": [
+    {
+      "rank": 1,
+      "player": 1,
+      "file": "void_rank_01_p1.png",
+      "sha256": "31783feb083e3f06756a34c8210cc1c5dcca5b3818ab7e7404945be63bd4607a",
+      "alpha_bounds": [
+        44,
+        93,
+        86,
+        123
+      ],
+      "visible_width": 42,
+      "visible_height": 30
+    },
+    {
+      "rank": 1,
+      "player": 2,
+      "file": "void_rank_01_p2.png",
+      "sha256": "f72b841efe3e6d519670a48b41da2039d9c45af223ac24f5fc24eaab1a8d9338",
+      "alpha_bounds": [
+        46,
+        92,
+        85,
+        123
+      ],
+      "visible_width": 39,
+      "visible_height": 31
+    },
+    {
+      "rank": 2,
+      "player": 1,
+      "file": "void_rank_02_p1.png",
+      "sha256": "81816d3f294c591fa3cf5a249bb8bfdb0bef77f229a45aa853c83a1db073b4f3",
+      "alpha_bounds": [
+        41,
+        87,
+        89,
+        123
+      ],
+      "visible_width": 48,
+      "visible_height": 36
+    },
+    {
+      "rank": 2,
+      "player": 2,
+      "file": "void_rank_02_p2.png",
+      "sha256": "ff0d8ed809dc2294e40990feb8165a07dfcfe835dff628971b1f72f19fab3705",
+      "alpha_bounds": [
+        43,
+        87,
+        89,
+        123
+      ],
+      "visible_width": 46,
+      "visible_height": 36
+    },
+    {
+      "rank": 3,
+      "player": 1,
+      "file": "void_rank_03_p1.png",
+      "sha256": "d9771edd4d65606594ba1921aeaeede5af5b4248d5a09b792224e002e47ff72c",
+      "alpha_bounds": [
+        37,
+        82,
+        93,
+        123
+      ],
+      "visible_width": 56,
+      "visible_height": 41
+    },
+    {
+      "rank": 3,
+      "player": 2,
+      "file": "void_rank_03_p2.png",
+      "sha256": "dc349bcff9c1a5f31451c66cc0343b030d0fc79b45bfd8001e0165cedda465b2",
+      "alpha_bounds": [
+        40,
+        81,
+        93,
+        123
+      ],
+      "visible_width": 53,
+      "visible_height": 42
+    },
+    {
+      "rank": 4,
+      "player": 1,
+      "file": "void_rank_04_p1.png",
+      "sha256": "35d14fa6d1b7c491103402cae40eb67352216603223337f0b83a4e1a48277620",
+      "alpha_bounds": [
+        34,
+        77,
+        97,
+        123
+      ],
+      "visible_width": 63,
+      "visible_height": 46
+    },
+    {
+      "rank": 4,
+      "player": 2,
+      "file": "void_rank_04_p2.png",
+      "sha256": "cbefb8bc8c568501c5ef596e32cf1945af3325851e6e02719d3df3fa821b96ac",
+      "alpha_bounds": [
+        37,
+        76,
+        97,
+        123
+      ],
+      "visible_width": 60,
+      "visible_height": 47
+    },
+    {
+      "rank": 5,
+      "player": 1,
+      "file": "void_rank_05_p1.png",
+      "sha256": "4856ec2edd2c150a786912e472b51e72969f5466efd4b46484cac29beb23e46e",
+      "alpha_bounds": [
+        30,
+        71,
+        101,
+        123
+      ],
+      "visible_width": 71,
+      "visible_height": 52
+    },
+    {
+      "rank": 5,
+      "player": 2,
+      "file": "void_rank_05_p2.png",
+      "sha256": "465a45a7b42e2f1d2667741005f832f70c63bc146156e22ee2107830f6c2aeff",
+      "alpha_bounds": [
+        34,
+        70,
+        101,
+        123
+      ],
+      "visible_width": 67,
+      "visible_height": 53
+    },
+    {
+      "rank": 6,
+      "player": 1,
+      "file": "void_rank_06_p1.png",
+      "sha256": "ac3b6147bae54914051a8c4834d3dda45d148f24e23aa7e78a21742e1175e882",
+      "alpha_bounds": [
+        27,
+        66,
+        105,
+        123
+      ],
+      "visible_width": 78,
+      "visible_height": 57
+    },
+    {
+      "rank": 6,
+      "player": 2,
+      "file": "void_rank_06_p2.png",
+      "sha256": "c07080e97c536542901f7eb01748e8e99c18235104a997205a40ac66ff6e16a4",
+      "alpha_bounds": [
+        31,
+        65,
+        105,
+        123
+      ],
+      "visible_width": 74,
+      "visible_height": 58
+    },
+    {
+      "rank": 7,
+      "player": 1,
+      "file": "void_rank_07_p1.png",
+      "sha256": "382fa9f84c8d1476cebe7138bcf15cd031de74bc64810c8bf35ac02c45561047",
+      "alpha_bounds": [
+        24,
+        61,
+        109,
+        123
+      ],
+      "visible_width": 85,
+      "visible_height": 62
+    },
+    {
+      "rank": 7,
+      "player": 2,
+      "file": "void_rank_07_p2.png",
+      "sha256": "640d98cd6c2bc4cf34de2c433f3fc8f9fe2adb5a1080d53cfa95d47ebd805758",
+      "alpha_bounds": [
+        28,
+        60,
+        109,
+        123
+      ],
+      "visible_width": 81,
+      "visible_height": 63
+    },
+    {
+      "rank": 8,
+      "player": 1,
+      "file": "void_rank_08_p1.png",
+      "sha256": "29e920b4891620249fff3a0b68dc5831af79231e2b070fbb58419b879fb5e421",
+      "alpha_bounds": [
+        20,
+        54,
+        114,
+        123
+      ],
+      "visible_width": 94,
+      "visible_height": 69
+    },
+    {
+      "rank": 8,
+      "player": 2,
+      "file": "void_rank_08_p2.png",
+      "sha256": "5fa0f423782849316937e6f5e0b5fb51db9fb64789f5d0afdbc6fee1e59235d7",
+      "alpha_bounds": [
+        25,
+        53,
+        114,
+        123
+      ],
+      "visible_width": 89,
+      "visible_height": 70
+    },
+    {
+      "rank": 9,
+      "player": 1,
+      "file": "void_rank_09_p1.png",
+      "sha256": "f47751b9c2287d2b84ff67cfbd2c1c6a11b04541d7cf5f365f6df357bebbc1f4",
+      "alpha_bounds": [
+        15,
+        48,
+        119,
+        123
+      ],
+      "visible_width": 104,
+      "visible_height": 75
+    },
+    {
+      "rank": 9,
+      "player": 2,
+      "file": "void_rank_09_p2.png",
+      "sha256": "aee54ba65bdd531a5fefc9d83d3e1093958f39c00d32963d0781a85a384ee483",
+      "alpha_bounds": [
+        20,
+        47,
+        119,
+        123
+      ],
+      "visible_width": 99,
+      "visible_height": 76
+    }
+  ]
+}

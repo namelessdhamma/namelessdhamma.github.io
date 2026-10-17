@@ -1,0 +1,164 @@
+{
+  "version": "A5-v105",
+  "world": "pirate_sea",
+  "source_file": "02_pirate_sea_canon_source.png",
+  "source_sha256": "0e9f2f706ba9127cecef7e718fa50c320a8e92b9fe093b54cffbd69b471eafb1",
+  "source_size": [
+    1672,
+    941
+  ],
+  "donor_cells": [
+    0,
+    4
+  ],
+  "source_board_corners": [
+    [
+      500,
+      254
+    ],
+    [
+      1190,
+      254
+    ],
+    [
+      1300,
+      706
+    ],
+    [
+      387,
+      706
+    ]
+  ],
+  "output_size": [
+    192,
+    192
+  ],
+  "use": "Nine distinct LIVE Godot chart cells; occupancy, ranks, AI and touch dynamic",
+  "source_motif_regions": {
+    "1": [
+      505,
+      267,
+      675,
+      360
+    ],
+    "2": [
+      1235,
+      323,
+      1382,
+      435
+    ],
+    "3": [
+      318,
+      311,
+      424,
+      360
+    ],
+    "5": [
+      1280,
+      448,
+      1452,
+      604
+    ],
+    "6": [
+      257,
+      409,
+      408,
+      543
+    ],
+    "7": [
+      276,
+      585,
+      408,
+      705
+    ],
+    "8": [
+      1315,
+      612,
+      1480,
+      718
+    ]
+  },
+  "cells": [
+    {
+      "cell": 0,
+      "file": "cell_00.png",
+      "sha256": "5535a4061daec237e16a52d44364ef3c3ce87859b2679a56cc408461fcf23930",
+      "treatment": "original_empty_cell_unrotated",
+      "donor_empty_cell": 0,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 1,
+      "file": "cell_01.png",
+      "sha256": "72f00ac9aa0ac1041187e0fb4e8bf879d72d675e08d7605c08924fd5c22850e7",
+      "treatment": "northern_mountains",
+      "donor_empty_cell": 0,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 2,
+      "file": "cell_02.png",
+      "sha256": "150c115b2c71dc4a8534e56c9cbb7874b8bccbbef3cb92f73f5c5b3c9481f576",
+      "treatment": "compass_rose",
+      "donor_empty_cell": 0,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 3,
+      "file": "cell_03.png",
+      "sha256": "0d600ad33cc3e136a3fde1ac899e76ecda0db3827cd774d0077352ba7796783b",
+      "treatment": "skull_chart_marker",
+      "donor_empty_cell": 0,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 4,
+      "file": "cell_04.png",
+      "sha256": "fdb31c5e652254ac7633d39cbca20e56922f440d86c12ba0e0738194760bd5e6",
+      "treatment": "original_empty_cell_unrotated",
+      "donor_empty_cell": 4,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 5,
+      "file": "cell_05.png",
+      "sha256": "061ff17a7999de5a49e4cc4af25fff734e741b184bf7f2f2e8b53ae7a93946ea",
+      "treatment": "merchant_sailing_ship",
+      "donor_empty_cell": 0,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 6,
+      "file": "cell_06.png",
+      "sha256": "f4cd86cda20fade88e5e67b988ca5299dcde736634a3cd23d281e52d2458ffbd",
+      "treatment": "palm_island",
+      "donor_empty_cell": 0,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 7,
+      "file": "cell_07.png",
+      "sha256": "4c19ad1e60a10ed858f01f5455701463fe44d74c6da25b78904a83e7f2c45837",
+      "treatment": "river_treasure_route",
+      "donor_empty_cell": 0,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    },
+    {
+      "cell": 8,
+      "file": "cell_08.png",
+      "sha256": "86437336238bb0e93d7e978eee097750a988f2f6a0df64985381ad09f3462ffe",
+      "treatment": "southern_mountain",
+      "donor_empty_cell": 0,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false
+    }
+  ]
+}

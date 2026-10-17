@@ -1,0 +1,140 @@
+{
+  "version": "A5-v109",
+  "world": "night_sea",
+  "source_file": "06_night_sea_canon_source.png",
+  "source_sha256": "ecdb9072a004b264eb768d98caaceb63857329dcbb8cb5bf5c6a86424c8b66da",
+  "source_size": [
+    1672,
+    941
+  ],
+  "donor_cells": [
+    1,
+    6
+  ],
+  "donor_quads": {
+    "1": [
+      [
+        710,
+        282
+      ],
+      [
+        969,
+        282
+      ],
+      [
+        967,
+        365
+      ],
+      [
+        704,
+        365
+      ]
+    ],
+    "6": [
+      [
+        365,
+        563
+      ],
+      [
+        644,
+        563
+      ],
+      [
+        645,
+        702
+      ],
+      [
+        318,
+        703
+      ]
+    ]
+  },
+  "output_size": [
+    192,
+    192
+  ],
+  "use": "Nine LIVE Godot board backgrounds; dynamic occupancy, ranks, reserve and input",
+  "cells": [
+    {
+      "cell": 0,
+      "file": "cell_00.png",
+      "donor_empty_cell": 1,
+      "inset": 0.87,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "fa890f7362e938f0ccf20e21aecb841444dece03594c9c830eeb388758d0c5a4"
+    },
+    {
+      "cell": 1,
+      "file": "cell_01.png",
+      "donor_empty_cell": 1,
+      "inset": 0.93,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "932527d9e8ebca3b62bc56535ec021785c313c3a477831e1fc4553abb4ee21d5"
+    },
+    {
+      "cell": 2,
+      "file": "cell_02.png",
+      "donor_empty_cell": 1,
+      "inset": 0.99,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "79ecb1ee1c2da294eef60dc157f8209f460de10e6236c108e403346a926fd38a"
+    },
+    {
+      "cell": 3,
+      "file": "cell_03.png",
+      "donor_empty_cell": 6,
+      "inset": 0.88,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "0cf19e433f6dd62eeae2c8ce31e5cb65126393a99d4420a357afce62dc2b085b"
+    },
+    {
+      "cell": 4,
+      "file": "cell_04.png",
+      "donor_empty_cell": 1,
+      "inset": 0.96,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "6df92fdaf7cb33a600d1b4f405a45dcab5be7b3c4d261e0752f716d6c545f0a8"
+    },
+    {
+      "cell": 5,
+      "file": "cell_05.png",
+      "donor_empty_cell": 6,
+      "inset": 0.95,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "d2a06120e589de0d24a17ecefe6f6df112bd5d72b7a862c902deee9dd9fee4c9"
+    },
+    {
+      "cell": 6,
+      "file": "cell_06.png",
+      "donor_empty_cell": 6,
+      "inset": 0.91,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "b2edbe0d586f8d910ad723f58d7eefb8d6b70cc8bca6dc4d447c1f63ce007a3c"
+    },
+    {
+      "cell": 7,
+      "file": "cell_07.png",
+      "donor_empty_cell": 6,
+      "inset": 0.98,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "a6b99c909c3f0e96a27cb6f9a104a5dacc37c518e9d32e525cca25e9b9a01b67"
+    },
+    {
+      "cell": 8,
+      "file": "cell_08.png",
+      "donor_empty_cell": 1,
+      "inset": 0.9,
+      "turns_ccw": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "ad93d708626cff6ad649b8fd4821b749d5b052db3e1aeec6bdbc59a32bbb2067"
+    }
+  ]
+}

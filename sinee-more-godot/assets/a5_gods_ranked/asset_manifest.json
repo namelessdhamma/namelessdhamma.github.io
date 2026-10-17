@@ -1,0 +1,278 @@
+{
+  "source": "04_gods_of_the_deep.png",
+  "source_sha256": "10ddb91c1ddf75d6faaec496600419ae9483a02453f38e81f44bbc7ee1903f4d",
+  "method": "nine unique canonical reserve creatures; source brightness matte; dark opponent recolor; live ranks; v48 area correction retained; v63 baseline-anchored vertical normalization; v124 3% rank-7 correction; v130 translucent-detail strengthening of ranks 5 and 8 for strict 12-32px progression",
+  "rank_growth_policy": "strictly increasing alpha-visible width, height and area for both sides at 128px and 12-32px raster sizes; source-derived creature shapes and live numeric labels retained",
+  "assets": [
+    {
+      "rank": 1,
+      "player": 1,
+      "file": "gods_rank_01_p1.png",
+      "sha256": "c1afc82ff18a58ce37e2f27d239daab37bc07c2b077d26420406a44b6b2521ef",
+      "alpha_bounds": [
+        41,
+        76,
+        84,
+        123
+      ],
+      "visible_width": 43,
+      "visible_height": 47,
+      "alpha_area_gt100": 1022
+    },
+    {
+      "rank": 1,
+      "player": 2,
+      "file": "gods_rank_01_p2.png",
+      "sha256": "ee49eafa18f3a3864b602def5253bf2fe5d77368c7c51acb2772c4fbde6d2f6f",
+      "alpha_bounds": [
+        41,
+        76,
+        84,
+        123
+      ],
+      "visible_width": 43,
+      "visible_height": 47,
+      "alpha_area_gt100": 1022
+    },
+    {
+      "rank": 2,
+      "player": 1,
+      "file": "gods_rank_02_p1.png",
+      "sha256": "f74ca46cb26bd007f38dabe4be5d576f8e2cef250af9219fcec8be94b464ac85",
+      "alpha_bounds": [
+        37,
+        61,
+        89,
+        123
+      ],
+      "visible_width": 52,
+      "visible_height": 62,
+      "alpha_area_gt100": 1478
+    },
+    {
+      "rank": 2,
+      "player": 2,
+      "file": "gods_rank_02_p2.png",
+      "sha256": "a0dea25c40851ccf0c30be43f25d27f928ae3a483248a1d8820fb86ecab3b3f9",
+      "alpha_bounds": [
+        37,
+        61,
+        89,
+        123
+      ],
+      "visible_width": 52,
+      "visible_height": 62,
+      "alpha_area_gt100": 1478
+    },
+    {
+      "rank": 3,
+      "player": 1,
+      "file": "gods_rank_03_p1.png",
+      "sha256": "4c40a0aecec920049ef330c8f9ee5212aa2e161c6f80f4e032fcafb1222f1907",
+      "alpha_bounds": [
+        36,
+        58,
+        94,
+        123
+      ],
+      "visible_width": 58,
+      "visible_height": 65,
+      "alpha_area_gt100": 1924
+    },
+    {
+      "rank": 3,
+      "player": 2,
+      "file": "gods_rank_03_p2.png",
+      "sha256": "f0844c651a3c5bb684ec5f110484cc9502750c3c85e3d0d815d65b74240aa8ac",
+      "alpha_bounds": [
+        36,
+        58,
+        94,
+        123
+      ],
+      "visible_width": 58,
+      "visible_height": 65,
+      "alpha_area_gt100": 1924
+    },
+    {
+      "rank": 4,
+      "player": 1,
+      "file": "gods_rank_04_p1.png",
+      "sha256": "8daaed00d09462a9294f8d54a304d0d01c019638d275c5cb19bca768d76ef8e7",
+      "alpha_bounds": [
+        28,
+        56,
+        99,
+        123
+      ],
+      "visible_width": 71,
+      "visible_height": 67,
+      "alpha_area_gt100": 2722
+    },
+    {
+      "rank": 4,
+      "player": 2,
+      "file": "gods_rank_04_p2.png",
+      "sha256": "e1e03a19beff5c26a4842615a2a9fce37f980eb0d7b5f8dd26b4e535eb14d9b4",
+      "alpha_bounds": [
+        28,
+        56,
+        99,
+        123
+      ],
+      "visible_width": 71,
+      "visible_height": 67,
+      "alpha_area_gt100": 2722
+    },
+    {
+      "rank": 5,
+      "player": 1,
+      "file": "gods_rank_05_p1.png",
+      "sha256": "5c4c6bde953f059fbbe99bc18e3e2f74fd8984f342daddfbfff22efaf2d13ea7",
+      "alpha_bounds": [
+        25,
+        50,
+        104,
+        123
+      ],
+      "visible_width": 79,
+      "visible_height": 73,
+      "alpha_area_gt100": 3150
+    },
+    {
+      "rank": 5,
+      "player": 2,
+      "file": "gods_rank_05_p2.png",
+      "sha256": "b370f93c38b90561eb45e7ae18018c85bb9c31eba509fc1d95d2cdf1b81c16fc",
+      "alpha_bounds": [
+        25,
+        50,
+        104,
+        123
+      ],
+      "visible_width": 79,
+      "visible_height": 73,
+      "alpha_area_gt100": 3150
+    },
+    {
+      "rank": 6,
+      "player": 1,
+      "file": "gods_rank_06_p1.png",
+      "sha256": "e323d051d873d6cf78433bd7d7ebb20a53c9b53aa9acc5108419401eae5ace74",
+      "alpha_bounds": [
+        17,
+        46,
+        111,
+        123
+      ],
+      "visible_width": 94,
+      "visible_height": 77,
+      "alpha_area_gt100": 3757
+    },
+    {
+      "rank": 6,
+      "player": 2,
+      "file": "gods_rank_06_p2.png",
+      "sha256": "be8882fec667e267da5b7f49c00d0ef0aeb2c2c381917f2e4d2d52a91f8af60d",
+      "alpha_bounds": [
+        17,
+        46,
+        111,
+        123
+      ],
+      "visible_width": 94,
+      "visible_height": 77,
+      "alpha_area_gt100": 3757
+    },
+    {
+      "rank": 7,
+      "player": 1,
+      "file": "gods_rank_07_p1.png",
+      "sha256": "a3aec2b27bc2ab129c7d733adee322548f2e9363eb01871c49a44c0a4eb8ef15",
+      "alpha_bounds": [
+        15,
+        30,
+        113,
+        123
+      ],
+      "visible_width": 98,
+      "visible_height": 93,
+      "alpha_area_gt100": 4355
+    },
+    {
+      "rank": 7,
+      "player": 2,
+      "file": "gods_rank_07_p2.png",
+      "sha256": "e1dc4e23d616fd622ac70d335e08c8e80644da378dbbac2fdeaaf7a8a88966dc",
+      "alpha_bounds": [
+        15,
+        30,
+        113,
+        123
+      ],
+      "visible_width": 98,
+      "visible_height": 93,
+      "alpha_area_gt100": 4355
+    },
+    {
+      "rank": 8,
+      "player": 1,
+      "file": "gods_rank_08_p1.png",
+      "sha256": "af3b3878c48fd695a7870959d362f344fce0478ec65266fa98366792fa6e12ad",
+      "alpha_bounds": [
+        13,
+        29,
+        112,
+        123
+      ],
+      "visible_width": 99,
+      "visible_height": 94,
+      "alpha_area_gt100": 4894
+    },
+    {
+      "rank": 8,
+      "player": 2,
+      "file": "gods_rank_08_p2.png",
+      "sha256": "84af998f152aab58359e396dc7b09ba0d0018d1f10ea1a4be4b890cb008bfeb0",
+      "alpha_bounds": [
+        13,
+        29,
+        112,
+        123
+      ],
+      "visible_width": 99,
+      "visible_height": 94,
+      "alpha_area_gt100": 4894
+    },
+    {
+      "rank": 9,
+      "player": 1,
+      "file": "gods_rank_09_p1.png",
+      "sha256": "fab8cf175faa50eec19e687f307cad7a8b65a7f8bacf8f3236856fabd2dcae23",
+      "alpha_bounds": [
+        2,
+        24,
+        125,
+        123
+      ],
+      "visible_width": 123,
+      "visible_height": 99,
+      "alpha_area_gt100": 5862
+    },
+    {
+      "rank": 9,
+      "player": 2,
+      "file": "gods_rank_09_p2.png",
+      "sha256": "b458877af58a62bd10e5b08eff43ddd7c8288f607707eecccb30311d21505713",
+      "alpha_bounds": [
+        2,
+        24,
+        125,
+        123
+      ],
+      "visible_width": 123,
+      "visible_height": 99,
+      "alpha_area_gt100": 5862
+    }
+  ]
+}

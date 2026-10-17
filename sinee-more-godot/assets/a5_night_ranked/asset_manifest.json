@@ -1,0 +1,259 @@
+{
+  "source": "06_night_sea.png",
+  "source_sha256": "ecdb9072a004b264eb768d98caaceb63857329dcbb8cb5bf5c6a86424c8b66da",
+  "method": "nine distinct original reserve lanterns; source-shaped transparent matte; cool-material transform; live numeric rank",
+  "assets": [
+    {
+      "rank": 1,
+      "player": 1,
+      "file": "night_rank_01_p1.png",
+      "sha256": "f78dc00cdbb8c10c8cfb9a5739de84cf625ab17b278e9d5f8011afb53e7008f6",
+      "alpha_bounds": [
+        40,
+        68,
+        87,
+        123
+      ],
+      "visible_width": 47,
+      "visible_height": 55
+    },
+    {
+      "rank": 1,
+      "player": 2,
+      "file": "night_rank_01_p2.png",
+      "sha256": "25e2991c6ddeddef7999303678d42415830a7b4c8dabc05de186e40af56da177",
+      "alpha_bounds": [
+        40,
+        68,
+        87,
+        123
+      ],
+      "visible_width": 47,
+      "visible_height": 55
+    },
+    {
+      "rank": 2,
+      "player": 1,
+      "file": "night_rank_02_p1.png",
+      "sha256": "dcb327cd7dec6d4a500dd12262cd36157ad6f808d37914df77ba4ce3415f8ab7",
+      "alpha_bounds": [
+        37,
+        55,
+        91,
+        123
+      ],
+      "visible_width": 54,
+      "visible_height": 68
+    },
+    {
+      "rank": 2,
+      "player": 2,
+      "file": "night_rank_02_p2.png",
+      "sha256": "d1db3092143671566dc07e3406dd79091a8aeaa43ff937d641faa58e78510e76",
+      "alpha_bounds": [
+        37,
+        55,
+        91,
+        123
+      ],
+      "visible_width": 54,
+      "visible_height": 68
+    },
+    {
+      "rank": 3,
+      "player": 1,
+      "file": "night_rank_03_p1.png",
+      "sha256": "4570275160a31d57d9a39b47a73b6b8c3a5ca4f245b1408804d02e9e38c4f7e3",
+      "alpha_bounds": [
+        33,
+        45,
+        94,
+        123
+      ],
+      "visible_width": 61,
+      "visible_height": 78
+    },
+    {
+      "rank": 3,
+      "player": 2,
+      "file": "night_rank_03_p2.png",
+      "sha256": "b7ce368d1e91e05f1b3503ac008c4b811c90ec05506321767acbd044555774b8",
+      "alpha_bounds": [
+        33,
+        45,
+        94,
+        123
+      ],
+      "visible_width": 61,
+      "visible_height": 78
+    },
+    {
+      "rank": 4,
+      "player": 1,
+      "file": "night_rank_04_p1.png",
+      "sha256": "75e8300b9872d317fcf74ae8664beb3f80f3a28d2701030fc76e718283154bcf",
+      "alpha_bounds": [
+        30,
+        40,
+        98,
+        123
+      ],
+      "visible_width": 68,
+      "visible_height": 83
+    },
+    {
+      "rank": 4,
+      "player": 2,
+      "file": "night_rank_04_p2.png",
+      "sha256": "5dbdb8ca2750405d83614366751454a1de095095f92266090d9d6fc32e1091c5",
+      "alpha_bounds": [
+        30,
+        40,
+        98,
+        123
+      ],
+      "visible_width": 68,
+      "visible_height": 83
+    },
+    {
+      "rank": 5,
+      "player": 1,
+      "file": "night_rank_05_p1.png",
+      "sha256": "8e512a0c935743ee90563fa70e4a85eb497fccfae42160dbe2f3ba8353cb10c2",
+      "alpha_bounds": [
+        26,
+        32,
+        101,
+        123
+      ],
+      "visible_width": 75,
+      "visible_height": 91
+    },
+    {
+      "rank": 5,
+      "player": 2,
+      "file": "night_rank_05_p2.png",
+      "sha256": "2400b65ec7f36838eea4c5dd724a9759439010987b2e9736e1c3430820a0afa0",
+      "alpha_bounds": [
+        26,
+        32,
+        101,
+        123
+      ],
+      "visible_width": 75,
+      "visible_height": 91
+    },
+    {
+      "rank": 6,
+      "player": 1,
+      "file": "night_rank_06_p1.png",
+      "sha256": "227f91244cbb336c10baac8b610abbdaaa22cb963d30a0593905e7a7083ea5eb",
+      "alpha_bounds": [
+        23,
+        26,
+        105,
+        123
+      ],
+      "visible_width": 82,
+      "visible_height": 97
+    },
+    {
+      "rank": 6,
+      "player": 2,
+      "file": "night_rank_06_p2.png",
+      "sha256": "c81b1f01b3cbedc6eaacfa1c8b0a4b1db993a1a7dbe85600c5b1019250bfdf65",
+      "alpha_bounds": [
+        23,
+        26,
+        105,
+        123
+      ],
+      "visible_width": 82,
+      "visible_height": 97
+    },
+    {
+      "rank": 7,
+      "player": 1,
+      "file": "night_rank_07_p1.png",
+      "sha256": "f49d7e5e1030191036961a773b8d39ed913a15a618c9bf55501a9561de567f83",
+      "alpha_bounds": [
+        19,
+        21,
+        108,
+        123
+      ],
+      "visible_width": 89,
+      "visible_height": 102
+    },
+    {
+      "rank": 7,
+      "player": 2,
+      "file": "night_rank_07_p2.png",
+      "sha256": "3a49a0ea36fd0dfc1f5887bbb19dc365e4bf47020e335e8275b887f4fa837d0f",
+      "alpha_bounds": [
+        19,
+        21,
+        108,
+        123
+      ],
+      "visible_width": 89,
+      "visible_height": 102
+    },
+    {
+      "rank": 8,
+      "player": 1,
+      "file": "night_rank_08_p1.png",
+      "sha256": "1c868ab46ff1fa605658e56d0632085a6a4f6ece92f892aab9faae8e3a94b5b4",
+      "alpha_bounds": [
+        15,
+        13,
+        113,
+        123
+      ],
+      "visible_width": 98,
+      "visible_height": 110
+    },
+    {
+      "rank": 8,
+      "player": 2,
+      "file": "night_rank_08_p2.png",
+      "sha256": "2fc3252dc50ef1b3b3ca62c98f20bdbf89a800a120cc44b9f0e67920941580f4",
+      "alpha_bounds": [
+        15,
+        13,
+        113,
+        123
+      ],
+      "visible_width": 98,
+      "visible_height": 110
+    },
+    {
+      "rank": 9,
+      "player": 1,
+      "file": "night_rank_09_p1.png",
+      "sha256": "5b5edb8b89621b2ff398363e24ed9f26c68cbe3ec0fb195d4969dab71476e1c8",
+      "alpha_bounds": [
+        9,
+        9,
+        118,
+        123
+      ],
+      "visible_width": 109,
+      "visible_height": 114
+    },
+    {
+      "rank": 9,
+      "player": 2,
+      "file": "night_rank_09_p2.png",
+      "sha256": "c729d265d2fb75f9c3e3f2d3223d4680874c501689b1c6600c3542ac9774617c",
+      "alpha_bounds": [
+        9,
+        9,
+        118,
+        123
+      ],
+      "visible_width": 109,
+      "visible_height": 114
+    }
+  ]
+}

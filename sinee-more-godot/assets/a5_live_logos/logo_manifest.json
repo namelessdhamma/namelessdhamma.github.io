@@ -1,0 +1,93 @@
+[
+  {
+    "world": "nd_premium_void",
+    "source_sha256": "00ffb7f48345b493cbd2cb986a3fb21fac345db50f0f8f20c679cdff58b421b8",
+    "asset": "world_00.png",
+    "asset_sha256": "1c1e61da6a46e15d7a13bb58c32bfb907ea3423f7115c23baeb274bb8bb56984",
+    "crop": [
+      565,
+      0,
+      1107,
+      150
+    ],
+    "button_cutoff": 122
+  },
+  {
+    "world": "pirate_sea",
+    "source_sha256": "0e9f2f706ba9127cecef7e718fa50c320a8e92b9fe093b54cffbd69b471eafb1",
+    "asset": "world_01.png",
+    "asset_sha256": "35691a6708620728770fc3b1e97dc386f282f842d223cbe7a58c3995b66a2cb8",
+    "crop": [
+      565,
+      0,
+      1107,
+      150
+    ],
+    "button_cutoff": 130
+  },
+  {
+    "world": "atlantis",
+    "source_sha256": "2cd5c4188ee1f21bb3aa74eec0ca933affd6d9af0982b27433c2689acf8d219f",
+    "asset": "world_02.png",
+    "asset_sha256": "1413bac24611c96df4989a8dea9db4a3f273e068424d947dd6534808adf251cd",
+    "crop": [
+      565,
+      0,
+      1107,
+      150
+    ],
+    "button_cutoff": 130
+  },
+  {
+    "world": "gods_of_the_deep",
+    "source_sha256": "10ddb91c1ddf75d6faaec496600419ae9483a02453f38e81f44bbc7ee1903f4d",
+    "asset": "world_03.png",
+    "asset_sha256": "45401724dd4d8c6ca2a065d249c05f893db1e1bfb73b79b694f7f243d6d68d82",
+    "crop": [
+      565,
+      0,
+      1107,
+      150
+    ],
+    "button_cutoff": 132
+  },
+  {
+    "world": "sand_sea",
+    "source_sha256": "01d5b202cd9451520652f67c4ccdbd6d636e59e16c056b050aa10663c73fb6b3",
+    "asset": "world_04.png",
+    "asset_sha256": "cff6497abfc1188eb5888cd16410fc80007ba993dd1fbe1ee60e24d460b9ce55",
+    "crop": [
+      565,
+      0,
+      1107,
+      150
+    ],
+    "button_cutoff": 149
+  },
+  {
+    "world": "night_sea",
+    "source_sha256": "ecdb9072a004b264eb768d98caaceb63857329dcbb8cb5bf5c6a86424c8b66da",
+    "asset": "world_05.png",
+    "asset_sha256": "7e999e98b11b7782c38a0c558b67899ed054c9eb5ca79baeacbde0799c8800c7",
+    "crop": [
+      565,
+      0,
+      1107,
+      150
+    ],
+    "button_cutoff": 123
+  },
+  {
+    "world": "northern_sea",
+    "source_sha256": "3289a2a7eeed5fca9426e8e3af515a504a1658e0e450327dd22e26f44e664775",
+    "asset": "world_06.png",
+    "asset_sha256": "6dd4a6b8f6f63a6968f797973352911c5ee9f6a22cbb486380c6333c6001efd4",
+    "crop": [
+      565,
+      0,
+      1107,
+      150
+    ],
+    "button_cutoff": 124
+  }
+]

@@ -1,0 +1,136 @@
+{
+  "version": "A5-v110",
+  "world": "northern_sea",
+  "source_file": "07_northern_sea_canon_source.png",
+  "source_sha256": "3289a2a7eeed5fca9426e8e3af515a504a1658e0e450327dd22e26f44e664775",
+  "source_size": [
+    1672,
+    941
+  ],
+  "purpose": "LIVE empty-board cell textures; no figures, ranks, UI or occupancy",
+  "donors": {
+    "top_middle": [
+      [
+        709,
+        246
+      ],
+      [
+        973,
+        245
+      ],
+      [
+        989,
+        375
+      ],
+      [
+        698,
+        376
+      ]
+    ],
+    "bottom_left": [
+      [
+        386,
+        534
+      ],
+      [
+        691,
+        533
+      ],
+      [
+        677,
+        719
+      ],
+      [
+        323,
+        719
+      ]
+    ]
+  },
+  "output_size": [
+    192,
+    192
+  ],
+  "assets": [
+    {
+      "file": "cell_00.png",
+      "cell": 0,
+      "empty_source_cell": "top_middle",
+      "inset": 0.89,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "ab786291bba6c92d73c149bc746367bc4eef9755c1cbb9cc1ce7d0901c902223"
+    },
+    {
+      "file": "cell_01.png",
+      "cell": 1,
+      "empty_source_cell": "top_middle",
+      "inset": 0.96,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "c8f65f0fee8badd6f897c6bf3314263b4a346f055e37dafce2774f1b09996512"
+    },
+    {
+      "file": "cell_02.png",
+      "cell": 2,
+      "empty_source_cell": "top_middle",
+      "inset": 0.86,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "d6e58a36f17a9996a2d56acd42ed494c180b642cbbcbf1cf82df42504afd1117"
+    },
+    {
+      "file": "cell_03.png",
+      "cell": 3,
+      "empty_source_cell": "bottom_left",
+      "inset": 0.93,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "ebbf85c01d66679f844727c9fbc0f1edc3e1dffbf699a63d4831bf7e99e1c815"
+    },
+    {
+      "file": "cell_04.png",
+      "cell": 4,
+      "empty_source_cell": "top_middle",
+      "inset": 0.99,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "b50aae1c7530cdec55d1477d85daf7d31871845226fab1f5cb0ae0468395dda8"
+    },
+    {
+      "file": "cell_05.png",
+      "cell": 5,
+      "empty_source_cell": "bottom_left",
+      "inset": 0.87,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "93ccca6f784c7fe3a97a8a279a301c8d377ab74fdc2f4d983063f54fd6799424"
+    },
+    {
+      "file": "cell_06.png",
+      "cell": 6,
+      "empty_source_cell": "bottom_left",
+      "inset": 0.97,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "c0913457562e1c2065fe818ec62aa6133e46b4384c91aa754ca35486da392718"
+    },
+    {
+      "file": "cell_07.png",
+      "cell": 7,
+      "empty_source_cell": "bottom_left",
+      "inset": 0.9,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "f349e34ea5332977c79747fbc9226d50a2b496095d372e3026489c806fb7bfcc"
+    },
+    {
+      "file": "cell_08.png",
+      "cell": 8,
+      "empty_source_cell": "top_middle",
+      "inset": 0.93,
+      "rotation_ccw_quarters": 0,
+      "occupied_reference_cell_baked": false,
+      "sha256": "616fd891263bf4c693bf2752328d03610e5bda9cfa3f1ea4d5fb81c04dbad970"
+    }
+  ]
+}

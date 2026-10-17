@@ -1,0 +1,23 @@
+{
+  "generator": "tools/build_northern_environment.py",
+  "canonical_pngs_mutated": false,
+  "contains_board_cells_or_occupancy": false,
+  "assets": [
+    {
+      "file": "north_fjord_backdrop.png",
+      "sha256": "f7f14d83a599296e69f9714fb04446369b84363a99727dbf4ca48b96eda6d9b5",
+      "size": [
+        1024,
+        576
+      ]
+    },
+    {
+      "file": "north_frozen_runestone_plinth.png",
+      "sha256": "390b9f9363efa595da7979f271946e4a08d2c84f31bf8c91580f7a4e1c99650d",
+      "size": [
+        512,
+        512
+      ]
+    }
+  ]
+}
