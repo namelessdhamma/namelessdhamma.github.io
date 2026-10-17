@@ -1,0 +1,6 @@
+{
+  "func _is_legal_move(": "dbe05f0a1d449a6859b71b1cd34b8af5d89c7e4b1ce99ec6dfc72b200ec6ea8a",
+  "func _on_primary(": "327ea674534a07be49e3a27cd33fadecea560dd011d2899f410752369ddcfb2a",
+  "func _winning_line(": "5a198285c4c24c06a1a63484ee351de366aee77fef24b6f55aea28e607f11121",
+  "func _play_ai_turn(": "92f36198fce92659cdceb7780f6174f96d02005511bbdb055e4488e358c57135"
+}
