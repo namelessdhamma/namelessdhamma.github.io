@@ -85,7 +85,7 @@ function toolList() {
   ];
 }
 async function callTool(name,args={}) {
-  if (name === 'studio_health') return {ok:true,service:'gg-cloud-music-studio-relay',version:'0.3.0',jobs:jobs.size};
+  if (name === 'studio_health') return {ok:true,service:'gg-cloud-music-studio-relay',version:'0.3.1',jobs:jobs.size};
   if (name === 'studio_submit') {
     const id=crypto.randomUUID();
     const markerPath=`gg-cloud-jobs/${id}.json`;
@@ -93,6 +93,16 @@ async function callTool(name,args={}) {
     jobs.set(id,j);
     return {job_id:id,status:j.status,worker_branch:'gg/cloud-music-worker-v1',marker_path:markerPath,marker_json:JSON.stringify({job_id:id})};
   }
+  if (name === 'studio_capabilities') return {
+    ok:true, service:'gg-cloud-music-studio-relay', version:'0.3.1',
+    operations:['probe','ardour_lua','ardour_batch','project_render','vocal_render','vocal_mutate','song_render','gm_palette_render'],
+    worker:{branch:'gg/cloud-music-worker-v1',trigger:'commit the marker returned by studio_submit',authentication:'GitHub Actions OIDC'},
+    assets:{storage:'private ephemeral relay memory',max_body_bytes:MAX_BODY},
+    artifacts:{transfer:'inline base64 chunks',max_chunk_bytes:524288},
+    job_ttl_ms:TTL_MS,
+    singer_catalog:{source:'worker runtime',status:'not verified by relay'},
+    qualification:'PROTOCOL_CAPABILITIES_ONLY; WORKER_RUNTIME_AND_GENERATION_NOT_PROBED'
+  };
   const j=getJob(String(args.job_id||''));
   if (name === 'studio_put_asset_chunk') {
     if (!['queued','running'].includes(j.status)) throw new Error('job is not accepting assets');
@@ -119,7 +129,7 @@ async function callTool(name,args={}) {
 async function mcp(req,res) {
   requireStudio(req);
   const msg=await readJson(req,8*1024*1024);
-  if (msg.method === 'initialize') return json(res,200,{jsonrpc:'2.0',id:msg.id,result:{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'gg-cloud-music-studio',version:'0.3.0'}}});
+  if (msg.method === 'initialize') return json(res,200,{jsonrpc:'2.0',id:msg.id,result:{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'gg-cloud-music-studio',version:'0.3.1'}}});
   if (msg.method === 'notifications/initialized') { res.writeHead(202); return res.end(); }
   if (msg.method === 'tools/list') return json(res,200,{jsonrpc:'2.0',id:msg.id,result:{tools:toolList()}});
   if (msg.method === 'tools/call') {
@@ -184,7 +194,7 @@ setInterval(()=>{
 const server=http.createServer(async(req,res)=>{
   try{
     const url=new URL(req.url||'/',`http://${req.headers.host||'localhost'}`);
-    if(url.pathname==='/health') return json(res,200,{ok:true,service:'gg-cloud-music-studio-relay',version:'0.3.0',jobs:jobs.size});
+    if(url.pathname==='/health') return json(res,200,{ok:true,service:'gg-cloud-music-studio-relay',version:'0.3.1',jobs:jobs.size});
     if(url.pathname==='/mcp' && req.method==='POST') return await mcp(req,res);
     if(url.pathname.startsWith('/runner/')) return await runnerRoute(req,res,url);
     return text(res,404,'not found');
