@@ -233,6 +233,7 @@ func _refresh_surface() -> void:
 		cell.disabled = game_over
 	for player in [1, 2]:
 		var reserve := _reserve_node(player)
+		reserve.visible = not game_over and player == turn
 		for i in range(reserve.get_child_count()):
 			var piece := reserve.get_child(i) as Button
 			piece.text = "%d" % (i + 1) if reserve_available[player - 1][i] else "—"
