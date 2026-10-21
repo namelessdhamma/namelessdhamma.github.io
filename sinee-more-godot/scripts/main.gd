@@ -236,6 +236,8 @@ func _refresh_surface() -> void:
 		for i in range(reserve.get_child_count()):
 			var piece := reserve.get_child(i) as Button
 			piece.text = "%d" % (i + 1) if reserve_available[player - 1][i] else "—"
+			# Keep a uniform >=44px touch target while ranks 1..9 grow monotonically in visible glyph size.
+			piece.add_theme_font_size_override("font_size", 13 + i * 2)
 			piece.disabled = game_over or player != turn or not reserve_available[player - 1][i]
 
 func _update_status(event: String) -> void:
@@ -427,4 +429,12 @@ func _run_headless_interaction_smoke() -> void:
 	assert((_reserve_node(1).get_child(0) as Button).disabled == false)
 	assert((_reserve_node(2).get_child(0) as Button).disabled == true)
 	print("BLUE_SEA_BLOCKED_PLAYER_SMOKE_PASS blocked=P2 continuing=P1 reset=PASS")
+	var previous_font_size := 0
+	for i in range(_reserve_node(1).get_child_count()):
+		var rank_piece := _reserve_node(1).get_child(i) as Button
+		var rank_font_size := rank_piece.get_theme_font_size("font_size")
+		assert(rank_font_size > previous_font_size, "rank %d visual size must exceed rank %d" % [i + 1, i])
+		_assert_min_control_size(rank_piece, Vector2(44, 44), "rank %d touch target" % (i + 1))
+		previous_font_size = rank_font_size
+	print("BLUE_SEA_RANK_SCALE_SMOKE_PASS ranks=1..9 font=13..29 touch_target>=44")
 	print("BLUE_SEA_TURN_AWARE_RESERVES_SMOKE_PASS active=P1 inactive=P2")
