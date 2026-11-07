@@ -1,32 +1,5 @@
-import fs from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import path from 'node:path';
-
-const here=path.dirname(fileURLToPath(import.meta.url));
-const sourcePath=path.join(here,'server.mjs');
-const runtimePath=path.join(here,'server.porfirchik-v20-7-21-arbiter.mjs');
-let s=fs.readFileSync(sourcePath,'utf8');
-const replaceOne=(from,to,label)=>{const n=s.split(from).length-1;if(n!==1)throw new Error('Porfirchik V20.7.21 activation anchor mismatch: '+label+' count='+n);s=s.replace(from,to);};
-replaceOne(
-  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.4-free-music-yandex-fallback-20260930';",
-  "const ND_PORFIRCHIK_GATEWAY_V20_7_4='porfirchik-v20.7.25-ten-message-context-20261013';",
-  'revision'
-);
-replaceOne(
-  "const PORFIRCHIK_SOURCE_COMMIT='9b7da70f9e05188966d52c73f5b55d772267006a';",
-  "const PORFIRCHIK_SOURCE_COMMIT='37acbb59d70557ed92e0ebcc2a198a5ea80bd947';",
-  'source_commit'
-);
-replaceOne(
-  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_4_music_yandex_fallback_loader.py';",
-  "const PORFIRCHIK_SOURCE_PATH='tmp/nd_vk_v20_7_25_history_budget_loader.py';",
-  'source_path'
-);
-replaceOne(
-  "for(const key of ['CEREBRAS_API_KEY','MISTRAL_API_KEY','OPENAI_API_KEY','ZAI_API_KEY','OMNIROUTE_BASE_URL']){",
-  "for(const key of ['OPENAI_API_KEY','OMNIROUTE_BASE_URL']){",
-  'restore_historical_free_provider_env'
-);
-fs.writeFileSync(runtimePath,s);
-console.log('ND_PORFIRCHIK_V20_7_21_ARBITER_ACTIVATION_SHIM_READY');
-await import(pathToFileURL(runtimePath).href);
+// Since 2026-11-07 this entry point starts Porfirchik V21 (porfirchik-entry-v21.mjs).
+// Kept under the old name because the Render start command points here:
+// node railway/nd-provider-gateway/porfirchik-entry-v20-7-21-arbiter.mjs
+// Previous arbiter content: commit b3c1b64.
+await import('./porfirchik-entry-v21.mjs');
